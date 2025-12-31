@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_categories_guapante" name="Guapante Categories">
+        <section class="s_categories_guapante py-5" data-snippet="s_categories_guapante" data-name="Categories Grid">
+            <div class="container">
+                <div class="d-flex align-items-end justify-content-between mb-5">
+                    <div>
+                        <h2 class="display-6 fw-bold mb-2">Categorías Principales</h2>
+                        <p class="text-muted lead fs-6 mb-0">Explora nuestra variedad de productos del campo.</p>
+                    </div>
+                    <a href="/shop" class="text-primary fw-bold text-decoration-none d-flex align-items-center gap-1 group-link">
+                        Ver todas 
+                        <i class="fa fa-arrow-right fs-6 transition-transform"></i>
+                    </a>
+                </div>
+
+                <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-4">
+                    <!-- Static list of categories for placeholder -->
+                    <t t-set="categories" t-value="[
+                        {'name': 'Frutas'},
+                        {'name': 'Verduras'},
+                        {'name': 'Tubérculos'},
+                        {'name': 'Orgánicos'},
+                        {'name': 'Hierbas'},
+                        {'name': 'Granos'}
+                    ]" />
+
+                    <t t-foreach="categories" t-as="cat">
+                        <div class="col">
+                            <a href="/shop" class="category-card d-flex flex-column align-items-center gap-3 p-4 rounded-4 border bg-surface hover-shadow text-decoration-none h-100 transition-all">
+                                <div class="img-container rounded-circle bg-light d-flex align-items-center justify-content-center overflow-hidden border position-relative" style="width: 100px; height: 100px;">
+                                    <i class="fa fa-picture-o text-muted fs-2"></i>
+                                </div>
+                                <span class="fw-bold text-dark small"><t t-esc="cat['name']"/></span>
+                            </a>
+                        </div>
+                    </t>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

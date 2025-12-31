@@ -1,0 +1,33 @@
+/* Categories Snippet Styles */
+.s_categories_guapante {
+    .group-link:hover .transition-transform {
+        transform: translateX(4px);
+    }
+
+    .category-card {
+        background-color: #ffffff;
+        border-color: #f1f1f1 !important;
+
+        &:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+            border-color: $primary !important;
+
+            .img-container {
+                transform: scale(1.05);
+            }
+
+            .text-dark {
+                color: $primary !important;
+            }
+        }
+    }
+
+    .img-container {
+        transition: transform 0.3s ease;
+    }
+
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+}

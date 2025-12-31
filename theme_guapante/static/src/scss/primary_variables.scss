@@ -1,0 +1,11 @@
+/* Colores extraídos del Mockup */
+$primary: #13ec6d;
+/* Verde brillante */
+$secondary: #102218;
+/* Verde muy oscuro (casi negro) */
+
+/* Mapeo para Bootstrap */
+$theme-colors: (
+    'primary': $primary,
+    'secondary': $secondary,
+);

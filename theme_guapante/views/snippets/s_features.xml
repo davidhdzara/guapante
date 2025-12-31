@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_features_guapante" name="Guapante Features">
+        <section class="s_features_guapante pb-5 position-relative z-index-1" data-snippet="s_features_guapante" data-name="Features Grid">
+            <div class="container">
+                <div class="row g-4 justify-content-center" style="margin-top: -5rem;">
+                    <!-- Feature 1: Frescura -->
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100 border-0 shadow-lg rounded-4 p-4 hover-lift">
+                            <div class="d-flex flex-column align-items-start gap-3">
+                                <div class="icon-box rounded-4 bg-success-subtle text-success d-flex align-items-center justify-content-center" style="width: 56px; height: 56px;">
+                                    <i class="fa fa-clock-o fs-2"></i>
+                                </div>
+                                <h3 class="h4 fw-bold mb-1">Frescura 24h</h3>
+                                <p class="text-muted small mb-0 lh-lg">Nuestros productos son recolectados y entregados en tiempo récord para garantizar su sabor original.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Feature 2: Logística -->
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100 border-0 shadow-lg rounded-4 p-4 hover-lift">
+                            <div class="d-flex flex-column align-items-start gap-3">
+                                <div class="icon-box rounded-4 bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 56px; height: 56px;">
+                                    <i class="fa fa-truck fs-2"></i>
+                                </div>
+                                <h3 class="h4 fw-bold mb-1">Logística Superior</h3>
+                                <p class="text-muted small mb-0 lh-lg">Flota propia refrigerada que asegura la cadena de frío hasta la puerta de tu casa o local comercial.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feature 3: Comercio Justo -->
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100 border-0 shadow-lg rounded-4 p-4 hover-lift">
+                            <div class="d-flex flex-column align-items-start gap-3">
+                                <div class="icon-box rounded-4 bg-warning-subtle text-warning d-flex align-items-center justify-content-center" style="width: 56px; height: 56px;">
+                                    <i class="fa fa-handshake-o fs-2"></i>
+                                </div>
+                                <h3 class="h4 fw-bold mb-1">Comercio Justo</h3>
+                                <p class="text-muted small mb-0 lh-lg">Trabajamos directamente con familias campesinas, eliminando intermediarios y pagando precios dignos.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>
