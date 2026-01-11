@@ -1,27 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="s_hero_guapante" name="Guapante Hero">
-        <section class="s_hero_guapante position-relative overflow-hidden">
-            <div class="o_bg_img_container" style="background-image: url('/theme_guapante/static/src/img/hero_bg.jpg');"/>
-            <div class="container position-relative h-100 d-flex align-items-center">
-                <div class="row w-100">
-                    <div class="col-lg-7 col-md-10 text-white">
-                        <span class="badge bg-primary text-dark rounded-pill mb-3 px-3 py-2 fw-bold animate-fade-in" style="font-size: 0.9rem;">
-                            100% ORGÁNICO
-                        </span>
-                        <h1 class="display-3 fw-black mb-4 animate-fade-in drop-shadow-lg" style="letter-spacing: -0.05em; line-height: 1.1;">
-                            Lo mejor del campo<br/>a tu mesa
-                        </h1>
-                        <p class="lead mb-5 fs-4 fw-light animate-fade-in drop-shadow-md" style="animation-delay: 0.2s; opacity: 0.9;">
-                            Cultivamos con amor y respeto por la tierra para llevarte alimentos frescos, saludables y llenos de vida.
-                        </p>
-                        <div class="d-flex gap-3 animate-fade-in" style="animation-delay: 0.4s;">
-                            <a href="/shop" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold text-dark hover-scale shadow-lg">
-                                Ver Productos
-                            </a>
-                            <a href="/about" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold hover-scale">
-                                Nuestra Historia
-                            </a>
+        <section class="s_hero_guapante my-4">
+            <div class="container">
+                <div class="hero-card position-relative overflow-hidden rounded-4 shadow-sm" style="min-height: 600px;">
+                    <!-- Background Image -->
+                    <div class="o_bg_img_container position-absolute top-0 start-0 w-100 h-100" 
+                         style="background-image: url('/theme_guapante/static/src/img/hero_bg.jpg'); background-size: cover; background-position: center;">
+                    </div>
+                    
+                    <!-- Overlay Gradient -->
+                    <div class="position-absolute top-0 start-0 w-100 h-100" 
+                         style="background: linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0) 100%); pointer-events: none;">
+                    </div>
+
+                    <!-- Content -->
+                    <div class="position-relative h-100 d-flex align-items-center p-5">
+                        <div class="row w-100 m-0">
+                            <div class="col-lg-7 col-md-10 text-white ps-lg-5">
+                                <span class="badge bg-success text-white rounded-pill mb-3 px-3 py-2 fw-bold tracking-wide animate-fade-in" style="font-size: 0.8rem;">
+                                    DIRECTO DEL CAMPO
+                                </span>
+                                <h1 class="display-3 fw-bold mb-4 animate-fade-in drop-shadow-lg" style="letter-spacing: -0.02em; line-height: 1.1;">
+                                    Del Campo<br/>Colombiano<br/>a tu Mesa o Negocio
+                                </h1>
+                                <p class="lead mb-5 fs-5 fw-light animate-fade-in drop-shadow-md pe-lg-5" style="animation-delay: 0.2s; opacity: 0.95;">
+                                    Garantizamos frescura con recolección en menos de 24 horas.<br class="d-none d-lg-block"/>
+                                    Precios justos para ti y para nuestros campesinos.
+                                </p>
+                                <div class="animate-fade-in" style="animation-delay: 0.4s;">
+                                    <a href="/shop" class="btn btn-success btn-lg rounded-pill px-4 py-2 fw-bold text-white shadow-lg d-inline-flex align-items-center gap-2 hover-scale">
+                                        Ver Catálogo <i class="fa fa-arrow-right"/>
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
