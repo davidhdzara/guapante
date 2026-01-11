@@ -18,18 +18,23 @@
     }
 
     .search-bar-guapante {
-        background-color: $bg-light-secondary;
-        border-radius: 50rem;
-        /* Pill shape */
-        padding: 0.25rem 0.5rem;
-        width: 280px;
+        max-width: 400px;
 
-        input {
+        .input-group-text,
+        .form-control {
+            background-color: #f3f4f6 !important;
+            border-color: #f3f4f6 !important;
+        }
+
+        .form-control:focus {
+            background-color: $white !important;
+            border-color: $white !important;
+            box-shadow: 0 0 0 0.25rem rgba($primary, 0.1);
+        }
+
+        input::placeholder {
             font-size: 0.9rem;
-
-            &::placeholder {
-                color: $text-muted;
-            }
+            color: $text-muted;
         }
     }
 
