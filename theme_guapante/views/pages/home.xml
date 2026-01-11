@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="website.homepage_page" model="website.page">
-        <field name="name">Home</field>
-        <field name="url">/</field>
+    <record id="demo_homepage_guapante" model="website.page">
+        <field name="name">Demo Guapante</field>
+        <field name="url">/demo-guapante</field>
         <field name="type">qweb</field>
-        <field name="key">website.homepage</field>
+        <field name="key">theme_guapante.demo_homepage</field>
         <field name="arch" type="xml">
-            <t t-name="website.homepage">
+            <t t-name="theme_guapante.demo_homepage">
                 <t t-call="website.layout">
                     <div id="wrap" class="oe_structure oe_empty">
                          <t t-call="theme_guapante.s_hero_guapante"/>
