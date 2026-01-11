@@ -19,17 +19,17 @@
 
                         <div class="collapse navbar-collapse" id="navbarGuapante">
                             <!-- 2. Navigation -->
-                            <ul class="navbar-nav me-auto fw-medium gap-lg-4 mb-3 mb-lg-0">
-                                <li class="nav-item"><a class="nav-link text-dark" href="/shop">Categorías</a></li>
-                                <li class="nav-item"><a class="nav-link text-dark" href="/shop">Ofertas</a></li>
-                                <li class="nav-item"><a class="nav-link text-dark" href="/about">Nosotros</a></li>
-                                <li class="nav-item"><a class="nav-link text-dark" href="/logistics">Logística</a></li>
+                            <ul class="navbar-nav me-auto gap-lg-4 mb-3 mb-lg-0">
+                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Categorías</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Ofertas</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/about">Nosotros</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/logistics">Logística</a></li>
                             </ul>
 
                             <!-- 3. Search & Actions -->
                             <div class="d-flex align-items-center gap-3 justify-content-end flex-grow-1">
                                 <!-- Search Bar (Desktop) -->
-                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group w-50 mx-auto">
+                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group mx-auto">
                                     <span class="input-group-text bg-light border-0 rounded-start-3 ms-2"><i class="fa fa-search text-muted"></i></span>
                                     <input type="text" name="search" class="form-control bg-light border-0 shadow-none rounded-end-3" placeholder="Buscar frutas, verduras..."/>
                                 </form>
