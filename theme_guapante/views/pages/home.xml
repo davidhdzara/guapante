@@ -11,7 +11,7 @@
                 <t t-call="website.layout">
                     <div id="wrap" class="oe_structure oe_empty">
                          <section class="s_text_block">
-                             <div class="container><h1>Demo Page</h1></div>
+                             <div class="container"><h1>Demo Page</h1></div>
                          </section>
                          <t t-call="theme_guapante.s_hero_guapante"/>
                          <t t-call="theme_guapante.s_features_guapante"/>
