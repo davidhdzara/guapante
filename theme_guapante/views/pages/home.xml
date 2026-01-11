@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Demo Page for Testing -->
     <record id="demo_homepage_guapante" model="website.page">
         <field name="name">Demo Guapante</field>
         <field name="url">/demo-guapante</field>
@@ -7,6 +8,29 @@
         <field name="key">theme_guapante.demo_homepage</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.demo_homepage">
+                <t t-call="website.layout">
+                    <div id="wrap" class="oe_structure oe_empty">
+                         <section class="s_text_block">
+                             <div class="container><h1>Demo Page</h1></div>
+                         </section>
+                         <t t-call="theme_guapante.s_hero_guapante"/>
+                         <t t-call="theme_guapante.s_features_guapante"/>
+                         <t t-call="theme_guapante.s_categories_guapante"/>
+                         <t t-call="theme_guapante.s_product_list_guapante"/>
+                         <t t-call="theme_guapante.s_b2b_guapante"/>
+                    </div>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Main Homepage Override -->
+    <record id="website.homepage_page" model="website.page">
+        <field name="url">/</field>
+        <field name="type">qweb</field>
+        <field name="key">website.homepage</field>
+        <field name="arch" type="xml">
+            <t t-name="website.homepage">
                 <t t-call="website.layout">
                     <div id="wrap" class="oe_structure oe_empty">
                          <t t-call="theme_guapante.s_hero_guapante"/>
