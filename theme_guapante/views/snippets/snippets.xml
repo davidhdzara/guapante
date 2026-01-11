@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="snippets_guapante" inherit_id="website.snippets" name="Guapante Snippets">
-    <template id="snippets_guapante" inherit_id="website.snippets" name="Guapante Snippets">
         <xpath expr="//div[@id='o_scroll']" position="inside">
             <div class="o_panel_header">Guapante</div>
             <t t-snippet="theme_guapante.s_hero_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
