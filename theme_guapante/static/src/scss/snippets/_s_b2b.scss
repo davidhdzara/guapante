@@ -2,31 +2,23 @@
 
 .s_b2b_guapante {
     .b2b-banner {
-        background-color: $bg-dark;
+        min-height: 400px;
         position: relative;
         isolation: isolate;
-        min-height: 400px;
 
         .o_bg_img_container {
             position: absolute;
             inset: 0;
             background-size: cover;
             background-position: center;
-            opacity: 0.2;
+            opacity: 0.6; // Increased from 0.2 to make fruits visible
             z-index: 0;
-            mix-blend-mode: overlay;
+            // mix-blend-mode: overlay; // Removed to keep colors natural
         }
     }
 
     .steps-box {
-        background-color: rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    .step-circle {
-        width: 40px;
-        height: 40px;
-        flex-shrink: 0;
+        -webkit-backdrop-filter: blur(12px); // Safari support
     }
 }
