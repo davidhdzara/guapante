@@ -59,6 +59,7 @@
                                          <t t-esc="cart_qty"/>
                                     </span>
                                 </a>
+                                </div>
                             </div>
                         </div>
                     </div>
