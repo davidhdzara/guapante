@@ -4,6 +4,10 @@
     'category': 'Theme/eCommerce',
     'summary': 'Fresh, Organic, Modern',
     'version': '2.0.0',
+    'images': [
+        'static/description/guapante_preview.png',
+        'static/description/guapante_screenshot.jpg',
+    ],
     'depends': ['website', 'website_sale'],
     'data': [
         'views/layout/header.xml',
