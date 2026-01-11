@@ -6,6 +6,7 @@
                 <t t-snippet="theme_guapante.s_hero_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_features_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_categories_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_seasonal_harvest_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_product_list_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_b2b_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
             </snippets>
