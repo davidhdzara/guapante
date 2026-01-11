@@ -8,8 +8,8 @@
                         
                         <!-- 1. Logo -->
                         <a href="/" class="navbar-brand d-flex align-items-center gap-2">
-                             <!-- Placeholder for logo image, user needs to upload it or we use text -->
-                            <span class="brand-text fw-bold text-success fs-3 tracking-tight">GUAPANTE</span>
+                            <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Logo" height="40" class="d-inline-block align-text-top"/>
+                            <span class="brand-text fw-bold text-dark fs-3 tracking-tight">Guapante</span>
                         </a>
 
                         <!-- Mobile Toggler -->
@@ -20,10 +20,10 @@
                         <div class="collapse navbar-collapse" id="navbarGuapante">
                             <!-- 2. Navigation -->
                             <ul class="navbar-nav mx-auto fw-bold gap-lg-4 mb-3 mb-lg-0">
-                                <li class="nav-item"><a class="nav-link" href="/shop">Categorías</a></li>
-                                <li class="nav-item"><a class="nav-link" href="/shop">Ofertas</a></li>
-                                <li class="nav-item"><a class="nav-link" href="/about">Nosotros</a></li>
-                                <li class="nav-item"><a class="nav-link" href="/logistics">Logística</a></li>
+                                <li class="nav-item"><a class="nav-link text-dark" href="/shop">Categorías</a></li>
+                                <li class="nav-item"><a class="nav-link text-dark" href="/shop">Ofertas</a></li>
+                                <li class="nav-item"><a class="nav-link text-dark" href="/about">Nosotros</a></li>
+                                <li class="nav-item"><a class="nav-link text-dark" href="/logistics">Logística</a></li>
                             </ul>
 
                             <!-- 3. Search & Actions -->
@@ -31,32 +31,31 @@
                                 <!-- Search Bar (Desktop) -->
                                 <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group">
                                     <span class="input-group-text bg-transparent border-0"><i class="fa fa-search text-muted"></i></span>
-                                    <input type="text" name="search" class="form-control bg-transparent border-0 shadow-none" placeholder="Buscar..."/>
+                                    <input type="text" name="search" class="form-control bg-transparent border-0 shadow-none" placeholder="Buscar frutas, verduras..."/>
                                 </form>
 
                                 <!-- User/Account -->
-                                <div class="dropdown" t-if="user_id._is_public()">
-                                    <a href="/web/login" class="btn btn-link text-decoration-none fw-bold text-dark">Entrar</a>
-                                </div>
-                                <div class="dropdown" t-else="">
-                                    <a href="#" class="dropdown-toggle btn btn-light rounded-pill fw-bold" data-bs-toggle="dropdown">
-                                        <i class="fa fa-user-circle me-1"/> <t t-esc="user_id.name.split(' ')[0]"/>
+                                <div class="dropdown">
+                                    <a href="#" class="dropdown-toggle text-decoration-none fw-bold text-dark d-flex align-items-center gap-2" data-bs-toggle="dropdown">
+                                        <i class="fa fa-user-circle fs-4"/><span t-if="not user_id._is_public()"><t t-esc="user_id.name.split(' ')[0]"/></span><span t-else="">Mi Cuenta</span>
                                     </a>
                                      <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-4 mt-2">
-                                        <li><a class="dropdown-item" href="/my/home">Mi Cuenta</a></li>
-                                        <li><a class="dropdown-item text-danger" href="/web/session/logout?redirect=/">Salir</a></li>
+                                        <li t-if="user_id._is_public()"><a class="dropdown-item" href="/web/login">Identificarse</a></li>
+                                        <li t-else=""><a class="dropdown-item" href="/my/home">Mi Cuenta</a></li>
+                                        <li t-if="not user_id._is_public()"><a class="dropdown-item text-danger" href="/web/session/logout?redirect=/">Salir</a></li>
                                     </ul>
                                 </div>
 
                                 <!-- Cart -->
                                 <t t-set="website_sale_order" t-value="website.sale_get_order()" />
                                 <t t-set="cart_qty" t-value="website_sale_order and website_sale_order.cart_quantity or 0" />
-                                <a href="/shop/cart" class="btn btn-primary rounded-pill d-flex align-items-center gap-2 px-3 fw-bold text-dark">
-                                    <i class="fa fa-shopping-basket"></i>
-                                    <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light">
+                                <t t-set="cart_amount" t-value="website_sale_order and website_sale_order.amount_total or 0.0" />
+                                <a href="/shop/cart" class="btn-cart-guapante d-flex align-items-center gap-2 px-3 py-2 fw-bold text-decoration-none transition-base">
+                                    <i class="fa fa-shopping-basket fs-5"></i>
+                                    <span class="cart-price" t-esc="website_sale_order and website_sale_order.currency_id.symbol + str(cart_amount) or '$0'"/>
+                                    <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
                                          <t t-esc="cart_qty"/>
                                     </span>
-                                    <span class="d-none d-sm-inline">Carrito</span>
                                 </a>
                             </div>
                         </div>
