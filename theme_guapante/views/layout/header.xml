@@ -7,7 +7,7 @@
                     <div class="container-fluid px-lg-5">
                         
                         <!-- 1. Logo -->
-                        <a href="/" class="navbar-brand d-flex align-items-center gap-2">
+                        <a href="/" class="navbar-brand d-flex align-items-center gap-2 me-lg-5">
                             <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Logo" height="40" class="d-inline-block align-text-top"/>
                             <span class="brand-text fw-bold text-dark fs-3 tracking-tight">Guapante</span>
                         </a>
@@ -19,7 +19,7 @@
 
                         <div class="collapse navbar-collapse" id="navbarGuapante">
                             <!-- 2. Navigation -->
-                            <ul class="navbar-nav mx-auto fw-bold gap-lg-4 mb-3 mb-lg-0">
+                            <ul class="navbar-nav me-auto fw-medium gap-lg-4 mb-3 mb-lg-0">
                                 <li class="nav-item"><a class="nav-link text-dark" href="/shop">Categorías</a></li>
                                 <li class="nav-item"><a class="nav-link text-dark" href="/shop">Ofertas</a></li>
                                 <li class="nav-item"><a class="nav-link text-dark" href="/about">Nosotros</a></li>
@@ -27,18 +27,20 @@
                             </ul>
 
                             <!-- 3. Search & Actions -->
-                            <div class="d-flex align-items-center gap-3 justify-content-end">
+                            <div class="d-flex align-items-center gap-3 justify-content-end flex-grow-1">
                                 <!-- Search Bar (Desktop) -->
-                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group">
-                                    <span class="input-group-text bg-transparent border-0"><i class="fa fa-search text-muted"></i></span>
-                                    <input type="text" name="search" class="form-control bg-transparent border-0 shadow-none" placeholder="Buscar frutas, verduras..."/>
+                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group w-50 mx-auto">
+                                    <span class="input-group-text bg-light border-0 rounded-start-3 ms-2"><i class="fa fa-search text-muted"></i></span>
+                                    <input type="text" name="search" class="form-control bg-light border-0 shadow-none rounded-end-3" placeholder="Buscar frutas, verduras..."/>
                                 </form>
 
-                                <!-- User/Account -->
-                                <div class="dropdown">
-                                    <a href="#" class="dropdown-toggle text-decoration-none fw-bold text-dark d-flex align-items-center gap-2" data-bs-toggle="dropdown">
-                                        <i class="fa fa-user-circle fs-4"/><span t-if="not user_id._is_public()"><t t-esc="user_id.name.split(' ')[0]"/></span><span t-else="">Mi Cuenta</span>
-                                    </a>
+                                <!-- Action Buttons Container -->
+                                <div class="d-flex align-items-center gap-3">
+                                    <!-- User/Account -->
+                                    <div class="dropdown">
+                                        <a href="#" class="dropdown-toggle text-decoration-none fw-bold text-dark d-flex align-items-center gap-2" data-bs-toggle="dropdown">
+                                            <i class="fa fa-user-circle fs-4"/><span t-if="not user_id._is_public()"><t t-esc="user_id.name.split(' ')[0]"/></span><span t-else="">Mi Cuenta</span>
+                                        </a>
                                      <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-4 mt-2">
                                         <li t-if="user_id._is_public()"><a class="dropdown-item" href="/web/login">Identificarse</a></li>
                                         <li t-else=""><a class="dropdown-item" href="/my/home">Mi Cuenta</a></li>
