@@ -1,8 +1,10 @@
 /* Header SCSS */
 
 .o_header_standard {
-    background-color: $white;
+    background-color: $white !important; // Force solid white to prevent transparency on scroll
     border-bottom: 1px solid $border-light;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); // Subtle grey shadow as requested
+    z-index: 1000; // Ensure it stays on top
 
     .navbar {
         padding: 0.75rem 0;
