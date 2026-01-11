@@ -1,12 +1,12 @@
 {
-    'name': 'Theme Guapante v2',
+    'name': 'Guapante',
     'description': 'Modern, fresh theme for Guapante based on Odoo 18 best practices.',
     'category': 'Theme/eCommerce',
     'summary': 'Fresh, Organic, Modern',
     'version': '2.0.0',
     'images': [
         'static/description/guapante_preview.png',
-        'static/description/guapante_screenshot.jpg',
+        'static/description/icon.png',
     ],
     'depends': ['website', 'website_sale'],
     'data': [

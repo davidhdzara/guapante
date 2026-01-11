@@ -1,6 +1,19 @@
 .s_about_mission_guapante {
     .bg-light-greenish {
-        background-color: #f0fdf4 !important; // Green-50 equivalent but slightly different if needed
+        background-color: #f8fafc !important; // Changed to a very light cool white (slate-50) based on 'gray' comment, or kept as white. User complaint was 'grey', usually means dirty white. Let's try pure white or keep section distinct? User said 'background is a bit gray'. The previous color was #f0fdf4 (light green). Maybe they referred to standard background. Let's make section bg darker or lighter?
+        // Logic: User said 'background is a bit gray'. If I used #f0fdf4, it's green. Maybe they mean the page background?
+        // I will stick to a very clean white or subtle gradient.
+        background-color: #ffffff !important;
+    }
+
+    .card {
+        border: 1px solid #e2e8f0 !important; // More highlighted border
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; // Default shadow
+
+        &:hover {
+            border-color: #22c55e !important; // Highlight green on hover
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+        }
     }
 
     .bg-green-100 {
