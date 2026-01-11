@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_about_pillars" name="About Pillars">
+        <section class="s_about_values_guapante py-5 bg-white" data-name="About Pillars">
+            <div class="container-fluid px-lg-5 text-center mb-5">
+                <span class="d-block text-uppercase text-green-500 fw-bold small mb-2 tracking-wide">NUESTROS VALORES</span>
+                <h2 class="display-6 fw-bold text-dark-green">Pilares Fundamentales</h2>
+                <p class="text-muted mx-auto mt-3" style="max-width: 600px;">La base sólida sobre la cual construimos cada relación comercial y entregamos cada pedido.</p>
+            </div>
+            
+            <div class="container-fluid px-lg-5">
+                <div class="row g-4">
+                    <!-- Pillars Loop -->
+                    <t t-set="pillars" t-value="[
+                        ('Frescura Garantizada', 'Compromiso inquebrantable con la calidad. &quot;Del campo a tu mesa&quot; no es un eslogan, es nuestra operación diaria de recolección en menos de 24 horas.', 'fa-leaf', 'text-green-500', 'bg-green-50', 'border-top-green'),
+                        ('Confianza y Transparencia', 'Relaciones honestas con precios justos. Sabes de dónde viene tu comida y el agricultor sabe que su trabajo es valorado correctamente.', 'fa-shield', 'text-blue-500', 'bg-blue-50', 'border-top-blue'),
+                        ('Eficiencia Logística', 'Optimizamos rutas y procesos para reducir desperdicios y costos, trasladando esos beneficios directamente al cliente y al productor.', 'fa-truck', 'text-orange-500', 'bg-orange-50', 'border-top-orange'),
+                        ('Apoyo al Campesino', 'Somos aliados estratégicos del agro colombiano. Fomentamos el desarrollo rural y la sostenibilidad de las familias campesinas.', 'fa-handshake-o', 'text-purple-500', 'bg-purple-50', 'border-top-purple')
+                    ]"/>
+                    <t t-foreach="pillars" t-as="pillar">
+                        <div class="col-md-6 col-lg-3">
+                            <div t-attf-class="card h-100 border-0 shadow-sm p-4 rounded-4 hover-up transition-base text-center #{pillar[5]}">
+                                <div t-attf-class='icon-box rounded-circle mx-auto d-flex align-items-center justify-content-center mb-4 #{pillar[4]} #{pillar[3]}' style="width: 60px; height: 60px;">
+                                    <i t-attf-class="fa #{pillar[2]} fs-4"/>
+                                </div>
+                                <h5 class="fw-bold text-dark-green mb-3"><t t-esc="pillar[0]"/></h5>
+                                <p class="small text-muted mb-0 lh-lg"><t t-esc="pillar[1]"/></p>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

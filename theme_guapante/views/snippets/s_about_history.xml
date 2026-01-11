@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_about_history" name="About History">
+        <section class="s_about_history_guapante py-5 bg-white" data-name="About History">
+            <div class="container-fluid px-lg-5">
+                <div class="row align-items-center g-5">
+                    <div class="col-lg-6">
+                        <div class="image-box rounded-5 overflow-hidden shadow-lg position-relative">
+                            <img src="/theme_guapante/static/src/img/about_history.jpg" class="img-fluid w-100 object-fit-cover" alt="Nuestra Historia" style="min-height: 400px;"/>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 ps-lg-5">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="line bg-green-200" style="width: 40px; height: 4px; border-radius: 2px;"/>
+                            <h2 class="h2 fw-bold text-dark-green mb-0">Nuestra Historia</h2>
+                        </div>
+                        <p class="text-muted-green mb-4">
+                            Comercializadora Guapante nació de una observación simple pero poderosa: la brecha inmensa entre lo que recibe el campesino colombiano por su cosecha y lo que paga el consumidor final. Fundada en el corazón de Colombia, nuestra empresa surgió con el propósito de transformar la cadena de suministro de alimentos frescos.
+                        </p>
+                        <p class="text-muted-green">
+                            Comenzamos como un pequeño proyecto logístico enfocado en reducir tiempos de entrega. Hoy, hemos evolucionado hacia una plataforma tecnológica integral que permite a los agricultores vender directamente, garantizando una rentabilidad justa para ellos y precios competitivos para hogares y negocios.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

@@ -1,0 +1,25 @@
+.s_about_history_guapante {
+    .bg-green-200 {
+        background-color: #bbf7d0 !important;
+    }
+
+    .text-dark-green {
+        color: #064e3b !important;
+    }
+
+    .text-muted-green {
+        color: #4b5563 !important;
+    }
+
+    .line {
+        display: inline-block;
+    }
+
+    .image-box {
+        transition: transform 0.3s ease;
+
+        &:hover {
+            transform: translateY(-5px);
+        }
+    }
+}

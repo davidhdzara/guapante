@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_about_mission_vision" name="About Mission Vision">
+        <section class="s_about_mission_guapante py-5 bg-light-greenish" data-name="Mission Vision">
+            <div class="container-fluid px-lg-5">
+                <div class="row g-4">
+                    <!-- Mission -->
+                    <div class="col-md-6">
+                        <div class="card h-100 border-0 shadow-sm rounded-4 p-4 p-lg-5 bg-white hover-up transition-base">
+                            <div class="icon-box bg-green-100 rounded-circle d-flex align-items-center justify-content-center mb-4 text-green-600" style="width: 60px; height: 60px;">
+                                <i class="fa fa-rocket fs-3"/>
+                            </div>
+                            <h3 class="h4 fw-bold text-dark-green mb-3">Nuestra Misión</h3>
+                            <p class="text-muted-green mb-0">
+                                Democratizar el acceso a alimentos frescos de alta calidad mediante una logística eficiente y tecnología innovadora, asegurando un trato justo y digno para los productores locales mientras ofrecemos un servicio excepcional.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Vision -->
+                    <div class="col-md-6">
+                        <div class="card h-100 border-0 shadow-sm rounded-4 p-4 p-lg-5 bg-white hover-up transition-base">
+                            <div class="icon-box bg-blue-100 rounded-circle d-flex align-items-center justify-content-center mb-4 text-primary" style="width: 60px; height: 60px;">
+                                <i class="fa fa-eye fs-3"/>
+                            </div>
+                            <h3 class="h4 fw-bold text-dark-green mb-3">Nuestra Visión</h3>
+                            <p class="text-muted-green mb-0">
+                                Ser la plataforma líder de comercio agroalimentario en Colombia para el año 2030, reconocida por revolucionar la cadena de abastecimiento, eliminando ineficiencias y construyendo un ecosistema sostenible.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

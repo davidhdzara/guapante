@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_about_cta" name="About CTA">
+        <section class="s_about_cta_guapante py-5" data-name="About CTA">
+            <div class="container-fluid px-lg-5">
+                 <div class="cta-banner position-relative rounded-5 overflow-hidden p-5 text-center d-flex flex-column align-items-center justify-content-center" style="min-height: 400px;">
+                    <div class="o_bg_img_container" style="background-image: url('/theme_guapante/static/src/img/about_cta_bg.jpg');"/>
+                    <div class="position-absolute top-0 start-0 w-100 h-100 bg-black opacity-75 z-0"/>
+                    
+                    <div class="position-relative z-1 content" style="max-width: 700px;">
+                        <h2 class="display-5 fw-bold text-white mb-3">Sé parte del cambio</h2>
+                        <p class="text-white-50 fs-5 mb-5">Cada compra en Guapante apoya directamente a una familia agricultora y garantiza que lleves lo mejor de la naturaleza a tu hogar.</p>
+                        <div class="d-flex gap-3 justify-content-center">
+                            <a href="/shop" class="btn btn-success btn-lg rounded-pill px-5 fw-bold">Ver Productos</a>
+                            <a href="/contactus" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold">Contáctanos</a>
+                        </div>
+                    </div>
+                 </div>
+            </div>
+        </section>
+    </template>
+</odoo>

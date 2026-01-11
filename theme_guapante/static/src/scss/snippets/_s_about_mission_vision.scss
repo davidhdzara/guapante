@@ -1,0 +1,34 @@
+.s_about_mission_guapante {
+    .bg-light-greenish {
+        background-color: #f0fdf4 !important; // Green-50 equivalent but slightly different if needed
+    }
+
+    .bg-green-100 {
+        background-color: #dcfce7 !important;
+    }
+
+    .bg-blue-100 {
+        background-color: #dbeafe !important;
+    }
+
+    .text-green-600 {
+        color: #16a34a !important;
+    }
+
+    .text-dark-green {
+        color: #064e3b !important;
+    }
+
+    .text-muted-green {
+        color: #4b5563 !important;
+    }
+
+    .hover-up {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+        &:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+        }
+    }
+}

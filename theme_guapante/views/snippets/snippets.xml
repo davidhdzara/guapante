@@ -9,6 +9,13 @@
                 <t t-snippet="theme_guapante.s_seasonal_harvest_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_product_list_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_b2b_guapante" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                
+                <!-- About Us Snippets -->
+                <t t-snippet="theme_guapante.s_about_hero" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_about_history" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_about_mission_vision" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_about_pillars" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_about_cta" t-thumbnail="/theme_guapante/static/description/icon.png"/>
             </snippets>
         </xpath>
     </template>
