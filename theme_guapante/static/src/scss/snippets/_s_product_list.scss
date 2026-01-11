@@ -1,4 +1,6 @@
 /* Product List Snippet SCSS */
+@import "theme_guapante/static/src/scss/primary_variables";
+
 .s_product_list_guapante {
     .product-card {
         transition: box-shadow 0.3s ease;
