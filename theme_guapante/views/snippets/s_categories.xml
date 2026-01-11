@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_categories_guapante" name="Guapante Categories">
+        <section class="s_categories_guapante py-5 bg-light-secondary">
+             <div class="container py-4">
+                <div class="row mb-5 text-center ms-auto me-auto" style="max-width: 700px;">
+                    <h2 class="display-5 fw-bold mb-3">Nuestras Categorías</h2>
+                    <p class="lead text-muted">Explora nuestra selección de productos frescos, cultivados con las mejores prácticas agrícolas.</p>
+                </div>
+                
+                <div class="row g-4">
+                    <!-- Frutas -->
+                    <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/frutas" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-orange-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_frutas.jpg" alt="Frutas" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Frutas</h4>
+                         </a>
+                    </div>
+                    <!-- Verduras -->
+                    <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/verduras" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-green-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_verduras.jpg" alt="Verduras" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Verduras</h4>
+                         </a>
+                    </div>
+                    <!-- Tuberculos -->
+                     <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/tuberculos" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-yellow-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_tuberculos.jpg" alt="Tubérculos" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Tubérculos</h4>
+                         </a>
+                    </div>
+                    <!-- Organicos -->
+                     <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/organicos" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-red-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_organicos.jpg" alt="Orgánicos" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Orgánicos</h4>
+                         </a>
+                    </div>
+                    <!-- Hierbas -->
+                     <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/hierbas" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-purple-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_hierbas.jpg" alt="Hierbas" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Hierbas</h4>
+                         </a>
+                    </div>
+                    <!-- Granos -->
+                     <div class="col-6 col-md-4 col-lg-2">
+                         <a href="/shop/category/granos" class="category-card d-block text-center text-decoration-none">
+                            <div class="image-wrapper rounded-circle overflow-hidden mb-3 mx-auto shadow-sm bg-stone-50 position-relative">
+                                <img src="/theme_guapante/static/src/img/cat_granos.jpg" alt="Granos" class="img-fluid w-100 h-100 object-fit-cover"/>
+                            </div>
+                            <h4 class="h6 fw-bold text-dark">Granos</h4>
+                         </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

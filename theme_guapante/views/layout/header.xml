@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="custom_header" inherit_id="website.layout" name="Custom Header Guapante" active="True">
+        <xpath expr="//header" position="replace">
+            <header id="top" data-anchor="true" data-name="Header" class="o_header_standard sticky-top">
+                <nav class="navbar navbar-expand-lg">
+                    <div class="container-fluid px-lg-5">
+                        
+                        <!-- 1. Logo -->
+                        <a href="/" class="navbar-brand d-flex align-items-center gap-2">
+                             <!-- Placeholder for logo image, user needs to upload it or we use text -->
+                            <span class="brand-text fw-bold text-success fs-3 tracking-tight">GUAPANTE</span>
+                        </a>
+
+                        <!-- Mobile Toggler -->
+                        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarGuapante">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+
+                        <div class="collapse navbar-collapse" id="navbarGuapante">
+                            <!-- 2. Navigation -->
+                            <ul class="navbar-nav mx-auto fw-bold gap-lg-4 mb-3 mb-lg-0">
+                                <li class="nav-item"><a class="nav-link" href="/shop">Categorías</a></li>
+                                <li class="nav-item"><a class="nav-link" href="/shop">Ofertas</a></li>
+                                <li class="nav-item"><a class="nav-link" href="/about">Nosotros</a></li>
+                                <li class="nav-item"><a class="nav-link" href="/logistics">Logística</a></li>
+                            </ul>
+
+                            <!-- 3. Search & Actions -->
+                            <div class="d-flex align-items-center gap-3 justify-content-end">
+                                <!-- Search Bar (Desktop) -->
+                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group">
+                                    <span class="input-group-text bg-transparent border-0"><i class="fa fa-search text-muted"></i></span>
+                                    <input type="text" name="search" class="form-control bg-transparent border-0 shadow-none" placeholder="Buscar..."/>
+                                </form>
+
+                                <!-- User/Account -->
+                                <div class="dropdown" t-if="user_id._is_public()">
+                                    <a href="/web/login" class="btn btn-link text-decoration-none fw-bold text-dark">Entrar</a>
+                                </div>
+                                <div class="dropdown" t-else="">
+                                    <a href="#" class="dropdown-toggle btn btn-light rounded-pill fw-bold" data-bs-toggle="dropdown">
+                                        <i class="fa fa-user-circle me-1"/> <t t-esc="user_id.name.split(' ')[0]"/>
+                                    </a>
+                                     <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-4 mt-2">
+                                        <li><a class="dropdown-item" href="/my/home">Mi Cuenta</a></li>
+                                        <li><a class="dropdown-item text-danger" href="/web/session/logout?redirect=/">Salir</a></li>
+                                    </ul>
+                                </div>
+
+                                <!-- Cart -->
+                                <t t-set="website_sale_order" t-value="website.sale_get_order()" />
+                                <t t-set="cart_qty" t-value="website_sale_order and website_sale_order.cart_quantity or 0" />
+                                <a href="/shop/cart" class="btn btn-primary rounded-pill d-flex align-items-center gap-2 px-3 fw-bold text-dark">
+                                    <i class="fa fa-shopping-basket"></i>
+                                    <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light">
+                                         <t t-esc="cart_qty"/>
+                                    </span>
+                                    <span class="d-none d-sm-inline">Carrito</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            </header>
+        </xpath>
+    </template>
+</odoo>

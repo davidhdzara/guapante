@@ -1,0 +1,37 @@
+{
+    'name': 'Theme Guapante v2',
+    'description': 'Modern, fresh theme for Guapante based on Odoo 18 best practices.',
+    'category': 'Theme/eCommerce',
+    'summary': 'Fresh, Organic, Modern',
+    'version': '2.0.0',
+    'depends': ['website', 'website_sale'],
+    'data': [
+        'views/layout/header.xml',
+        'views/layout/footer.xml',
+        'views/pages/home.xml',
+        'views/snippets/s_hero.xml',
+        'views/snippets/s_features.xml',
+        'views/snippets/s_categories.xml',
+        'views/snippets/s_product_list.xml',
+        'views/snippets/s_b2b.xml',
+        'views/snippets/snippets.xml',
+    ],
+    'assets': {
+        'web._assets_primary_variables': [
+            'theme_guapante/static/src/scss/primary_variables.scss',
+        ],
+        'web.assets_frontend': [
+            'theme_guapante/static/src/scss/theme.scss',
+            'theme_guapante/static/src/scss/layout/_header.scss',
+            'theme_guapante/static/src/scss/layout/_footer.scss',
+            'theme_guapante/static/src/scss/snippets/_s_hero.scss',
+            'theme_guapante/static/src/scss/snippets/_s_features.scss',
+            'theme_guapante/static/src/scss/snippets/_s_categories.scss',
+            'theme_guapante/static/src/scss/snippets/_s_product_list.scss',
+            'theme_guapante/static/src/scss/snippets/_s_b2b.scss',
+        ],
+    },
+    'application': False,
+    'auto_install': False,
+    'license': 'LGPL-3',
+}

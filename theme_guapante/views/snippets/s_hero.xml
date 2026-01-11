@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_hero_guapante" name="Guapante Hero">
+        <section class="s_hero_guapante position-relative overflow-hidden">
+            <div class="o_bg_img_container" style="background-image: url('/theme_guapante/static/src/img/hero_bg.jpg');"/>
+            <div class="container position-relative h-100 d-flex align-items-center">
+                <div class="row w-100">
+                    <div class="col-lg-7 col-md-10 text-white">
+                        <span class="badge bg-primary text-dark rounded-pill mb-3 px-3 py-2 fw-bold animate-fade-in" style="font-size: 0.9rem;">
+                            100% ORGÁNICO
+                        </span>
+                        <h1 class="display-3 fw-black mb-4 animate-fade-in drop-shadow-lg" style="letter-spacing: -0.05em; line-height: 1.1;">
+                            Lo mejor del campo<br/>a tu mesa
+                        </h1>
+                        <p class="lead mb-5 fs-4 fw-light animate-fade-in drop-shadow-md" style="animation-delay: 0.2s; opacity: 0.9;">
+                            Cultivamos con amor y respeto por la tierra para llevarte alimentos frescos, saludables y llenos de vida.
+                        </p>
+                        <div class="d-flex gap-3 animate-fade-in" style="animation-delay: 0.4s;">
+                            <a href="/shop" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold text-dark hover-scale shadow-lg">
+                                Ver Productos
+                            </a>
+                            <a href="/about" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold hover-scale">
+                                Nuestra Historia
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

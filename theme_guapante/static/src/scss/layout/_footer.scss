@@ -1,0 +1,24 @@
+/* Footer SCSS */
+#footer {
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .tracking-tight {
+        letter-spacing: -0.025em;
+    }
+
+    .hover-primary:hover {
+        color: $primary !important;
+        transition: color 0.2s ease;
+    }
+
+    details>summary {
+        list-style: none;
+
+        /* Hide default triangle */
+        &::-webkit-details-marker {
+            display: none;
+        }
+    }
+}

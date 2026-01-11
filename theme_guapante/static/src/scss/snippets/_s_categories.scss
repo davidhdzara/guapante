@@ -1,0 +1,60 @@
+/* Categories Snippet SCSS */
+.s_categories_guapante {
+    .bg-light-secondary {
+        background-color: $bg-light-secondary;
+    }
+
+    .bg-green-50 {
+        background-color: #f0fdf4;
+    }
+
+    .bg-blue-50 {
+        background-color: #eff6ff;
+    }
+
+    .bg-orange-50 {
+        background-color: #fff7ed;
+    }
+
+    .bg-yellow-50 {
+        background-color: #fefce8;
+    }
+
+    .bg-red-50 {
+        background-color: #fef2f2;
+    }
+
+    .bg-purple-50 {
+        background-color: #faf5ff;
+    }
+
+    .bg-stone-50 {
+        background-color: #fafaf9;
+    }
+
+    .category-card {
+        .image-wrapper {
+            width: 140px;
+            height: 140px;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+            img {
+                transition: transform 0.5s ease;
+            }
+        }
+
+        &:hover {
+            .image-wrapper {
+                transform: scale(1.05);
+
+                img {
+                    transform: scale(1.1);
+                }
+            }
+
+            h4 {
+                color: $primary !important;
+            }
+        }
+    }
+}

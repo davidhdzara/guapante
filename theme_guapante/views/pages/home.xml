@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="website.homepage_page" model="website.page">
+        <field name="name">Home</field>
+        <field name="url">/</field>
+        <field name="type">qweb</field>
+        <field name="key">website.homepage</field>
+        <field name="arch" type="xml">
+            <t t-name="website.homepage">
+                <t t-call="website.layout">
+                    <div id="wrap" class="oe_structure oe_empty">
+                         <t t-call="theme_guapante.s_hero_guapante"/>
+                         <t t-call="theme_guapante.s_features_guapante"/>
+                         <t t-call="theme_guapante.s_categories_guapante"/>
+                         <t t-call="theme_guapante.s_product_list_guapante"/>
+                         <t t-call="theme_guapante.s_b2b_guapante"/>
+                    </div>
+                </t>
+            </t>
+        </field>
+    </record>
+</odoo>

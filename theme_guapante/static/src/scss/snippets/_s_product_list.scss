@@ -1,0 +1,19 @@
+/* Product List Snippet SCSS */
+.s_product_list_guapante {
+    .product-card {
+        transition: box-shadow 0.3s ease;
+
+        &:hover {
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+
+            img {
+                transform: scale(1.05);
+            }
+        }
+
+        .hover-primary:hover {
+            background-color: $primary !important;
+            color: #fff;
+        }
+    }
+}
