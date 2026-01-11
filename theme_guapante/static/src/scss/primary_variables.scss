@@ -1,0 +1,24 @@
+/* Mockup Colors */
+$primary: #13ec6d !default;
+$secondary: #102218 !default;
+$white: #ffffff !default;
+$black: #000000 !default;
+
+/* Semantic Colors */
+$text-main: #111814 !default;
+$text-muted: #6b7280 !default;
+$border-light: #f0f4f2 !default;
+$border-dark: #2a4032 !default;
+/* Dark mode border */
+
+/* Backgrounds */
+$bg-light: #ffffff !default;
+$bg-light-secondary: #f0f4f2 !default;
+$bg-dark: #1a2e22 !default;
+$bg-dark-secondary: #25382c !default;
+
+/* Status Colors (from Odoo standard, overridden if needed) */
+$success: $primary !default;
+$info: #3b82f6 !default;
+$warning: #f59e0b !default;
+$danger: #ef4444 !default;

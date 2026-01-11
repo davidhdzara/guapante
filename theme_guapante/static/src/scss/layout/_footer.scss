@@ -1,0 +1,38 @@
+/* Footer SCSS */
+
+// Hide default Odoo copyright bar if it appears independently
+.o_footer_copyright {
+    display: none !important;
+}
+
+#footer {
+    .text-dark-green {
+        color: #064e3b !important; // Emerland 900
+    }
+
+    .text-muted-green {
+        color: #4b5563 !important; // Cool Gray 600 - slightly bluish/greenish grey
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .tracking-tight {
+        letter-spacing: -0.025em;
+    }
+
+    .hover-primary:hover {
+        color: $primary !important;
+        transition: color 0.2s ease;
+    }
+
+    details>summary {
+        list-style: none;
+
+        /* Hide default triangle */
+        &::-webkit-details-marker {
+            display: none;
+        }
+    }
+}

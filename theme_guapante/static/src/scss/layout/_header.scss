@@ -1,0 +1,65 @@
+/* Header SCSS */
+
+// Aggressive override to prevent Odoo from making it transparent on scroll
+header#top,
+header.o_header_affixed,
+.o_header_standard {
+    background-color: $white !important;
+    border-bottom: 1px solid $border-light;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    opacity: 1 !important; // Ensure no opacity changes happen
+
+
+    .navbar {
+        padding: 0.75rem 0;
+    }
+
+    .nav-link {
+        color: $text-main;
+        font-weight: 600;
+
+        &:hover {
+            color: $primary;
+        }
+    }
+
+    .search-bar-guapante {
+        max-width: 600px; // Increased width
+        width: 100%; // Try to fill space up to max-width
+
+        .input-group-text,
+        .form-control {
+            background-color: #f3f4f6 !important;
+            border: 1px solid #f3f4f6 !important; // Explicit border to match bg
+        }
+
+        .form-control:focus {
+            background-color: $white !important;
+            border-color: #e5e7eb !important; // Visible light grey border on focus
+            box-shadow: 0 0 0 0.25rem rgba($primary, 0.1);
+        }
+
+        input::placeholder {
+            font-size: 0.9rem;
+            color: $text-muted;
+        }
+    }
+
+    .btn-cart-guapante {
+        background-color: rgba($primary, 0.1);
+        color: $primary;
+        border-radius: 50rem;
+        position: relative;
+        transition: all 0.2s ease;
+
+        &:hover {
+            background-color: $primary;
+            color: $white;
+        }
+
+        .badge {
+            background-color: $danger !important;
+        }
+    }
+}

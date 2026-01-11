@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_features_guapante" name="Guapante Features">
+        <section class="s_features_guapante py-5">
+            <div class="container-fluid px-lg-5">
+                <div class="row g-4">
+                    <!-- Feature 1: Freshness -->
+                    <div class="col-md-4">
+                        <div class="feature-card p-4 rounded-4 h-100 bg-white shadow-sm d-flex flex-column align-items-start position-relative overflow-hidden">
+                            <div class="icon-box mb-4 rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; background-color: #dcfce7;">
+                                <i class="fa fa-clock-o fs-5 text-success"/>
+                            </div>
+                            <h3 class="h5 fw-bold mb-3 text-dark">Frescura 24h</h3>
+                            <p class="text-muted mb-0 small" style="line-height: 1.6;">
+                                Nuestros productos son recolectados y entregados en tiempo récord para garantizar su sabor.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Feature 2: Logistics -->
+                    <div class="col-md-4">
+                        <div class="feature-card p-4 rounded-4 h-100 bg-white shadow-sm d-flex flex-column align-items-start position-relative overflow-hidden">
+                            <div class="icon-box mb-4 rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; background-color: #dbeafe;">
+                                <i class="fa fa-truck fs-5 text-primary"/>
+                            </div>
+                            <h3 class="h5 fw-bold mb-3 text-dark">Logística Superior</h3>
+                            <p class="text-muted mb-0 small" style="line-height: 1.6;">
+                                Flota propia refrigerada que asegura la cadena de frío hasta la puerta de tu casa o local.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Feature 3: Fair Trade -->
+                    <div class="col-md-4">
+                        <div class="feature-card p-4 rounded-4 h-100 bg-white shadow-sm d-flex flex-column align-items-start position-relative overflow-hidden">
+                            <div class="icon-box mb-4 rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; background-color: #ffedd5;">
+                                <i class="fa fa-handshake-o fs-5 text-warning"/>
+                            </div>
+                            <h3 class="h5 fw-bold mb-3 text-dark">Comercio Justo</h3>
+                            <p class="text-muted mb-0 small" style="line-height: 1.6;">
+                                Trabajamos directamente con familias campesinas, eliminando intermediarios innecesarios.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

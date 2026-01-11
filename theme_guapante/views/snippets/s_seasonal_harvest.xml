@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_seasonal_harvest_guapante" name="Seasonal Harvest">
+        <section class="s_seasonal_harvest_guapante py-5 bg-white">
+            <div class="container-fluid px-lg-5">
+                <!-- Header -->
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <h2 class="h3 fw-bold text-dark mb-0">Cosecha en temporada</h2>
+                    <span class="badge rounded-pill fw-normal px-3 py-2" style="background-color: #d1fae5; color: #065f46; font-size: 0.8rem;">Ofertas Flash</span>
+                </div>
+
+                <div class="row g-4">
+                    <t t-set="products" t-value="[
+                        {'id': 1, 'name': 'Aguacate Hass', 'origin': 'Antioquia', 'img': '/theme_guapante/static/src/img/prod_aguacate.jpg', 'discount': '-15%'},
+                        {'id': 2, 'name': 'Banano Criollo', 'origin': 'Urabá', 'img': '/theme_guapante/static/src/img/prod_banano.jpg', 'discount': ''},
+                        {'id': 3, 'name': 'Tomate Chonto', 'origin': 'Cundinamarca', 'img': '/theme_guapante/static/src/img/prod_tomate.jpg', 'discount': ''},
+                        {'id': 4, 'name': 'Papa Capira', 'origin': 'Boyacá', 'img': '/theme_guapante/static/src/img/prod_papa.jpg', 'discount': ''}
+                    ]"/>
+
+                    <t t-foreach="products" t-as="product">
+                        <div class="col-6 col-md-4 col-lg-3">
+                            <form action="/shop/cart/update" method="post" class="h-100">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="product_id" t-att-value="product['id']"/>
+                                
+                                <div class="product-card h-100 bg-white rounded-4 border overflow-hidden position-relative hover-shadow transition-base">
+                                    <!-- Wishlist & Discount -->
+                                    <div class="position-absolute top-0 start-0 w-100 p-3 d-flex justify-content-between align-items-start z-1">
+                                        <span t-if="product['discount']" class="badge bg-success rounded-2 fw-bold"><t t-esc="product['discount']"/></span>
+                                        <span t-else=""/>
+                                        <button type="button" class="btn btn-light rounded-circle shadow-sm p-0 d-flex align-items-center justify-content-center" style="width: 35px; height: 35px;">
+                                            <i class="fa fa-heart-o text-muted"/>
+                                        </button>
+                                    </div>
+
+                                    <!-- Image -->
+                                    <a href="/shop" class="d-block ratio ratio-1x1 bg-light">
+                                        <!-- Placeholder image if file doesn't exist yet, using style to cover -->
+                                         <img t-att-src="product['img']" class="img-fluid object-fit-cover w-100 h-100" alt="Product"/>
+                                    </a>
+
+                                    <!-- Content -->
+                                    <div class="p-3 d-flex justify-content-between align-items-end">
+                                        <div>
+                                            <h5 class="fw-bold text-dark mb-1" style="font-size: 1rem;"><t t-esc="product['name']"/></h5>
+                                            <p class="text-muted small mb-0">Origen: <t t-esc="product['origin']"/></p>
+                                        </div>
+                                        <!-- Add to Cart (Functional) -->
+                                        <a role="button" href="#" class="btn btn-light rounded-3 shadow-sm d-flex align-items-center justify-content-center a-submit" style="width: 40px; height: 40px;">
+                                            <i class="fa fa-plus text-dark"/>
+                                        </a>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </t>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

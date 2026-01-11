@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="custom_header" inherit_id="website.layout" name="Custom Header Guapante" active="True">
+        <xpath expr="//header" position="replace">
+            <header id="top" data-anchor="true" data-name="Header" class="o_header_standard sticky-top bg-white">
+                <nav class="navbar navbar-expand-lg">
+                    <div class="container-fluid px-lg-5">
+                        
+                        <!-- 1. Logo -->
+                        <a href="/" class="navbar-brand d-flex align-items-center gap-2 me-lg-5">
+                            <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Logo" height="40" class="d-inline-block align-text-top"/>
+                            <span class="brand-text fw-bold text-dark fs-3 tracking-tight">Guapante</span>
+                        </a>
+
+                        <!-- Mobile Toggler -->
+                        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarGuapante">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+
+                        <div class="collapse navbar-collapse" id="navbarGuapante">
+                            <!-- 2. Navigation -->
+                            <ul class="navbar-nav me-auto gap-lg-4 mb-3 mb-lg-0">
+                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Categorías</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Ofertas</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/about">Nosotros</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/logistics">Logística</a></li>
+                            </ul>
+
+                            <!-- 3. Search & Actions -->
+                            <div class="d-flex align-items-center gap-3 justify-content-end flex-grow-1">
+                                <!-- Search Bar (Desktop) -->
+                                <form action="/shop" method="get" class="d-none d-lg-flex search-bar-guapante input-group mx-auto">
+                                    <span class="input-group-text bg-light border-0 rounded-start-3 ms-2"><i class="fa fa-search text-muted"></i></span>
+                                    <input type="text" name="search" class="form-control bg-light border-0 shadow-none rounded-end-3" placeholder="Buscar frutas, verduras..."/>
+                                </form>
+
+                                <!-- Action Buttons Container -->
+                                <div class="d-flex align-items-center gap-3">
+                                    <!-- User/Account -->
+                                    <div class="dropdown">
+                                        <a href="#" class="dropdown-toggle text-decoration-none fw-bold text-dark d-flex align-items-center gap-2" data-bs-toggle="dropdown">
+                                            <i class="fa fa-user-circle fs-4"/><span t-if="not user_id._is_public()"><t t-esc="user_id.name.split(' ')[0]"/></span><span t-else="">Mi Cuenta</span>
+                                        </a>
+                                     <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-4 mt-2">
+                                        <li t-if="user_id._is_public()"><a class="dropdown-item" href="/web/login">Identificarse</a></li>
+                                        <li t-else=""><a class="dropdown-item" href="/my/home">Mi Cuenta</a></li>
+                                        <li t-if="not user_id._is_public()"><a class="dropdown-item text-danger" href="/web/session/logout?redirect=/">Salir</a></li>
+                                    </ul>
+                                </div>
+
+                                <!-- Cart -->
+                                <t t-set="website_sale_order" t-value="website.sale_get_order()" />
+                                <t t-set="cart_qty" t-value="website_sale_order and website_sale_order.cart_quantity or 0" />
+                                <t t-set="cart_amount" t-value="website_sale_order and website_sale_order.amount_total or 0.0" />
+                                <a href="/shop/cart" class="btn-cart-guapante d-flex align-items-center gap-2 px-3 py-2 fw-bold text-decoration-none transition-base">
+                                    <i class="fa fa-shopping-basket fs-5"></i>
+                                    <span class="cart-price" t-esc="website_sale_order and website_sale_order.currency_id.symbol + str(cart_amount) or '$0'"/>
+                                    <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
+                                         <t t-esc="cart_qty"/>
+                                    </span>
+                                </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            </header>
+        </xpath>
+    </template>
+</odoo>

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="custom_footer" inherit_id="website.layout" name="Custom Footer Guapante">
+        <xpath expr="//div[@id='footer']" position="replace">
+            <div id="footer" class="oe_structure oe_structure_solo bg-white border-top border-light pt-5 pb-4">
+                <section class="s_text_block">
+                    <div class="container-fluid px-lg-5">
+                        <div class="row mb-5 g-5 justify-content-between">
+                            <!-- Col 1: Brand -->
+                            <div class="col-lg-3 col-md-12">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Guapante" height="32" class="d-block"/>
+                                    <span class="fw-bold fs-5 tracking-tight text-dark-green">Guapante</span>
+                                </div>
+                                <p class="text-muted-green small mb-4">
+                                    Llevamos lo mejor del campo colombiano a tu hogar o negocio con transparencia, frescura y sostenibilidad.
+                                </p>
+                                <div class="d-flex gap-3">
+                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-instagram fs-5"/></a>
+                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-facebook fs-5"/></a>
+                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-whatsapp fs-5"/></a>
+                                </div>
+                            </div>
+                            
+                            <!-- Col 2: Comprar -->
+                            <div class="col-lg-2 col-md-4 d-none d-md-block">
+                                <h5 class="fw-bold mb-3 text-dark-green">Comprar</h5>
+                                <ul class="list-unstyled d-flex flex-column gap-2 small text-muted-green">
+                                    <li><a href="/shop" class="text-reset text-decoration-none hover-primary transition-base">Categorías</a></li>
+                                    <li><a href="/shop" class="text-reset text-decoration-none hover-primary transition-base">Ofertas</a></li>
+                                    <li><a href="/shop" class="text-reset text-decoration-none hover-primary transition-base">Nuevos</a></li>
+                                    <li><a href="/b2b" class="text-reset text-decoration-none hover-primary transition-base">Mayorista</a></li>
+                                </ul>
+                            </div>
+                            
+                             <!-- Col 3: Compañía -->
+                            <div class="col-lg-2 col-md-4 d-none d-md-block">
+                                <h5 class="fw-bold mb-3 text-dark-green">Compañía</h5>
+                                <ul class="list-unstyled d-flex flex-column gap-2 small text-muted-green">
+                                    <li><a href="/about" class="text-reset text-decoration-none hover-primary transition-base">Nosotros</a></li>
+                                    <li><a href="/farmers" class="text-reset text-decoration-none hover-primary transition-base">Agricultores</a></li>
+                                    <li><a href="/sustainability" class="text-reset text-decoration-none hover-primary transition-base">Sostenibilidad</a></li>
+                                    <li><a href="/jobs" class="text-reset text-decoration-none hover-primary transition-base">Empleo</a></li>
+                                </ul>
+                            </div>
+                            
+                             <!-- Col 4: Ayuda -->
+                            <div class="col-lg-2 col-md-4 d-none d-md-block">
+                                <h5 class="fw-bold mb-3 text-dark-green">Ayuda</h5>
+                                <ul class="list-unstyled d-flex flex-column gap-2 small text-muted-green">
+                                    <li><a href="/help" class="text-reset text-decoration-none hover-primary transition-base">Centro de Ayuda</a></li>
+                                    <li><a href="/shipping" class="text-reset text-decoration-none hover-primary transition-base">Envíos</a></li>
+                                    <li><a href="/returns" class="text-reset text-decoration-none hover-primary transition-base">Devoluciones</a></li>
+                                    <li><a href="/contactus" class="text-reset text-decoration-none hover-primary transition-base">Contacto</a></li>
+                                </ul>
+                            </div>
+                            
+                            <!-- Mobile Accordions -->
+                             <div class="d-md-none d-flex flex-column gap-3">
+                                <details class="border-bottom pb-3">
+                                    <summary class="fw-bold text-dark-green d-flex justify-content-between align-items-center list-unstyled cursor-pointer">
+                                        Comprar <i class="fa fa-angle-down"/>
+                                    </summary>
+                                    <ul class="list-unstyled mt-3 d-flex flex-column gap-2 small text-muted-green ps-2">
+                                         <li><a href="/shop" class="text-reset text-decoration-none">Categorías</a></li>
+                                         <li><a href="/shop" class="text-reset text-decoration-none">Ofertas</a></li>
+                                    </ul>
+                                </details>
+                                <details class="border-bottom pb-3">
+                                    <summary class="fw-bold text-dark-green d-flex justify-content-between align-items-center list-unstyled cursor-pointer">
+                                        Compañía <i class="fa fa-angle-down"/>
+                                    </summary>
+                                    <ul class="list-unstyled mt-3 d-flex flex-column gap-2 small text-muted-green ps-2">
+                                         <li><a href="/about" class="text-reset text-decoration-none">Nosotros</a></li>
+                                         <li><a href="/sustainability" class="text-reset text-decoration-none">Sostenibilidad</a></li>
+                                    </ul>
+                                </details>
+                             </div>
+
+                        </div>
+                        
+                        <!-- Bottom Bar -->
+                        <div class="border-top border-light pt-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 text-muted-green small">
+                            <p class="mb-0">© 2024 Comercializadora Guapante S.A.S.</p>
+                            <p class="mb-0">Hecho con <span class="text-danger">❤</span> en Colombia</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </xpath>
+    </template>
+</odoo>

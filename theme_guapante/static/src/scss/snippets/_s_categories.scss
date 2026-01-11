@@ -1,0 +1,25 @@
+/* Categories Snippet SCSS */
+
+.s_categories_guapante {
+    .category-card {
+        border-color: rgba(0, 0, 0, 0.08) !important;
+
+        .image-wrapper {
+            transition: transform 0.3s ease;
+        }
+
+        &:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05) !important;
+            border-color: rgba($primary, 0.3) !important; // Subtle primary border on hover
+
+            .image-wrapper {
+                transform: scale(1.05);
+            }
+
+            h4 {
+                color: $primary !important;
+            }
+        }
+    }
+}

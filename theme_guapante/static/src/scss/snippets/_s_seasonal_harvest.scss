@@ -1,0 +1,32 @@
+/* Seasonal Harvest SCSS */
+
+.s_seasonal_harvest_guapante {
+    .bg-green-100 {
+        background-color: #dcfce7 !important;
+    }
+
+    .product-card {
+        border-color: rgba(0, 0, 0, 0.08) !important;
+
+        &:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08) !important;
+            border-color: rgba($primary, 0.4) !important;
+        }
+
+        .btn-light {
+            background-color: $white;
+            border: 1px solid $border-light;
+
+            &:hover {
+                background-color: $primary;
+                color: $white !important;
+                border-color: $primary;
+
+                i {
+                    color: $white !important;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,47 @@
+/* Hero Snippet Styles */
+
+.s_hero_guapante {
+
+    // Min-height handling for responsiveness
+    .hero-card {
+        min-height: 500px;
+
+        @include media-breakpoint-up(lg) {
+            min-height: 600px;
+        }
+    }
+
+    .drop-shadow-lg {
+        text-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    }
+
+    .drop-shadow-md {
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .hover-scale {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        &:active {
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in {
+        animation: fadeIn 0.8s ease-out forwards;
+        opacity: 0;
+        transform: translateY(20px);
+    }
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

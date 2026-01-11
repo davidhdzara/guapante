@@ -1,0 +1,24 @@
+/* B2B Snippet SCSS */
+
+.s_b2b_guapante {
+    .b2b-banner {
+        min-height: 400px;
+        position: relative;
+        isolation: isolate;
+
+        .o_bg_img_container {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.6; // Increased from 0.2 to make fruits visible
+            z-index: 0;
+            // mix-blend-mode: overlay; // Removed to keep colors natural
+        }
+    }
+
+    .steps-box {
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px); // Safari support
+    }
+}

@@ -1,0 +1,22 @@
+/* Features Snippet SCSS */
+
+.s_features_guapante {
+    .feature-card {
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+
+        &:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02) !important; // Tailwind-like soft shadow
+            border-color: rgba(0, 0, 0, 0);
+        }
+
+        .icon-box {
+            transition: transform 0.3s ease;
+        }
+
+        &:hover .icon-box {
+            transform: scale(1.1);
+        }
+    }
+}

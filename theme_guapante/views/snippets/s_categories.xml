@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_categories_guapante" name="Guapante Categories">
+        <section class="s_categories_guapante py-5 bg-white">
+             <div class="container-fluid px-lg-5">
+                <!-- Header Row -->
+                <div class="d-flex justify-content-between align-items-end mb-4">
+                    <div>
+                        <h2 class="h3 fw-bold mb-1 text-dark">Categorías Principales</h2>
+                        <p class="text-muted mb-0 small">Explora nuestra variedad de productos.</p>
+                    </div>
+                    <div>
+                        <a href="/shop" class="text-success fw-bold text-decoration-none hover-scale d-inline-flex align-items-center gap-1" style="font-size: 0.9rem;">
+                            Ver todas <i class="fa fa-arrow-right"/>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="row g-3">
+                    <!-- Category Item Template -->
+                    <t t-set="categories" t-value="[
+                        ('Frutas', '/theme_guapante/static/src/img/cat_frutas.jpg', '/shop/category/frutas'),
+                        ('Verduras', '/theme_guapante/static/src/img/cat_verduras.jpg', '/shop/category/verduras'),
+                        ('Tubérculos', '/theme_guapante/static/src/img/cat_tuberculos.jpg', '/shop/category/tuberculos'),
+                        ('Orgánicos', '/theme_guapante/static/src/img/cat_organicos.jpg', '/shop/category/organicos'),
+                        ('Hierbas', '/theme_guapante/static/src/img/cat_hierbas.jpg', '/shop/category/hierbas'),
+                        ('Granos', '/theme_guapante/static/src/img/cat_granos.jpg', '/shop/category/granos')
+                    ]"/>
+
+                    <t t-foreach="categories" t-as="category">
+                        <div class="col-6 col-md-4 col-lg-2">
+                             <a t-att-href="category[2]" class="category-card d-flex flex-column align-items-center justify-content-center p-4 rounded-4 bg-white border h-100 text-decoration-none shadow-sm transition-base">
+                                <div class="image-wrapper rounded-circle overflow-hidden mb-3 shadow-none" style="width: 100px; height: 100px;">
+                                    <img t-att-src="category[1]" t-att-alt="category[0]" class="img-fluid w-100 h-100 object-fit-cover"/>
+                                </div>
+                                <h4 class="h6 fw-bold text-dark mb-0"><t t-esc="category[0]"/></h4>
+                             </a>
+                        </div>
+                    </t>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

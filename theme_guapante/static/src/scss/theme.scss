@@ -1,0 +1,16 @@
+/* Main Theme SCSS Entry Point */
+
+body {
+    -webkit-font-smoothing: antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: $text-main;
+}
+
+a {
+    transition: all 0.2s ease;
+    text-decoration: none;
+
+    &:hover {
+        color: darken($primary, 10%);
+    }
+}
