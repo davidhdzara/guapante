@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from odoo import http, _
+from odoo import http, _, models
 from odoo.http import request
 from odoo.addons.auth_signup.controllers.main import AuthSignupHome
 from odoo.exceptions import UserError
@@ -12,8 +12,7 @@ class GuapanteAuthSignupHome(AuthSignupHome):
     def get_auth_signup_qcontext(self):
         """ Add identification types to the signup context for the dropdown. """
         qcontext = super().get_auth_signup_qcontext()
-        # Fetch identification types for Colombia (or general if filter not needed yet)
-        # We try to filter by current company country, or fallback to all
+        # Fetch identification types for Colombia
         country_co = request.env.ref('base.co', raise_if_not_found=False)
         domain = [('country_id', '=', country_co.id)] if country_co else []
         
@@ -25,14 +24,14 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         values = {key: qcontext.get(key) for key in ('login', 'name', 'password', 'company_type', 'vat', 'l10n_latam_identification_type_id')}
         
         # LOGGING FOR DEBUG
-        _logger.info("Guapante Signup Values Received: %s", values)
+        _logger.info("🔵 Guapante Signup - Values Received: %s", values)
 
         # Cast Many2one to int if present
         if values.get('l10n_latam_identification_type_id'):
             try:
                 values['l10n_latam_identification_type_id'] = int(values['l10n_latam_identification_type_id'])
             except ValueError:
-                values.pop('l10n_latam_identification_type_id') # Remove if invalid
+                values.pop('l10n_latam_identification_type_id')
 
         # --- Validation Logic ---
         email = values.get('login')
@@ -55,58 +54,52 @@ class GuapanteAuthSignupHome(AuthSignupHome):
             if Partner.search_count([('vat', '=', vat)]) > 0:
                 raise UserError(_("A partner with this Tax ID (NIT) already exists."))
 
-        # Update values for signup
-        # 'signup' method in res.users expects keys that match res.users/res.partner fields
-        # company_type is 'person' or 'company'
-        
-        # We need to make sure we call super logic but passing our extended values
-        # The standard do_signup re-extracts values from qcontext.
-        # So we update qcontext (which is mutable) or we explicitly call signup here.
-        
-        # Standard Odoo AuthSignupHome.do_signup implementation:
-        # values = { key: qcontext.get(key) for key in ('login', 'name', 'password') }
-        # if not values: raise UserError(_("The form was not properly filled in."))
-        # if values.get('password') != qcontext.get('confirm_password'): raise UserError(_("Passwords do not match; please retype them."))
-        # supported_lang_codes = [code for code, _ in request.env['res.lang'].get_installed()]
-        # lang = request.context.get('lang', '')
-        # if lang in supported_lang_codes: values['lang'] = lang
-        # self._signup_with_values(qcontext.get('token'), values)
-        # request.env.cr.commit()
-
-        # So to inject our fields, we just need to ensure `_signup_with_values` receives them.
-        # BUT `do_signup` filters the dict it passes to `_signup_with_values`.
-        
-        # Strategy: We copy-paste the standard implementation but expand the dictionary list.
-        # This is safer than monkey-patching or relying on super() if super filters keys.
-
+        # Password confirmation check
         if values.get('password') != qcontext.get('confirm_password'):
             raise UserError(_("Passwords do not match; please retype them."))
 
+        # Language support
         supported_lang_codes = [code for code, _ in request.env['res.lang'].get_installed()]
         lang = request.context.get('lang', '')
         if lang in supported_lang_codes:
             values['lang'] = lang
 
-        # Create the user using standard logic
-        self._signup_with_values(qcontext.get('token'), values)
-        
-        # --- EXPLICIT DATA PERSISTENCE FIX ---
-        # Fetch the newly created user and update the partner fields explicitly
-        # This ensures 'company_type' and 'vat' are saved even if standard signup ignored them
-        request.env.cr.commit() # Commit to ensure user exists
-        
-        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
-        if user:
-            partner_values = {
-                'company_type': values.get('company_type'),
-                'vat': values.get('vat'),
-            }
-            # Only add identification type if valid int
-            if values.get('l10n_latam_identification_type_id'):
-                partner_values['l10n_latam_identification_type_id'] = values.get('l10n_latam_identification_type_id')
-                
-            user.partner_id.sudo().write(partner_values)
-            _logger.info("Guapante Signup: Updated Partner %s with %s", user.partner_id.id, partner_values)
+        # Store custom values in context for _signup_create_user to access
+        request.env.context = dict(request.env.context, 
+            signup_company_type=values.get('company_type'),
+            signup_vat=values.get('vat'),
+            signup_identification_type_id=values.get('l10n_latam_identification_type_id')
+        )
 
-        # Final commit
+        # Call parent signup
+        self._signup_with_values(qcontext.get('token'), values)
         request.env.cr.commit()
+
+    def _signup_create_user(self, values):
+        """ Override to inject custom partner fields during user creation. """
+        _logger.info("🟢 Guapante Signup - Creating User with values: %s", values)
+        
+        # Get custom values from context
+        company_type = request.env.context.get('signup_company_type', 'person')
+        vat = request.env.context.get('signup_vat')
+        identification_type_id = request.env.context.get('signup_identification_type_id')
+        
+        # Create user using parent method
+        user_sudo = super()._signup_create_user(values)
+        
+        # Immediately update the partner with custom fields
+        partner_values = {
+            'company_type': company_type,
+        }
+        
+        if vat:
+            partner_values['vat'] = vat
+            
+        if identification_type_id:
+            partner_values['l10n_latam_identification_type_id'] = identification_type_id
+        
+        _logger.info("🟡 Guapante Signup - Updating Partner %s with: %s", user_sudo.partner_id.id, partner_values)
+        user_sudo.partner_id.write(partner_values)
+        
+        _logger.info("🟢 Guapante Signup - Partner Updated Successfully!")
+        return user_sudo
