@@ -24,6 +24,16 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         """ Override to handle custom fields and duplication check. """
         values = {key: qcontext.get(key) for key in ('login', 'name', 'password', 'company_type', 'vat', 'l10n_latam_identification_type_id')}
         
+        # LOGGING FOR DEBUG
+        _logger.info("Guapante Signup Values Received: %s", values)
+
+        # Cast Many2one to int if present
+        if values.get('l10n_latam_identification_type_id'):
+            try:
+                values['l10n_latam_identification_type_id'] = int(values['l10n_latam_identification_type_id'])
+            except ValueError:
+                values.pop('l10n_latam_identification_type_id') # Remove if invalid
+
         # --- Validation Logic ---
         email = values.get('login')
         vat = values.get('vat')
