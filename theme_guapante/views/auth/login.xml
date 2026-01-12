@@ -12,10 +12,9 @@
                     <!-- LEFT COLUMN: Form (Desktop: Left, Mobile: Full) -->
                     <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col bg-white text-start">
                         <div class="w-100" style="max-width: 480px;">
-                             <!-- Logo -->
+                             <!-- Logo Only -->
                              <div class="mb-5">
-                                 <img src="/theme_guapante/static/src/img/logo_guapante.png" height="35" alt="Guapante"/>
-                                 <span class="ms-2 h5 fw-bold text-dark">Comercializadora Guapante</span>
+                                 <img src="/theme_guapante/static/src/img/logo_guapante.png" height="45" alt="Guapante"/>
                              </div>
 
                              <!-- Titles -->
@@ -23,8 +22,6 @@
                              <p class="text-muted mb-4">Ingresa tus datos para gestionar tus pedidos de frutas y verduras.</p>
 
                             <!-- Odoo Form Injection -->
-                            <!-- We inject the form here. The form itself contains inputs/buttons. 
-                                 We rely on SCSS to style them green/rounded. -->
                             <t t-out="0"/>
                             
                         </div>
@@ -32,8 +29,8 @@
 
                     <!-- RIGHT COLUMN: Branding (Desktop Only) -->
                     <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden">
-                        <!-- Background Image -->
-                        <div class="position-absolute top-0 start-0 w-100 h-100 placeholder-wave" 
+                        <!-- Background Image (No Animation) -->
+                        <div class="position-absolute top-0 start-0 w-100 h-100" 
                              style="background-image: url('/theme_guapante/static/src/img/auth_bg_avocado.png'); background-size: cover; background-position: center;">
                         </div>
                         <!-- Gradient Overlay -->
@@ -53,13 +50,13 @@
                                 Optimizamos la cadena de suministro para garantizar la mejor rentabilidad y calidad en cada entrega.
                             </p>
                             
-                            <!-- Badges/Footer -->
+                            <!-- Badges -->
                             <div class="d-flex gap-3">
                                 <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
                                     <span class="text-success">✔</span> Calidad Garantizada
                                 </div>
                                 <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
-                                    <span class="text-success">CLOCK</span> Entregas a Tiempo
+                                    <i class="fa fa-clock-o text-success"/> Entregas a Tiempo
                                 </div>
                             </div>
                         </div>
