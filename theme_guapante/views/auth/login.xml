@@ -1,67 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="guapante_login_layout" inherit_id="web.login_layout" name="Guapante Login Layout">
-        <xpath expr="//div[@class='container py-5']" position="replace">
-            <t t-set="no_header" t-value="True"/>
-            <t t-set="no_footer" t-value="True"/>
-            
-            <div class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white" style="min-height: 100vh;">
-                <!-- LEFT COLUMN: Branding (Desktop Only) -->
-                <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark-green align-items-center justify-content-center p-5 text-white overflow-hidden">
-                    <!-- Background Image -->
-                    <div class="position-absolute top-0 start-0 w-100 h-100 placeholder-wave" 
-                         style="background-image: url('/theme_guapante/static/src/img/auth_bg.png'); background-size: cover; background-position: center;">
+    <template id="guapante_login_layout" inherit_id="website.login_layout" name="Guapante Login Layout">
+        <!-- Replace the entire call to website.layout to inject my custom structure and suppress header/footer -->
+        <xpath expr="//t[@t-call='website.layout']" position="replace">
+            <t t-call="website.layout">
+                <t t-set="no_header" t-value="True"/>
+                <t t-set="no_footer" t-value="True"/>
+                <t t-set="body_classname" t-value="'bg-white'"/>
+                
+                <div class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white" style="min-height: 100vh;">
+                    <!-- LEFT COLUMN: Form (Desktop: Left, Mobile: Full) -->
+                    <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col bg-white text-start">
+                        <div class="w-100" style="max-width: 480px;">
+                             <!-- Logo Only -->
+                             <div class="mb-5">
+                                 <img src="/theme_guapante/static/src/img/logo_guapante.png" height="45" alt="Guapante"/>
+                             </div>
+
+                             <!-- Titles -->
+                             <h2 class="display-6 fw-bold mb-2">Bienvenido de nuevo</h2>
+                             <p class="text-muted mb-4">Ingresa tus datos para gestionar tus pedidos de frutas y verduras.</p>
+
+                            <!-- Odoo Form Injection -->
+                            <t t-out="0"/>
+                            
+                        </div>
                     </div>
-                    <!-- Overlay -->
-                    <div class="position-absolute top-0 start-0 w-100 h-100 bg-black opacity-50"></div>
-                    
-                    <!-- Content -->
-                    <div class="position-relative z-1 d-flex flex-column h-100 justify-content-between">
-                        <!-- Logo Top Left -->
-                        <div class="d-flex align-items-center gap-2 mb-5">
-                             <!-- Using a small version of logo or icon -->
-                             <img src="/theme_guapante/static/src/img/logo_guapante.png" height="30" alt="Guapante" style="filter: brightness(0) invert(1);"/>
-                             <span class="h5 mb-0 fw-bold">Comercializadora Guapante</span>
+
+                    <!-- RIGHT COLUMN: Branding (Desktop Only) -->
+                    <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden">
+                        <!-- Background Image (No Animation) -->
+                        <div class="position-absolute top-0 start-0 w-100 h-100" 
+                             style="background-image: url('/theme_guapante/static/src/img/auth_bg_avocado.png'); background-size: cover; background-position: center;">
                         </div>
+                        <!-- Gradient Overlay -->
+                        <div class="position-absolute top-0 start-0 w-100 h-100" 
+                             style="background: linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(26, 46, 35, 0.95) 100%);"></div>
                         
-                        <!-- Main Quote -->
-                        <div class="my-auto">
-                            <h1 class="display-5 fw-bold mb-4">"Garantizamos la frescura desde el campo colombiano hasta su negocio con logística de primera clase."</h1>
-                        </div>
-                        
-                        <!-- Trust Badges (Placeholders) -->
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="d-flex ps-2">
-                                <!-- Fake avatars using standard shapes if images not avail, or generate them. Using simple circles for now -->
-                                <div class="rounded-circle bg-white opacity-75 d-flex align-items-center justify-content-center border border-2 border-dark" style="width: 40px; height: 40px; margin-left: -10px;">
-                                    <i class="fa fa-user text-dark small"/>
+                        <!-- Content Overlay -->
+                        <div class="position-relative z-1 w-75 mb-5 text-white">
+                            <!-- Badge -->
+                            <span class="badge bg-success rounded-pill px-3 py-2 mb-3 text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">
+                                <i class="fa fa-truck me-1"/> Logística Premium
+                            </span>
+                            
+                            <!-- Quote/Text -->
+                            <h2 class="fw-bold mb-3">Frescura del campo colombiano a tu negocio</h2>
+                            <p class="opacity-75 mb-4 small">
+                                Optimizamos la cadena de suministro para garantizar la mejor rentabilidad y calidad en cada entrega.
+                            </p>
+                            
+                            <!-- Badges -->
+                            <div class="d-flex gap-3">
+                                <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                    <span class="text-success">✔</span> Calidad Garantizada
                                 </div>
-                                <div class="rounded-circle bg-light opacity-75 d-flex align-items-center justify-content-center border border-2 border-dark" style="width: 40px; height: 40px; margin-left: -10px;">
-                                    <i class="fa fa-user text-dark small"/>
-                                </div>
-                                <div class="rounded-circle bg-white opacity-75 d-flex align-items-center justify-content-center border border-2 border-dark" style="width: 40px; height: 40px; margin-left: -10px;">
-                                    <i class="fa fa-user text-dark small"/>
+                                <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                    <i class="fa fa-clock-o text-success"/> Entregas a Tiempo
                                 </div>
                             </div>
-                            <span class="small fw-medium">Más de 200 empresas confían en nosotros</span>
                         </div>
                     </div>
                 </div>
-
-                <!-- RIGHT COLUMN: Form -->
-                <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col">
-                    <div class="w-100" style="max-width: 450px;">
-                        <!-- Header for Mobile -->
-                         <div class="d-lg-none text-center mb-4">
-                             <img src="/theme_guapante/static/src/img/logo_guapante.png" height="50" alt="Guapante"/>
-                         </div>
-
-                        <!-- Odoo Form Injection -->
-                        <t t-out="0"/>
-                        
-                    </div>
-                </div>
-            </div>
+            </t>
         </xpath>
     </template>
 </odoo>
