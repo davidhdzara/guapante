@@ -92,6 +92,30 @@ body.o_web_login {
             }
         }
     }
+
+    // Toggle Buttons (Radio)
+    .btn-group {
+        .btn-outline-success {
+            color: #64748b;
+            border-color: #e2e8f0;
+            background-color: #fff;
+            font-weight: 500;
+
+            &:hover {
+                background-color: #f8fafc;
+                border-color: #22c55e;
+                color: #22c55e;
+            }
+        }
+
+        .btn-check:checked+.btn-outline-success {
+            background-color: #22c55e;
+            color: #ffffff;
+            border-color: #22c55e;
+            font-weight: 600;
+            box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.2);
+        }
+    }
 }
 
 // Ensure the page body doesn't have double scrollbars
