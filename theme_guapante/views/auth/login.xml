@@ -60,10 +60,5 @@
                 </div>
             </div>
         </xpath>
-        
-        <!-- Cleanup: Remove footer if it exists in the original layout outside the container, usually it is separate -->
-        <xpath expr="//div[@class='text-center small mt-5 text-muted']" position="replace">
-            <!-- Remove standard footer -->
-        </xpath>
     </template>
 </odoo>
