@@ -1,0 +1,82 @@
+/* Custom Auth Page Styling */
+.auth-form-col {
+    background-color: #ffffff;
+    min-height: 100vh;
+}
+
+// Override Odoo's default login form styles
+.oe_login_form {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+
+    // Hide standard database manager link
+    .text-center.small.mt-3 {
+        display: none; // Hiding 'Manage Database'
+    }
+
+    // Input Fields
+    .form-control {
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e5e7eb;
+        background-color: #ffffff;
+
+        &:focus {
+            border-color: #22c55e;
+            box-shadow: 0 0 0 0.2rem rgba(34, 197, 94, 0.15);
+        }
+    }
+
+    // Labels
+    label.form-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #111827; // Gray-900
+        margin-bottom: 0.4rem;
+    }
+
+    // Primary Button (Log in / Sign up)
+    .btn-primary {
+        width: 100%;
+        background-color: #22c55e !important; // Green-500
+        border-color: #22c55e !important;
+        color: #ffffff;
+        font-weight: 700;
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        margin-top: 1rem;
+        transition: all 0.2s;
+
+        &:hover {
+            background-color: #16a34a !important; // Green-600
+            transform: translateY(-1px);
+        }
+    }
+
+    // Secondary Actions (Reset, etc)
+    .justify-content-between.mt-2.small {
+        margin-top: 1.5rem !important;
+        font-size: 0.9rem;
+
+        a {
+            color: #22c55e; // Green link
+            font-weight: 600;
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+                color: #15803d;
+            }
+        }
+    }
+}
+
+// Ensure the page body doesn't have double scrollbars
+body {
+    &.o_web_login {
+        overflow: hidden; // Let the internal containers handle scroll
+    }
+}
