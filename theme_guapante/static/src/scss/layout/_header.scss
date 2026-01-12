@@ -56,11 +56,20 @@ header.o_header_affixed,
         &:hover {
             background-color: $primary;
             color: $white;
+
+            .badge {
+                border-color: $primary !important;
+            }
         }
 
         .badge {
             background-color: $danger !important;
         }
+    }
+
+    // Custom utility for this header
+    .text-dark-green {
+        color: #155724 !important; // Bootstrap success-dark variant or custom petrol
     }
 
     // User Dropdown Custom Styles

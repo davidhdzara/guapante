@@ -64,32 +64,32 @@
 
                                         <!-- USER: Logged In -->
                                         <div t-else="" class="p-0">
-                                            <div class="p-3 bg-light-subtle bg-opacity-50">
-                                                <span class="d-block text-muted small">Conectado como</span>
+                                            <div class="p-3 bg-white">
+                                                <span class="d-block text-success small opacity-75 fw-bold">Conectado como</span>
                                                 <span class="d-block fw-bold text-dark text-truncate"><t t-esc="user_id.email or user_id.name"/></span>
                                             </div>
                                             
-                                            <div class="p-2">
+                                            <div class="px-2 pb-2">
                                                 <li><a class="dropdown-item py-2 rounded-2 d-flex align-items-center gap-3 text-muted" href="/my/home">
-                                                    <i class="fa fa-user-o fs-5 text-primary" style="width: 20px;"></i> <span>Mi Perfil</span>
+                                                    <i class="fa fa-user-o fs-5 text-dark-green" style="width: 20px;"></i> <span>Mi Perfil</span>
                                                 </a></li>
                                                 <li><a class="dropdown-item py-2 rounded-2 d-flex align-items-center gap-3 text-muted" href="/my/orders">
-                                                    <i class="fa fa-cube fs-5 text-primary" style="width: 20px;"></i> 
+                                                    <i class="fa fa-cube fs-5 text-dark-green" style="width: 20px;"></i> 
                                                     <span class="d-flex w-100 justify-content-between align-items-center">
                                                         <span>Mis Pedidos</span>
-                                                        <!-- Optional Badge placeholder if order count existed -->
+                                                        <span t-if="user_id.partner_id.sale_order_count > 0" class="badge bg-success-subtle text-success rounded-pill px-2"><t t-esc="user_id.partner_id.sale_order_count"/></span>
                                                     </span>
                                                 </a></li>
                                                 <li><a class="dropdown-item py-2 rounded-2 d-flex align-items-center gap-3 text-muted" href="/shop/wishlist">
-                                                    <i class="fa fa-heart-o fs-5 text-primary" style="width: 20px;"></i> <span>Mis Listas</span>
+                                                    <i class="fa fa-heart-o fs-5 text-dark-green" style="width: 20px;"></i> <span>Mis Listas</span>
                                                 </a></li>
                                                 <li><a class="dropdown-item py-2 rounded-2 d-flex align-items-center gap-3 text-muted" href="/my/account">
-                                                    <i class="fa fa-map-marker fs-5 text-primary" style="width: 20px;"></i> <span>Direcciones</span>
+                                                    <i class="fa fa-map-marker fs-5 text-dark-green" style="width: 20px;"></i> <span>Direcciones</span>
                                                 </a></li>
                                             </div>
 
-                                            <div class="p-2 border-top">
-                                                <li><a class="dropdown-item py-2 rounded-2 d-flex align-items-center gap-3 text-danger fw-bold hover-danger-bg" href="/web/session/logout?redirect=/">
+                                            <div class="p-3 bg-light border-top mt-1" style="background-color: #f8f9fa !important;">
+                                                <li><a class="dropdown-item py-0 d-flex align-items-center gap-3 text-danger fw-bold bg-transparent" href="/web/session/logout?redirect=/">
                                                     <i class="fa fa-sign-out fs-5" style="width: 20px;"></i> <span>Cerrar Sesión</span>
                                                 </a></li>
                                             </div>
