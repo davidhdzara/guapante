@@ -87,5 +87,26 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         if lang in supported_lang_codes:
             values['lang'] = lang
 
+        # Create the user using standard logic
         self._signup_with_values(qcontext.get('token'), values)
+        
+        # --- EXPLICIT DATA PERSISTENCE FIX ---
+        # Fetch the newly created user and update the partner fields explicitly
+        # This ensures 'company_type' and 'vat' are saved even if standard signup ignored them
+        request.env.cr.commit() # Commit to ensure user exists
+        
+        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        if user:
+            partner_values = {
+                'company_type': values.get('company_type'),
+                'vat': values.get('vat'),
+            }
+            # Only add identification type if valid int
+            if values.get('l10n_latam_identification_type_id'):
+                partner_values['l10n_latam_identification_type_id'] = values.get('l10n_latam_identification_type_id')
+                
+            user.partner_id.sudo().write(partner_values)
+            _logger.info("Guapante Signup: Updated Partner %s with %s", user.partner_id.id, partner_values)
+
+        # Final commit
         request.env.cr.commit()
