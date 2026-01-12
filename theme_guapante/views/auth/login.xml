@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="guapante_login_layout" inherit_id="web.login_layout" name="Guapante Login Layout">
-        <!-- Replace the entire call to frontend_layout to inject no_header/no_footer variables -->
-        <xpath expr="//t[@t-call='web.frontend_layout']" position="replace">
-            <t t-call="web.frontend_layout">
+    <template id="guapante_login_layout" inherit_id="website.login_layout" name="Guapante Login Layout">
+        <!-- Replace the entire call to website.layout to inject my custom structure and suppress header/footer -->
+        <xpath expr="//t[@t-call='website.layout']" position="replace">
+            <t t-call="website.layout">
                 <t t-set="no_header" t-value="True"/>
                 <t t-set="no_footer" t-value="True"/>
                 <t t-set="body_classname" t-value="'bg-white'"/>
