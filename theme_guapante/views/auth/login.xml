@@ -2,7 +2,10 @@
 <odoo>
     <template id="guapante_login_layout" inherit_id="web.login_layout" name="Guapante Login Layout">
         <xpath expr="//div[@class='container py-5']" position="replace">
-            <div class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white">
+            <t t-set="no_header" t-value="True"/>
+            <t t-set="no_footer" t-value="True"/>
+            
+            <div class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white" style="min-height: 100vh;">
                 <!-- LEFT COLUMN: Branding (Desktop Only) -->
                 <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark-green align-items-center justify-content-center p-5 text-white overflow-hidden">
                     <!-- Background Image -->
