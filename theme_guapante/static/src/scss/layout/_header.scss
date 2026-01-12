@@ -62,4 +62,26 @@ header.o_header_affixed,
             background-color: $danger !important;
         }
     }
+
+    // User Dropdown Custom Styles
+    .dropdown-menu {
+        .dropdown-item {
+            transition: all 0.2s ease;
+
+            &:hover,
+            &:focus {
+                background-color: #f0fdf4 !important; // Light green hover
+                color: $dark !important;
+            }
+
+            &.text-danger:hover {
+                background-color: #fef2f2 !important; // Light red hover for logout
+                color: $danger !important;
+            }
+        }
+
+        .dropdown-divider {
+            border-top: 1px solid #e5e7eb;
+        }
+    }
 }
