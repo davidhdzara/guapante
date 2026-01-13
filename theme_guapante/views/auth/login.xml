@@ -30,7 +30,7 @@
                     <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden auth-image-col">
                         <!-- Background Image (No Animation) -->
                         <div class="position-absolute top-0 start-0 w-100 h-100" 
-                             style="background-image: url('/theme_guapante/static/src/img/auth_bg_avocado.png'); background-size: cover; background-position: center;">
+                             style="background-image: url('/theme_guapante/static/src/img/auth_bg.png'); background-size: cover; background-position: center;">
                         </div>
                         <!-- Gradient Overlay -->
                         <div class="position-absolute top-0 start-0 w-100 h-100" 
