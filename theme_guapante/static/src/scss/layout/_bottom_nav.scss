@@ -1,0 +1,31 @@
+/* Bottom Navigation Bar Styles */
+.guapante-bottom-nav {
+    z-index: 1040; /* Above most elements but below modals */
+    padding-bottom: env(safe-area-inset-bottom); /* iOS safe area */
+    
+    .nav-link {
+        padding: 0.25rem 0.5rem;
+        transition: color 0.2s ease;
+        
+        &.active {
+            i {
+                color: $primary !important; /* Use theme primary color */
+            }
+        }
+        
+        /* Remove tap highlight on mobile */
+        -webkit-tap-highlight-color: transparent;
+    }
+}
+
+/* Adjust body/footer to prevent content being hidden behind the fixed bar */
+@include media-breakpoint-down(lg) {
+    body {
+        padding-bottom: 70px !important;
+    }
+    
+    /* Ensure Footer doesn't overlap weirdly */
+    footer {
+        padding-bottom: 70px;
+    }
+}

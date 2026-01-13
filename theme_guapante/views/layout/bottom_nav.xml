@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="bottom_nav" inherit_id="website.layout" name="Guapante Bottom Nav">
+        <xpath expr="//header" position="after">
+            <nav class="navbar fixed-bottom navbar-light bg-white border-top shadow-lg d-lg-none guapante-bottom-nav">
+                <div class="container-fluid d-flex justify-content-around align-items-center py-2">
+                    
+                    <!-- Home -->
+                    <a href="/" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if request.httprequest.path == '/' else 'text-muted' }}">
+                        <i t-attf-class="fa fa-home fs-4 mb-1 {{ 'text-primary' if request.httprequest.path == '/' else '' }}"></i>
+                        <span class="d-block small" style="font-size: 0.7rem;">Inicio</span>
+                    </a>
+
+                    <!-- Categories / Shop -->
+                    <a href="/shop" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/shop' in request.httprequest.path else 'text-muted' }}">
+                        <i t-attf-class="fa fa-th-large fs-4 mb-1 {{ 'text-primary' if '/shop' in request.httprequest.path else '' }}"></i>
+                        <span class="d-block small" style="font-size: 0.7rem;">Categorías</span>
+                    </a>
+
+                     <!-- Favorites (Wishlist) -->
+                    <a href="/shop/wishlist" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/wishlist' in request.httprequest.path else 'text-muted' }}">
+                         <t t-set="wishlist_quantity" t-value="len(request.env['product.wishlist'].current().ids)"/>
+                        <div class="position-relative d-inline-block">
+                             <i t-attf-class="fa fa-heart-o fs-4 mb-1 {{ 'text-primary' if '/wishlist' in request.httprequest.path else '' }}"></i>
+                             <span t-if="wishlist_quantity > 0" class="badge rounded-pill bg-danger position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem; transform: translate(-30%, -30%) !important;">
+                                <t t-esc="wishlist_quantity"/>
+                             </span>
+                        </div>
+                        <span class="d-block small" style="font-size: 0.7rem;">Favoritos</span>
+                    </a>
+
+                    <!-- Account / User -->
+                    <a t-if="user_id._is_public()" href="/web/login" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/web/login' in request.httprequest.path else 'text-muted' }}">
+                        <i class="fa fa-user-circle-o fs-4 mb-1"></i>
+                        <span class="d-block small" style="font-size: 0.7rem;">Cuenta</span>
+                    </a>
+                    <a t-else="" href="/my/home" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/my/home' in request.httprequest.path else 'text-muted' }}">
+                        <i class="fa fa-user-circle fs-4 mb-1 text-primary"></i>
+                        <span class="d-block small" style="font-size: 0.7rem;">Mi Cuenta</span>
+                    </a>
+                    
+                </div>
+            </nav>
+        </xpath>
+    </template>
+</odoo>

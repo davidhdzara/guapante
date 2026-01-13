@@ -29,3 +29,40 @@ Este documento recopila las lecciones aprendidas y mejores prácticas identifica
 
 ## 4. Estructura Modular
 **El Aprendizaje:** La separación estricta de componentes (un archivo XML y un SCSS por cada snippet) facilita enormemente la depuración. Si un snippet falla, se puede aislar fácilmente sin afectar al resto del tema. Es crucial mantener el `__manifest__.py` sincronizado con cada nuevo archivo añadido.
+
+Aprendizajes Técnicos - Desarrollo de Temas Odoo 18
+Este documento recopila lecciones clave aprendidas durante el desarrollo del tema 
+theme_guapante
+, específicamente en Odoo 18 (Enterprise/Community) con el módulo de Website/Ecommerce instalado.
+
+1. Herencia de Vistas y Layouts
+El Conflicto 
+web
+ vs website
+Situación: Al intentar personalizar páginas de sistema (como /web/login), la herencia estándar de web.login_layout puede ser ignorada o envuelta incorrectamente si el módulo website está instalado.
+Comportamiento: El módulo website inyecta su propio layout (website.layout) que incluye encabezado y pie de página de navegación, rompiendo diseños "limpios" o de pantalla completa.
+Solución:
+Verificar siempre qué plantilla está activa usando el Modo Desarrollador > Editar Vista.
+Si el sistema está en contexto de sitio web, heredar de website.login_layout (ID externo) en lugar de web.login_layout.
+Control de "Chrome" (Header/Footer)
+Situación: Necesidad de ocultar completamente el menú de navegación y el pie de página para un diseño de Login "Split-Screen" (Pantalla Partida).
+Intento Fallido: Usar CSS (display: none) o intentar inyectar variables <t t-set="no_header" t-value="True"/> dentro del contenido del formulario. Esto falla porque el layout padre ya se ha renderizado para cuando se procesa el contenido.
+Solución Correcta (Best Practice):
+Reemplazar la llamada al layout padre usando XPath:
+<xpath expr="//t[@t-call='website.layout']" position="replace">
+    <t t-call="website.layout">
+        <t t-set="no_header" t-value="True"/>
+        <t t-set="no_footer" t-value="True"/>
+        <!-- Contenido personalizado -->
+    </t>
+</xpath>
+Esto garantiza que el layout padre reciba las instrucciones de ocultar elementos antes de renderizarse.
+2. Desarrollo de Temas y CSS
+Scoped CSS (Estilos Encapsulados)
+Para evitar conflictos con el backend o con otros formularios del sitio, es vital encapsular estilos personalizados.
+Ejemplo: Usar un contenedor .auth-form-col y anidar todos los estilos de inputs y botones dentro de él en el SCSS (
+theme_guapante/static/src/scss/pages/_auth.scss
+).
+3. Flujo de Trabajo (Git Flow & Staging)
+Validación Visual: Los cambios visuales complejos (como layouts) deben probarse en un entorno lo más cercano a producción (staging) si el entorno local no tiene los mismos módulos (ej. Enterprise vs Community).
+No Asumir: Antes de escribir herencias complejas, validar el ID de la vista en el entorno de destino ahorra ciclos de prueba y error.

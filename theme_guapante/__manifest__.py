@@ -12,6 +12,7 @@
     'data': [
         'views/layout/header.xml',
         'views/layout/footer.xml',
+        'views/layout/bottom_nav.xml',
         'views/pages/home.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
@@ -34,6 +35,7 @@
         'web.assets_frontend': [
             'theme_guapante/static/src/scss/theme.scss',
             'theme_guapante/static/src/scss/layout/_header.scss',
+            'theme_guapante/static/src/scss/layout/_bottom_nav.scss',
             'theme_guapante/static/src/scss/layout/_footer.scss',
             'theme_guapante/static/src/scss/pages/_auth.scss',
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
