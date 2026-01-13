@@ -46,10 +46,12 @@
                     <!-- IDENTIFICATION TYPE (Select) -->
                     <div class="col-12 mb-3">
                         <label for="l10n_latam_identification_type_id" class="form-label">Tipo de Identificación</label>
-                        <select name="l10n_latam_identification_type_id" class="form-select form-control">
+                        <select name="l10n_latam_identification_type_id" id="l10n_latam_identification_type_id" class="form-select form-control">
                             <option value="">Seleccione una opción...</option>
                             <t t-foreach="identification_types" t-as="type">
-                                <option t-att-value="type.id" t-att-selected="type.id == l10n_latam_identification_type_id">
+                                <option t-att-value="type.id" 
+                                        t-att-selected="type.id == l10n_latam_identification_type_id"
+                                        t-att-data-name="type.name">
                                     <t t-esc="type.name"/>
                                 </option>
                             </t>
