@@ -22,4 +22,45 @@
             }
         }
     }
+
+    /* Mobile "App-Like" Horizontal Scroll */
+    @include media-breakpoint-down(lg) {
+        .row {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 20px;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+
+            /* Hide Scrollbar */
+            &::-webkit-scrollbar {
+                display: none;
+            }
+
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Adjust columns to be fixed width cards/circles */
+        [class*="col-"] {
+            flex: 0 0 auto;
+            width: 130px;
+            /* Fixed width for category items */
+        }
+
+        /* Make internal padding smaller on mobile */
+        .category-card {
+            padding: 1rem !important;
+
+            .image-wrapper {
+                width: 70px !important;
+                height: 70px !important;
+            }
+
+            h4 {
+                font-size: 0.85rem;
+            }
+        }
+    }
 }
