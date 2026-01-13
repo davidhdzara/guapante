@@ -17,6 +17,11 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         domain = [('country_id', '=', country_co.id)] if country_co else []
         
         qcontext['identification_types'] = request.env['l10n_latam.identification.type'].sudo().search(domain)
+        
+        # LOGGING IDENTIFICATION TYPES TO VERIFY AVAILABILITY
+        type_names = [t.name for t in qcontext['identification_types']]
+        _logger.info("🔎 Guapante Signup - Available ID Types: %s", type_names)
+        
         return qcontext
 
     def do_signup(self, qcontext):

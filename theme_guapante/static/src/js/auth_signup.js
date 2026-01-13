@@ -17,15 +17,17 @@ publicWidget.registry.GuapanteSignup = publicWidget.Widget.extend({
         const type = this.$('input[name="company_type"]:checked').val();
 
         if (type === 'company') {
-            // Show Company Labels
+            // Show Company Labels & Placeholders
             this.$('.label-name').addClass('d-none');
             this.$('.label-company').removeClass('d-none');
-            this.$('#name').attr('placeholder', 'Nombre de su empresa S.A.S.');
+            this.$('#name').attr('placeholder', 'Ej: Soluciones Tecnológicas S.A.S.');
+            this.$('#vat').attr('placeholder', 'Ej: 900.123.456');
         } else {
-            // Show Person Labels
+            // Show Person Labels & Placeholders
             this.$('.label-name').removeClass('d-none');
             this.$('.label-company').addClass('d-none');
             this.$('#name').attr('placeholder', 'Ej: María Rodríguez');
+            this.$('#vat').attr('placeholder', 'Ej: 1020456789');
         }
     },
 });
