@@ -1,0 +1,84 @@
+// Shop Page Styles
+
+// 1. Sidebar Container (White Card Effect)
+#products_grid_before {
+    background-color: #FFFFFF !important;
+    border-radius: 12px;
+    padding: 1.5rem 1rem !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    // Ensuring it looks like a container
+    margin-right: 1.5rem;
+    height: fit-content;
+    border: 1px solid #f3f4f6;
+
+    // Title
+    h6,
+    .guapante_sidebar_title {
+        font-family: inherit;
+        font-weight: 800 !important;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #1F2937; // Gray 900
+        margin-bottom: 1.25rem;
+        padding-left: 0.5rem; // Align with list items
+    }
+
+    // List Items
+    .nav-pills .nav-link {
+        border-radius: 8px;
+        color: #4B5563 !important; // Gray 600
+        font-weight: 500;
+        padding: 0.6rem 0.75rem;
+        transition: all 0.2s ease;
+        background-color: transparent;
+        border: none;
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.25rem;
+
+        // Icons
+        img,
+        i {
+            transition: all 0.2s ease;
+        }
+
+        // Hover State
+        &:hover {
+            background-color: #F9FAFB; // Gray 50
+            color: #111827 !important; // Gray 900
+
+            img {
+                opacity: 1 !important;
+                transform: scale(1.1);
+            }
+        }
+
+        // Active State (Green Highlight)
+        &.active {
+            background-color: #ECFDF5 !important; // Green 50
+            color: #059669 !important; // Green 600
+            font-weight: 600;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+            // Icon adjustment for active state
+            img {
+                opacity: 1 !important;
+            }
+
+            // Badge color in active state
+            .label-count {
+                color: #059669 !important;
+                background-color: #D1FAE5 !important; // Green 100
+            }
+        }
+
+        // Count Badge
+        .label-count {
+            background-color: transparent;
+            color: #9CA3AF !important; // Gray 400
+            font-size: 0.75rem;
+            margin-left: auto;
+        }
+    }
+}

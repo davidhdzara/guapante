@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Customize Recursive Category Item to add Icon -->
+    <!-- Using generic //a xpath to avoid fragility -->
+    <template id="categories_recursive_guapante" inherit_id="website_sale.categories_recursive" name="Guapante Category Icon">
+        <xpath expr="//a" position="replace">
+             <a t-att-href="keep('/shop/category/' + slug(c), category=0)" t-attf-class="nav-link #{'active' if c.id == category.id else ''}">
+                <!-- Icon/Image Injection -->
+                <t t-if="c.image_128">
+                    <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain; opacity: 0.7;'}"/>
+                </t>
+                <t t-else="">
+                    <!-- Fallback Icon if no image -->
+                    <i class="fa fa-circle-o me-2 text-muted" style="font-size: 8px;" t-if="not c.image_128"/>
+                </t>
+                
+                <span t-field="c.name" style="font-weight: 500;"/>
+                
+                <!-- Count Badge (Custom style: Simple number aligned right) -->
+                <span t-if="c.product_count" class="badge text-muted ms-auto fw-normal label-count">
+                    <t t-esc="c.product_count"/>
+                </span>
+            </a>
+        </xpath>
+    </template>
+    
+    <!-- Title Styling for Categories Sidebar -->
+    <template id="products_categories_guapante_title" inherit_id="website_sale.products_categories" name="Guapante Categories Title">
+        <xpath expr="//h6" position="attributes">
+            <attribute name="class">text-uppercase fw-bold text-dark mb-3 small guapante_sidebar_title</attribute>
+        </xpath>
+    </template>
+</odoo>
