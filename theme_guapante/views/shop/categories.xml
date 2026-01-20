@@ -40,9 +40,9 @@
     </template>
     
     <!-- Inject Sidebar Extras into Categories Sidebar -->
-    <template id="products_categories_guapante_extras" inherit_id="website_sale.products_categories" name="Guapante Sidebar Extras Injection">
-        <!-- Append after the entire categories block -->
-        <xpath expr="//div[hasclass('o_wsale_products_categories_collapse')]" position="after">
+    <template id="products_categories_guapante_extras" inherit_id="website_sale.products_categories_list" name="Guapante Sidebar Extras Injection">
+        <!-- Append after the categories list -->
+        <xpath expr="//ul" position="after">
             <t t-call="theme_guapante.sidebar_extras_content"/>
         </xpath>
     </template>
