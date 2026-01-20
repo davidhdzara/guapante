@@ -1,9 +1,7 @@
 /* Main Theme SCSS Entry Point */
 
-// Import Variables First
-@import 'primary_variables';
-
 // Base Styles
+// Note: primary_variables are loaded automatically by Odoo through web._assets_primary_variables bundle
 body {
     -webkit-font-smoothing: antialiased;
     font-family: 'Inter', system-ui, sans-serif;
