@@ -70,6 +70,43 @@
             margin-left: auto;
         }
     }
+
+    // Sidebar Extras (Seasonal & Logistics)
+    .guapante-sidebar-extras {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #F3F4F6;
+
+        // Seasonal Toggle
+        .seasonal-container {
+            background: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: between;
+        }
+
+        // Logistics Box
+        .guapante-logistics-box {
+            background-color: #ECFDF5; // Green 50
+            border: 1px solid #D1FAE5; // Green 200
+            border-radius: 8px;
+            padding: 1rem;
+
+            i {
+                font-size: 0.9rem;
+            }
+
+            .text-success {
+                color: #059669 !important;
+            }
+
+            // Green 600
+        }
+    }
 }
 
 // 2. General Shop Layout
