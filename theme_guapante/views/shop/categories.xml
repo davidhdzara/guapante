@@ -1,48 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Category Icons: Safe injection before category name -->
     <template id="categories_recursive_guapante" inherit_id="website_sale.categories_recursive" name="Guapante Category Icon">
-        <!-- Safe injection: Insert Icon BEFORE the name span -->
         <xpath expr="//span[@t-field='c.name']" position="before">
             <t t-if="c.image_128">
                 <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain; opacity: 1;'}"/>
             </t>
             <t t-else="">
-                <!-- Placeholder icon if no image -->
-                <i class="fa fa-leaf me-2 text-muted opacity-50" style="font-size: 14px;" t-if="not c.image_128"/>
+                <i class="fa fa-leaf me-2 text-muted opacity-50" style="font-size: 14px;"/>
             </t>
         </xpath>
     </template>
     
-    <!-- Title Styling (If h6 exists, nice. If not, ignore or try generic) -->
-    <!-- Keeping basic override if possible, otherwise skipping to avoid error since h6 was missing -->
-    
-    <!-- New Sidebar Extras: Seasonal & Logistics -->
-    <!-- Fixing XPath Error: Inheriting 'website_sale.products' directly and appending to #products_grid_before -->
-    <template id="products_categories_guapante_extras" inherit_id="website_sale.products" name="Guapante Sidebar Extras">
-        <xpath expr="//div[@id='products_grid_before']" position="inside">
-            <div class="guapante-sidebar-extras">
-                <!-- 1. De Temporada Toggle -->
-                <div class="seasonal-container d-flex align-items-center justify-content-between">
-                    <div class="d-flex flex-column">
-                        <span class="fw-bold small text-dark">De Temporada</span>
-                        <span class="text-muted" style="font-size: 0.7rem;">Solo cosecha actual</span>
-                    </div>
-                    <div class="form-check form-switch m-0">
-                        <input class="form-check-input" type="checkbox" id="seasonalToggle" style="cursor: pointer;"/>
-                    </div>
+    <!-- Standalone Template for Sidebar Extras -->
+    <template id="sidebar_extras_content" name="Guapante Sidebar Extras Content">
+        <div class="guapante-sidebar-extras">
+            <!-- 1. De Temporada Toggle -->
+            <div class="seasonal-container d-flex align-items-center justify-content-between">
+                <div class="d-flex flex-column">
+                    <span class="fw-bold small text-dark">De Temporada</span>
+                    <span class="text-muted" style="font-size: 0.7rem;">Solo cosecha actual</span>
                 </div>
-
-                <!-- 2. Logistica Guapante Box -->
-                <div class="guapante-logistics-box">
-                    <div class="d-flex align-items-center mb-2">
-                        <i class="fa fa-truck text-success me-2"></i>
-                        <span class="fw-bold text-success" style="font-size: 0.8rem;">Logística Guapante</span>
-                    </div>
-                    <p class="mb-0 text-muted lh-sm" style="font-size: 0.75rem;">
-                        Entregas en menos de 24h para garantizar la frescura de tus productos.
-                    </p>
+                <div class="form-check form-switch m-0">
+                    <input class="form-check-input" type="checkbox" id="seasonalToggle" style="cursor: pointer;"/>
                 </div>
             </div>
+
+            <!-- 2. Logistica Guapante Box -->
+            <div class="guapante-logistics-box">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="fa fa-truck text-success me-2"></i>
+                    <span class="fw-bold text-success" style="font-size: 0.8rem;">Logística Guapante</span>
+                </div>
+                <p class="mb-0 text-muted lh-sm" style="font-size: 0.75rem;">
+                    Entregas en menos de 24h para garantizar la frescura de tus productos.
+                </p>
+            </div>
+        </div>
+    </template>
+    
+    <!-- Inject Sidebar Extras into Categories Sidebar -->
+    <template id="products_categories_guapante_extras" inherit_id="website_sale.products_categories" name="Guapante Sidebar Extras Injection">
+        <!-- Append after the entire categories block -->
+        <xpath expr="//div[hasclass('o_wsale_products_categories_collapse')]" position="after">
+            <t t-call="theme_guapante.sidebar_extras_content"/>
         </xpath>
     </template>
 </odoo>
