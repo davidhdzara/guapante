@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Category Icons: Safe injection before category name -->
-    <template id="categories_recursive_guapante" inherit_id="website_sale.categories_recursive" name="Guapante Category Icon">
-        <xpath expr="//span[@t-field='c.name']" position="before">
-            <t t-if="c.image_128">
-                <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain; opacity: 1;'}"/>
-            </t>
-            <t t-else="">
-                <i class="fa fa-leaf me-2 text-muted opacity-50" style="font-size: 14px;"/>
-            </t>
+    <!-- Category Icons: Inherit from the link template and add icons -->
+    <template id="categorie_link_guapante" inherit_id="website_sale.categorie_link" name="Guapante Category Link with Icon">
+        <xpath expr="//a[@t-field='c.name']" position="replace">
+            <a t-att-href="keep('/shop/category/' + slug(c), category=0)" 
+               t-attf-class="{{c.id == category.id and 'text-decoration-underline'}} p-0 d-flex align-items-center">
+                <!-- Category Icon (from image or fallback) -->
+                <t t-if="c.image_128">
+                    <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain;'}"/>
+                </t>
+                <t t-else="">
+                    <i class="fa fa-leaf me-2 text-muted opacity-50" style="font-size: 14px;"/>
+                </t>
+                <!-- Category Name -->
+                <span t-field="c.name"/>
+            </a>
         </xpath>
     </template>
     
