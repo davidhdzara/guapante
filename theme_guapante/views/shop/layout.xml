@@ -11,8 +11,8 @@
                         <h1 class="fw-bold m-0" t-field="category.name"/>
                         <!-- Sorter placeholder (if we can move it here, otherwise it stays in toolbar) -->
                     </div>
-                    <!-- Description -->
-                    <div class="text-muted" t-field="category.description"/>
+                    <!-- Description (only if exists) -->
+                    <div t-if="category.description" class="text-muted" t-field="category.description"/>
                 </t>
                 <t t-else="">
                     <h1 class="fw-bold mb-3">Todos los productos</h1>
