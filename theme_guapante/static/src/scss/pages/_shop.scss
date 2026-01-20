@@ -206,16 +206,16 @@ main {
         box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.08);
     }
 
-    // Image Container - Exactly 50% of card height from top edge
+    // Image Container - Full edge-to-edge from top
     .oe_product_image,
     .guapante-product-image {
-        height: 240px !important; // Increased for better proportion
+        height: 240px !important;
         min-height: 240px !important;
         max-height: 240px !important;
         overflow: hidden;
-        background-color: #FAFAFA; // Slightly off-white for subtle contrast
-        border-radius: 0 !important; // No radius - card handles the rounding
-        padding: 1rem 1.5rem !important; // Only side padding for breathing room
+        background-color: #FFFFFF !important; // Pure white to match card
+        border-radius: 0 !important;
+        padding: 0 !important; // NO padding - full edge-to-edge
 
         a,
         .oe_product_image_link {
@@ -224,13 +224,13 @@ main {
             justify-content: center;
             height: 100%;
             width: 100%;
+            padding: 1rem; // Padding only on link for image breathing room
         }
 
         img {
             object-fit: contain !important;
             width: 100% !important;
             height: 100% !important;
-            max-height: 220px;
         }
     }
 
@@ -247,10 +247,10 @@ main {
             font-size: 1rem;
             font-weight: 600;
             color: #111827;
-            margin-top: 0.15rem; // Reduced to move title up
+            margin-top: 0 !important; // Removed completely to move title up
             margin-bottom: 0.75rem;
             line-height: 1.4;
-            text-align: center; // Center text
+            text-align: center;
             width: 100%;
 
             a {
