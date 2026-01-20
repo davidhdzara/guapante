@@ -17,8 +17,9 @@
     <!-- Keeping basic override if possible, otherwise skipping to avoid error since h6 was missing -->
     
     <!-- New Sidebar Extras: Seasonal & Logistics -->
-    <template id="products_categories_guapante_extras" inherit_id="website_sale.products_categories" name="Guapante Sidebar Extras">
-        <xpath expr="//ul" position="after">
+    <!-- Fixing XPath Error: Inheriting 'website_sale.products' directly and appending to #products_grid_before -->
+    <template id="products_categories_guapante_extras" inherit_id="website_sale.products" name="Guapante Sidebar Extras">
+        <xpath expr="//div[@id='products_grid_before']" position="inside">
             <div class="guapante-sidebar-extras">
                 <!-- 1. De Temporada Toggle -->
                 <div class="seasonal-container d-flex align-items-center justify-content-between">
