@@ -15,6 +15,8 @@
         'views/layout/bottom_nav.xml',
         'views/pages/home.xml',
         'views/shop/categories.xml',
+        'views/shop/products_item.xml',
+        'views/shop/layout.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
