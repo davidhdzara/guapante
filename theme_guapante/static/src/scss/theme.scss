@@ -1,7 +1,5 @@
 /* Main Theme SCSS Entry Point */
 
-// Base Styles
-// Note: primary_variables are loaded automatically by Odoo through web._assets_primary_variables bundle
 body {
     -webkit-font-smoothing: antialiased;
     font-family: 'Inter', system-ui, sans-serif;
@@ -16,24 +14,3 @@ a {
         color: darken($primary, 10%);
     }
 }
-
-// Layout Components
-@import 'layout/header';
-@import 'layout/footer';
-@import 'layout/bottom_nav';
-
-// Page-Specific Styles
-@import 'pages/auth';
-@import 'pages/shop';
-
-// Snippets
-@import 'snippets/s_hero';
-@import 'snippets/s_categories';
-@import 'snippets/s_features';
-@import 'snippets/s_seasonal_harvest';
-@import 'snippets/s_b2b';
-@import 'snippets/s_about_hero';
-@import 'snippets/s_about_mission_vision';
-@import 'snippets/s_about_pillars';
-@import 'snippets/s_about_history';
-@import 'snippets/s_about_cta';

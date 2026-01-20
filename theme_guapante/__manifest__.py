@@ -36,8 +36,26 @@
             'theme_guapante/static/src/scss/primary_variables.scss',
         ],
         'web.assets_frontend': [
-            # Main SCSS file - imports all other SCSS files
+            # Base theme styles
             'theme_guapante/static/src/scss/theme.scss',
+            # Layout components
+            'theme_guapante/static/src/scss/layout/_header.scss',
+            'theme_guapante/static/src/scss/layout/_bottom_nav.scss',
+            'theme_guapante/static/src/scss/layout/_footer.scss',
+            # Page-specific styles
+            'theme_guapante/static/src/scss/pages/_auth.scss',
+            'theme_guapante/static/src/scss/pages/_shop.scss',
+            # Snippets
+            'theme_guapante/static/src/scss/snippets/_s_hero.scss',
+            'theme_guapante/static/src/scss/snippets/_s_features.scss',
+            'theme_guapante/static/src/scss/snippets/_s_categories.scss',
+            'theme_guapante/static/src/scss/snippets/_s_seasonal_harvest.scss',
+            'theme_guapante/static/src/scss/snippets/_s_b2b.scss',
+            'theme_guapante/static/src/scss/snippets/_s_about_hero.scss',
+            'theme_guapante/static/src/scss/snippets/_s_about_history.scss',
+            'theme_guapante/static/src/scss/snippets/_s_about_mission_vision.scss',
+            'theme_guapante/static/src/scss/snippets/_s_about_pillars.scss',
+            'theme_guapante/static/src/scss/snippets/_s_about_cta.scss',
             # JavaScript files
             'theme_guapante/static/src/js/auth_signup.js',
             'theme_guapante/static/src/js/shop.js',
