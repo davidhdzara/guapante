@@ -117,12 +117,6 @@ main {
     }
 }
 
-// Global Hide Price Rule (Safety)
-.product_price,
-.o_wsale_product_price {
-    display: none !important;
-}
-
 // Category Title & Description
 .guapante-shop-header {
     // Divider Line below description
@@ -147,10 +141,28 @@ main {
 }
 
 // Sort By Dropdown styling
-.dropdown-toggle {
-    // Only target the sortby dropdown if possible, usually it's .dropdown-toggle inside toolbar
-    // But generic is risky. Let's precise via XML structure or parent class if standard.
-    // Standard Odoo Structure: .o_wsale_products_sortby_dropdown
+.o_sortby_dropdown {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    background: white;
+
+    .dropdown-toggle {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #374151;
+        padding: 0.5rem 1rem;
+        border: none;
+        background: transparent;
+
+        &:after {
+            margin-left: 0.5rem;
+            border: none;
+            content: "\f078"; // FontAwesome Chevron Down
+            font-family: FontAwesome;
+            font-size: 0.7em;
+            color: #9CA3AF;
+        }
+    }
 }
 
 // 4. Product Card Design
@@ -222,7 +234,7 @@ main {
             display: flex;
             align-items: center;
             justify-content: center;
-            opacity: 1 !important;
+            opacity: 1 !important; // Force visibility
 
             i {
                 font-size: 1.1rem;
@@ -234,11 +246,10 @@ main {
             }
         }
     }
+}
 
-    &:hover {
-        background-color: black;
-        transform: scale(1.05);
-    }
-}
-}
+// Global Hide Price Rule (Safety)
+.product_price,
+.o_wsale_product_price {
+    display: none !important;
 }
