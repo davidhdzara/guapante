@@ -2,26 +2,20 @@
 <odoo>
     <template id="products_guapante" inherit_id="website_sale.products" name="Guapante Shop Layout">
         
-        <!-- Inject Central Header (Title & Description) INSIDE products_grid to maintain Bootstrap layout -->
+        <!-- Inject Central Header (Title) INSIDE products_grid to maintain Bootstrap layout -->
         <xpath expr="//div[@id='products_grid']" position="inside">
             <div class="guapante-shop-header" t-tag="prepend">
                 <t t-if="category">
                     <div class="d-flex justify-content-between align-items-end mb-2">
                         <!-- Title -->
                         <h1 class="fw-bold m-0" t-field="category.name"/>
-                        <!-- Sorter placeholder (if we can move it here, otherwise it stays in toolbar) -->
                     </div>
-                    <!-- Description (only if exists) -->
-                    <div t-if="category.description" class="text-muted" t-field="category.description"/>
                 </t>
                 <t t-else="">
                     <h1 class="fw-bold mb-3">Todos los productos</h1>
                 </t>
             </div>
         </xpath>
-        
-        <!-- Hide Default Search Bar if needed (leaving it for now as user asked to focus on layout first) -->
-        <!-- Just ensuring structure supports the CSS -->
 
     </template>
 </odoo>
