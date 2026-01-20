@@ -2,9 +2,9 @@
 <odoo>
     <template id="products_guapante" inherit_id="website_sale.products" name="Guapante Shop Layout">
         
-        <!-- Inject Central Header (Title & Description) before Grid matches mockup -->
-        <xpath expr="//div[@id='products_grid']" position="before">
-            <div class="guapante-shop-header">
+        <!-- Inject Central Header (Title & Description) INSIDE products_grid to maintain Bootstrap layout -->
+        <xpath expr="//div[@id='products_grid']" position="inside">
+            <div class="guapante-shop-header" t-tag="prepend">
                 <t t-if="category">
                     <div class="d-flex justify-content-between align-items-end mb-2">
                         <!-- Title -->
