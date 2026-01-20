@@ -98,9 +98,11 @@ main {
                 font-weight: 600;
             }
 
+            // Force separator to >
             +.breadcrumb-item::before {
-                content: ">";
+                content: ">" !important;
                 color: #9CA3AF;
+                font-family: inherit; // Prevent fontawesome overrides if any
             }
 
             a {
@@ -113,6 +115,12 @@ main {
             }
         }
     }
+}
+
+// Global Hide Price Rule (Safety)
+.product_price,
+.o_wsale_product_price {
+    display: none !important;
 }
 
 // Category Title & Description
@@ -203,6 +211,7 @@ main {
     .guapante-card-actions {
         right: 1.25rem !important;
         bottom: 1.25rem !important;
+        z-index: 50; // Ensure it is above overlays
 
         .btn-dark {
             width: 44px;
@@ -213,6 +222,7 @@ main {
             display: flex;
             align-items: center;
             justify-content: center;
+            opacity: 1 !important;
 
             i {
                 font-size: 1.1rem;
@@ -224,4 +234,11 @@ main {
             }
         }
     }
+
+    &:hover {
+        background-color: black;
+        transform: scale(1.05);
+    }
+}
+}
 }

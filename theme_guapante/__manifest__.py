@@ -51,6 +51,7 @@
             'theme_guapante/static/src/scss/snippets/_s_about_pillars.scss',
             'theme_guapante/static/src/scss/snippets/_s_about_cta.scss',
             'theme_guapante/static/src/js/auth_signup.js',
+            'theme_guapante/static/src/js/shop.js',
         ],
     },
     'application': False,
