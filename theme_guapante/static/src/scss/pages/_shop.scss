@@ -37,19 +37,13 @@
         align-items: center;
         margin-bottom: 0.25rem;
 
-        // Icons
-        img,
-        i {
-            transition: all 0.2s ease;
-        }
-
         // Hover State
         &:hover {
             background-color: #F9FAFB; // Gray 50
             color: #111827 !important; // Gray 900
 
-            img {
-                opacity: 1 !important;
+            img,
+            i {
                 transform: scale(1.1);
             }
         }
@@ -60,11 +54,6 @@
             color: #059669 !important; // Green 600
             font-weight: 600;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-
-            // Icon adjustment for active state
-            img {
-                opacity: 1 !important;
-            }
 
             // Badge color in active state
             .label-count {
@@ -79,6 +68,160 @@
             color: #9CA3AF !important; // Gray 400
             font-size: 0.75rem;
             margin-left: auto;
+        }
+    }
+}
+
+// 2. General Shop Layout
+main {
+    background-color: #F9FAFB; // Global Light Gray Background (as per mockup)
+}
+
+.o_wsale_products_main_row {
+    margin-top: 1.5rem;
+}
+
+// 3. Central Header & Toolbar
+// Breadcrumbs Styling
+.o_wsale_products_breadcrumb {
+    .breadcrumb {
+        background: transparent;
+        padding: 0;
+        margin-bottom: 0.5rem;
+
+        .breadcrumb-item {
+            font-size: 0.85rem;
+            color: #6B7280;
+
+            &.active {
+                color: #111827;
+                font-weight: 600;
+            }
+
+            +.breadcrumb-item::before {
+                content: ">";
+                color: #9CA3AF;
+            }
+
+            a {
+                color: #6B7280;
+                text-decoration: none;
+
+                &:hover {
+                    color: #111827;
+                }
+            }
+        }
+    }
+}
+
+// Category Title & Description
+.guapante-shop-header {
+    // Divider Line below description
+    border-bottom: 1px solid #E5E7EB;
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+
+    // Title
+    h1 {
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #111827;
+        margin-bottom: 0.5rem;
+    }
+
+    // Description
+    .text-muted {
+        font-size: 0.95rem;
+        color: #6B7280 !important;
+        max-width: 800px;
+    }
+}
+
+// Sort By Dropdown styling
+.dropdown-toggle {
+    // Only target the sortby dropdown if possible, usually it's .dropdown-toggle inside toolbar
+    // But generic is risky. Let's precise via XML structure or parent class if standard.
+    // Standard Odoo Structure: .o_wsale_products_sortby_dropdown
+}
+
+// 4. Product Card Design
+.oe_product_cart {
+    background-color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); // Subtle shadow
+    transition: all 0.2s ease;
+    padding-bottom: 1rem;
+
+    &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    // Image Container
+    .guapante-product-image {
+        height: 260px; // > 50% of card
+        overflow: hidden;
+        position: relative;
+        padding: 1.5rem;
+        background-color: #FFFFFF; // Pure white as requested
+        border-radius: 16px 16px 0 0;
+
+        img {
+            object-fit: contain;
+            width: 100%;
+            height: 100%;
+        }
+    }
+
+    // Product Info
+    .o_wsale_product_information {
+        background: white !important;
+        text-align: left !important;
+        padding: 0.5rem 1.25rem 1.5rem 1.25rem !important;
+
+        .o_wsale_products_item_title {
+            font-size: 1.1rem;
+            font-weight: 800; // Bold
+            color: #111827;
+            margin-bottom: 0.5rem;
+
+            a {
+                color: #111827 !important;
+                text-decoration: none;
+            }
+        }
+
+        // Hide Region/Origin (assuming it is in description or subtitle)
+        .text-muted {
+            display: none !important;
+        }
+    }
+
+    // Cart Icon Button (Bottom Right)
+    .guapante-card-actions {
+        right: 1.25rem !important;
+        bottom: 1.25rem !important;
+
+        .btn-dark {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px !important; // Rounded Square
+            background-color: #111827; // Almost Black
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            i {
+                font-size: 1.1rem;
+            }
+
+            &:hover {
+                background-color: black;
+                transform: scale(1.05);
+            }
         }
     }
 }
