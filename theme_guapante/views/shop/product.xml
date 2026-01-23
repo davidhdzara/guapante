@@ -14,7 +14,7 @@
             <div class="row">
                 <!-- LEFT SIDEBAR (col-lg-3) -->
                 <aside id="products_grid_before" class="d-none d-lg-block col-lg-3 px-3 clearfix" style="position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;">
-                    <t t-call="website_sale.products_categories"/>
+                    <t t-call="website_sale.products_categories_list"/>
                 </aside>
                 
                 <!-- RIGHT CONTENT (col-lg-9) -->
