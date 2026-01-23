@@ -1,31 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Add sidebar to product page using safer wrapping approach -->
+    <!-- Add sidebar to product page - Based on actual Odoo 18 template structure -->
     <template id="product_guapante" inherit_id="website_sale.product" name="Guapante Product with Sidebar">
         
-        <!-- Step 1: Add container-fluid class to the main div (parent of product_detail) -->
-        <xpath expr="//div[@id='wrap']//main//div[section[@id='product_detail']]" position="attributes">
-            <attribute name="class">container-fluid</attribute>
-        </xpath>
-        
-        <!-- Step 2: Convert that div to a row -->
-        <xpath expr="//div[@id='wrap']//main//div[section[@id='product_detail']]" position="attributes">
-            <attribute name="class" add="row" separator=" "/>
-        </xpath>
-        
-        <!-- Step 3: Add sidebar before the product_detail section -->
-        <xpath expr="//section[@id='product_detail']" position="before">
-            <aside id="products_grid_before" class="d-none d-lg-block position-sticky col-lg-3 px-3 clearfix">
-                <div class="o_wsale_products_grid_before_rail vh-100 ms-n2 mt-n2 pt-2 p-lg-2 pb-lg-5 ps-2 overflow-y-scroll">
-                    <!-- Reuse existing categories template -->
-                    <t t-call="website_sale.products_categories"/>
-                </div>
-            </aside>
-        </xpath>
-        
-        <!-- Step 4: Add col-lg-9 class to product_detail section -->
+        <!-- Step 1: Change 'container' to 'container-fluid' in product_detail section -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
-            <attribute name="class" add="col-lg-9" separator=" "/>
+            <attribute name="class" remove="container" separator=" "/>
+            <attribute name="class" add="container-fluid" separator=" "/>
+        </xpath>
+        
+        <!-- Step 2: Add sidebar before all existing content -->
+        <xpath expr="//section[@id='product_detail']/*[1]" position="before">
+            <div class="row">
+                <!-- LEFT SIDEBAR (col-lg-3) -->
+                <aside id="products_grid_before" class="d-none d-lg-block col-lg-3 px-3 clearfix" style="position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;">
+                    <t t-call="website_sale.products_categories"/>
+                </aside>
+                
+                <!-- RIGHT CONTENT (col-lg-9) - Wrapper for all existing content -->
+                <div class="col-lg-9">
+        </xpath>
+        
+        <!-- Step 3: Close wrapper after last child of product_detail -->
+        <xpath expr="//section[@id='product_detail']/*[last()]" position="after">
+                </div><!-- Close col-lg-9 -->
+            </div><!-- Close row -->
         </xpath>
         
     </template>
