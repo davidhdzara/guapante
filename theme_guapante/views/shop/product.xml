@@ -1,28 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Add sidebar to product page - Based on actual Odoo 18 template structure -->
+    <!-- Add sidebar to product page - Replace breadcrumb row to inject sidebar wrapper -->
     <template id="product_guapante" inherit_id="website_sale.product" name="Guapante Product with Sidebar">
         
-        <!-- Step 1: Change 'container' to 'container-fluid' in product_detail section -->
+        <!-- Step 1: Change 'container' to 'container-fluid' -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
             <attribute name="class" remove="container" separator=" "/>
             <attribute name="class" add="container-fluid" separator=" "/>
         </xpath>
         
-        <!-- Step 2: Add sidebar before all existing content -->
-        <xpath expr="//section[@id='product_detail']/*[1]" position="before">
+        <!-- Step 2: Replace the breadcrumb row to inject our layout -->
+        <xpath expr="//section[@id='product_detail']/div[@class='row align-items-center'][1]" position="replace">
             <div class="row">
                 <!-- LEFT SIDEBAR (col-lg-3) -->
                 <aside id="products_grid_before" class="d-none d-lg-block col-lg-3 px-3 clearfix" style="position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;">
                     <t t-call="website_sale.products_categories"/>
                 </aside>
                 
-                <!-- RIGHT CONTENT (col-lg-9) - Wrapper for all existing content -->
+                <!-- RIGHT CONTENT (col-lg-9) -->
                 <div class="col-lg-9">
-        </xpath>
-        
-        <!-- Step 3: Close wrapper after last child of product_detail -->
-        <xpath expr="//section[@id='product_detail']/*[last()]" position="after">
+                    <!-- Restore original breadcrumb row -->
+                    <div class="row align-items-center">
+                        <div class="col d-flex align-items-center order-1 order-lg-0">
+                            <ol class="o_wsale_breadcrumb breadcrumb p-0 mb-4 m-lg-0">
+                                <li class="o_not_editable breadcrumb-item d-none d-lg-inline-block">
+                                    <a t-att-href="keep(category=0, attribute_value=0, tags=0)">
+                                        <i class="oi oi-chevron-left d-lg-none me-1" role="presentation"/>All Products
+                                    </a>
+                                </li>
+                                <li t-nocache="The category does not have to be cached, as the product can be accessed via different paths." t-if="category" class="breadcrumb-item">
+                                    <a class="py-2 py-lg-0" t-att-href="keep('/shop/category/%s' % slug(category), category=0, attribute_value=0, tags=0)">
+                                        <i class="oi oi-chevron-left d-lg-none me-1" role="presentation"/><t t-out="category.name"/>
+                                    </a>
+                                </li>
+                                <li t-else="" class="o_not_editable breadcrumb-item d-lg-none">
+                                    <a class="py-2 py-lg-0" t-att-href="keep(category=0, attribute_value=0, tags=0)">
+                                        <i class="oi oi-chevron-left me-1" role="presentation"/>All Products
+                                    </a>
+                                </li>
+                                <li class="breadcrumb-item d-none d-lg-inline-block active">
+                                    <span t-field="product.name"/>
+                                </li>
+                            </ol>
+                        </div>
+                        <div class="col-lg-4 d-flex align-items-center">
+                            <div class="d-flex justify-content-between w-100">
+                                <t t-if="is_view_active('website_sale.search')" t-call="website_sale.search">
+                                    <t t-set="search" t-value="False"/>
+                                    <t t-set="_form_classes" t-valuef="mb-4 mb-lg-0"/>
+                                    <t t-set="_classes" t-value="'me-sm-2'"/>
+                                </t>
+                                <t t-call="website_sale.pricelist_list">
+                                    <t t-set="_classes" t-valuef="d-lg-inline ms-2"/>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
                 </div><!-- Close col-lg-9 -->
             </div><!-- Close row -->
         </xpath>
