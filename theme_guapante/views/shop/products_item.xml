@@ -12,8 +12,9 @@
             <attribute name="class" add="guapante-product-image" separator=" "/>
         </xpath>
 
-        <!-- 3. Customize Cart Button (Link to Detail) -->
-        <!-- Move/Replace the standard buttons with our custom icon button at the bottom right -->
+        <!-- 3. Cart Button - TEMPORARILY DISABLED (o_wsale_product_btn doesn't exist in Odoo 18) -->
+        <!-- TODO: Find correct selector for Odoo 18 add to cart button -->
+        <!--
         <xpath expr="//div[hasclass('o_wsale_product_btn')]" position="replace">
             <div class="guapante-card-actions position-absolute bottom-0 end-0 p-3">
                 <a t-att-href="product_href" class="btn btn-dark rounded-3 d-flex align-items-center justify-content-center shadow-sm" aria-label="Ver Detalles">
@@ -21,6 +22,7 @@
                 </a>
             </div>
         </xpath>
+        -->
         
     </template>
 </odoo>
