@@ -308,39 +308,3 @@ main {
 .o_wsale_product_price {
     display: none !important;
 }
-
-// ---------------------------------------------------
-// 5. Product Page Sidebar Layout (CSS Grid Strategy)
-// ---------------------------------------------------
-@include media-breakpoint-up(lg) {
-
-    // Apply Grid Layout to the Main Product Section
-    #product_detail {
-        display: grid !important;
-        grid-template-columns: 280px 1fr !important; // Fixed sidebar width + remaining space
-        gap: 2rem !important; // Spacing between sidebar and content
-        align-items: start !important; // Align items to top
-    }
-
-    // 1. Sidebar Positioning
-    #products_grid_before {
-        grid-column: 1;
-        grid-row: 1 / 10; // Span strictly from top to bottom
-        height: fit-content;
-        position: sticky;
-        top: 100px;
-        z-index: 10;
-        margin-right: 0 !important; // Reset shop margin
-        width: 100% !important;
-        border-right: none; // Cleaner look
-    }
-
-    // 2. Main Content Positioning (Breadcrumbs + Details)
-    // Force all other direct children (rows) into the second column
-    #product_detail>.row {
-        grid-column: 2 !important;
-        width: 100% !important; // Ensure rows take full width of their column
-        margin-left: 0 !important; // Reset negative margins inside grid
-        margin-right: 0 !important;
-    }
-}
