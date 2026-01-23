@@ -71,7 +71,7 @@
                 <t t-set="all_categories" t-value="request.env['product.public.category'].search([('parent_id', '=', False)], order='sequence, name')"/>
                 <t t-foreach="all_categories" t-as="cat">
                     <li class="mb-2">
-                        <a t-att-href="'/shop/category/%s' % cat.slug" class="p-0 d-flex align-items-center text-decoration-none">
+                        <a t-att-href="'/shop/category/%s' % slug(cat)" class="p-0 d-flex align-items-center text-decoration-none">
                             <!-- Category Icon -->
                             <t t-if="cat.image_128">
                                 <span t-field="cat.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain;'}"/>
