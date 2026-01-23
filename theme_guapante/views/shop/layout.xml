@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="products_guapante" inherit_id="website_sale.products" name="Guapante Shop Layout">
+        
+        <!-- Inject Central Header (Title) INSIDE products_grid to maintain Bootstrap layout -->
+        <xpath expr="//div[@id='products_grid']" position="inside">
+            <div class="guapante-shop-header" t-tag="prepend">
+                <t t-if="category">
+                    <div class="d-flex justify-content-between align-items-end mb-2">
+                        <!-- Title -->
+                        <h1 class="fw-bold m-0" t-field="category.name"/>
+                    </div>
+                </t>
+                <t t-else="">
+                    <h1 class="fw-bold mb-3">Todos los productos</h1>
+                </t>
+            </div>
+        </xpath>
+
+    </template>
+</odoo>

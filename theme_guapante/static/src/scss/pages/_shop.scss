@@ -1,0 +1,311 @@
+// Shop Page Styles
+
+// 1. Sidebar Container (White Card Effect)
+#products_grid_before {
+    background-color: #FFFFFF !important;
+    border-radius: 12px;
+    padding: 1.5rem 1rem !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    margin-right: 1.5rem;
+    height: fit-content;
+    border: 1px solid #f3f4f6;
+
+    // Title
+    h6,
+    .guapante_sidebar_title {
+        font-family: inherit;
+        font-weight: 800 !important;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #1F2937;
+        margin-bottom: 1.25rem;
+        padding-left: 0.5rem;
+    }
+
+    // List Items
+    .nav-pills .nav-link {
+        border-radius: 8px;
+        color: #4B5563 !important;
+        font-weight: 500;
+        padding: 0.6rem 0.75rem;
+        transition: all 0.2s ease;
+        background-color: transparent;
+        border: none;
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.25rem;
+
+        &:hover {
+            background-color: #F9FAFB;
+            color: #111827 !important;
+
+            img,
+            i {
+                transform: scale(1.1);
+            }
+        }
+
+        &.active {
+            background-color: #ECFDF5 !important;
+            color: #059669 !important;
+            font-weight: 600;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+            .label-count {
+                color: #059669 !important;
+                background-color: #D1FAE5 !important;
+            }
+        }
+
+        .label-count {
+            background-color: transparent;
+            color: #9CA3AF !important;
+            font-size: 0.75rem;
+            margin-left: auto;
+        }
+    }
+
+    // Sidebar Extras
+    .guapante-sidebar-extras {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #F3F4F6;
+
+        .seasonal-container {
+            background: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: between;
+        }
+
+        .guapante-logistics-box {
+            background-color: #ECFDF5;
+            border: 1px solid #D1FAE5;
+            border-radius: 8px;
+            padding: 1rem;
+
+            i {
+                font-size: 0.9rem;
+            }
+
+            .text-success {
+                color: #059669 !important;
+            }
+        }
+    }
+}
+
+// 2. General Shop Layout
+main {
+    background-color: #F9FAFB;
+}
+
+.o_wsale_products_main_row {
+    margin-top: 1.5rem;
+}
+
+// 3. Central Header & Toolbar
+.o_wsale_products_breadcrumb {
+    .breadcrumb {
+        background: transparent;
+        padding: 0;
+        margin-bottom: 0.5rem;
+
+        .breadcrumb-item {
+            font-size: 0.85rem;
+            color: #6B7280;
+
+            &.active {
+                color: #111827;
+                font-weight: 600;
+            }
+
+            +.breadcrumb-item::before {
+                content: ">" !important;
+                color: #9CA3AF;
+                font-family: inherit;
+            }
+
+            a {
+                color: #6B7280;
+                text-decoration: none;
+
+                &:hover {
+                    color: #111827;
+                }
+            }
+        }
+    }
+}
+
+.guapante-shop-header {
+    border-bottom: 1px solid #E5E7EB;
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+
+    h1 {
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #111827;
+        margin-bottom: 0.5rem;
+    }
+
+    .text-muted {
+        font-size: 0.95rem;
+        color: #6B7280 !important;
+        max-width: 800px;
+    }
+}
+
+.o_sortby_dropdown {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    background: white;
+
+    .dropdown-toggle {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #374151;
+        padding: 0.5rem 1rem;
+        border: none;
+        background: transparent;
+
+        &:after {
+            margin-left: 0.5rem;
+            border: none;
+            content: "\f078";
+            font-family: FontAwesome;
+            font-size: 0.7em;
+            color: #9CA3AF;
+        }
+    }
+}
+
+// 4. Product Card Design
+.oe_product_cart {
+    background-color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 20px !important; // Increased for softer look
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+
+    // CRITICAL FIX: Odoo's base template has d-flex without flex-direction
+    // This causes horizontal layout (image + info side-by-side)
+    // We need to force column direction for vertical stacking
+    display: flex !important;
+    flex-direction: column !important;
+
+    &:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.08);
+    }
+
+    // Image Container - Full edge-to-edge from top
+    .oe_product_image,
+    .guapante-product-image {
+        height: 240px !important;
+        min-height: 240px !important;
+        max-height: 240px !important;
+        overflow: hidden;
+        background-color: #FFFFFF !important; // Pure white to match card
+        border-radius: 0 !important;
+        padding: 0 !important; // NO padding - full edge-to-edge
+
+        a,
+        .oe_product_image_link {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
+            padding: 1rem; // Padding only on link for image breathing room
+        }
+
+        img {
+            object-fit: contain !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+    }
+
+    // Product Info Section
+    .o_wsale_product_information {
+        background: white !important;
+        padding: 1.25rem 1.5rem 4rem 1.5rem !important; // Extra padding-bottom for cart button
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center; // Center content horizontally
+
+        .o_wsale_products_item_title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #111827;
+            margin-top: 0 !important; // Removed completely to move title up
+            margin-bottom: 0.75rem;
+            line-height: 1.4;
+            text-align: center;
+            width: 100%;
+
+            a {
+                color: #111827 !important;
+                text-decoration: none;
+                display: block;
+
+                &:hover {
+                    color: #059669 !important;
+                }
+            }
+        }
+
+        // Hide location/region
+        .text-muted {
+            display: none !important;
+        }
+    }
+
+    // Cart Icon Button (Bottom Right Corner)
+    .guapante-card-actions {
+        position: absolute !important;
+        right: 0.75rem !important; // Closer to corner
+        bottom: 0.75rem !important; // Closer to corner
+        z-index: 10;
+
+        .btn,
+        a {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px !important;
+            background-color: #111827 !important;
+            border: none !important;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+            i {
+                font-size: 1.2rem;
+                color: white !important;
+            }
+
+            &:hover {
+                background-color: #059669 !important; // Green hover effect
+                transform: scale(1.1);
+                box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+            }
+        }
+    }
+}
+
+// Global Hide Price Rule
+.product_price,
+.o_wsale_product_price {
+    display: none !important;
+}
