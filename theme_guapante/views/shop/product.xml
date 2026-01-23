@@ -14,7 +14,7 @@
             <div class="row">
                 <!-- LEFT SIDEBAR (col-lg-3) -->
                 <aside id="products_grid_before" class="d-none d-lg-block col-lg-3 px-3 clearfix" style="position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;">
-                    <t t-call="website_sale.products_categories_list"/>
+                    <t t-call="theme_guapante.product_sidebar_categories"/>
                 </aside>
                 
                 <!-- RIGHT CONTENT (col-lg-9) -->
@@ -60,5 +60,26 @@
             </div><!-- Close row -->
         </xpath>
         
+    </template>
+
+    <!-- Standalone sidebar template for product pages -->
+    <template id="product_sidebar_categories" name="Product Page Sidebar with Categories">
+        <div class="o_wsale_product_page_sidebar">
+            <!-- Categories Section -->
+            <h6 class="text-uppercase text-muted mb-3" style="font-size: 0.75rem; letter-spacing: 0.5px;">Categorías</h6>
+            <ul class="list-unstyled mb-4">
+                <t t-set="categories" t-value="request.env['product.public.category'].search([('parent_id', '=', False)], order='sequence, name')"/>
+                <t t-foreach="categories" t-as="cat">
+                    <li class="mb-2">
+                        <t t-call="website_sale.categorie_link">
+                            <t t-set="c" t-value="cat"/>
+                        </t>
+                    </li>
+                </t>
+            </ul>
+            
+            <!-- Sidebar Extras (seasonal toggle + logistics) -->
+            <t t-call="theme_guapante.sidebar_extras_content"/>
+        </div>
     </template>
 </odoo>
