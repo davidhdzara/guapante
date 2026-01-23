@@ -4,7 +4,7 @@
         
         <!-- Inject Central Header (Title) INSIDE products_grid to maintain Bootstrap layout -->
         <xpath expr="//div[@id='products_grid']" position="inside">
-            <div class="guapante-shop-header" t-tag="prepend">
+            <div class="guapante-shop-header">
                 <t t-if="category">
                     <div class="d-flex justify-content-between align-items-end mb-2">
                         <!-- Title -->
