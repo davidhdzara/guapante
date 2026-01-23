@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add sidebar to product page by wrapping the existing product_detail section -->
+    <template id="product_guapante" inherit_id="website_sale.product" name="Guapante Product with Sidebar">
+        
+        <!-- Replace the entire product_detail section to add sidebar wrapper -->
+        <xpath expr="//section[@id='product_detail']" position="replace">
+            <div class="container-fluid">
+                <div class="row">
+                    <!-- LEFT SIDEBAR (col-3) -->
+                    <aside id="products_grid_before" class="d-none d-lg-block position-sticky col-3 px-3 clearfix">
+                        <div class="o_wsale_products_grid_before_rail vh-100 ms-n2 mt-n2 pt-2 p-lg-2 pb-lg-5 ps-2 overflow-y-scroll">
+                            <!-- Call existing categories template -->
+                            <t t-call="website_sale.products_categories"/>
+                        </div>
+                    </aside>
+                    
+                    <!-- RIGHT CONTENT (col-9) - Original product section -->
+                    <section id="product_detail" class="col-lg-9 oe_website_sale my-3 my-lg-4" data-view-track="1">
+                        <t t-call="website_sale.product_detail_main"/>
+                    </section>
+                </div>
+            </div>
+        </xpath>
+        
+    </template>
+</odoo>
