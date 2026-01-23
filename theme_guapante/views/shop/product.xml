@@ -11,4 +11,28 @@
             <t t-set="categories" t-value="request.env['product.public.category'].search([('parent_id', '=', False)], order='sequence, name')"/>
         </xpath>
     </template>
+
+    <!-- explicit sidebar injection -->
+    <template id="product_guapante_sidebar" inherit_id="website_sale.product" name="Guapante Product Sidebar Injection">
+        <!-- 1. Change container to fluid -->
+        <xpath expr="//section[@id='product_detail']" position="attributes">
+            <attribute name="class" remove="container" separator=" "/>
+            <attribute name="class" add="container-fluid" separator=" "/>
+        </xpath>
+
+        <!-- 2. Inject Sidebar before content -->
+        <xpath expr="//section[@id='product_detail']/*[1]" position="before">
+            <div class="row">
+                <aside id="products_grid_before" class="d-none d-lg-block col-lg-3 px-3 clearfix" style="position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;">
+                    <t t-call="website_sale.products_categories_list"/>
+                </aside>
+                <div class="col-lg-9">
+        </xpath>
+        
+        <!-- 3. Close wrapper -->
+        <xpath expr="//section[@id='product_detail']/*[last()]" position="after">
+                </div>
+            </div>
+        </xpath>
+    </template>
 </odoo>
