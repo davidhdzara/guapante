@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import http
+from odoo import http, models
 from odoo.http import request
 from odoo.addons.website_sale.controllers.main import WebsiteSale
 
