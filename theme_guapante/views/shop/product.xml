@@ -3,125 +3,42 @@
     <template id="product_guapante_sidebar" inherit_id="website_sale.product" name="Guapante Product Sidebar">
         
         <!-- 
-           ESTRATEGIA SEGURA (ODOO 16/17/18):
-           El template `website_sale.product` suele tener esta estructura:
-           <div id="product_detail" class="container py-4">
-                <div class="row" id="product_detail_main"> ... </div>
-           </div>
+           CORRECCIÓN BASADA EN CÓDIGO FUENTE ODOO 18:
+           La vista utiliza <section id="product_detail" class="container ..."> como contenedor.
+           Dentro tiene dos filas (.row):
+           1. Breadcrumbs
+           2. #product_detail_main (Imagen + Info)
            
-           Nuestro objetivo:
-           <div class="container">
-               <div class="row">
-                   <div class="col-lg-3"> SIDEBAR </div>
-                   <div class="col-lg-9"> <div class="row" id="product_detail_main"> ... </div> </div>
-               </div>
-           </div>
+           ESTRATEGIA GRID/FLEX:
+           Convertimos el <section> en un contenedor Flex (Row) para manejar el layout global.
+           - Breadcrumbs: width 100% (col-12)
+           - Sidebar: width 25% (col-3)
+           - Main: width 75% (col-9)
         -->
 
-        <!-- 1. Envolver todo el contenido del contenedor principal en una estructura de columnas -->
-        <!-- Como no podemos "envolver" fácilmente con XPath, vamos a manipular las clases del contenido existente -->
-        
-        <!-- Paso A: Insertar el Sidebar ANTES de la fila principal del producto -->
-        <xpath expr="//div[hasclass('row')][1]" position="before">
-            <div class="col-lg-3 d-none d-lg-block o_wsale_product_sidebar">
-                 <t t-call="website_sale.products_categories_list"/>
-            </div>
-        </xpath>
-
-        <!-- Paso B: Convertir la fila principal (que contiene imagen y detalles) en una columna de ancho 9 -->
-        <!-- PERO: Si convertimos .row en .col-lg-9, perdemos el comportamiento de fila interna para sus hijos col-6.
-             SOLUCIÓN: Envolver esa fila en un div col-lg-9? No se puede envolver.
-             
-             TRUCO CSS GRID/FLEX:
-             Hacer que el padre (#product_detail) sea un .row.
-             
-        -->
-        
-        <xpath expr="//div[@id='product_detail']" position="attributes">
-            <!-- Aseguramos que el contenedor padre actúe como fila para alojar nuestro col-3 y el contenido -->
-            <!-- Nota: product_detail suele ser 'container'. Container no debe ser Row directamente. -->
-            <!-- Vamos a asumir que 'product_detail' es el container. -->
-        </xpath>
-
-        <!-- 
-            REINTENTO ESTRATEGIA:
-            Vamos a identificar el nodo RAÍZ del grid de producto.
-            Suele ser: <div class="row" id="product_detail_main" ...> (Depende versión).
-            
-            Si inspeccionamos Odoo 16/17, es:
-            <div id="product_detail" class="container ...">
-                <div class="row" id="product_detail_main" data-name="Product Page" ...>
-            
-            Vamos a:
-            1. Insertar el sidebar ANTES de #product_detail_main.
-            2. Envolver ambos (sidebar y product_detail_main) en un nuevo div .row? No se puede envolver.
-            
-            Vamos a usar la técnica de crear un wrapper manual reemplazando el padre pero llamando al contenido? Arriesgado.
-            
-            Vamos a usar JQUERY/JS? No, el usuario pidió QWeb.
-            
-            MEJOR PROBADA:
-            Usar `position="attributes"` en el div `.row` original para añadir una clase que lo fuerce a ser col-9?
-            Si el div original es `.row`, y le ponemos `.col-lg-9`, tendremos un elemento que es ROW y COL al mismo tiempo.
-            Bootstrap permite esto (nesting), pero hay que tener cuidado con márgenes negativos.
-            
-            <div class="row col-lg-9"> ... </div>
-            
-            Y necesitamos que el PADRE de este sea un `.row` también para que el Sidebar (col-3) flote al lado.
-        -->
-
-        <!-- 1. Convertir el contenedor padre (#product_detail) en un Flex Container (Row) 
-             CUIDADO: Si es 'container', añadir 'row' rompe márgenes.
-             Pero si añadimos un div class='row' alrededor con JS? No.
-             
-             Vamos a asumir que necesitamos insertar el sidebar *DENTRO* de la fila existente,
-             y luego mover todo el resto a una columna derecha.
-        -->
-
-        <xpath expr="//div[hasclass('row')][1]" position="inside">
-             <!-- ESTO ES ARRIESGADO SIN VER EL CÓDIGO -->
-        </xpath>
-        
-        <!-- 
-            PLAN C (Conservador):
-            Insertar el sidebar al principio del container `product_detail`.
-            Usar clases de utilidad para flotarlo? NO.
-            
-            Vamos a inyectar el sidebar, y luego envolveremos la fila de producto usando replace + call?
-            No podemos llamar a contenido inline.
-            
-            Vamos a pedir al usuario el código si falla.
-            Pero para avanzar, usaremos la estructura más estándar:
-            
-            Buscamos la `div.row` principal dentro de `product_detail`.
-            La transformamos en la columna derecha.
-        -->
-        
-        <!-- Añadimos 'row' al padre para que acepte columnas -->
-        <!-- PRECAUCIÓN: Esto asume que product_detail no tiene padding extra que entre en conflicto -->
-        <xpath expr="//div[@id='product_detail']" position="attributes">
+        <!-- 1. Convertir Section en Row -->
+        <xpath expr="//section[@id='product_detail']" position="attributes">
             <attribute name="class" add="row" separator=" "/>
         </xpath>
 
-        <!-- Insertamos Sidebar al inicio del padre -->
-        <xpath expr="//div[@id='product_detail']" position="inside">
-            <!-- Usamos un placeholder superior, luego lo movemos con css order?
-                 Mejor: `prepend`
-            -->
+        <!-- 2. Breadcrumbs (Primera Row): Forzar ancho completo -->
+        <xpath expr="//section[@id='product_detail']/div[hasclass('row')][1]" position="attributes">
+            <attribute name="class" add="col-12" separator=" "/>
         </xpath>
-        
-        <!-- Prepend Sidebar -->
-        <xpath expr="//div[@id='product_detail']/*[1]" position="before">
-            <div class="col-lg-3 d-none d-lg-block o_wsale_product_sidebar">
+
+        <!-- 3. Insertar Sidebar ANTES del contenido principal (pero después de breadcrumbs, gracias al selector abajo) -->
+        <xpath expr="//div[@id='product_detail_main']" position="before">
+            <div class="col-lg-3 d-none d-lg-block o_wsale_product_sidebar mt-lg-4">
+                 <!-- Inyectamos la plantilla de categorías -->
                  <t t-call="website_sale.products_categories_list"/>
             </div>
         </xpath>
 
-        <!-- Convertimos el contenido original (que asumo es la fila principal) en col-9 -->
-        <!-- Buscamos el div que tiene clase 'row' y le añadimos col-lg-9 -->
-        <xpath expr="//div[@id='product_detail']/div[hasclass('row')]" position="attributes">
-            <!-- Al ser row y col simultáneamente, funciona en BS5 pero corregimos márgenes -->
-            <attribute name="class" add="col-lg-9" separator=" "/>
+        <!-- 4. Contenido Principal: Ajustar a col-9 -->
+        <xpath expr="//div[@id='product_detail_main']" position="attributes">
+             <!-- Añadimos col-12 (mobile) y col-lg-9 (desktop) -->
+             <!-- Al ser ya un .row, actuará como Row y Col simultáneamente -->
+            <attribute name="class" add="col-12 col-lg-9" separator=" "/>
         </xpath>
 
     </template>
