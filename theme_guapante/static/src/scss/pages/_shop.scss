@@ -1,16 +1,20 @@
 // Shop Page Styles
 
-// 1. Sidebar Container (White Card Effect)
+// 1. Sidebar Container (Sticky & Clean)
 #products_grid_before {
-    background-color: #FFFFFF !important;
-    border-radius: 12px;
-    padding: 1.5rem 1rem !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    margin-right: 1.5rem;
+    // Make it sticky
+    position: sticky;
+    top: 90px;
     height: fit-content;
-    border: 1px solid #f3f4f6;
 
-    // Title
+    // Clean styling (No border card in this version, just clean list)
+    background-color: transparent !important;
+    padding: 0 1.5rem 0 0 !important;
+    margin-right: 0;
+    border: none;
+    box-shadow: none;
+
+    // Filters Title
     h6,
     .guapante_sidebar_title {
         font-family: inherit;
@@ -18,293 +22,200 @@
         text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.05em;
-        color: #1F2937;
-        margin-bottom: 1.25rem;
+        color: #9CA3AF; // Lighter gray for headers
+        margin-bottom: 1rem;
+        margin-top: 1.5rem;
         padding-left: 0.5rem;
     }
 
-    // List Items
+    // List Items (Categories)
     .nav-pills .nav-link {
         border-radius: 8px;
-        color: #4B5563 !important;
+        color: #4B5563 !important; // Text Gray
         font-weight: 500;
-        padding: 0.6rem 0.75rem;
+        padding: 0.5rem 0.75rem;
         transition: all 0.2s ease;
         background-color: transparent;
-        border: none;
         display: flex;
         align-items: center;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.125rem;
+        font-size: 0.95rem;
 
         &:hover {
-            background-color: #F9FAFB;
-            color: #111827 !important;
-
-            img,
-            i {
-                transform: scale(1.1);
-            }
+            background-color: transparent;
+            color: $primary !important; // Green hover text
         }
 
         &.active {
-            background-color: #ECFDF5 !important;
-            color: #059669 !important;
+            background-color: #ECFDF5 !important; // Light green bg
+            color: #059669 !important; // Dark green text
             font-weight: 600;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-
-            .label-count {
-                color: #059669 !important;
-                background-color: #D1FAE5 !important;
-            }
-        }
-
-        .label-count {
-            background-color: transparent;
-            color: #9CA3AF !important;
-            font-size: 0.75rem;
-            margin-left: auto;
-        }
-    }
-
-    // Sidebar Extras
-    .guapante-sidebar-extras {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
-        border-top: 1px solid #F3F4F6;
-
-        .seasonal-container {
-            background: #F9FAFB;
-            border: 1px solid #E5E7EB;
-            border-radius: 8px;
-            padding: 0.75rem;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: between;
-        }
-
-        .guapante-logistics-box {
-            background-color: #ECFDF5;
-            border: 1px solid #D1FAE5;
-            border-radius: 8px;
-            padding: 1rem;
 
             i {
-                font-size: 0.9rem;
-            }
-
-            .text-success {
                 color: #059669 !important;
             }
         }
     }
 }
 
-// 2. General Shop Layout
-main {
-    background-color: #F9FAFB;
-}
-
-.o_wsale_products_main_row {
+// 2. Product Card Design (The "Guapante Card")
+.guapante-card {
+    background-color: #FFFFFF;
+    border-radius: 24px; // Large rounded corners
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); // Very subtle shadow
+    border: 1px solid #F3F4F6;
     margin-top: 1.5rem;
-}
 
-// 3. Central Header & Toolbar
-.o_wsale_products_breadcrumb {
-    .breadcrumb {
-        background: transparent;
-        padding: 0;
-        margin-bottom: 0.5rem;
-
-        .breadcrumb-item {
-            font-size: 0.85rem;
-            color: #6B7280;
-
-            &.active {
-                color: #111827;
-                font-weight: 600;
-            }
-
-            +.breadcrumb-item::before {
-                content: ">" !important;
-                color: #9CA3AF;
-                font-family: inherit;
-            }
-
-            a {
-                color: #6B7280;
-                text-decoration: none;
-
-                &:hover {
-                    color: #111827;
-                }
-            }
-        }
+    // Internal spacing fix for cols
+    >.col-lg-6 {
+        padding: 2rem;
     }
 }
 
-.guapante-shop-header {
-    border-bottom: 1px solid #E5E7EB;
-    padding-bottom: 1.5rem;
-    margin-bottom: 2rem;
-
+// 3. Product Details Refinement
+#product_details {
     h1 {
         font-weight: 800;
         letter-spacing: -0.02em;
         color: #111827;
-        margin-bottom: 0.5rem;
+        font-size: 2.25rem;
+        margin-bottom: 1rem;
     }
 
-    .text-muted {
-        font-size: 0.95rem;
-        color: #6B7280 !important;
-        max-width: 800px;
-    }
-}
-
-.o_sortby_dropdown {
-    border: 1px solid #E5E7EB;
-    border-radius: 8px;
-    background: white;
-
-    .dropdown-toggle {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #374151;
-        padding: 0.5rem 1rem;
-        border: none;
-        background: transparent;
-
-        &:after {
-            margin-left: 0.5rem;
-            border: none;
-            content: "\f078";
-            font-family: FontAwesome;
-            font-size: 0.7em;
-            color: #9CA3AF;
-        }
-    }
-}
-
-// 4. Product Card Design
-.oe_product_cart {
-    background-color: #FFFFFF !important;
-    border: none !important;
-    border-radius: 20px !important; // Increased for softer look
-    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-
-    // CRITICAL FIX: Odoo's base template has d-flex without flex-direction
-    // This causes horizontal layout (image + info side-by-side)
-    // We need to force column direction for vertical stacking
-    display: flex !important;
-    flex-direction: column !important;
-
-    &:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.08);
+    // Price Styling
+    .css_quantity {
+        display: none !important; // Hide default qty input if we custom one
     }
 
-    // Image Container - Full edge-to-edge from top
-    .oe_product_image,
-    .guapante-product-image {
-        height: 240px !important;
-        min-height: 240px !important;
-        max-height: 240px !important;
-        overflow: hidden;
-        background-color: #FFFFFF !important; // Pure white to match card
-        border-radius: 0 !important;
-        padding: 0 !important; // NO padding - full edge-to-edge
+    .product_price {
+        margin-top: 1rem;
+        margin-bottom: 1.5rem;
 
-        a,
-        .oe_product_image_link {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            width: 100%;
-            padding: 1rem; // Padding only on link for image breathing room
-        }
-
-        img {
-            object-fit: contain !important;
-            width: 100% !important;
-            height: 100% !important;
-        }
-    }
-
-    // Product Info Section
-    .o_wsale_product_information {
-        background: white !important;
-        padding: 1.25rem 1.5rem 4rem 1.5rem !important; // Extra padding-bottom for cart button
-        flex-grow: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center; // Center content horizontally
-
-        .o_wsale_products_item_title {
-            font-size: 1rem;
-            font-weight: 600;
+        .oe_price {
+            font-size: 2rem;
+            font-weight: 800;
             color: #111827;
-            margin-top: 0 !important; // Removed completely to move title up
-            margin-bottom: 0.75rem;
-            line-height: 1.4;
-            text-align: center;
-            width: 100%;
+        }
+    }
 
-            a {
-                color: #111827 !important;
-                text-decoration: none;
-                display: block;
+    // Add to Cart Button (Full Width Green)
+    #add_to_cart {
+        width: 100%;
+        background-color: $primary !important;
+        border: none;
+        border-radius: 12px;
+        padding: 1rem;
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-transform: uppercase; // Optional
+        box-shadow: 0 4px 12px rgba($primary, 0.3);
+        transition: transform 0.2s;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba($primary, 0.4);
+        }
+    }
+}
+
+// 4. Variant Selectors (Radio Buttons -> Cards)
+.js_product {
+
+    ul.list-inline,
+    ul.list-unstyled {
+        margin-bottom: 1.5rem;
+
+        // Label styling (e.g. "TAMAÑO")
+        strong {
+            display: block;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            color: #6B7280;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        // Radio List Item
+        li.list-inline-item {
+            margin-right: 0.5rem;
+
+            // The Label acting as Card
+            label.css_attribute_color {
+                // Color circles logic (if used for Maturity)
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                cursor: pointer;
+                border: 2px solid transparent;
+
+                input {
+                    display: none;
+                }
+
+                &.active {
+                    border-color: $primary;
+                    transform: scale(1.1);
+                }
+            }
+
+            // Radio Buttons Logic (Size)
+            label:not(.css_attribute_color) {
+                cursor: pointer;
+                background: white;
+                border: 1px solid #E5E7EB;
+                border-radius: 12px;
+                padding: 0.75rem 1.5rem;
+                font-weight: 600;
+                color: #374151;
+                transition: all 0.2s;
+                min-width: 100px;
+                text-align: center;
+
+                input {
+                    display: none;
+                }
+
+                // Hide default radio
+
+                // Active State (Checked)
+                &:has(input:checked),
+                &.active {
+                    border-color: $primary;
+                    background-color: rgba($primary, 0.05);
+                    color: $primary;
+                    box-shadow: 0 0 0 1px $primary;
+                }
 
                 &:hover {
-                    color: #059669 !important;
+                    border-color: $primary;
                 }
             }
         }
-
-        // Hide location/region
-        .text-muted {
-            display: none !important;
-        }
-    }
-
-    // Cart Icon Button (Bottom Right Corner)
-    .guapante-card-actions {
-        position: absolute !important;
-        right: 0.75rem !important; // Closer to corner
-        bottom: 0.75rem !important; // Closer to corner
-        z-index: 10;
-
-        .btn,
-        a {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px !important;
-            background-color: #111827 !important;
-            border: none !important;
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-
-            i {
-                font-size: 1.2rem;
-                color: white !important;
-            }
-
-            &:hover {
-                background-color: #059669 !important; // Green hover effect
-                transform: scale(1.1);
-                box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
-            }
-        }
     }
 }
 
-// Global Hide Price Rule
-.o_wsale_product_price {
-    display: none !important;
+// 5. Quantity Input Styling
+.css_quantity {
+
+    // Custom style for quantity input group
+    .input-group-prepend button,
+    .input-group-append button {
+        border: 1px solid #E5E7EB;
+        background: white;
+        color: #374151;
+        padding: 0.5rem 1rem;
+
+        &:hover {
+            background: #F9FAFB;
+        }
+    }
+
+    input.quantity {
+        border-top: 1px solid #E5E7EB;
+        border-bottom: 1px solid #E5E7EB;
+        border-left: none;
+        border-right: none;
+        font-weight: 600;
+        color: #111827;
+    }
 }

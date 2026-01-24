@@ -26,19 +26,36 @@
             <attribute name="class" add="col-12" separator=" "/>
         </xpath>
 
-        <!-- 3. Insertar Sidebar ANTES del contenido principal (pero después de breadcrumbs, gracias al selector abajo) -->
+        <!-- 3. Insertar Sidebar ANTES del contenido principal (pero después de breadcrumbs) -->
+        <!-- Usamos id='products_grid_before' para heredar los estilos del Shop -->
         <xpath expr="//div[@id='product_detail_main']" position="before">
-            <div class="col-lg-3 d-none d-lg-block o_wsale_product_sidebar mt-lg-4">
-                 <!-- Inyectamos la plantilla de categorías -->
+            <div id="products_grid_before" class="col-lg-3 d-none d-lg-block mt-lg-4">
                  <t t-call="website_sale.products_categories_list"/>
             </div>
         </xpath>
 
-        <!-- 4. Contenido Principal: Ajustar a col-9 -->
+        <!-- 4. Contenido Principal: Ajustar a col-9 y convertir en Tarjeta -->
         <xpath expr="//div[@id='product_detail_main']" position="attributes">
-             <!-- Añadimos col-12 (mobile) y col-lg-9 (desktop) -->
-             <!-- Al ser ya un .row, actuará como Row y Col simultáneamente -->
-            <attribute name="class" add="col-12 col-lg-9" separator=" "/>
+             <!-- Añadimos col-12 col-lg-9 -->
+             <attribute name="class" add="col-12 col-lg-9" separator=" "/>
+        </xpath>
+
+        <!-- 5. Envolver contenido de la imagen y detalles en un Card Wrapper -->
+        <!-- Como no podemos envolver fácilmente con 'wrap', aplicamos las clases de tarjeta AL Row principal -->
+        <!-- OJO: Si aplicamos p-4 al row, afecta los márgenes de las cols internas. -->
+        <!-- Mejor: Inyectamos un div wrapper DENTRO de product_detail_main? -->
+        <!-- No, product_detail_main ES el row. -->
+        <!-- Vamos a asumir que el estilo .guapante-card se aplica al bloque, y manejamos el padding en CSS -->
+        <xpath expr="//div[@id='product_detail_main']" position="attributes">
+            <attribute name="class" add="guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
+        </xpath>
+
+        <!-- 6. Inyectar Texto de Entrega y Ubicación (Mockup) -->
+        <xpath expr="//h1[@itemprop='name']" position="before">
+             <div class="d-flex align-items-center mb-2">
+                 <span class="badge bg-success-light text-success me-2 px-2 py-1 rounded-pill" style="font-size: 0.75rem; background-color: #d1fae5; color: #065f46;">BOYACÁ</span>
+                 <span class="text-muted small"><i class="fa fa-clock-o me-1"></i>Entrega: <strong>Mañana</strong></span>
+             </div>
         </xpath>
 
     </template>
