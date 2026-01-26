@@ -9,6 +9,7 @@
         background: white;
         border-radius: 16px;
         overflow: hidden;
+        border: 1px solid #E5E7EB; // Borde sutil para definir esquinas
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         transition: all 0.3s ease;
 
@@ -80,6 +81,7 @@
 // 3. Product Information Section
 .o_wsale_product_information {
     padding: 1rem;
+    text-align: center; // Centrar todo el contenido
 
     // Title
     .o_wsale_products_item_title {
@@ -87,6 +89,7 @@
         font-weight: 600;
         line-height: 1.4;
         margin-bottom: 0.5rem;
+        text-align: center; // Título centrado
 
         a {
             color: #111827 !important;
@@ -124,15 +127,15 @@
     // Cart Button (floating, circular, dark)
     .o_wsale_product_btn {
         position: absolute;
-        bottom: 12px;
-        right: 12px;
+        bottom: 8px; // Más pegado al borde
+        right: 8px; // Más pegado al borde
         z-index: 3;
 
         button,
         a {
             width: 48px;
             height: 48px;
-            border-radius: 50%;
+            border-radius: 12px; // Bordes redondeados (no circular completo)
             background: #1F2937;
             border: none;
             color: white;
@@ -149,8 +152,10 @@
                 box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
             }
 
-            i {
+            i,
+            .fa {
                 font-size: 1.1rem;
+                color: white;
             }
         }
     }
