@@ -60,6 +60,7 @@
             # JavaScript files
             'theme_guapante/static/src/js/auth_signup.js',
             'theme_guapante/static/src/js/shop.js',
+            'theme_guapante/static/src/js/product_layout_fix.js', // Layout Fix JS
         ],
     },
     'application': False,
