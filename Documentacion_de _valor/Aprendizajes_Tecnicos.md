@@ -263,3 +263,130 @@ Antes de escribir un XPath:
 
 **Última actualización:** Enero 2026  
 **Autor:** Equipo Guapante (David + AI Assistant)
+
+---
+
+## 11. Sidebar en Ficha de Producto (Enero 2026)
+
+### ❌ CRÍTICO: `position="move"` NO está soportado en Odoo 18 (esta instancia)
+
+**Error recibido:**
+```
+ValueError: Atributo de posición no válido: 'move'
+```
+
+**Contexto:** Intentamos usar `<xpath expr="//section[@id='product_detail']" position="move">` para reubicar el section dentro de un wrapper.
+
+**Aprendizaje:**
+- El atributo `position="move"` **NO está disponible** en todas las instalaciones de Odoo 18.
+- Aunque está documentado en versiones recientes, depende de la versión específica del servidor.
+- **Regla:** Si un comando XPath causa Error 500, **preguntar inmediatamente al usuario** en lugar de seguir iterando.
+
+---
+
+### ❌ VIOLACIÓN BOOTSTRAP: NO mezclar `row` y `col` en el mismo nodo
+
+**Error cometido:**
+```xml
+<!-- ❌ INCORRECTO -->
+<xpath expr="//section[@id='product_detail']" position="attributes">
+    <attribute name="class" add="row"/>
+</xpath>
+<!-- Luego intentar insertar col-3 y col-9 como hermanos -->
+```
+
+**Problema:** 
+- `section#product_detail` ya contiene estructura interna propia (containers, rows).
+- Convertirlo en `.row` rompe la jerarquía de Bootstrap.
+- Un elemento NO puede ser `row` y `col` simultáneamente.
+
+**Solución correcta:**
+- Crear un **wrapper externo** con `container > row` ANTES del section original.
+- NO modificar las clases internas del section.
+- Insertar columnas (`col-3` sidebar, `col-9` contenido) dentro del nuevo row.
+
+**Documentado en:** `sidebar.md` sección "Hallazgos Críticos".
+
+---
+
+### ✅ SOLUCIÓN IMPLEMENTADA: Wrapper + JS Fallback
+
+**Estrategia final (debido a limitación de `move`):**
+
+1. **XML:** Crear wrapper vacío con estructura correcta:
+```xml
+<div class="container guapante-product-container">
+    <div class="row">
+        <aside id="products_grid_before" class="col-lg-3">
+            <!-- Sidebar -->
+        </aside>
+        <div class="col-lg-9 guapante-product-content">
+            <!-- Vacío inicialmente -->
+        </div>
+    </div>
+</div>
+```
+
+2. **XML:** Ocultar section original con `d-none` (prevención FOUC):
+```xml
+<xpath expr="//section[@id='product_detail']" position="attributes">
+    <attribute name="class" add="d-none"/>
+</xpath>
+```
+
+3. **JS:** Mover el DOM al cargar (`product_layout_fix.js`):
+```javascript
+$('.guapante-product-content').append($('#product_detail'));
+$('#product_detail').removeClass('d-none');
+```
+
+**Ventajas:**
+- Cumple Bootstrap (estructura válida en el DOM final).
+- Evita Error 500 (no usa `move` de XML).
+- Previene FOUC (Flash of Unstyled Content).
+
+**Desventajas:**
+- **Dependencia crítica de JS:** Si el asset falla, el layout se rompe completamente.
+- Mayor complejidad de debugging.
+
+---
+
+### ⚠️ Templates Sidebar: `products_categories` vs `products_categories_list`
+
+**Error recibido al intentar `products_categories`:**
+```
+File "<2432>", line 5, in not_found_template
+```
+
+**Aprendizaje:**
+- `website_sale.products_categories` → NO existe en esta instalación.
+- `website_sale.products_categories_list` → Existe, pero es lista plana (sin colapsado).
+
+**Regla de Oro:**
+- **NUNCA asumir** que un template existe.
+- **SIEMPRE preguntar al usuario** qué template se usa en `/shop` antes de replicarlo en `/shop/product`.
+- Si un `t-call` falla con 500, reportar el error de inmediato y pedir al usuario que confirme el nombre correcto del template.
+
+---
+
+### 📋 Checklist Antes de Iterar en el Mismo Problema
+
+**Si llevo más de 3 intentos fallidos:**
+
+1. ✅ ¿He pedido al usuario que me comparta el HTML renderizado?
+2. ✅ ¿He pedido logs del servidor o mensaje de error completo?
+3. ✅ ¿He preguntado explícitamente si la funcionalidad X está disponible en su versión?
+4. ✅ ¿He actualizado `Aprendizajes_Tecnicos.md` con el bloqueo?
+
+**Si la respuesta a cualquiera es NO → DETENERME y pedir ayuda al usuario.**
+
+---
+
+### 🎯 Reglas de Trabajo Confirmadas
+
+1. **Generar desarrollos** según sea encargado.
+2. **Leer TODA la documentación** en `Documentacion_de_valor` antes de empezar.
+3. **Actualizar `Aprendizajes_Tecnicos.md`** con cada descubrimiento importante.
+4. **NO adivinar:** Preguntar dudas y pedir información (HTML, vistas, errores, logs).
+5. **Máximo 3 intentos** en el mismo problema sin pedir ayuda al usuario.
+
