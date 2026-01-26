@@ -2,14 +2,27 @@
 
 // 1. Sidebar Container (Sticky & Clean)
 #products_grid_before {
+    // List Items (Categories)
     // Make it sticky
     position: sticky;
     top: 90px;
     height: fit-content;
+    max-height: 80vh; // Prevent it from being taller than viewport
+    overflow-y: auto; // Enable internal scrolling
+
+    // Custom Scrollbar
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background-color: #E5E7EB;
+        border-radius: 4px;
+    }
 
     // Clean styling (No border card in this version, just clean list)
     background-color: transparent !important;
-    padding: 0 1.5rem 0 0 !important;
+    padding: 0 1rem 0 0 !important;
     margin-right: 0;
     border: none;
     box-shadow: none;
