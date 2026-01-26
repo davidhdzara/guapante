@@ -68,19 +68,22 @@
             transform: translateX(2px);
         }
 
-        &.active,
-        &[style*="font-weight: bold"] {
-            // Odoo a veces pone style inline para active
+        // Estilo Active Pill (Verde)
+        &.guapante-active {
             background-color: #ECFDF5 !important; // Light green bg (fondo completo pastilla)
             color: #065f46 !important; // Dark green text
             font-weight: 700 !important;
             box-shadow: none; // Sin sombra para estilo clean
             border-radius: 12px; // Bordes redondeados consistentes
+            text-decoration: none !important; // Quitar subrayado
+            padding: 0.5rem 1rem !important; // Padding para que parezca botón/pill
+            width: 100%; // Ocupar espacio disponible
 
             // El icono también debe ser verde oscuro
             i,
             .fa {
                 color: #10B981 !important; // Verde vibrante para el icono
+                opacity: 1 !important; // Quitar opacidad reducida
                 font-weight: bold;
             }
 
