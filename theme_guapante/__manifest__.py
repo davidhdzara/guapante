@@ -46,6 +46,7 @@
             # Page-specific styles
             'theme_guapante/static/src/scss/pages/_auth.scss',
             'theme_guapante/static/src/scss/pages/_shop.scss',
+            'theme_guapante/static/src/scss/pages/_shop_grid.scss',  # Product cards premium style
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',
