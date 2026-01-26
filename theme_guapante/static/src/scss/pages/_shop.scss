@@ -281,9 +281,9 @@
     }
 }
 
-// 6. Hide Duplicate Category Title (Odoo default at bottom)
-// We injected a custom one at the top in layout.xml
-#products_grid .o_wsale_products_grid_table_wrapper>h3,
-#products_grid>h3 {
+// 6. Hide Duplicate Category Title (Odoo default)
+// We injected a custom one in .guapante-shop-header via layout.xml
+// Hide all h1 inside #products_grid EXCEPT the one in our custom header
+#products_grid>h1:not(.guapante-shop-header h1) {
     display: none !important;
 }
