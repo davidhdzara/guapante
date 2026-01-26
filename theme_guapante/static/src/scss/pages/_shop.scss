@@ -49,8 +49,8 @@
         margin-bottom: 0.75rem;
     }
 
-    // List Items (Categories)
-    .nav-pills .nav-link {
+    // Category Links Styling
+    .nav a {
         border-radius: 50px; // Pill shape fully rounded
         color: #4B5563 !important; // Text Gray
         font-weight: 500;
@@ -61,38 +61,39 @@
         align-items: center;
         margin-bottom: 0.25rem;
         font-size: 0.9rem;
+        text-decoration: none;
 
         &:hover {
             background-color: #F9FAFB;
             color: $primary !important; // Green hover text
             transform: translateX(2px);
         }
+    }
 
-        // Estilo Active Pill (Verde)
-        &.guapante-active {
-            background-color: #ECFDF5 !important; // Light green bg (fondo completo pastilla)
-            color: #065f46 !important; // Dark green text
-            font-weight: 700 !important;
-            box-shadow: none; // Sin sombra para estilo clean
-            border-radius: 12px; // Bordes redondeados consistentes
-            text-decoration: none !important; // Quitar subrayado
-            padding: 0.5rem 1rem !important; // Padding para que parezca botón/pill
-            width: 100%; // Ocupar espacio disponible
+    // Estilo Active Pill (Verde) - Selector directo
+    a.guapante-active {
+        background-color: #ECFDF5 !important; // Light green bg (fondo completo pastilla)
+        color: #065f46 !important; // Dark green text
+        font-weight: 700 !important;
+        box-shadow: none; // Sin sombra para estilo clean
+        border-radius: 12px; // Bordes redondeados consistentes
+        text-decoration: none !important; // Quitar subrayado
+        padding: 0.5rem 1rem !important; // Padding para que parezca botón/pill
+        width: 100%; // Ocupar espacio disponible
 
-            // El icono también debe ser verde oscuro
-            i,
-            .fa {
-                color: #10B981 !important; // Verde vibrante para el icono
-                opacity: 1 !important; // Quitar opacidad reducida
-                font-weight: bold;
-            }
+        // El icono también debe ser verde oscuro
+        i,
+        .fa {
+            color: #10B981 !important; // Verde vibrante para el icono
+            opacity: 1 !important; // Quitar opacidad reducida
+            font-weight: bold;
+        }
 
-            // Si hay badge de cantidad (span), ajustarlo
-            .badge,
-            span.badge {
-                background-color: #FFFFFF !important;
-                color: #065f46 !important;
-            }
+        // Si hay badge de cantidad (span), ajustarlo
+        .badge,
+        span.badge {
+            background-color: #FFFFFF !important;
+            color: #065f46 !important;
         }
     }
 
