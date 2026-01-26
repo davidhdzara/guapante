@@ -7,8 +7,16 @@
     position: sticky;
     top: 90px;
     height: fit-content;
-    max-height: 80vh; // Prevent it from being taller than viewport
+    max-height: 85vh; // Prevent it from being taller than viewport
     overflow-y: auto; // Enable internal scrolling
+
+    // Premium Card Style
+    background-color: #FFFFFF !important;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); // Suave sombra
+    padding: 1.5rem !important;
+    margin-right: 0;
+    border: 1px solid #F3F4F6;
 
     // Custom Scrollbar
     &::-webkit-scrollbar {
@@ -20,54 +28,73 @@
         border-radius: 4px;
     }
 
-    // Clean styling (No border card in this version, just clean list)
-    background-color: transparent !important;
-    padding: 0 1rem 0 0 !important;
-    margin-right: 0;
-    border: none;
-    box-shadow: none;
+    // Filters Header
+    .guapante-sidebar-header {
+        h5 {
+            font-size: 1.1rem;
+            letter-spacing: -0.01em;
+        }
+    }
 
-    // Filters Title
-    h6,
-    .guapante_sidebar_title {
+    // Categories Title
+    h6 {
         font-family: inherit;
-        font-weight: 800 !important;
-        text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.05em;
-        color: #9CA3AF; // Lighter gray for headers
-        margin-bottom: 1rem;
-        margin-top: 1.5rem;
-        padding-left: 0.5rem;
+        color: #9CA3AF;
+        margin-bottom: 0.75rem;
     }
 
     // List Items (Categories)
     .nav-pills .nav-link {
-        border-radius: 8px;
+        border-radius: 50px; // Pill shape fully rounded
         color: #4B5563 !important; // Text Gray
         font-weight: 500;
-        padding: 0.5rem 0.75rem;
+        padding: 0.6rem 1rem;
         transition: all 0.2s ease;
         background-color: transparent;
         display: flex;
         align-items: center;
-        margin-bottom: 0.125rem;
-        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
 
         &:hover {
-            background-color: transparent;
+            background-color: #F9FAFB;
             color: $primary !important; // Green hover text
+            transform: translateX(2px);
         }
 
-        &.active {
+        &.active,
+        &[style*="font-weight: bold"] {
+            // Odoo a veces pone style inline para active
             background-color: #ECFDF5 !important; // Light green bg
-            color: #059669 !important; // Dark green text
-            font-weight: 600;
+            color: #065f46 !important; // Dark green text
+            font-weight: 700 !important;
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
 
             i {
                 color: #059669 !important;
             }
         }
+    }
+
+    // Logistics Box Styling
+    .guapante-logistics-box {
+        background-color: #ECFDF5;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-top: 1.5rem;
+        border: 1px solid rgba(16, 185, 129, 0.1);
+
+        .text-success {
+            color: #059669 !important;
+        }
+    }
+
+    // Seasonal Toggle Container
+    .seasonal-container {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #F3F4F6;
+        margin-bottom: 1rem;
     }
 }
 

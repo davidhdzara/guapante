@@ -47,7 +47,17 @@
     
     <!-- Inject Sidebar Extras into Categories Sidebar -->
     <template id="products_categories_guapante_extras" inherit_id="website_sale.products_categories_list" name="Guapante Sidebar Extras Injection">
-        <!-- Append after the categories list -->
+        
+        <!-- 1. Header Filtros (Antes de la lista) -->
+        <xpath expr="//ul" position="before">
+            <div class="guapante-sidebar-header mb-3">
+                <h5 class="fw-bold text-dark mb-1">Filtros</h5>
+                <span class="text-muted small">Refinar catálogo</span>
+            </div>
+            <h6 class="text-muted text-uppercase small fw-bold mb-3 mt-4" style="letter-spacing: 0.05em; font-size: 0.75rem;">Categorías</h6>
+        </xpath>
+
+        <!-- 2. Extras (Despues de la lista) -->
         <xpath expr="//ul" position="after">
             <t t-call="theme_guapante.sidebar_extras_content"/>
         </xpath>
