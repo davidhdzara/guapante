@@ -29,12 +29,12 @@
 .oe_product_image,
 .guapante-product-image {
     height: 250px; // Altura fija para consistencia
-    width: 100%;
+    width: calc(100% + 20px); // Compensar margen negativo
     background: transparent; // Sin fondo gris
     position: relative;
     overflow: hidden;
     border-radius: 16px 16px 0 0; // Solo bordes superiores redondeados
-    margin: 0; // Sin márgenes
+    margin: -10px; // Eliminar bordes blancos (padding negativo)
     padding: 0; // Sin padding
 
     // Image wrapper
