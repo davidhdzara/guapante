@@ -18,14 +18,20 @@
     margin-right: 0;
     border: 1px solid #F3F4F6;
 
-    // Custom Scrollbar
+    // Custom Scrollbar (Invisible by default, visible on hover)
     &::-webkit-scrollbar {
         width: 4px;
+        background: transparent;
     }
 
     &::-webkit-scrollbar-thumb {
-        background-color: #E5E7EB;
+        background-color: transparent; // Invisible default
         border-radius: 4px;
+    }
+
+    // Show scrollbar only on hover
+    &:hover::-webkit-scrollbar-thumb {
+        background-color: #D1D5DB; // Visible Grey on hover
     }
 
     // Filters Header
