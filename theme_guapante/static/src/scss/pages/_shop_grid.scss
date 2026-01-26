@@ -25,19 +25,32 @@
     }
 }
 
-// 2. Product Image (Taller, Square-ish)
+// 2. Product Image (Edge-to-edge, 60% de la tarjeta)
 .oe_product_image,
 .guapante-product-image {
-    aspect-ratio: 1 / 1.1; // Slightly taller than square
-    min-height: 200px;
-    background: #F9FAFB;
+    height: 250px; // Altura fija para consistencia
+    width: 100%;
+    background: transparent; // Sin fondo gris
     position: relative;
+    overflow: hidden;
+    border-radius: 16px 16px 0 0; // Solo bordes superiores redondeados
+    margin: 0; // Sin márgenes
+    padding: 0; // Sin padding
 
     // Image wrapper
     .oe_product_image_link {
         display: block;
         height: 100%;
         width: 100%;
+    }
+
+    // Wrapper interno de la imagen
+    .oe_product_image_img_wrapper {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
     }
 
     // Image itself
