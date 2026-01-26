@@ -4,7 +4,7 @@
     <template id="categorie_link_guapante" inherit_id="website_sale.categorie_link" name="Guapante Category Link with Icon">
         <xpath expr="//a[@t-field='c.name']" position="replace">
             <a t-att-href="keep('/shop/category/' + slug(c), category=0)" 
-               t-attf-class="{{(category and not isinstance(category, str) and c.id == category.id) and 'guapante-active'}} p-0 d-flex align-items-center">
+               t-att-class="'p-0 d-flex align-items-center %s' % ('guapante-active' if category and category.id == c.id else '')">
                 <!-- Category Icon (from image or fallback) -->
                 <t t-if="c.image_128">
                     <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain;'}"/>
