@@ -279,3 +279,10 @@
         color: #111827;
     }
 }
+
+// 6. Hide Duplicate Category Title (Odoo default at bottom)
+// We injected a custom one at the top in layout.xml
+#products_grid .o_wsale_products_grid_table_wrapper>h3,
+#products_grid>h3 {
+    display: none !important;
+}
