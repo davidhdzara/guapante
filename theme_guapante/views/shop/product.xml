@@ -20,7 +20,7 @@
                 <div class="row">
                     <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
                     <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block sticky-top" style="top: 90px; height: fit-content; z-index: 1;">
-                        <t t-call="website_sale.products_categories"/>
+                        <t t-call="website_sale.products_categories_list"/>
                     </aside>
                     
                     <!-- Columna Destino (JS moverá el contenido aquí) -->
