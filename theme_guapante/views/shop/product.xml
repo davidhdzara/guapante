@@ -31,12 +31,12 @@
             </div>
         </xpath>
 
-        <!-- 2. Limpieza de Section (Eliminar clases incorrectas de intentos previos) -->
-        <!-- Si el section original viene con clases en base, las dejamos. 
-             Solo aseguramos no agregar 'row' ni 'col'. 
-             En este punto, removemos cualquier atributo añadido en fases previas si estamos refactorizando. -->
+        <!-- 2. Limpieza de Section y Prevención FOUC -->
+        <!-- Agregamos 'd-none' para ocultarlo inicialmente. El JS lo moverá y luego quitará 'd-none'. -->
+        <!-- Esto evita que se vea "roto" antes de que el script corra. -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
             <attribute name="class" remove="row guapante-product-layout container" separator=" "/>
+            <attribute name="class" add="d-none" separator=" "/>
         </xpath>
 
         <!-- 3. Contenido Principal: Estilo de Tarjeta -->
