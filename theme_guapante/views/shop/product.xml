@@ -17,8 +17,8 @@
                 <div class="row">
                     <!-- Sidebar: Usamos IDs y Clases estándar de Odoo Shop -->
                     <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block sticky-top" style="top: 90px; height: fit-content; z-index: 1;">
-                        <!-- Llamamos al template COMPLETO de categorías (acordeón/filtros) -->
-                        <t t-call="website_sale.products_categories"/>
+                        <!-- Llamamos al template products_categories_list que sabemos existe -->
+                        <t t-call="website_sale.products_categories_list"/>
                     </aside>
                     
                     <!-- Columna Derecha: Destino del contenido -->
@@ -30,9 +30,10 @@
         </xpath>
 
         <!-- 2. Mover el section original DENTRO de la columna derecha -->
-        <!-- Usamos 'move' apuntando al interior del nuevo div creado arriba -->
+        <!-- Usamos un selector relativo porque buscar por ID recién creado puede fallar en ciertos motores XPath si no se re-indexa -->
+        <!-- Buscamos el div 'col-9' que acabamos de insertar justo antes de este section -->
         <xpath expr="//section[@id='product_detail']" position="move">
-            <xpath expr="//div[@id='guapante_product_content_col']" position="inside"/>
+            <xpath expr="preceding-sibling::div[hasclass('container')]/div[hasclass('row')]/div[@id='guapante_product_content_col']" position="inside"/>
         </xpath>
 
         <!-- 3. Contenido Principal: Aplicar estilo de Tarjeta (.guapante-card) al section movido -->
