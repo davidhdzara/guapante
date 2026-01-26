@@ -3,43 +3,49 @@
     <template id="product_guapante_sidebar_layout" inherit_id="website_sale.product" name="Guapante Product Sidebar Layout">
         
         <!-- 
-           ESTRATEGIA DE CORRECCIÓN (WRAPPER + MOVE):
-           El elemento raíz original es <section id="product_detail">.
-           Para lograr un layout Grid correcto (Sidebar + Contenido), no debemos modificar las clases del section directamente 
-           si eso rompe la estructura interna.
+           FASE 4: COMPLIANCE BOOTSTRAP (JS LAYOUT STRATEGY)
            
-           En su lugar, creamos un NUEVO contenedor externo y movemos el section original dentro de la columna derecha.
+           1. Inyectamos la estructura contenedora (Sidebar + Columna Vacía) ANTES del section.
+           2. El section original queda intacto (limpio de clases row/col).
+           3. Un script JS mueve el section dentro de la columna vacía al cargar.
+           
+           Esto evita:
+           - Violar reglas de Bootstrap (mezclar row/col en un section).
+           - Usar 'move' de XML que causa Error 500 en este entorno.
         -->
 
-        <!-- ESTRATEGIA CSS FLEX/GRID (Compatibilidad Total):
-             Al fallar 'move', inyectamos el sidebar como hermano del contenido principal 
-             y usamos CSS para controlar el layout visual sin romper el DOM. -->
+        <!-- 1. Estructura Wrapper Externa -->
+        <xpath expr="//section[@id='product_detail']" position="before">
+            <div class="container guapante-product-container mt-4">
+                <div class="row">
+                    <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
+                    <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block sticky-top" style="top: 90px; height: fit-content; z-index: 1;">
+                        <t t-call="website_sale.products_categories"/>
+                    </aside>
+                    
+                    <!-- Columna Destino (JS moverá el contenido aquí) -->
+                    <div class="col-12 col-lg-9 guapante-product-content">
+                        <!-- Vacio inicialmente -->
+                    </div>
+                </div>
+            </div>
+        </xpath>
 
-        <!-- 1. Convertir section principal en Flex Container (.row) -->
+        <!-- 2. Limpieza de Section (Eliminar clases incorrectas de intentos previos) -->
+        <!-- Si el section original viene con clases en base, las dejamos. 
+             Solo aseguramos no agregar 'row' ni 'col'. 
+             En este punto, removemos cualquier atributo añadido en fases previas si estamos refactorizando. -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
-            <attribute name="class" add="row guapante-product-layout" separator=" "/>
+            <attribute name="class" remove="row guapante-product-layout container" separator=" "/>
         </xpath>
 
-        <!-- 2. Forzar Breadcrumbs a ancho completo (col-12) -->
-        <!-- Buscamos el primer row (breadcrumbs) -->
-        <xpath expr="//section[@id='product_detail']/div[hasclass('row')][1]" position="attributes">
-            <attribute name="class" add="col-12" separator=" "/>
+        <!-- 3. Contenido Principal: Estilo de Tarjeta -->
+        <!-- Aplicamos estilo de tarjeta al section, que será movido dentro del col-9 -->
+        <xpath expr="//section[@id='product_detail']" position="attributes">
+            <attribute name="class" add="guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
         </xpath>
 
-        <!-- 3. Insertar Sidebar ANTES del contenido principal -->
-        <xpath expr="//div[@id='product_detail_main']" position="before">
-            <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block sticky-top" style="top: 90px; height: fit-content; z-index: 1;">
-                <t t-call="website_sale.products_categories_list"/>
-            </aside>
-        </xpath>
-
-        <!-- 4. Ajustar Contenido Principal (Main Row -> Col-9) -->
-        <xpath expr="//div[@id='product_detail_main']" position="attributes">
-            <!-- Añadimos 'col-lg-9' para que ocupe el espacio restante junto al sidebar -->
-            <attribute name="class" add="col-12 col-lg-9 guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
-        </xpath>
-
-        <!-- 4. Inyectar Texto de Entrega y Ubicación (Refinamiento UI Fase 2) -->
+        <!-- 4. Refinamientos UI -->
         <xpath expr="//h1[@itemprop='name']" position="before">
              <div class="d-flex align-items-center mb-2">
                  <span class="badge bg-success-light text-success me-2 px-2 py-1 rounded-pill" style="font-size: 0.75rem; background-color: #d1fae5; color: #065f46;">BOYACÁ</span>
