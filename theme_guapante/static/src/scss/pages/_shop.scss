@@ -71,13 +71,24 @@
         &.active,
         &[style*="font-weight: bold"] {
             // Odoo a veces pone style inline para active
-            background-color: #ECFDF5 !important; // Light green bg
+            background-color: #ECFDF5 !important; // Light green bg (fondo completo pastilla)
             color: #065f46 !important; // Dark green text
             font-weight: 700 !important;
-            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
+            box-shadow: none; // Sin sombra para estilo clean
+            border-radius: 12px; // Bordes redondeados consistentes
 
-            i {
-                color: #059669 !important;
+            // El icono también debe ser verde oscuro
+            i,
+            .fa {
+                color: #10B981 !important; // Verde vibrante para el icono
+                font-weight: bold;
+            }
+
+            // Si hay badge de cantidad (span), ajustarlo
+            .badge,
+            span.badge {
+                background-color: #FFFFFF !important;
+                color: #065f46 !important;
             }
         }
     }
