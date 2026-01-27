@@ -1,0 +1,45 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    environment:
+      - POSTGRES_DB=guapante
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo
+    volumes:
+      - guapante-db-data:/var/lib/postgresql/data
+      - ./init-data/dump.sql:/docker-entrypoint-initdb.d/dump.sql:ro
+      - ./init-data/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d guapante"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: odoo:18.0
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8070:8069"
+    volumes:
+      - ./theme_guapante:/mnt/extra-addons/theme_guapante
+      - ./enterprise:/mnt/enterprise:ro
+      - ./odoo-entrypoint.sh:/odoo-entrypoint.sh:ro
+      - ./init-data/filestore:/var/lib/odoo/filestore/guapante
+      - odoo-web-data:/var/lib/odoo
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=odoo
+      - DB_NAME=guapante
+    entrypoint: ["/odoo-entrypoint.sh"]
+    command: -- --addons-path=/mnt/extra-addons,/mnt/enterprise --database=guapante
+
+volumes:
+  guapante-db-data:
+  odoo-web-data:

@@ -18,3 +18,36 @@ publicWidget.registry.GuapanteShopRefine = publicWidget.Widget.extend({
         $('.product_price').addClass('d-none');
     }
 });
+
+// De Temporada Toggle Handler
+publicWidget.registry.GuapanteSeasonalToggle = publicWidget.Widget.extend({
+    selector: '#seasonalToggle',
+    events: {
+        'change': '_onToggleChange',
+    },
+
+    start: function () {
+        this._super.apply(this, arguments);
+        // Check if we're on a seasonal filtered page
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('is_seasonal') === '1') {
+            this.el.checked = true;
+        }
+    },
+
+    _onToggleChange: function (ev) {
+        const isChecked = ev.currentTarget.checked;
+        const url = new URL(window.location.href);
+        
+        if (isChecked) {
+            // Add is_seasonal filter
+            url.searchParams.set('is_seasonal', '1');
+        } else {
+            // Remove is_seasonal filter
+            url.searchParams.delete('is_seasonal');
+        }
+        
+        // Redirect to filtered URL
+        window.location.href = url.toString();
+    }
+});

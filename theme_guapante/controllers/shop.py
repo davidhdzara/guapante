@@ -2,8 +2,53 @@
 from odoo import http, models
 from odoo.http import request
 from odoo.addons.website_sale.controllers.main import WebsiteSale
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class GuapanteWebsiteSale(WebsiteSale):
+
+    @http.route()
+    def shop(self, page=0, category=None, search='', is_seasonal=None, **post):
+        """Override shop to add is_seasonal filter"""
+        _logger.info(f"=== SHOP METHOD ===")
+        _logger.info(f"is_seasonal: {is_seasonal}")
+        
+        # Call parent
+        response = super().shop(page=page, category=category, search=search, **post)
+        
+        # If is_seasonal is active, filter products AFTER parent processes everything
+        if is_seasonal:
+            _logger.info("Filtering by seasonal products")
+            
+            # Get bins (the grid structure that template uses)
+            bins = response.qcontext.get('bins', [])
+            _logger.info(f"Original bins structure: {type(bins)}, length: {len(bins) if hasattr(bins, '__len__') else 'N/A'}")
+            
+            # Filter bins to only keep seasonal products, maintaining the grid structure
+            if bins:
+                seasonal_bins = []
+                for row in bins:
+                    seasonal_row = []
+                    for product_dict in row:
+                        # Each item in the row is a dict with product info
+                        product = product_dict.get('product') if isinstance(product_dict, dict) else product_dict
+                        if hasattr(product, 'is_seasonal') and product.is_seasonal:
+                            seasonal_row.append(product_dict)
+                    if seasonal_row:
+                        seasonal_bins.append(seasonal_row)
+                
+                # Update with filtered bins
+                response.qcontext['bins'] = seasonal_bins
+                
+                # Count total seasonal products
+                total_seasonal = sum(len(row) for row in seasonal_bins)
+                response.qcontext['search_count'] = total_seasonal
+                response.qcontext['is_seasonal'] = True
+                
+                _logger.info(f"Filtered to {total_seasonal} seasonal products in {len(seasonal_bins)} rows")
+        
+        return response
 
     @http.route()
     def product(self, product, category='', search='', **kwargs):

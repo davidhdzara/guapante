@@ -10,6 +10,7 @@
     ],
     'depends': ['website', 'website_sale', 'auth_signup', 'l10n_co'],
     'data': [
+        'views/product_template_view.xml',
         'views/layout/header.xml',
         'views/layout/footer.xml',
         'views/layout/bottom_nav.xml',
