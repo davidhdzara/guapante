@@ -252,24 +252,53 @@
         li.list-inline-item {
             margin-right: 0.3rem; // Reducido de 0.5rem
 
+
             // The Label acting as Card
             label.css_attribute_color {
-                // Color circles logic (if used for Maturity)
+                // Color circles logic (Maturity levels)
                 width: 24px; // Reducido de 32px
                 height: 24px; // Reducido de 32px
                 border-radius: 50%;
                 cursor: pointer;
                 border: 1.5px solid transparent; // Reducido de 2px
+                position: relative;
+                display: inline-block;
+                transition: all 0.2s;
 
                 input {
                     display: none;
                 }
 
-                &.active {
+                &.active,
+                &:has(input:checked) {
                     border-color: $primary;
                     transform: scale(1.1);
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+                }
+
+                // Maturity level colors
+                &[data-maturity="verde"],
+                &[title*="Verde" i] {
+                    background: #10B981; // Green
+                }
+
+                &[data-maturity="pinton"],
+                &[title*="Pintón" i]:not([title*="Maduro" i]) {
+                    background: linear-gradient(90deg, #10B981 0%, #10B981 50%, #FBBF24 50%, #FBBF24 100%);
+                }
+
+                &[data-maturity="pinton-maduro"],
+                &[title*="Pintón-Maduro" i],
+                &[title*="Pinton-Maduro" i] {
+                    background: linear-gradient(90deg, #10B981 0%, #10B981 33%, #FBBF24 33%, #FBBF24 66%, #F59E0B 66%, #F59E0B 100%);
+                }
+
+                &[data-maturity="maduro"],
+                &[title*="Maduro" i]:not([title*="Pintón" i]):not([title*="Pinton" i]) {
+                    background: #FBBF24; // Yellow
                 }
             }
+
 
             // Radio Buttons Logic (Size/Variants) - REDUCED 50%
             // Target the actual Odoo structure: label > div.form-check > input:checked

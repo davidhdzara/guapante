@@ -85,6 +85,37 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
     }
 });
 
+// Apply maturity level colors to variant circles
+publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
+    selector: '.js_product',
+    start: function () {
+        var self = this;
+
+        // Find all color attribute labels (circles)
+        this.$('label.css_attribute_color').each(function () {
+            var $label = $(this);
+            var title = $label.attr('title') || '';
+            var valueName = $label.find('input').data('value_name') || '';
+            var searchText = (title + ' ' + valueName).toLowerCase();
+
+            // Determine maturity level and apply data attribute
+            if (searchText.includes('verde') && !searchText.includes('pintón') && !searchText.includes('pinton') && !searchText.includes('maduro')) {
+                $label.attr('data-maturity', 'verde');
+            } else if (searchText.includes('pintón-maduro') || searchText.includes('pinton-maduro')) {
+                $label.attr('data-maturity', 'pinton-maduro');
+            } else if ((searchText.includes('pintón') || searchText.includes('pinton')) && !searchText.includes('maduro')) {
+                $label.attr('data-maturity', 'pinton');
+            } else if (searchText.includes('maduro') && !searchText.includes('pintón') && !searchText.includes('pinton')) {
+                $label.attr('data-maturity', 'maduro');
+            }
+        });
+
+        console.log('Guapante: Maturity colors applied.');
+
+        return this._super.apply(this, arguments);
+    },
+});
+
 // Hide zero prices - mejorado para capturar todas las variaciones
 publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
     selector: '#product_details',
