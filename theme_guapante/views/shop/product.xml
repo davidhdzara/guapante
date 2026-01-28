@@ -34,15 +34,10 @@
         <!-- 2. Limpieza de Section y Prevención FOUC -->
         <!-- Agregamos 'd-none' para ocultarlo inicialmente. El JS lo moverá y luego quitará 'd-none'. -->
         <!-- Esto evita que se vea "roto" antes de que el script corra. -->
+        <!-- 2. Limpieza de Section y Estilización (Consolidado) -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
             <attribute name="class" remove="row guapante-product-layout container" separator=" "/>
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-
-        <!-- 3. Contenido Principal: Estilo de Tarjeta -->
-        <!-- Aplicamos estilo de tarjeta al section, que será movido dentro del col-9 -->
-        <xpath expr="//section[@id='product_detail']" position="attributes">
-            <attribute name="class" add="guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
+            <attribute name="class" add="d-none guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
         </xpath>
 
         <!-- 4. Refinamientos UI -->
