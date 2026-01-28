@@ -12,6 +12,9 @@ publicWidget.registry.GuapanteProductLayout = publicWidget.Widget.extend({
 
         // Solo mover si ambos existen y el producto no está ya dentro
         if ($productDetail.length && $targetColumn.length) {
+            // Agregar clases de estilo al section (ya que XML no funciona)
+            $productDetail.addClass('guapante-card bg-white shadow-sm rounded-4 p-4');
+
             if (!$targetColumn.find('#product_detail').length) {
                 // Mover el nodo
                 $targetColumn.append($productDetail);

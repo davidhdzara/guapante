@@ -31,10 +31,7 @@
             </div>
         </xpath>
 
-        <!-- 2. Estilización del Section (Solo agregar clases) -->
-        <xpath expr="//section[@id='product_detail']" position="attributes">
-            <attribute name="class" add="d-none guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
-        </xpath>
+        <!-- 2. Note: Classes are added via JS (product_layout_fix.js) due to Odoo inheritance conflicts -->
 
         <!-- 4. Refinamientos UI -->
         <xpath expr="//h1[@itemprop='name']" position="before">
