@@ -3,36 +3,14 @@
     <template id="product_guapante_sidebar_layout" inherit_id="website_sale.product" name="Guapante Product Sidebar Layout">
         
         <!-- 
-           FASE 4: COMPLIANCE BOOTSTRAP (JS LAYOUT STRATEGY)
+           STRATEGY: 100% JavaScript Layout
            
-           1. Inyectamos la estructura contenedora (Sidebar + Columna Vacía) ANTES del section.
-           2. El section original queda intacto (limpio de clases row/col).
-           3. Un script JS mueve el section dentro de la columna vacía al cargar.
-           
-           NOTA: La estructura se inyecta siempre. El modo de edición de Odoo
-           funciona porque no modificamos la estructura base del producto.
+           - NO structural changes in XML to avoid breaking Odoo Studio XPaths
+           - Sidebar and layout are created entirely by JavaScript
+           - This ensures the editor can work without errors
         -->
 
-        <!-- 1. Estructura Wrapper Externa -->
-        <xpath expr="//section[@id='product_detail']" position="before">
-            <div class="container guapante-product-container mt-4">
-                <div class="row">
-                    <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
-                    <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block">
-                        <t t-call="website_sale.products_categories_list"/>
-                    </aside>
-                    
-                    <!-- Columna Destino (JS moverá el contenido aquí) -->
-                    <div class="col-12 col-lg-9 guapante-product-content">
-                        <!-- Vacio inicialmente -->
-                    </div>
-                </div>
-            </div>
-        </xpath>
-
-        <!-- 2. Note: Classes are added via JS (product_layout_fix.js) due to Odoo inheritance conflicts -->
-
-        <!-- 4. Refinamientos UI -->
+        <!-- Only UI badge enhancements (non-structural) -->
         <xpath expr="//h1[@itemprop='name']" position="before">
              <div class="d-flex align-items-center mb-2">
                  <span class="badge bg-success-light text-success me-2 px-2 py-1 rounded-pill" style="font-size: 0.75rem; background-color: #d1fae5; color: #065f46;">BOYACÁ</span>
