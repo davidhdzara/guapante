@@ -9,26 +9,26 @@
            2. El section original queda intacto (limpio de clases row/col).
            3. Un script JS mueve el section dentro de la columna vacía al cargar.
            
-           Esto evita:
-           - Violar reglas de Bootstrap (mezclar row/col en un section).
-           - Usar 'move' de XML que causa Error 500 en este entorno.
+           IMPORTANTE: Solo se inyecta en modo frontend, NO en modo de edición.
         -->
 
-        <!-- 1. Estructura Wrapper Externa -->
+        <!-- 1. Estructura Wrapper Externa - SOLO en modo frontend -->
         <xpath expr="//section[@id='product_detail']" position="before">
-            <div class="container guapante-product-container mt-4">
-                <div class="row">
-                    <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
-                    <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block">
-                        <t t-call="website_sale.products_categories_list"/>
-                    </aside>
-                    
-                    <!-- Columna Destino (JS moverá el contenido aquí) -->
-                    <div class="col-12 col-lg-9 guapante-product-content">
-                        <!-- Vacio inicialmente -->
+            <t t-if="not editable">
+                <div class="container guapante-product-container mt-4">
+                    <div class="row">
+                        <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
+                        <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block">
+                            <t t-call="website_sale.products_categories_list"/>
+                        </aside>
+                        
+                        <!-- Columna Destino (JS moverá el contenido aquí) -->
+                        <div class="col-12 col-lg-9 guapante-product-content">
+                            <!-- Vacio inicialmente -->
+                        </div>
                     </div>
                 </div>
-            </div>
+            </t>
         </xpath>
 
         <!-- 2. Note: Classes are added via JS (product_layout_fix.js) due to Odoo inheritance conflicts -->
@@ -43,3 +43,4 @@
 
     </template>
 </odoo>
+
