@@ -31,19 +31,9 @@
             </div>
         </xpath>
 
-        <!-- 2. Limpieza de Section y Prevención FOUC -->
-        <!-- Agregamos 'd-none' para ocultarlo inicialmente. El JS lo moverá y luego quitará 'd-none'. -->
-        <!-- Esto evita que se vea "roto" antes de que el script corra. -->
-        <!-- 2. Limpieza de Section y Estilización (Consolidado) -->
+        <!-- 2. Estilización del Section (Solo agregar clases) -->
         <xpath expr="//section[@id='product_detail']" position="attributes">
-            <attribute name="class" remove="row guapante-product-layout container" separator=" "/>
             <attribute name="class" add="d-none guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
-        </xpath>
-
-        <!-- 3. Mover Migas de Pan (Breadcrumbs) FUERA de la tarjeta blanca -->
-        <!-- Buscamos el row que contiene los breadcrumbs y lo movemos al contenedor principal, antes de la tarjeta -->
-        <xpath expr="//div[descendant::ol[contains(@class, 'o_wsale_breadcrumb')]]" position="move">
-            <xpath expr="//div[contains(@class, 'guapante-product-content')]" position="inside"/>
         </xpath>
 
         <!-- 4. Refinamientos UI -->
