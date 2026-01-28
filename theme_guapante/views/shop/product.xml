@@ -14,13 +14,5 @@
             </div>
         </xpath>
 
-        <!-- Only UI badge enhancements (non-structural) -->
-        <xpath expr="//h1[@itemprop='name']" position="before">
-             <div class="d-flex align-items-center mb-2">
-                 <span class="badge bg-success-light text-success me-2 px-2 py-1 rounded-pill" style="font-size: 0.75rem; background-color: #d1fae5; color: #065f46;">BOYACÁ</span>
-                 <span class="text-muted small"><i class="fa fa-clock-o me-1"></i>Entrega: <strong>Mañana</strong></span>
-             </div>
-        </xpath>
-
     </template>
 </odoo>
