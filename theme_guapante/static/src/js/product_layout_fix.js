@@ -68,3 +68,16 @@ publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
         return this._super.apply(this, arguments);
     },
 });
+
+// Clean up stray text nodes (like the "s" in body)
+publicWidget.registry.GuapanteCleanupStrayText = publicWidget.Widget.extend({
+    selector: 'body',
+    start: function () {
+        // Remove stray text nodes from body (direct children only)
+        this.$el.contents().filter(function () {
+            return this.nodeType === 3 && $(this).text().trim() !== '';
+        }).remove();
+
+        return this._super.apply(this, arguments);
+    },
+});
