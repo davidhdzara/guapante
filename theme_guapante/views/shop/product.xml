@@ -3,12 +3,16 @@
     <template id="product_guapante_sidebar_layout" inherit_id="website_sale.product" name="Guapante Product Sidebar Layout">
         
         <!-- 
-           STRATEGY: 100% JavaScript Layout
-           
-           - NO structural changes in XML to avoid breaking Odoo Studio XPaths
-           - Sidebar and layout are created entirely by JavaScript
-           - This ensures the editor can work without errors
+           STRATEGY: Inject sidebar AFTER product_detail to avoid breaking Studio XPaths
+           JavaScript will reorganize the visual layout
         -->
+
+        <!-- Inject sidebar container RIGHT AFTER product_detail closing tag -->
+        <xpath expr="//section[@id='product_detail']" position="after">
+            <div id="guapante_sidebar_source" class="d-none">
+                <t t-call="website_sale.products_categories_list"/>
+            </div>
+        </xpath>
 
         <!-- Only UI badge enhancements (non-structural) -->
         <xpath expr="//h1[@itemprop='name']" position="before">
