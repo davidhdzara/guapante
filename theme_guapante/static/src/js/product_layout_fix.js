@@ -25,5 +25,23 @@ publicWidget.registry.GuapanteProductLayout = publicWidget.Widget.extend({
             // Esto asegura que el contenido no quede oculto si el script corre dos veces o si hay caché.
             $productDetail.removeClass('d-none');
         }
+
+        return this._super.apply(this, arguments);
+    },
+});
+
+// Fallback: Aplicar estilos directamente al section (por si el container no existe)
+publicWidget.registry.GuapanteProductStylesFallback = publicWidget.Widget.extend({
+    selector: '#product_detail',
+    start: function () {
+        var $section = this.$el;
+
+        // Aplicar clases de estilo si no las tiene
+        if (!$section.hasClass('guapante-card')) {
+            $section.addClass('guapante-card bg-white shadow-sm rounded-4 p-4');
+            console.log('Guapante: Fallback styles applied to product detail.');
+        }
+
+        return this._super.apply(this, arguments);
     },
 });
