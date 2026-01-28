@@ -271,35 +271,43 @@
                 }
             }
 
-            // Radio Buttons Logic (Size) - REDUCED 50%
-            label:not(.css_attribute_color) {
+            // Radio Buttons Logic (Size/Variants) - REDUCED 50%
+            // Target the actual Odoo structure: label > div.form-check > input:checked
+            label {
                 cursor: pointer;
-                background: white;
-                border: 1px solid #E5E7EB;
-                border-radius: 12px;
-                padding: 0.375rem 0.75rem; // Reducido de 0.75rem 1.5rem (50%)
-                font-weight: 600;
-                color: #374151;
-                transition: all 0.2s;
-                min-width: 50px; // Reducido de 100px (50%)
-                text-align: center;
-                font-size: 0.75rem; // Añadido: reducido
 
-                input {
-                    display: none;
-                }
+                .form-check {
+                    background: white;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 12px;
+                    padding: 0.375rem 0.75rem; // Reducido 50%
+                    font-weight: 600;
+                    color: #374151;
+                    transition: all 0.2s;
+                    min-width: 50px; // Reducido 50%
+                    text-align: center;
+                    font-size: 0.75rem;
 
-                // Hide default radio
+                    // When radio is checked, apply green style
+                    &:has(input:checked) {
+                        background-color: #ECFDF5;
+                        border-color: $primary;
 
-                input[type="radio"]:checked+label {
-                    background-color: #ECFDF5;
-                    border-color: $primary;
-                    color: $primary;
-                }
+                        .form-check-label,
+                        .radio_input_value {
+                            color: $primary;
+                            font-weight: 700;
+                        }
+                    }
 
-                &:hover {
-                    border-color: darken(#E5E7EB, 10%);
-                    background-color: #F9FAFB;
+                    &:hover {
+                        border-color: darken(#E5E7EB, 10%);
+                        background-color: #F9FAFB;
+                    }
+
+                    input {
+                        display: none;
+                    }
                 }
             }
         }

@@ -37,11 +37,6 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
             class: 'col-lg-3 d-none d-lg-block'
         });
 
-        // Fetch and inject categories (we need to call the template)
-        // For now, we'll load it via AJAX or use a simple placeholder
-        // TODO: Need to fetch categories properly
-        $sidebar.html('<h5>Categorías</h5><p class="text-muted small">Cargando...</p>');
-
         // Create product content column (Right column)
         var $productColumn = $('<div>', {
             class: 'col-12 col-lg-9 guapante-product-content'
@@ -63,26 +58,38 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
 
         console.log('Guapante: Sidebar layout created via JavaScript.');
 
-        // Now fetch categories and populate sidebar
-        this._loadCategories($sidebar);
+        // Load categories from controller context
+        this._loadCategoriesFromContext($sidebar);
 
         return this._super.apply(this, arguments);
     },
 
-    _loadCategories: function ($sidebar) {
-        // Fetch categories from the controller context
-        // Since we're in frontend, we can access the categories from the page
-        var $categoriesListOnPage = $('#o_shop_collapse_category');
+    _loadCategoriesFromContext: function ($sidebar) {
+        var self = this;
 
-        if ($categoriesListOnPage.length) {
-            // Clone the existing categories list
-            var $clonedCategories = $categoriesListOnPage.clone();
-            $clonedCategories.removeAttr('id'); // Remove ID to avoid duplicates
-            $sidebar.html($clonedCategories);
-            console.log('Guapante: Categories loaded into sidebar.');
-        } else {
-            $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
-        }
+        // Categories should be available from the shop controller
+        // We'll make an AJAX call to get them
+        $.ajax({
+            url: '/shop',
+            method: 'GET',
+            data: { 'category': 0 }, // Shop root
+            success: function (html) {
+                // Extract the categories sidebar from the shop page
+                var $temp = $('<div>').html(html);
+                var $categories = $temp.find('#o_shop_collapse_category').parent();
+
+                if ($categories.length) {
+                    $sidebar.html($categories.html());
+                    console.log('Guapante: Categories loaded into sidebar.');
+                } else {
+                    // Fallback: show a placeholder
+                    $sidebar.html('<h6 class="mb-3">Categorías</h6><p class="text-muted small">Ver todas en <a href="/shop">la tienda</a></p>');
+                }
+            },
+            error: function () {
+                $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
+            }
+        });
     }
 });
 
@@ -109,19 +116,14 @@ publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
     },
 });
 
-// Clean up stray text nodes (like the "s" in body)
-publicWidget.registry.GuapanteCleanupStrayText = publicWidget.Widget.extend({
-    selector: 'body',
-    start: function () {
-        try {
-            // Remove stray text nodes from body (direct children only)
-            this.$el.contents().filter(function () {
-                return this.nodeType === 3 && $(this).text().trim() !== '';
-            }).remove();
-        } catch (e) {
-            // Silently fail if there's an issue - no need to log
-        }
+// Clean up stray text nodes - ejecutar DESPUÉS de que todo cargue
+$(document).ready(function () {
+    setTimeout(function () {
+        // Remove the stray "s" from body
+        $('body').contents().filter(function () {
+            return this.nodeType === 3 && $.trim($(this).text()) === 's';
+        }).remove();
 
-        return this._super.apply(this, arguments);
-    },
+        console.log('Guapante: Stray text cleanup completed.');
+    }, 500);
 });
