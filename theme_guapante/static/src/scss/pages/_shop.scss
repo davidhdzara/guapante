@@ -154,10 +154,11 @@
     border-radius: 16px;
     overflow: hidden;
 
-    // Image padding and border radius
+    // No padding - images should fill to border edge
     .carousel-item img {
-        border-radius: 12px;
-        padding: 1rem;
+        border-radius: 0; // Sin border radius interno
+        width: 100%;
+        object-fit: cover;
     }
 }
 

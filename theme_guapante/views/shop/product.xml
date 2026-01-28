@@ -9,26 +9,25 @@
            2. El section original queda intacto (limpio de clases row/col).
            3. Un script JS mueve el section dentro de la columna vacía al cargar.
            
-           IMPORTANTE: Solo se inyecta en modo frontend, NO en modo de edición.
+           NOTA: La estructura se inyecta siempre. El modo de edición de Odoo
+           funciona porque no modificamos la estructura base del producto.
         -->
 
-        <!-- 1. Estructura Wrapper Externa - SOLO en modo frontend -->
+        <!-- 1. Estructura Wrapper Externa -->
         <xpath expr="//section[@id='product_detail']" position="before">
-            <t t-if="not editable">
-                <div class="container guapante-product-container mt-4">
-                    <div class="row">
-                        <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
-                        <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block">
-                            <t t-call="website_sale.products_categories_list"/>
-                        </aside>
-                        
-                        <!-- Columna Destino (JS moverá el contenido aquí) -->
-                        <div class="col-12 col-lg-9 guapante-product-content">
-                            <!-- Vacio inicialmente -->
-                        </div>
+            <div class="container guapante-product-container mt-4">
+                <div class="row">
+                    <!-- Sidebar: Usamos products_categories nativo (colapsable) -->
+                    <aside id="products_grid_before" class="col-lg-3 d-none d-lg-block">
+                        <t t-call="website_sale.products_categories_list"/>
+                    </aside>
+                    
+                    <!-- Columna Destino (JS moverá el contenido aquí) -->
+                    <div class="col-12 col-lg-9 guapante-product-content">
+                        <!-- Vacio inicialmente -->
                     </div>
                 </div>
-            </t>
+            </div>
         </xpath>
 
         <!-- 2. Note: Classes are added via JS (product_layout_fix.js) due to Odoo inheritance conflicts -->
@@ -43,4 +42,3 @@
 
     </template>
 </odoo>
-
