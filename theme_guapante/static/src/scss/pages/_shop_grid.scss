@@ -123,17 +123,35 @@
     justify-content: space-between;
     align-items: center;
 
-    // Wishlist button (corazón)
-    .o_add_wishlist {
-        background: transparent;
+    // Cart icon button (previously wishlist - now shopping cart)
+    .o_add_wishlist,
+    .guapante-cart-icon {
+        position: absolute !important;
+        bottom: 8px; // Minimal padding
+        right: 8px; // Minimal padding
+        z-index: 10;
+
+        background: $primary; // Green background
         border: none;
-        color: #9CA3AF;
-        padding: 0.5rem;
-        font-size: 1.25rem;
-        transition: color 0.2s;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%; // Circular
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 
         &:hover {
-            color: #EF4444;
+            background: darken($primary, 10%);
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        i {
+            margin: 0 !important;
         }
     }
 

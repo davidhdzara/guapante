@@ -12,17 +12,17 @@
             <attribute name="class" add="guapante-product-image" separator=" "/>
         </xpath>
 
-        <!-- 3. Cart Button - TEMPORARILY DISABLED (o_wsale_product_btn doesn't exist in Odoo 18) -->
-        <!-- TODO: Find correct selector for Odoo 18 add to cart button -->
-        <!--
-        <xpath expr="//div[hasclass('o_wsale_product_btn')]" position="replace">
-            <div class="guapante-card-actions position-absolute bottom-0 end-0 p-3">
-                <a t-att-href="product_href" class="btn btn-dark rounded-3 d-flex align-items-center justify-content-center shadow-sm" aria-label="Ver Detalles">
-                    <i class="fa fa-shopping-cart text-white"></i>
-                </a>
-            </div>
+        <!-- 3. Replace Wishlist Heart Icon with Shopping Cart Icon -->
+        <xpath expr="//a[hasclass('o_add_wishlist')]/i" position="replace">
+            <i class="fa fa-shopping-cart"></i>
         </xpath>
-        -->
+
+        <!-- 4. Add custom class to wishlist button for styling -->
+        <xpath expr="//a[hasclass('o_add_wishlist')]" position="attributes">
+            <attribute name="class" add="guapante-cart-icon" separator=" "/>
+            <attribute name="title">Agregar al carrito</attribute>
+            <attribute name="aria-label">Agregar al carrito</attribute>
+        </xpath>
         
     </template>
 </odoo>
