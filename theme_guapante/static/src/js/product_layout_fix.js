@@ -46,18 +46,24 @@ publicWidget.registry.GuapanteProductStylesFallback = publicWidget.Widget.extend
     },
 });
 
-// Hide zero prices
+// Hide zero prices - mejorado para capturar todas las variaciones
 publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
-    selector: '.product_price',
+    selector: '#product_details',
     start: function () {
-        var $priceContainer = this.$el;
-        var $priceValue = $priceContainer.find('.oe_currency_value');
+        var self = this;
 
-        // Si el precio es 0,00 o 0.00, ocultar todo el bloque de precio
-        if ($priceValue.length && ($priceValue.text().trim() === '0,00' || $priceValue.text().trim() === '0.00' || $priceValue.text().trim() === '0')) {
-            $priceContainer.hide();
-            console.log('Guapante: Zero price hidden.');
-        }
+        // Buscar todos los elementos con precio
+        this.$('.oe_currency_value').each(function () {
+            var priceText = $(this).text().trim();
+
+            // Si el precio es 0,00 o variaciones
+            if (priceText === '0,00' || priceText === '0.00' || priceText === '0' || priceText === '0,0') {
+                // Ocultar el h3 padre que contiene este precio
+                $(this).closest('h3').hide();
+                // También ocultar el contenedor product_price si existe
+                $(this).closest('.product_price').hide();
+            }
+        });
 
         return this._super.apply(this, arguments);
     },
