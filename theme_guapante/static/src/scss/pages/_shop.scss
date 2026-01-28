@@ -141,6 +141,7 @@
     }
 }
 
+
 // 3. Product Details Refinement
 #product_details {
     h1 {
@@ -151,7 +152,29 @@
         margin-bottom: 1rem;
     }
 
-    // Price Styling
+    // Hide zero prices (pricing not set)
+    .product_price {
+        margin-top: 1rem;
+        margin-bottom: 1.5rem;
+
+        .oe_price {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        // Hide when price is 0
+        .oe_currency_value:has-text("0,00"),
+        .oe_currency_value:contains("0,00") {
+            display: none;
+        }
+    }
+
+    // Hide entire price block if value is 0
+    .product_price:has(.oe_currency_value:contains("0,00")) {
+        display: none !important;
+    }
+
     .css_quantity {
         display: none !important; // Hide default qty input if we custom one
     }

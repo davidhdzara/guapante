@@ -45,3 +45,20 @@ publicWidget.registry.GuapanteProductStylesFallback = publicWidget.Widget.extend
         return this._super.apply(this, arguments);
     },
 });
+
+// Hide zero prices
+publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
+    selector: '.product_price',
+    start: function () {
+        var $priceContainer = this.$el;
+        var $priceValue = $priceContainer.find('.oe_currency_value');
+
+        // Si el precio es 0,00 o 0.00, ocultar todo el bloque de precio
+        if ($priceValue.length && ($priceValue.text().trim() === '0,00' || $priceValue.text().trim() === '0.00' || $priceValue.text().trim() === '0')) {
+            $priceContainer.hide();
+            console.log('Guapante: Zero price hidden.');
+        }
+
+        return this._super.apply(this, arguments);
+    },
+});
