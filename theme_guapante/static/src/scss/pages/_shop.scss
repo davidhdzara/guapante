@@ -131,6 +131,14 @@
     >.col-lg-6 {
         padding: 2rem;
     }
+
+    // Fix: Disable sticky on product image carousel in mobile
+    #o-carousel-product {
+        @media (max-width: 991px) {
+            position: relative !important;
+            top: auto !important;
+        }
+    }
 }
 
 // 3. Product Details Refinement
