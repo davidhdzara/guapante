@@ -58,38 +58,30 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
 
         console.log('Guapante: Sidebar layout created via JavaScript.');
 
-        // Load categories from controller context
-        this._loadCategoriesFromContext($sidebar);
+        // Load categories from the hidden XML source
+        this._loadCategoriesFromXML($sidebar);
 
         return this._super.apply(this, arguments);
     },
 
-    _loadCategoriesFromContext: function ($sidebar) {
-        var self = this;
+    _loadCategoriesFromXML: function ($sidebar) {
+        // Find the hidden div with categories injected by XML
+        var $sidebarSource = $('#guapante_sidebar_source');
 
-        // Categories should be available from the shop controller
-        // We'll make an AJAX call to get them
-        $.ajax({
-            url: '/shop',
-            method: 'GET',
-            data: { 'category': 0 }, // Shop root
-            success: function (html) {
-                // Extract the categories sidebar from the shop page
-                var $temp = $('<div>').html(html);
-                var $categories = $temp.find('#o_shop_collapse_category').parent();
+        if ($sidebarSource.length) {
+            // Clone the content and show it in the sidebar
+            var $categoriesContent = $sidebarSource.children().clone();
+            $sidebar.html($categoriesContent);
 
-                if ($categories.length) {
-                    $sidebar.html($categories.html());
-                    console.log('Guapante: Categories loaded into sidebar.');
-                } else {
-                    // Fallback: show a placeholder
-                    $sidebar.html('<h6 class="mb-3">Categorías</h6><p class="text-muted small">Ver todas en <a href="/shop">la tienda</a></p>');
-                }
-            },
-            error: function () {
-                $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
-            }
-        });
+            // Remove the hidden source
+            $sidebarSource.remove();
+
+            console.log('Guapante: Categories loaded from XML template.');
+        } else {
+            // Fallback message
+            $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
+            console.warn('Guapante: Category source not found.');
+        }
     }
 });
 
