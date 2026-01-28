@@ -40,6 +40,12 @@
             <attribute name="class" add="d-none guapante-card bg-white shadow-sm rounded-4 p-4" separator=" "/>
         </xpath>
 
+        <!-- 3. Mover Migas de Pan (Breadcrumbs) FUERA de la tarjeta blanca -->
+        <!-- Buscamos el row que contiene los breadcrumbs y lo movemos al contenedor principal, antes de la tarjeta -->
+        <xpath expr="//div[descendant::ol[contains(@class, 'o_wsale_breadcrumb')]]" position="move">
+            <xpath expr="//div[contains(@class, 'guapante-product-content')]" position="inside"/>
+        </xpath>
+
         <!-- 4. Refinamientos UI -->
         <xpath expr="//h1[@itemprop='name']" position="before">
              <div class="d-flex align-items-center mb-2">
