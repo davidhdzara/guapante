@@ -73,10 +73,14 @@ publicWidget.registry.GuapanteHideZeroPrices = publicWidget.Widget.extend({
 publicWidget.registry.GuapanteCleanupStrayText = publicWidget.Widget.extend({
     selector: 'body',
     start: function () {
-        // Remove stray text nodes from body (direct children only)
-        this.$el.contents().filter(function () {
-            return this.nodeType === 3 && $(this).text().trim() !== '';
-        }).remove();
+        try {
+            // Remove stray text nodes from body (direct children only)
+            this.$el.contents().filter(function () {
+                return this.nodeType === 3 && $(this).text().trim() !== '';
+            }).remove();
+        } catch (e) {
+            // Silently fail if there's an issue - no need to log
+        }
 
         return this._super.apply(this, arguments);
     },

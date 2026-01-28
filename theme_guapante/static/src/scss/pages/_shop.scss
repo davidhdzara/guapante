@@ -219,35 +219,35 @@
     }
 }
 
-// 4. Variant Selectors (Radio Buttons -> Cards)
+// 4. Variant Selectors (Radio Buttons -> Cards) - REDUCED 50%
 .js_product {
 
     ul.list-inline,
     ul.list-unstyled {
-        margin-bottom: 1.5rem;
+        margin-bottom: 0.75rem; // Reducido de 1.5rem
 
         // Label styling (e.g. "TAMAÑO")
         strong {
             display: block;
             text-transform: uppercase;
-            font-size: 0.75rem;
+            font-size: 0.65rem; // Reducido de 0.75rem
             color: #6B7280;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.4rem; // Reducido de 0.5rem
             letter-spacing: 0.05em;
         }
 
         // Radio List Item
         li.list-inline-item {
-            margin-right: 0.5rem;
+            margin-right: 0.3rem; // Reducido de 0.5rem
 
             // The Label acting as Card
             label.css_attribute_color {
                 // Color circles logic (if used for Maturity)
-                width: 32px;
-                height: 32px;
+                width: 24px; // Reducido de 32px
+                height: 24px; // Reducido de 32px
                 border-radius: 50%;
                 cursor: pointer;
-                border: 2px solid transparent;
+                border: 1.5px solid transparent; // Reducido de 2px
 
                 input {
                     display: none;
