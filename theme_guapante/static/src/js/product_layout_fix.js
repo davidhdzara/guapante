@@ -113,10 +113,12 @@ publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
                     colorStyle = 'background: #10B981;'; // Solid green
                 } else if (searchText.includes('pinton-maduro') || searchText.includes('pintón-maduro')) {
                     maturityLevel = 'pinton-maduro';
-                    colorStyle = 'background: linear-gradient(90deg, #10B981 0%, #10B981 33%, #FBBF24 33%, #FBBF24 66%, #F59E0B 66%, #F59E0B 100%);';
+                    // Smooth gradient: green → yellow → orange
+                    colorStyle = 'background: linear-gradient(135deg, #10B981 0%, #34D399 20%, #FBBF24 50%, #F59E0B 80%, #F59E0B 100%);';
                 } else if ((searchText.includes('pintón') || searchText.includes('pinton')) && !searchText.includes('maduro')) {
                     maturityLevel = 'pinton';
-                    colorStyle = 'background: linear-gradient(90deg, #10B981 0%, #10B981 50%, #FBBF24 50%, #FBBF24 100%);';
+                    // Smooth gradient: green → yellow
+                    colorStyle = 'background: linear-gradient(135deg, #10B981 0%, #34D399 30%, #FBBF24 70%, #FBBF24 100%);';
                 } else if (searchText.includes('maduro') && !searchText.includes('pintón') && !searchText.includes('pinton')) {
                     maturityLevel = 'maduro';
                     colorStyle = 'background: #FBBF24;'; // Solid yellow
