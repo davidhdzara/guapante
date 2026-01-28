@@ -85,32 +85,68 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
     }
 });
 
-// Apply maturity level colors to variant circles
+// Apply maturity level colors by injecting color circles
 publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
     selector: '.js_product',
     start: function () {
         var self = this;
 
-        // Find all color attribute labels (circles)
-        this.$('label.css_attribute_color').each(function () {
-            var $label = $(this);
-            var title = $label.attr('title') || '';
-            var valueName = $label.find('input').data('value_name') || '';
-            var searchText = (title + ' ' + valueName).toLowerCase();
+        // Find the "Grado de Madurez" attribute section
+        var $maturitySection = this.$('li[data-attribute_name="Grado de Madurez"]');
 
-            // Determine maturity level and apply data attribute
-            if (searchText.includes('verde') && !searchText.includes('pintón') && !searchText.includes('pinton') && !searchText.includes('maduro')) {
-                $label.attr('data-maturity', 'verde');
-            } else if (searchText.includes('pintón-maduro') || searchText.includes('pinton-maduro')) {
-                $label.attr('data-maturity', 'pinton-maduro');
-            } else if ((searchText.includes('pintón') || searchText.includes('pinton')) && !searchText.includes('maduro')) {
-                $label.attr('data-maturity', 'pinton');
-            } else if (searchText.includes('maduro') && !searchText.includes('pintón') && !searchText.includes('pinton')) {
-                $label.attr('data-maturity', 'maduro');
-            }
-        });
+        if ($maturitySection.length) {
+            // Iterate through each value in this attribute
+            $maturitySection.find('.js_attribute_value').each(function () {
+                var $item = $(this);
+                var $label = $item.find('label');
+                var $input = $label.find('input');
+                var valueName = $input.data('value_name') || '';
+                var title = $input.attr('title') || '';
+                var searchText = (valueName + ' ' + title).toLowerCase();
 
-        console.log('Guapante: Maturity colors applied.');
+                // Determine maturity level
+                var maturityLevel = '';
+                var colorStyle = '';
+
+                if (searchText.includes('verde') && !searchText.includes('pintón') && !searchText.includes('pinton') && !searchText.includes('maduro')) {
+                    maturityLevel = 'verde';
+                    colorStyle = 'background: #10B981;'; // Solid green
+                } else if (searchText.includes('pinton-maduro') || searchText.includes('pintón-maduro')) {
+                    maturityLevel = 'pinton-maduro';
+                    colorStyle = 'background: linear-gradient(90deg, #10B981 0%, #10B981 33%, #FBBF24 33%, #FBBF24 66%, #F59E0B 66%, #F59E0B 100%);';
+                } else if ((searchText.includes('pintón') || searchText.includes('pinton')) && !searchText.includes('maduro')) {
+                    maturityLevel = 'pinton';
+                    colorStyle = 'background: linear-gradient(90deg, #10B981 0%, #10B981 50%, #FBBF24 50%, #FBBF24 100%);';
+                } else if (searchText.includes('maduro') && !searchText.includes('pintón') && !searchText.includes('pinton')) {
+                    maturityLevel = 'maduro';
+                    colorStyle = 'background: #FBBF24;'; // Solid yellow
+                }
+
+                if (maturityLevel) {
+                    // Create color circle indicator
+                    var $colorCircle = $('<span>', {
+                        class: 'guapante-maturity-indicator',
+                        'data-maturity': maturityLevel,
+                        style: colorStyle + ' width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; border: 1.5px solid #E5E7EB;'
+                    });
+
+                    // Find the span with the text and prepend the circle
+                    var $textSpan = $label.find('.radio_input_value span, .form-check-label span').first();
+
+                    if ($textSpan.length) {
+                        // Check if circle doesn't already exist
+                        if (!$textSpan.prev('.guapante-maturity-indicator').length) {
+                            $textSpan.before($colorCircle);
+                        }
+                    }
+
+                    // Add data attribute to label for CSS targeting
+                    $label.attr('data-maturity', maturityLevel);
+                }
+            });
+
+            console.log('Guapante: Maturity color indicators injected.');
+        }
 
         return this._super.apply(this, arguments);
     },

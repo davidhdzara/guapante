@@ -343,6 +343,23 @@
     }
 }
 
+// Maturity level indicators - highlight when selected
+.js_product {
+    label[data-maturity] {
+        .guapante-maturity-indicator {
+            transition: all 0.2s;
+        }
+
+        // When the radio is checked, add emphasis to the color circle
+        &:has(input:checked) .guapante-maturity-indicator {
+            border-color: $primary !important;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+            transform: scale(1.15);
+        }
+    }
+}
+
+
 // 5. Quantity Input Styling
 .css_quantity {
 
