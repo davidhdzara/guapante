@@ -91,16 +91,6 @@
                 </button>
             </div>
         </xpath>
-        
-        <!-- Hide original Odoo quantity selector -->
-        <xpath expr="//div[@id='o_wsale_cta_wrapper']//div[hasclass('css_quantity')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-        
-        <!-- Hide original add to cart button -->
-        <xpath expr="//a[@id='add_to_cart']" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
 
     </template>
 </odoo>
