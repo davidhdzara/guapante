@@ -22,6 +22,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     start: function () {
         this.conversions = this._getConversions();
+
+        // Initialize current unit for conversion tracking
+        this.currentUnit = this._getSelectedUnit();
+
         this._updateEquivalence();
 
         // Hide original Odoo controls
