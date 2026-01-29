@@ -14,5 +14,51 @@
             </div>
         </xpath>
 
+        <!-- Unit Selector: Inject BEFORE the quantity/add to cart section -->
+        <xpath expr="//div[@id='product_details']//form[@action='/shop/cart/update']" position="inside">
+            <div class="guapante-unit-selector mb-3" 
+                 t-att-data-product-id="product.id"
+                 t-att-data-kg-to-units="product.kg_to_units_factor or ''"
+                 t-att-data-g-to-units="product.g_to_units_factor or ''">
+                
+                <label class="form-label text-muted small fw-semibold text-uppercase mb-2">
+                    <i class="fa fa-balance-scale me-1"></i>
+                    Unidad de Medida
+                </label>
+                
+                <div class="btn-group w-100" role="group" aria-label="Selector de unidad de medida">
+                    <!-- Por defecto mostramos las 3 opciones, backend puede customizar -->
+                    <t t-set="unit_options" t-value="['Unidades', 'Peso (Kg)', 'Peso (g)']"/>
+                    <t t-set="unit_values" t-value="['unidades', 'kg', 'g']"/>
+                    
+                    <t t-foreach="unit_options" t-as="unit_label">
+                        <t t-set="unit_value" t-value="unit_values[unit_label_index]"/>
+                        <input 
+                            type="radio" 
+                            class="btn-check" 
+                            t-att-name="'unit_selector_' + str(product.id)"
+                            t-att-id="'unit_' + unit_value + '_' + str(product.id)"
+                            t-att-value="unit_value"
+                            t-att-checked="'checked' if unit_value == 'unidades' else None"
+                            autocomplete="off"
+                        />
+                        <label 
+                            class="btn btn-outline-success" 
+                            t-att-for="'unit_' + unit_value + '_' + str(product.id)">
+                            <t t-esc="unit_label"/>
+                        </label>
+                    </t>
+                </div>
+                
+                <!-- Equivalencia dinámica (actualizada por JavaScript) -->
+                <div class="guapante-unit-equivalence text-muted small mt-2" style="display: none;">
+                    <span class="equivalence-text"></span>
+                </div>
+                
+                <!-- Campo oculto para enviar al backend -->
+                <input type="hidden" name="product_uom" value="unidades"/>
+            </div>
+        </xpath>
+
     </template>
 </odoo>

@@ -392,3 +392,70 @@
 #products_grid>h1:not(.guapante-shop-header h1) {
     display: none !important;
 }
+
+// 6. Unit Selector Styling (Unidades/Kg/g)
+.guapante-unit-selector {
+    .form-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.05em;
+        color: #6B7280;
+        margin-bottom: 0.5rem;
+
+        i {
+            opacity: 0.7;
+        }
+    }
+
+    .btn-group {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        overflow: hidden;
+
+        .btn-check:checked+.btn-outline-success {
+            background-color: $primary;
+            color: white;
+            font-weight: 600;
+            border-color: $primary;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-outline-success {
+            border: 1.5px solid #E5E7EB;
+            background: white;
+            color: #374151;
+            font-size: 0.875rem;
+            padding: 0.65rem 1rem;
+            transition: all 0.2s;
+            font-weight: 500;
+            flex: 1;
+
+            &:not(:last-child) {
+                border-right: 1px solid #E5E7EB;
+            }
+
+            &:hover:not(:has(.btn-check:checked)) {
+                background-color: #F9FAFB;
+                border-color: darken(#E5E7EB, 10%);
+            }
+
+            &:first-child {
+                border-radius: 8px 0 0 8px;
+            }
+
+            &:last-child {
+                border-radius: 0 8px 8px 0;
+            }
+        }
+    }
+
+    .guapante-unit-equivalence {
+        font-size: 0.75rem;
+        color: #6B7280;
+        font-style: italic;
+        padding-left: 0.25rem;
+
+        .equivalence-text {
+            font-weight: 500;
+        }
+    }
+}

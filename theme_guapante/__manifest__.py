@@ -64,6 +64,7 @@
             'theme_guapante/static/src/js/shop.js',
             'theme_guapante/static/src/js/product_layout_fix.js',  # Layout Fix JS
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
+            'theme_guapante/static/src/js/unit_selector.js',  # Unit selector (Unidades/Kg/g)
         ],
     },
     'application': False,
