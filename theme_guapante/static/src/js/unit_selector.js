@@ -30,11 +30,16 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     /**
      * Get conversion factors from data attributes
+     * Falls back to demo values for testing until backend is ready
      */
     _getConversions: function () {
+        var kgToUnits = parseFloat(this.$unitSelector.data('kg-to-units'));
+        var gToUnits = parseFloat(this.$unitSelector.data('g-to-units'));
+
+        // Use demo values if backend hasn't provided conversion factors
         return {
-            kg_to_units: parseFloat(this.$unitSelector.data('kg-to-units')) || null,
-            g_to_units: parseFloat(this.$unitSelector.data('g-to-units')) || null,
+            kg_to_units: kgToUnits || 5.6,    // Demo: 1 kg = 5.6 unidades
+            g_to_units: gToUnits || 0.0056,   // Demo: 1 g = 0.0056 unidades
         };
     },
 
