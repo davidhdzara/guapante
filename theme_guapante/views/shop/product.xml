@@ -29,9 +29,9 @@
                 
                 <div class="guapante-unit-selector mb-3">
                     <div class="btn-group w-100" role="group" aria-label="Selector de unidad de medida">
-                        <!-- Por defecto mostramos las 3 opciones, backend puede customizar -->
-                        <t t-set="unit_options" t-value="['Unidades', 'Peso (Kg)', 'Peso (g)']"/>
-                        <t t-set="unit_values" t-value="['unidades', 'kg', 'g']"/>
+                        <!-- Orden: Unidades, g (gramos), Kg (kilogramos) -->
+                        <t t-set="unit_options" t-value="['Unidades', 'Peso (g)', 'Peso (Kg)']"/>
+                        <t t-set="unit_values" t-value="['unidades', 'g', 'kg']"/>
                         
                         <t t-foreach="unit_options" t-as="unit_label">
                             <t t-set="unit_value" t-value="unit_values[unit_label_index]"/>
@@ -82,9 +82,9 @@
                 <!-- Campo oculto para enviar al backend -->
                 <input type="hidden" name="product_uom" value="unidades"/>
                 
-                <!-- Botón Agregar al Pedido -->
+                <!-- Botón Agregar al Pedido (VERDE) -->
                 <button type="submit" 
-                        class="btn btn-primary btn-lg w-100 guapante-add-to-cart-btn"
+                        class="btn btn-success btn-lg w-100 guapante-add-to-cart-btn"
                         data-animation-selector=".o_wsale_product_images">
                     <i class="fa fa-shopping-cart me-2"></i>
                     Agregar al Pedido

@@ -108,12 +108,60 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     /**
      * Handle unit change event
+     * Auto-converts quantity when switching between g/kg
      */
     _onUnitChange: function (ev) {
-        var selectedUnit = $(ev.currentTarget).val();
-        this._updateHiddenUnitField(selectedUnit);
+        var newUnit = $(ev.currentTarget).val();
+        var previousUnit = this.currentUnit || 'unidades';
+        var currentQty = this._getQuantity();
+
+        // Auto-convert quantity when switching between weight units
+        var convertedQty = this._convertQuantity(currentQty, previousUnit, newUnit);
+
+        // Update quantity if conversion happened
+        if (convertedQty !== currentQty) {
+            this._setQuantity(convertedQty);
+        }
+
+        // Store current unit for next comparison
+        this.currentUnit = newUnit;
+
+        this._updateHiddenUnitField(newUnit);
         this._updateEquivalence();
-        console.log('Guapante: Unit changed to', selectedUnit);
+        console.log('Guapante: Unit changed from', previousUnit, 'to', newUnit, '| Qty:', currentQty, '→', convertedQty);
+    },
+
+    /**
+     * Convert quantity when switching between units
+     * Rules:
+     * - g → kg: divide by 1000
+     * - kg → g: multiply by 1000
+     * - g/kg → unidades: reset to 1
+     * - unidades → g/kg: keep current value
+     */
+    _convertQuantity: function (qty, fromUnit, toUnit) {
+        // g to kg
+        if (fromUnit === 'g' && toUnit === 'kg') {
+            return qty / 1000;
+        }
+
+        // kg to g
+        if (fromUnit === 'kg' && toUnit === 'g') {
+            return qty * 1000;
+        }
+
+        // From weight units to unidades: reset to 1
+        if ((fromUnit === 'g' || fromUnit === 'kg') && toUnit === 'unidades') {
+            return 1;
+        }
+
+        // From unidades to weight: keep current value
+        if (fromUnit === 'unidades' && (toUnit === 'g' || toUnit === 'kg')) {
+            return qty;
+        }
+
+        // No conversion needed
+        return qty;
     },
 
     /**

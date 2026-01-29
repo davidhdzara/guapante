@@ -434,8 +434,9 @@
             }
 
             &:hover:not(:has(.btn-check:checked)) {
-                background-color: #F9FAFB;
-                border-color: darken(#E5E7EB, 10%);
+                background-color: #D1FAE5; // Light green background
+                border-color: $primary;
+                color: #065F46; // Dark green text for readability
             }
 
             &:first-child {
@@ -459,6 +460,7 @@
         }
     }
 }
+
 // Unit Selector Container background
 .guapante-unit-selector-container {
     background-color: #F3F4F6 !important;
@@ -471,24 +473,24 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         border-radius: 8px;
         overflow: hidden;
-        
+
         .btn {
             background: white;
             border: 1.5px solid #E5E7EB;
             color: #374151;
             padding: 0.65rem 1rem;
             transition: all 0.2s;
-            
+
             &:hover {
                 background-color: #F9FAFB;
                 border-color: darken(#E5E7EB, 10%);
             }
-            
+
             i {
                 font-size: 0.875rem;
             }
         }
-        
+
         .guapante-qty-input {
             border: 1.5px solid #E5E7EB;
             border-left: none;
@@ -498,13 +500,13 @@
             font-weight: 600;
             color: #1F2937;
             padding: 0.65rem 0.5rem;
-            
+
             &::-webkit-outer-spin-button,
             &::-webkit-inner-spin-button {
                 -webkit-appearance: none;
                 margin: 0;
             }
-            
+
             &[type=number] {
                 -moz-appearance: textfield;
             }
@@ -520,7 +522,7 @@
     border-radius: 8px;
     transition: all 0.2s;
     box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
-    
+
     &:hover {
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
