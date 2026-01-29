@@ -63,6 +63,7 @@
             'theme_guapante/static/src/js/auth_signup.js',
             'theme_guapante/static/src/js/shop.js',
             'theme_guapante/static/src/js/product_layout_fix.js',  # Layout Fix JS
+            'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
         ],
     },
     'application': False,

@@ -12,17 +12,7 @@
             <attribute name="class" add="guapante-product-image" separator=" "/>
         </xpath>
 
-        <!-- 3. Replace Wishlist Heart Icon with Shopping Cart Icon -->
-        <xpath expr="//a[hasclass('o_add_wishlist')]/i" position="replace">
-            <i class="fa fa-shopping-cart"></i>
-        </xpath>
-
-        <!-- 4. Add custom class to wishlist button for styling -->
-        <xpath expr="//a[hasclass('o_add_wishlist')]" position="attributes">
-            <attribute name="class" add="guapante-cart-icon" separator=" "/>
-            <attribute name="title">Agregar al carrito</attribute>
-            <attribute name="aria-label">Agregar al carrito</attribute>
-        </xpath>
+        <!-- Note: Wishlist icon replacement is handled via JavaScript to avoid XPath issues -->
         
     </template>
 </odoo>
