@@ -12,11 +12,16 @@ publicWidget.registry.GuapanteReplaceWishlistIcon = publicWidget.Widget.extend({
         this.$('.o_add_wishlist').each(function () {
             var $button = $(this);
 
-            // Replace the icon
-            var $icon = $button.find('i');
+            // Replace the icon - Odoo uses <span> not <i>
+            var $icon = $button.find('span.fa, i.fa');
             if ($icon.length) {
                 $icon.removeClass('fa-heart fa-heart-o').addClass('fa-shopping-cart');
+                // Remove aria-label de "lista de deseos"
+                $icon.removeAttr('aria-label');
             }
+
+            // Remove disabled attribute to show button
+            $button.removeAttr('disabled');
 
             // Update attributes
             $button.attr('title', 'Agregar al carrito');

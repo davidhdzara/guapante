@@ -34,7 +34,7 @@
     position: relative;
     overflow: hidden;
     border-radius: 16px 16px 0 0; // Solo bordes superiores redondeados
-    margin: -10px; // Eliminar bordes blancos (padding negativo)
+    margin: -10px -10px 0 -10px !important; // Eliminar bordes blancos (padding negativo)
     padding: 0; // Sin padding
 
     // Image wrapper
