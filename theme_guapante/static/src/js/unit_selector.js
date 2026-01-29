@@ -7,23 +7,22 @@ import publicWidget from "@web/legacy/js/public/public_widget";
  * Handles unit of measure selection (Unidades/Kg/g) on product page
  * - Updates equivalence display when unit or quantity changes
  * - Syncs hidden field for backend submission
+ * - Manages quantity +/- buttons
  */
 publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
-    selector: '#product_details',
+    selector: '.guapante-unit-selector-container',
     events: {
         'change .guapante-unit-selector input[type="radio"]': '_onUnitChange',
-        'input input[name="add_qty"]': '_updateEquivalence',
-        'change input[name="add_qty"]': '_updateEquivalence',
+        'input .guapante-qty-input': '_updateEquivalence',
+        'change .guapante-qty-input': '_updateEquivalence',
+        'click .guapante-qty-plus': '_onQuantityPlus',
+        'click .guapante-qty-minus': '_onQuantityMinus',
     },
 
     start: function () {
-        this.$unitSelector = this.$('.guapante-unit-selector');
-
-        if (this.$unitSelector.length) {
-            this.conversions = this._getConversions();
-            this._updateEquivalence();
-            console.log('Guapante: Unit selector initialized', this.conversions);
-        }
+        this.conversions = this._getConversions();
+        this._updateEquivalence();
+        console.log('Guapante: Unit selector initialized', this.conversions);
 
         return this._super.apply(this, arguments);
     },
@@ -33,8 +32,8 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
      * Falls back to demo values for testing until backend is ready
      */
     _getConversions: function () {
-        var kgToUnits = parseFloat(this.$unitSelector.data('kg-to-units'));
-        var gToUnits = parseFloat(this.$unitSelector.data('g-to-units'));
+        var kgToUnits = parseFloat(this.$el.data('kg-to-units'));
+        var gToUnits = parseFloat(this.$el.data('g-to-units'));
 
         // Use demo values if backend hasn't provided conversion factors
         return {
@@ -47,15 +46,48 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
      * Get currently selected unit
      */
     _getSelectedUnit: function () {
-        return this.$unitSelector.find('input[type="radio"]:checked').val() || 'unidades';
+        return this.$('.guapante-unit-selector input[type="radio"]:checked').val() || 'unidades';
     },
 
     /**
      * Get current quantity value
      */
     _getQuantity: function () {
-        var qty = parseFloat(this.$('input[name="add_qty"]').val()) || 1;
+        var qty = parseFloat(this.$('.guapante-qty-input').val()) || 1;
         return Math.max(qty, 0.01); // Minimum 0.01
+    },
+
+    /**
+     * Set quantity value
+     */
+    _setQuantity: function (value) {
+        value = Math.max(value, 0.01);
+        this.$('.guapante-qty-input').val(value.toFixed(2));
+        this._updateEquivalence();
+    },
+
+    /**
+     * Handle quantity plus button
+     */
+    _onQuantityPlus: function () {
+        var currentQty = this._getQuantity();
+        var selectedUnit = this._getSelectedUnit();
+
+        // Increment by different amounts depending on unit
+        var increment = selectedUnit === 'g' ? 100 : (selectedUnit === 'kg' ? 0.5 : 1);
+        this._setQuantity(currentQty + increment);
+    },
+
+    /**
+     * Handle quantity minus button
+     */
+    _onQuantityMinus: function () {
+        var currentQty = this._getQuantity();
+        var selectedUnit = this._getSelectedUnit();
+
+        // Decrement by different amounts depending on unit
+        var decrement = selectedUnit === 'g' ? 100 : (selectedUnit === 'kg' ? 0.5 : 1);
+        this._setQuantity(Math.max(0.01, currentQty - decrement));
     },
 
     /**
@@ -74,7 +106,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     _updateEquivalence: function () {
         var selectedUnit = this._getSelectedUnit();
         var quantity = this._getQuantity();
-        var $equivalence = this.$unitSelector.find('.guapante-unit-equivalence');
+        var $equivalence = this.$('.guapante-unit-equivalence');
         var $equivalenceText = $equivalence.find('.equivalence-text');
 
         // Calculate and display equivalence
@@ -95,7 +127,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
      * Update hidden field value for backend submission
      */
     _updateHiddenUnitField: function (unit) {
-        var $hiddenField = this.$unitSelector.find('input[name="product_uom"]');
+        var $hiddenField = this.$('input[name="product_uom"]');
         if ($hiddenField.length) {
             $hiddenField.val(unit);
         }
