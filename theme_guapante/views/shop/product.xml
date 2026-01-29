@@ -17,9 +17,9 @@
         <!-- Unit Selector: Inject BEFORE the quantity/add to cart section -->
         <xpath expr="//div[@id='product_details']//form[@action='/shop/cart/update']" position="inside">
             <div class="guapante-unit-selector mb-3" 
-                 t-att-data-product-id="product.id"
-                 t-att-data-kg-to-units="product.kg_to_units_factor or ''"
-                 t-att-data-g-to-units="product.g_to_units_factor or ''">
+                 t-att-data-product-id="product.id">
+                <!-- Note: conversion factors will be added when backend is ready -->
+                <!-- For now, JavaScript will use demo values if needed -->
                 
                 <label class="form-label text-muted small fw-semibold text-uppercase mb-2">
                     <i class="fa fa-balance-scale me-1"></i>
