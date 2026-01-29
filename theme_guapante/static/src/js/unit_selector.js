@@ -8,6 +8,7 @@ import publicWidget from "@web/legacy/js/public/public_widget";
  * - Updates equivalence display when unit or quantity changes
  * - Syncs hidden field for backend submission
  * - Manages quantity +/- buttons
+ * - Hides original Odoo controls
  */
 publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     selector: '.guapante-unit-selector-container',
@@ -22,9 +23,24 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     start: function () {
         this.conversions = this._getConversions();
         this._updateEquivalence();
+
+        // Hide original Odoo controls
+        this._hideOriginalControls();
+
         console.log('Guapante: Unit selector initialized', this.conversions);
 
         return this._super.apply(this, arguments);
+    },
+
+    /**
+     * Hide original Odoo quantity selector and add to cart button
+     */
+    _hideOriginalControls: function () {
+        // Hide original quantity selector
+        $('#o_wsale_cta_wrapper .css_quantity').addClass('d-none');
+
+        // Hide original add to cart button
+        $('#add_to_cart').addClass('d-none');
     },
 
     /**
