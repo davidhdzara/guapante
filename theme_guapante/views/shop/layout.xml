@@ -3,12 +3,23 @@
     <template id="products_guapante" inherit_id="website_sale.products" name="Guapante Shop Layout">
         
         <!-- Inject Central Header (Title) BEFORE the toolbar (products_header) -->
+        <!-- 1. Hide default Category Description (so we can move it) -->
+        <xpath expr="//div[@id='category_header']" position="attributes">
+            <attribute name="class" add="d-none" separator=" "/>
+        </xpath>
+
+        <!-- 2. Custom Header: Title FIRST, then Description -->
         <xpath expr="//div[hasclass('products_header')]" position="before">
-            <div class="guapante-shop-header">
+            <div class="guapante-shop-header mb-4">
                 <t t-if="category">
-                    <div class="d-flex justify-content-between align-items-end mb-2">
-                        <!-- Title -->
+                    <!-- Title Top -->
+                    <div class="d-flex justify-content-between align-items-end mb-3">
                         <h1 class="fw-bold m-0" t-field="category.name"/>
+                    </div>
+                    
+                    <!-- Description Bottom -->
+                    <div t-if="category.website_description" class="text-muted mb-4">
+                         <div t-field="category.website_description" class="oe_structure"/>
                     </div>
                 </t>
                 <t t-else="">
