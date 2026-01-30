@@ -37,7 +37,7 @@
     overflow: hidden;
     border-radius: 16px 16px 0 0;
     margin: 0 !important; // Reset margins
-    padding: 0;
+    padding: 0 !important; // Ensure no padding here either
 
     // Image wrapper
     .oe_product_image_link {
@@ -46,20 +46,26 @@
         width: 100%;
     }
 
-    // Wrapper interno de la imagen
+    // Wrapper interno de la imagen (span)
     .oe_product_image_img_wrapper {
-        width: 100%;
-        height: 100%;
+        width: 100% !important;
+        height: 100% !important;
         position: absolute;
         top: 0;
         left: 0;
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
     }
 
     // Image itself
     img {
-        object-fit: cover;
-        width: 100%;
-        height: 100%;
+        object-fit: cover !important; // Force cover over 'contain'
+        width: 100% !important;
+        height: 100% !important;
+        position: absolute !important; // Ensure it fills the relative parent
+        top: 0;
+        left: 0;
     }
 
     // Ribbon
@@ -131,14 +137,14 @@
         position: absolute !important;
         bottom: 8px;
         right: 8px;
-        z-index: 10;
-        background: $primary;
-        border: none;
-        color: white;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
+        z-index: 100; // Increased z-index
+        background: $primary !important;
+        border: none !important;
+        color: white !important;
+        width: 40px !important;
+        height: 40px !important;
+        border-radius: 50% !important;
+        display: flex !important;
         align-items: center;
         justify-content: center;
         font-size: 1.1rem;
@@ -148,7 +154,7 @@
         visibility: visible !important; // Force visibility
 
         &:hover {
-            background: darken($primary, 10%);
+            background: darken($primary, 10%) !important;
             transform: scale(1.1);
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
         }
@@ -158,37 +164,28 @@
         }
     }
 
-    // Cart Button (The main action button if different)
+    // Cart Button (Wrapper usually found in Odoo)
     .o_wsale_product_btn {
         position: absolute;
         bottom: 8px;
         right: 8px;
-        z-index: 3;
+        z-index: 90;
         // FIX: Override Odoo hiding it on desktop/hover
         display: flex !important;
         opacity: 1 !important;
         visibility: visible !important;
 
+        // Ensure child buttons are also visible
+        .btn {
+            display: flex !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        // Styles if using standard Odoo buttons inside this wrapper
         button,
         a {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            background: #1F2937;
-            border: none;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
-
-            &:hover {
-                background: #111827;
-                transform: scale(1.05);
-                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
-            }
+            // ... (keep specifically designed buttons if needed, but the above guapante-cart-icon handles the main one)
         }
     }
 }
