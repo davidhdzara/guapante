@@ -86,15 +86,26 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 })
             });
 
-            // Update Cart Quantity Badge (Standard Odoo Selectors + Our Custom One)
-            var newQty = data.cart_quantity || 0;
 
-            // Update Headers/Footers
-            $('.my_cart_quantity').text(newQty).parent().removeClass('d-none');
+            // Debug: Log response to see available fields
+            console.log('Guapante: Cart response data:', data);
+
+            // Update Cart Badge to show NUMBER OF ITEMS (lines), not quantity sum
+            // Try different possible field names from Odoo response
+            var itemCount = data.cart_lines_count || data.line_count || data.order_line_count || 0;
+
+            // If none of those fields exist, fall back to cart_quantity (old behavior)
+            if (itemCount === 0 && data.cart_quantity) {
+                console.warn('Guapante: cart_lines_count not found, using cart_quantity as fallback');
+                itemCount = data.cart_quantity;
+            }
+
+            // Update Headers/Footers with item count
+            $('.my_cart_quantity').text(itemCount).parent().removeClass('d-none');
             // Update our custom badges (specifically checking the red badge span)
-            $('a[href="/shop/cart"] .badge').text(newQty).removeClass('d-none');
+            $('a[href="/shop/cart"] .badge').text(itemCount).removeClass('d-none');
             // If badge was hidden (count 0), show it (simple logic: just set text)
-            if (newQty > 0) {
+            if (itemCount > 0) {
                 $('a[href="/shop/cart"] .badge').show();
             }
 
