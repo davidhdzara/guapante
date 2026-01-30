@@ -23,30 +23,24 @@
         }
     }
 
-    /* Mobile "App-Like" Horizontal Scroll */
+    /* Mobile: Vertical Grid (2 columns per row) */
     @include media-breakpoint-down(lg) {
         .row {
+            /* Restore standard grid behavior */
             display: flex;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            padding-bottom: 20px;
-            scroll-behavior: smooth;
-            -webkit-overflow-scrolling: touch;
-
-            /* Hide Scrollbar */
-            &::-webkit-scrollbar {
-                display: none;
-            }
-
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+            flex-wrap: wrap; // Allow wrapping
+            margin-right: -0.75rem;
+            margin-left: -0.75rem;
         }
 
-        /* Adjust columns to be fixed width cards/circles */
+        /* Adjust columns to be standard col-6 (50%) */
         [class*="col-"] {
-            flex: 0 0 auto;
-            width: 130px;
-            /* Fixed width for category items */
+            width: 50% !important; // Force 2 columns
+            flex: 0 0 50%;
+            max-width: 50%;
+            padding-right: 0.75rem;
+            padding-left: 0.75rem;
+            margin-bottom: 1rem; // Spacing between rows
         }
 
         /* Make internal padding smaller on mobile */
