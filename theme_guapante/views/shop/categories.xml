@@ -3,7 +3,7 @@
     <!-- Category Icons: Inherit from the link template and add icons -->
     <template id="categorie_link_guapante" inherit_id="website_sale.categorie_link" name="Guapante Category Link with Icon">
         <xpath expr="//a[@t-field='c.name']" position="replace">
-            <a t-att-href="keep('/shop/category/' + slug(c), category=0)" 
+            <a t-att-href="keep('/shop/category/' + slug(c), category=0, search='')" 
                t-att-class="'p-0 d-flex align-items-center %s' % ('guapante-active' if category and category.id == c.id else '')">
                 <!-- Category Icon (from image or fallback) -->
                 <!-- Category Icon (from image or fallback) -->
