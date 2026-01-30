@@ -534,6 +534,6 @@
 // FORCE HIDE ORIGINAL ODOO AD TO CART
 #add_to_cart,
 .css_quantity,
-#o_wsale_cta_wrapper .btn {
+#o_wsale_cta_wrapper #add_to_cart {
     display: none !important;
 }
