@@ -15,8 +15,8 @@
                             <span class="brand-text fw-bold text-dark fs-3 tracking-tight">Guapante</span>
                         </a>
 
-                        <!-- MOBILE ICONS (Visible on Mobile, Hidden on Desktop) -->
-                        <div class="d-flex align-items-center gap-3 d-lg-none me-2">
+                        <!-- MOBILE ICONS (Hidden as requested: "dejando todo en el menu de la parte inferior") -->
+                        <div class="d-flex align-items-center gap-3 d-lg-none me-2 d-none">
                              <!-- Mobile Search Trigger -->
                             <a href="/shop" class="text-dark"><i class="fa fa-search fs-4"></i></a>
                             
@@ -37,7 +37,7 @@
                         <div class="collapse navbar-collapse" id="navbarGuapante">
                             <!-- 2. Navigation (Desktop) -->
                             <ul class="navbar-nav me-auto gap-lg-4 mb-3 mb-lg-0">
-                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Categorías</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/shop">Tienda</a></li>
                                 <li class="nav-item"><a class="nav-link text-body" href="/shop">Ofertas</a></li>
                                 <li class="nav-item"><a class="nav-link text-body" href="/about">Nosotros</a></li>
                                 <li class="nav-item"><a class="nav-link text-body" href="/logistics">Logística</a></li>

@@ -17,6 +17,12 @@
                         <span class="d-block small" style="font-size: 0.7rem;">Categorías</span>
                     </a>
 
+                    <!-- SEARCH (New) -->
+                    <a href="/shop" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if request.params.get('search') else 'text-muted' }}">
+                        <i class="fa fa-search fs-4 mb-1"></i>
+                        <span class="d-block small" style="font-size: 0.7rem;">Buscar</span>
+                    </a>
+
                     <!-- Cart -->
                     <a href="/shop/cart" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/shop/cart' in request.httprequest.path else 'text-muted' }}">
                         <div class="position-relative d-inline-block">
