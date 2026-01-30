@@ -91,22 +91,26 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             console.log('Guapante: Cart response data:', data);
 
             // Update Cart Badge to show NUMBER OF ITEMS (lines), not quantity sum
-            // Try different possible field names from Odoo response
-            var itemCount = data.cart_lines_count || data.line_count || data.order_line_count || 0;
+            // Backend now explicitly returns 'cart_lines_count' in our custom controller override
+            var itemCount = data.cart_lines_count;
 
-            // If none of those fields exist, fall back to cart_quantity (old behavior)
-            if (itemCount === 0 && data.cart_quantity) {
-                console.warn('Guapante: cart_lines_count not found, using cart_quantity as fallback');
-                itemCount = data.cart_quantity;
+            // Fallback: If cart_lines_count is missing (controller not updated/reloaded), 
+            // check other possible fields or fallback to cart_quantity logic (better than nothing)
+            if (typeof itemCount === 'undefined') {
+                console.warn('Guapante: cart_lines_count misses in response. Controller might need restart.');
+                itemCount = data.cart_quantity || 0;
             }
 
             // Update Headers/Footers with item count
-            $('.my_cart_quantity').text(itemCount).parent().removeClass('d-none');
-            // Update our custom badges (specifically checking the red badge span)
-            $('a[href="/shop/cart"] .badge').text(itemCount).removeClass('d-none');
-            // If badge was hidden (count 0), show it (simple logic: just set text)
+            // We target all possible badges: legacy Odoo, new Odoo, and our custom one
+            var $badges = $('.my_cart_quantity, .o_wsale_my_cart .badge, .btn-cart-guapante .badge');
+
+            // Update text and visibility
+            $badges.text(itemCount).removeClass('d-none');
+
             if (itemCount > 0) {
-                $('a[href="/shop/cart"] .badge').show();
+                $badges.show();
+                $badges.parent().removeClass('d-none');
             }
 
             // Visual feedback: Success
