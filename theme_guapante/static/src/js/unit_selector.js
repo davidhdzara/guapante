@@ -1,7 +1,7 @@
 /** @odoo-module **/
 
 import publicWidget from "@web/legacy/js/public/public_widget";
-import { jsonrpc } from "@web/core/network/rpc_service";
+import ajax from "@web/legacy/js/core/ajax";
 import wSaleUtils from "@website_sale/js/website_sale_utils";
 
 /**
@@ -66,7 +66,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Agregando...');
 
         try {
-            const data = await jsonrpc('/shop/cart/update_json', {
+            const data = await ajax.jsonRpc('/shop/cart/update_json', 'call', {
                 product_id: parseInt(productId),
                 add_qty: quantity,
                 display: false, // Don't verify display options for now

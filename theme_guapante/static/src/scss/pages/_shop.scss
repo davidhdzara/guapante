@@ -530,3 +530,10 @@
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
     }
 }
+
+// FORCE HIDE ORIGINAL ODOO AD TO CART
+#add_to_cart,
+.css_quantity,
+#o_wsale_cta_wrapper .btn {
+    display: none !important;
+}
