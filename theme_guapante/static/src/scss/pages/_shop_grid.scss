@@ -5,13 +5,15 @@
 .oe_product {
 
     // Card wrapper
+    // FIX: Removed padding hack. Now container has 0 padding, so image is full width naturally.
     .o_wsale_product_grid_wrapper {
         background: white;
         border-radius: 16px;
         overflow: hidden;
-        border: 1px solid #E5E7EB; // Borde sutil para definir esquinas
+        border: 1px solid #E5E7EB;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         transition: all 0.3s ease;
+        padding: 0 !important; // Enforce zero padding
 
         &:hover {
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
@@ -28,14 +30,14 @@
 // 2. Product Image (Edge-to-edge, 60% de la tarjeta)
 .oe_product_image,
 .guapante-product-image {
-    height: 250px; // Altura fija para consistencia
-    width: calc(100% + 20px); // Compensar margen negativo
-    background: transparent; // Sin fondo gris
+    height: 250px;
+    width: 100% !important; // Full width
+    background: transparent;
     position: relative;
     overflow: hidden;
-    border-radius: 16px 16px 0 0; // Solo bordes superiores redondeados
-    margin: -10px -10px 0 -10px !important; // Eliminar bordes blancos (padding negativo)
-    padding: 0; // Sin padding
+    border-radius: 16px 16px 0 0;
+    margin: 0 !important; // Reset margins
+    padding: 0;
 
     // Image wrapper
     .oe_product_image_link {
@@ -60,7 +62,7 @@
         height: 100%;
     }
 
-    // Ribbon (para badges futuros: ORGÁNICO, OFERTA, etc.)
+    // Ribbon
     .o_ribbon {
         position: absolute;
         top: 12px;
@@ -73,7 +75,6 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
 
-        // Variantes de colores (se activarán desde el backend)
         &.ribbon-organic {
             background: #10B981;
             color: white;
@@ -93,8 +94,8 @@
 
 // 3. Product Information Section
 .o_wsale_product_information {
-    padding: 1rem;
-    text-align: center; // Centrar todo el contenido
+    padding: 1rem; // Add padding here for content
+    text-align: center;
 
     // Title
     .o_wsale_products_item_title {
@@ -102,7 +103,7 @@
         font-weight: 600;
         line-height: 1.4;
         margin-bottom: 0.5rem;
-        text-align: center; // Título centrado
+        text-align: center;
 
         a {
             color: #111827 !important;
@@ -122,27 +123,29 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative; // Context for absolute buttons
 
-    // Cart icon button (previously wishlist - now shopping cart)
+    // Cart icon button
     .o_add_wishlist,
     .guapante-cart-icon {
         position: absolute !important;
-        bottom: 8px; // Minimal padding
-        right: 8px; // Minimal padding
+        bottom: 8px;
+        right: 8px;
         z-index: 10;
-
-        background: $primary; // Green background
+        background: $primary;
         border: none;
         color: white;
         width: 40px;
         height: 40px;
-        border-radius: 50%; // Circular
+        border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 1.1rem;
         transition: all 0.2s;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        opacity: 1 !important; // Force visibility
+        visibility: visible !important; // Force visibility
 
         &:hover {
             background: darken($primary, 10%);
@@ -155,18 +158,22 @@
         }
     }
 
-    // Cart Button (floating, circular, dark)
+    // Cart Button (The main action button if different)
     .o_wsale_product_btn {
         position: absolute;
-        bottom: 8px; // Más pegado al borde
-        right: 8px; // Más pegado al borde
+        bottom: 8px;
+        right: 8px;
         z-index: 3;
+        // FIX: Override Odoo hiding it on desktop/hover
+        display: flex !important;
+        opacity: 1 !important;
+        visibility: visible !important;
 
         button,
         a {
             width: 48px;
             height: 48px;
-            border-radius: 12px; // Bordes redondeados (no circular completo)
+            border-radius: 12px;
             background: #1F2937;
             border: none;
             color: white;
@@ -182,23 +189,16 @@
                 transform: scale(1.05);
                 box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
             }
-
-            i,
-            .fa {
-                font-size: 1.1rem;
-                color: white;
-            }
         }
     }
 }
 
-// 5. Price Section (Hidden by default en products_item.xml)
+// 5. Price Section
 .product_price {
     font-size: 0.9rem;
     color: #6B7280;
     font-weight: 500;
 
-    // Si se muestra, estilizarlo bien
     &:not(.d-none) {
         .h6 {
             color: #111827;
@@ -212,7 +212,7 @@
 
     .oe_product_image,
     .guapante-product-image {
-        aspect-ratio: 1 / 1; // Más cuadrado en móvil
+        aspect-ratio: 1 / 1;
         min-height: 180px;
     }
 

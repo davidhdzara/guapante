@@ -1,21 +1,7 @@
-# Odoo Enterprise (third-party, requires GitHub token)
-enterprise/
 
-# Init data (database dump and filestore - too large for git)
-init-data/
+# Ignore everything by default
+*
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyc
-
-# Odoo
-*.log
-*.pot
-*.mo
-.DS_Store
-
-# Docker
-Dockerfile.postgres
-odoo-entrypoint.sh
+# Exceptions
+!theme_guapante/
+!.gitignore
