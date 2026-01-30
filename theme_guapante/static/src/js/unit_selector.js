@@ -59,7 +59,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         ev.preventDefault();
 
         var $btn = $(ev.currentTarget);
-        var productId = this.$el.data('product-id');
+
+        // FETCH DYNAMIC PRODUCT ID (Handles Variants)
+        // Odoo updates input[name="product_id"] when variants change.
+        var $productInput = $('input[name="product_id"]');
+        var productId = $productInput.val() || this.$el.data('product-id');
+
         var quantity = this._getQuantity();
 
         // Visual feedback: Loading state
