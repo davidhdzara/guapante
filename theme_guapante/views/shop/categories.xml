@@ -6,11 +6,13 @@
             <a t-att-href="keep('/shop/category/' + slug(c), category=0)" 
                t-att-class="'p-0 d-flex align-items-center %s' % ('guapante-active' if category and category.id == c.id else '')">
                 <!-- Category Icon (from image or fallback) -->
+                <!-- Category Icon (from image or fallback) -->
                 <t t-if="c.image_128">
-                    <span t-field="c.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_24_cover me-2', 'style': 'width: 20px; height: 20px; object-fit: contain;'}"/>
+                    <span t-field="c.image_128" 
+                          t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'me-2 flex-shrink-0', 'style': 'width: 24px; height: 24px; object-fit: contain; border-radius: 4px;'}"/>
                 </t>
                 <t t-else="">
-                    <i class="fa fa-leaf me-2 text-muted opacity-50" style="font-size: 14px;"/>
+                    <i class="fa fa-leaf me-2 text-muted opacity-50 flex-shrink-0" style="font-size: 16px; width: 24px; text-align: center;"/>
                 </t>
                 <!-- Category Name -->
                 <span t-field="c.name"/>
