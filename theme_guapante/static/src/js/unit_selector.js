@@ -1,6 +1,8 @@
 /** @odoo-module **/
 
 import publicWidget from "@web/legacy/js/public/public_widget";
+import { jsonrpc } from "@web/core/network/rpc_service";
+import wSaleUtils from "@website_sale/js/website_sale_utils";
 
 /**
  * Guapante Unit Selector Widget
@@ -9,6 +11,7 @@ import publicWidget from "@web/legacy/js/public/public_widget";
  * - Syncs hidden field for backend submission
  * - Manages quantity +/- buttons
  * - Hides original Odoo controls
+ * - AJAX Add to Cart (Stays on page)
  */
 publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     selector: '.guapante-unit-selector-container',
@@ -18,6 +21,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         'change .guapante-qty-input': '_updateEquivalence',
         'click .guapante-qty-plus': '_onQuantityPlus',
         'click .guapante-qty-minus': '_onQuantityMinus',
+        'click .guapante-add-to-cart-btn': '_onAddToCart',
     },
 
     start: function () {
@@ -45,6 +49,57 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
         // Hide original add to cart button
         $('#add_to_cart').addClass('d-none');
+    },
+
+    /**
+     * AJAX Add to Cart Handler
+     * Prevents page reload and updates cart badge
+     */
+    _onAddToCart: async function (ev) {
+        ev.preventDefault();
+
+        var $btn = $(ev.currentTarget);
+        var productId = this.$el.data('product-id');
+        var quantity = this._getQuantity();
+
+        // Visual feedback: Loading state
+        $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Agregando...');
+
+        try {
+            const data = await jsonrpc('/shop/cart/update_json', {
+                product_id: parseInt(productId),
+                add_qty: quantity,
+                display: false, // Don't verify display options for now
+            });
+
+            // Update Cart Quantity Badge (Standard Odoo Selectors + Our Custom One)
+            var newQty = data.cart_quantity || 0;
+
+            // Update Headers/Footers
+            $('.my_cart_quantity').text(newQty).parent().removeClass('d-none');
+            // Update our custom badges (specifically checking the red badge span)
+            $('a[href="/shop/cart"] .badge').text(newQty).removeClass('d-none');
+            // If badge was hidden (count 0), show it (simple logic: just set text)
+            if (newQty > 0) {
+                $('a[href="/shop/cart"] .badge').show();
+            }
+
+            // Visual feedback: Success
+            $btn.removeClass('disabled').addClass('btn-success').removeClass('btn-primary')
+                .html('<i class="fa fa-check me-2"></i> Agregado');
+
+            // Restore button after delay
+            setTimeout(() => {
+                $btn.html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
+            }, 2000);
+
+            // Optional: Animate product to cart (using standard Odoo util if available/desired)
+            // For now, simpler button feedback is sufficient and robust.
+
+        } catch (error) {
+            console.error("Guapante: Error adding to cart", error);
+            $btn.removeClass('disabled').html('<i class="fa fa-exclamation-triangle me-2"></i> Error');
+        }
     },
 
     /**
