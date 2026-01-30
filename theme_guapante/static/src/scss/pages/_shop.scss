@@ -143,9 +143,11 @@
     }
 
     // On desktop, keep sticky but adjust for header (approx 90-100px)
+    // On desktop, keep sticky but adjust for header (approx 90-100px)
     @media (min-width: 992px) {
         &.position-sticky {
-            top: 100px !important;
+            top: auto !important; // Disable sticky top
+            position: relative !important; // Disable sticky
         }
     }
 
