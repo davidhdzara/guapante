@@ -89,3 +89,28 @@ class GuapanteWebsiteSale(WebsiteSale):
              qcontext['category'] = Category.browse(int(current_category))
 
         return response
+
+    @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
+    def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, **kwargs):
+        """
+        Override to return cart_lines_count (number of unique items)
+        instead of just quantity sum.
+        """
+        # 1. Call super to perform standard logic
+        response = super().cart_update_json(
+            product_id=product_id, 
+            line_id=line_id, 
+            add_qty=add_qty, 
+            set_qty=set_qty, 
+            display=display, 
+            **kwargs
+        )
+        
+        # 2. Add line count to response
+        order = request.website.sale_get_order()
+        if order:
+            response['cart_lines_count'] = len(order.order_line)
+        else:
+            response['cart_lines_count'] = 0
+            
+        return response
