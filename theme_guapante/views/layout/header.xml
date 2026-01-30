@@ -5,6 +5,9 @@
             <header id="top" data-anchor="true" data-name="Header" class="o_header_standard sticky-top bg-white">
                 <nav class="navbar navbar-expand-lg">
                     <div class="container-fluid px-lg-5">
+                        <!-- Global Cart Variables -->
+                        <t t-set="website_sale_order" t-value="website.sale_get_order()" />
+                        <t t-set="cart_qty" t-value="website_sale_order and website_sale_order.cart_quantity or 0" />
                         
                         <!-- 1. Logo -->
                         <a href="/" class="navbar-brand d-flex align-items-center gap-2 me-auto me-lg-5">
@@ -18,8 +21,6 @@
                             <a href="/shop" class="text-dark"><i class="fa fa-search fs-4"></i></a>
                             
                             <!-- Mobile Cart -->
-                             <t t-set="website_sale_order" t-value="website.sale_get_order()" />
-                             <t t-set="cart_qty" t-value="website_sale_order and website_sale_order.cart_quantity or 0" />
                              <a href="/shop/cart" class="position-relative text-dark text-decoration-none">
                                 <i class="fa fa-shopping-basket fs-4"></i>
                                 <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
@@ -88,9 +89,9 @@
                                 </div>
 
                                 <!-- Desktop Cart -->
-                                <a href="/shop/cart" class="btn-cart-guapante d-flex align-items-center gap-2 px-3 py-2 fw-bold text-decoration-none transition-base">
+                                <a href="/shop/cart" class="btn-cart-guapante position-relative d-flex align-items-center gap-2 px-3 py-2 fw-bold text-decoration-none transition-base">
                                     <i class="fa fa-shopping-basket fs-5"></i>
-                                    <span class="cart-price" t-esc="website_sale_order and website_sale_order.currency_id.symbol + str(cart_amount) or '$0'"/>
+                                    <!-- Badge -->
                                     <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
                                          <t t-esc="cart_qty"/>
                                     </span>
