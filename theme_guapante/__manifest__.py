@@ -18,7 +18,6 @@
         'views/shop/categories.xml',
         'views/shop/products_item.xml',
         'views/shop/product.xml',
-        'views/shop/product.xml',
         'views/shop/layout.xml',
         'views/shop/address.xml',
         'views/auth/login.xml',
