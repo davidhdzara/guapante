@@ -1,4 +1,5 @@
 /* Header SCSS */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 // Aggressive override to prevent Odoo from making it transparent on scroll
 header#top,
@@ -16,11 +17,13 @@ header.o_header_affixed,
     }
 
     .nav-link {
-        color: $text-main;
-        font-weight: 600;
+        font-family: 'Inter', sans-serif !important;
+        color: #1A1A1A !important; // Dark grey / Soft black
+        font-weight: 600; // Semi-bold
+        font-size: 15px; // Optimal size
 
         &:hover {
-            color: $primary;
+            color: $primary !important;
         }
     }
 
