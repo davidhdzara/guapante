@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="address_guapante" inherit_id="website_sale.address" name="Guapante Address Overrides">
+        <!-- 
+            Fix for missing street field: 
+            Ensure div_street is visible and has the correct label for Colombia context 
+        -->
+        <xpath expr="//div[hasclass('div_street')]" position="attributes">
+            <attribute name="style"></attribute> <!-- Remove potential conflicting inline styles -->
+            <attribute name="class" add="d-block" separator=" "/> <!-- Force visibility class -->
+        </xpath>
+        
+        <!-- 
+            If the field was removed by l10n_co or another module, we might need to re-inject it.
+            However, usually it's just hidden or labelled confusingly. 
+            Let's change the label to explicit "Dirección completa" to be sure.
+        -->
+        <xpath expr="//div[hasclass('div_street')]/label" position="replace">
+            <label class="col-form-label" for="street">Dirección completa <span class="d-none d-md-inline text-muted small fw-normal">(Calle, carrera, número)</span></label>
+        </xpath>
+    </template>
+</odoo>
