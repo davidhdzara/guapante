@@ -75,8 +75,26 @@ header.o_header_affixed,
     }
 
     // User Dropdown Custom Styles
+    .dropdown {
+        .dropdown-toggle {
+            font-family: 'Inter', sans-serif !important;
+            color: #1A1A1A !important;
+            font-weight: 600; // Semi-bold
+            font-size: 15px;
+
+            &:hover {
+                color: $primary !important;
+            }
+        }
+    }
+
     .dropdown-menu {
+        font-family: 'Inter', sans-serif !important; // Ensure font propagates to menu items
+
         .dropdown-item {
+            font-weight: 500; // Slightly lighter for items but still legible
+            color: #1A1A1A !important;
+            font-size: 14px;
             transition: all 0.2s ease;
 
             &:hover,
@@ -89,6 +107,22 @@ header.o_header_affixed,
                 background-color: #fef2f2 !important; // Light red hover for logout
                 color: $danger !important;
             }
+        }
+
+        // Headers inside dropdown (e.g. "Conectado como", Name)
+        span {
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        // "Conectado como"
+        .text-success {
+            font-weight: 600 !important;
+        }
+
+        // User Name/Email inside dropdown
+        .fw-bold {
+            font-weight: 700 !important; // Bold for emphasis
+            color: #1A1A1A !important;
         }
 
         .dropdown-divider {
