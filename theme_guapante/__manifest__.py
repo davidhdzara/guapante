@@ -67,6 +67,9 @@
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
             'theme_guapante/static/src/js/unit_selector.js',  # Unit selector (Unidades/Kg/g)
         ],
+        'web.assets_frontend_lazy': [
+            ('after', 'l10n_co_edi_website_sale/static/src/js/**/*', 'theme_guapante/static/src/js/address_fix.js'),
+        ],
     },
     'application': False,
     'auto_install': False,

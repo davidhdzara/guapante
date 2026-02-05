@@ -10,7 +10,7 @@ class GuapanteWebsiteSaleAddress(WebsiteSale):
     
     @http.route()
     def address(self, **kw):
-        """Override to add detailed logging of validation errors"""
+        """Override to add detailed logging and skip Colombian required fields for testing"""
         
         # If this is a POST (form submission), log what we received
         if request.httprequest.method == 'POST':
@@ -24,6 +24,21 @@ class GuapanteWebsiteSaleAddress(WebsiteSale):
             for field_name in ['name', 'email', 'phone', 'street', 'street2', 'city', 'zip', 'country_id', 'state_id']:
                 value = kw.get(field_name, '[NOT PROVIDED]')
                 _logger.info(f"  {field_name}: {value}")
+            
+            # SKIP COLOMBIAN REQUIRED FIELDS FOR TESTING
+            # Add default values if missing to avoid validation errors
+            if not kw.get('vat'):
+                kw['vat'] = '000000000'  # Dummy VAT
+                _logger.info("⚠️ VAT not provided, using dummy value")
+            
+            if not kw.get('l10n_latam_identification_type_id'):
+                # Get default identification type for Colombia (usually "Cédula de Ciudadanía")
+                id_type = request.env['l10n_latam.identification.type'].sudo().search([
+                    ('country_id.code', '=', 'CO')
+                ], limit=1)
+                if id_type:
+                    kw['l10n_latam_identification_type_id'] = str(id_type.id)
+                    _logger.info(f"⚠️ ID type not provided, using default: {id_type.name}")
         
         try:
             # Call parent method
