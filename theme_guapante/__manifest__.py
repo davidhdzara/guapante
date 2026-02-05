@@ -19,7 +19,6 @@
         'views/shop/products_item.xml',
         'views/shop/product.xml',
         'views/shop/layout.xml',
-        'views/shop/address.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
@@ -66,9 +65,6 @@
             'theme_guapante/static/src/js/product_layout_fix.js',  # Layout Fix JS
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
             'theme_guapante/static/src/js/unit_selector.js',  # Unit selector (Unidades/Kg/g)
-        ],
-        'web.assets_frontend_lazy': [
-            ('after', 'l10n_co_edi_website_sale/static/src/js/**/*', 'theme_guapante/static/src/js/address_fix.js'),
         ],
     },
     'application': False,
