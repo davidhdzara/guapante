@@ -4,6 +4,11 @@ import publicWidget from "@web/legacy/js/public/public_widget";
 publicWidget.registry.GuapanteShopRefine = publicWidget.Widget.extend({
     selector: '.guapante-shop-header',
     start: function () {
+        // Only run if we're actually on a shop page (selector matched)
+        if (!this.$el || this.$el.length === 0) {
+            return this._super.apply(this, arguments);
+        }
+
         // Move the Sorter (o_sortby_dropdown) to our custom header
         const $sorter = $('.o_sortby_dropdown');
         const $target = this.$el.find('.justify-content-between'); // The container with Title
@@ -15,7 +20,12 @@ publicWidget.registry.GuapanteShopRefine = publicWidget.Widget.extend({
         }
 
         // Safety: Ensure Price hiding persists (sometimes JS re-renders prices)
-        $('.product_price').addClass('d-none');
+        const $prices = $('.product_price');
+        if ($prices.length) {
+            $prices.addClass('d-none');
+        }
+
+        return this._super.apply(this, arguments);
     }
 });
 
@@ -38,7 +48,7 @@ publicWidget.registry.GuapanteSeasonalToggle = publicWidget.Widget.extend({
     _onToggleChange: function (ev) {
         const isChecked = ev.currentTarget.checked;
         const url = new URL(window.location.href);
-        
+
         if (isChecked) {
             // Add is_seasonal filter
             url.searchParams.set('is_seasonal', '1');
@@ -46,7 +56,7 @@ publicWidget.registry.GuapanteSeasonalToggle = publicWidget.Widget.extend({
             // Remove is_seasonal filter
             url.searchParams.delete('is_seasonal');
         }
-        
+
         // Redirect to filtered URL
         window.location.href = url.toString();
     }
