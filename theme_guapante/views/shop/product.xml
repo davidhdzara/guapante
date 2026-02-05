@@ -18,9 +18,8 @@
         <xpath expr="//div[@id='product_details']//a[@id='add_to_cart']" position="after">
             <!-- Gray container for unit selector -->
             <div class="guapante-unit-selector-container bg-light rounded-3 p-3 mt-3" 
-                 t-att-data-product-id="product.id">
-                <!-- Note: conversion factors will be added when backend is ready -->
-                <!-- For now, JavaScript will use demo values if needed -->
+                 t-att-data-product-id="product_variant.id"
+                 t-att-data-product-tmpl-id="product.id">
                 
                 <label class="form-label text-muted small fw-semibold text-uppercase mb-3 d-flex align-items-center">
                     <i class="fa fa-balance-scale me-2"></i>
@@ -28,33 +27,55 @@
                 </label>
                 
                 <div class="guapante-unit-selector mb-3">
-                    <div class="btn-group w-100" role="group" aria-label="Selector de unidad de medida">
-                        <!-- Orden: Unidades, g (gramos), Kg (kilogramos) -->
-                        <t t-set="unit_options" t-value="['Unidades', 'Peso (g)', 'Peso (Kg)']"/>
-                        <t t-set="unit_values" t-value="['unidades', 'g', 'kg']"/>
+                    <div class="btn-group w-100 guapante-packaging-options" role="group" aria-label="Selector de embalaje">
+                        <!-- Get packagings for current variant (product_product) with sudo for public access -->
+                        <t t-set="packagings" t-value="product_variant.sudo().packaging_ids.filtered(lambda p: p.sales)"/>
                         
-                        <t t-foreach="unit_options" t-as="unit_label">
-                            <t t-set="unit_value" t-value="unit_values[unit_label_index]"/>
+                        <t t-if="packagings">
+                            <!-- Render packaging options dynamically -->
+                            <t t-foreach="packagings" t-as="pkg">
+                                <input 
+                                    type="radio" 
+                                    class="btn-check packaging-option" 
+                                    t-att-name="'packaging_selector_' + str(product_variant.id)"
+                                    t-att-id="'pkg_' + str(pkg.id) + '_' + str(product_variant.id)"
+                                    t-att-value="pkg.id"
+                                    t-att-data-packaging-name="pkg.name"
+                                    t-att-data-packaging-qty="pkg.qty"
+                                    t-att-checked="'checked' if pkg_index == 0 else None"
+                                    autocomplete="off"
+                                />
+                                <label 
+                                    class="btn btn-outline-success" 
+                                    t-att-for="'pkg_' + str(pkg.id) + '_' + str(product_variant.id)">
+                                    <t t-esc="pkg.name"/>
+                                </label>
+                            </t>
+                        </t>
+                        <t t-else="">
+                            <!-- Fallback: Si no hay packagings, mostrar opción por defecto -->
                             <input 
                                 type="radio" 
-                                class="btn-check" 
-                                t-att-name="'unit_selector_' + str(product.id)"
-                                t-att-id="'unit_' + unit_value + '_' + str(product.id)"
-                                t-att-value="unit_value"
-                                t-att-checked="'checked' if unit_value == 'unidades' else None"
+                                class="btn-check packaging-option" 
+                                t-att-name="'packaging_selector_' + str(product_variant.id)"
+                                t-att-id="'pkg_default_' + str(product_variant.id)"
+                                value="0"
+                                data-packaging-name="Unidad"
+                                data-packaging-qty="1"
+                                checked="checked"
                                 autocomplete="off"
                             />
                             <label 
                                 class="btn btn-outline-success" 
-                                t-att-for="'unit_' + unit_value + '_' + str(product.id)">
-                                <t t-esc="unit_label"/>
+                                t-att-for="'pkg_default_' + str(product_variant.id)">
+                                Unidad
                             </label>
                         </t>
                     </div>
                     
-                    <!-- Equivalencia dinámica (actualizada por JavaScript) -->
-                    <div class="guapante-unit-equivalence text-muted small mt-2" style="display: none;">
-                        <span class="equivalence-text"></span>
+                    <!-- Info de cantidad del embalaje -->
+                    <div class="guapante-packaging-info text-muted small mt-2">
+                        <span class="packaging-info-text"></span>
                     </div>
                 </div>
                 
@@ -79,8 +100,8 @@
                     </div>
                 </div>
                 
-                <!-- Campo oculto para enviar al backend -->
-                <input type="hidden" name="product_uom" value="unidades"/>
+                <!-- Campo oculto para enviar el packaging_id al backend -->
+                <input type="hidden" name="product_packaging_id" t-att-value="packagings[0].id if packagings else 0"/>
                 
                 <!-- Botón Agregar al Pedido (VERDE) -->
                 <button type="button" 

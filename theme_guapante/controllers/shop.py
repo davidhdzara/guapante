@@ -114,3 +114,30 @@ class GuapanteWebsiteSale(WebsiteSale):
             response['cart_lines_count'] = 0
             
         return response
+
+    @http.route(['/shop/product/packagings/<int:product_id>'], type='json', auth="public", methods=['GET'], website=True, csrf=False)
+    def get_product_packagings(self, product_id, **kwargs):
+        """
+        Get packagings for a specific product variant
+        Returns list of packagings with id, name, qty
+        """
+        product = request.env['product.product'].sudo().browse(product_id)
+        
+        if not product.exists():
+            return []
+        
+        # Get packagings that are enabled for sales
+        packagings = product.packaging_ids.filtered(lambda p: p.sales)
+        
+        result = []
+        for pkg in packagings:
+            result.append({
+                'id': pkg.id,
+                'name': pkg.name,
+                'qty': pkg.qty,
+            })
+        
+        _logger.info(f"Packagings for product {product_id}: {result}")
+        
+        return result
+

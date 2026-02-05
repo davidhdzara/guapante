@@ -4,10 +4,10 @@ import publicWidget from "@web/legacy/js/public/public_widget";
 import wSaleUtils from "@website_sale/js/website_sale_utils";
 
 /**
- * Guapante Unit Selector Widget
- * Handles unit of measure selection (Unidades/Kg/g) on product page
- * - Updates equivalence display when unit or quantity changes
- * - Syncs hidden field for backend submission
+ * Guapante Packaging Selector Widget
+ * Handles packaging selection on product page
+ * - Displays available packagings for selected variant
+ * - Updates when variant changes
  * - Manages quantity +/- buttons
  * - Hides original Odoo controls
  * - AJAX Add to Cart (Stays on page)
@@ -15,32 +15,146 @@ import wSaleUtils from "@website_sale/js/website_sale_utils";
 publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     selector: '.guapante-unit-selector-container',
     events: {
-        'change .guapante-unit-selector input[type="radio"]': '_onUnitChange',
-        'input .guapante-qty-input': '_updateEquivalence',
-        'change .guapante-qty-input': '_updateEquivalence',
+        'change .packaging-option': '_onPackagingChange',
+        'input .guapante-qty-input': '_updatePackagingInfo',
+        'change .guapante-qty-input': '_updatePackagingInfo',
         'click .guapante-qty-plus': '_onQuantityPlus',
         'click .guapante-qty-minus': '_onQuantityMinus',
         'click .guapante-add-to-cart-btn': '_onAddToCart',
     },
 
     start: function () {
-        this.conversions = this._getConversions();
-
-        // Initialize current unit for conversion tracking
-        this.currentUnit = this._getSelectedUnit();
-
-        this._updateEquivalence();
-
+        // Initialize current packaging
+        this.currentPackaging = this._getSelectedPackaging();
+        
+        this._updatePackagingInfo();
+        
         // Hide original Odoo controls
         this._hideOriginalControls();
+        
+        // Listen for variant changes
+        this._setupVariantListener();
 
-        console.log('Guapante: Unit selector initialized', this.conversions);
+        console.log('Guapante: Packaging selector initialized', this.currentPackaging);
 
         return this._super.apply(this, arguments);
     },
 
     /**
-     * Hide original Odoo quantity selector and add to cart button
+     * Setup listener for variant changes to reload packagings
+     */
+    _setupVariantListener: function () {
+        const self = this;
+        
+        // Listen for when variant input changes (Odoo updates this automatically)
+        $(document).on('change', 'input[name="product_id"]', function() {
+            self._onVariantChange();
+        });
+    },
+
+    /**
+     * Reload packagings when variant changes
+     */
+    _onVariantChange: async function () {
+        const productId = $('input[name="product_id"]').val();
+        
+        if (!productId) {
+            return;
+        }
+
+        console.log('Guapante: Variant changed to product_id:', productId);
+
+        try {
+            // Fetch packagings for new variant
+            const packagings = await this._fetchPackagings(productId);
+            
+            // Rebuild packaging selector UI
+            this._rebuildPackagingSelector(packagings, productId);
+            
+            // Update current packaging reference
+            this.currentPackaging = this._getSelectedPackaging();
+            
+            // Update info display
+            this._updatePackagingInfo();
+            
+        } catch (error) {
+            console.error('Guapante: Error loading packagings', error);
+        }
+    },
+
+    /**
+     * Fetch packagings for a product variant via AJAX
+     */
+    _fetchPackagings: async function (productId) {
+        const response = await fetch(`/shop/product/packagings/${productId}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch packagings');
+        }
+        return await response.json();
+    },
+
+    /**
+     * Rebuild packaging selector HTML with new packagings
+     */
+    _rebuildPackagingSelector: function (packagings, productId) {
+        const $container = this.$('.guapante-packaging-options');
+        $container.empty();
+
+        if (packagings && packagings.length > 0) {
+            packagings.forEach((pkg, index) => {
+                const isChecked = index === 0;
+                const radioHtml = `
+                    <input 
+                        type="radio" 
+                        class="btn-check packaging-option" 
+                        name="packaging_selector_${productId}"
+                        id="pkg_${pkg.id}_${productId}"
+                        value="${pkg.id}"
+                        data-packaging-name="${pkg.name}"
+                        data-packaging-qty="${pkg.qty}"
+                        ${isChecked ? 'checked' : ''}
+                        autocomplete="off"
+                    />
+                    <label 
+                        class="btn btn-outline-success" 
+                        for="pkg_${pkg.id}_${productId}">
+                        ${pkg.name}
+                    </label>
+                `;
+                $container.append(radioHtml);
+            });
+
+            // Update hidden field
+            if (packagings[0]) {
+                $('input[name="product_packaging_id"]').val(packagings[0].id);
+            }
+        } else {
+            // Fallback: No packagings
+            const radioHtml = `
+                <input 
+                    type="radio" 
+                    class="btn-check packaging-option" 
+                    name="packaging_selector_${productId}"
+                    id="pkg_default_${productId}"
+                    value="0"
+                    data-packaging-name="Unidad"
+                    data-packaging-qty="1"
+                    checked
+                    autocomplete="off"
+                />
+                <label 
+                    class="btn btn-outline-success" 
+                    for="pkg_default_${productId}">
+                    Unidad
+                </label>
+            `;
+            $container.append(radioHtml);
+            $('input[name="product_packaging_id"]').val(0);
+        }
+    },
+
+    /**
+     * Hide original Odoo controls
      */
     _hideOriginalControls: function () {
         // Hide original quantity selector
@@ -60,11 +174,11 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         var $btn = $(ev.currentTarget);
 
         // FETCH DYNAMIC PRODUCT ID (Handles Variants)
-        // Odoo updates input[name="product_id"] when variants change.
         var $productInput = $('input[name="product_id"]');
         var productId = $productInput.val() || this.$el.data('product-id');
 
         var quantity = this._getQuantity();
+        var packagingId = this._getSelectedPackagingId();
 
         // Visual feedback: Loading state
         $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Agregando...');
@@ -81,31 +195,17 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                     params: {
                         product_id: parseInt(productId),
                         add_qty: quantity,
+                        product_packaging_id: packagingId,
                         display: false,
                     }
                 })
             });
 
-
-            // Debug: Log response to see available fields
             console.log('Guapante: Cart response data:', data);
 
-            // Update Cart Badge to show NUMBER OF ITEMS (lines), not quantity sum
-            // Backend now explicitly returns 'cart_lines_count' in our custom controller override
-            var itemCount = data.cart_lines_count;
-
-            // Fallback: If cart_lines_count is missing (controller not updated/reloaded), 
-            // check other possible fields or fallback to cart_quantity logic (better than nothing)
-            if (typeof itemCount === 'undefined') {
-                console.warn('Guapante: cart_lines_count misses in response. Controller might need restart.');
-                itemCount = data.cart_quantity || 0;
-            }
-
-            // Update Headers/Footers with item count
-            // We target all possible badges: legacy Odoo, new Odoo, and our custom one
+            // Update Cart Badge
+            var itemCount = data.cart_lines_count || data.cart_quantity || 0;
             var $badges = $('.my_cart_quantity, .o_wsale_my_cart .badge, .btn-cart-guapante .badge');
-
-            // Update text and visibility
             $badges.text(itemCount).removeClass('d-none');
 
             if (itemCount > 0) {
@@ -114,16 +214,13 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             }
 
             // Visual feedback: Success
-            $btn.removeClass('disabled').addClass('btn-success').removeClass('btn-primary')
+            $btn.removeClass('disabled').addClass('btn-success')
                 .html('<i class="fa fa-check me-2"></i> Agregado');
 
             // Restore button after delay
             setTimeout(() => {
                 $btn.html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
             }, 2000);
-
-            // Optional: Animate product to cart (using standard Odoo util if available/desired)
-            // For now, simpler button feedback is sufficient and robust.
 
         } catch (error) {
             console.error("Guapante: Error adding to cart", error);
@@ -132,25 +229,25 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     },
 
     /**
-     * Get conversion factors from data attributes
-     * Falls back to demo values for testing until backend is ready
+     * Get currently selected packaging info
      */
-    _getConversions: function () {
-        var kgToUnits = parseFloat(this.$el.data('kg-to-units'));
-        var gToUnits = parseFloat(this.$el.data('g-to-units'));
-
-        // Use demo values if backend hasn't provided conversion factors
-        return {
-            kg_to_units: kgToUnits || 5.6,    // Demo: 1 kg = 5.6 unidades
-            g_to_units: gToUnits || 0.0056,   // Demo: 1 g = 0.0056 unidades
-        };
+    _getSelectedPackaging: function () {
+        const $selected = this.$('.packaging-option:checked');
+        if ($selected.length) {
+            return {
+                id: parseInt($selected.val()),
+                name: $selected.data('packaging-name'),
+                qty: parseFloat($selected.data('packaging-qty')) || 1
+            };
+        }
+        return { id: 0, name: 'Unidad', qty: 1 };
     },
 
     /**
-     * Get currently selected unit
+     * Get selected packaging ID
      */
-    _getSelectedUnit: function () {
-        return this.$('.guapante-unit-selector input[type="radio"]:checked').val() || 'unidades';
+    _getSelectedPackagingId: function () {
+        return this._getSelectedPackaging().id;
     },
 
     /**
@@ -167,7 +264,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     _setQuantity: function (value) {
         value = Math.max(value, 0.01);
         this.$('.guapante-qty-input').val(value.toFixed(2));
-        this._updateEquivalence();
+        this._updatePackagingInfo();
     },
 
     /**
@@ -175,11 +272,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
      */
     _onQuantityPlus: function () {
         var currentQty = this._getQuantity();
-        var selectedUnit = this._getSelectedUnit();
-
-        // Increment by different amounts depending on unit
-        var increment = selectedUnit === 'g' ? 100 : (selectedUnit === 'kg' ? 0.5 : 1);
-        this._setQuantity(currentQty + increment);
+        this._setQuantity(currentQty + 1);
     },
 
     /**
@@ -187,101 +280,46 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
      */
     _onQuantityMinus: function () {
         var currentQty = this._getQuantity();
-        var selectedUnit = this._getSelectedUnit();
-
-        // Decrement by different amounts depending on unit
-        var decrement = selectedUnit === 'g' ? 100 : (selectedUnit === 'kg' ? 0.5 : 1);
-        this._setQuantity(Math.max(0.01, currentQty - decrement));
+        this._setQuantity(Math.max(0.01, currentQty - 1));
     },
 
     /**
-     * Handle unit change event
-     * Auto-converts quantity when switching between g/kg
+     * Handle packaging change event
      */
-    _onUnitChange: function (ev) {
-        var newUnit = $(ev.currentTarget).val();
-        var previousUnit = this.currentUnit || 'unidades';
-        var currentQty = this._getQuantity();
-
-        // Auto-convert quantity when switching between weight units
-        var convertedQty = this._convertQuantity(currentQty, previousUnit, newUnit);
-
-        // Update quantity if conversion happened
-        if (convertedQty !== currentQty) {
-            this._setQuantity(convertedQty);
-        }
-
-        // Store current unit for next comparison
-        this.currentUnit = newUnit;
-
-        this._updateHiddenUnitField(newUnit);
-        this._updateEquivalence();
-        console.log('Guapante: Unit changed from', previousUnit, 'to', newUnit, '| Qty:', currentQty, '→', convertedQty);
+    _onPackagingChange: function (ev) {
+        var newPackaging = this._getSelectedPackaging();
+        
+        console.log('Guapante: Packaging changed to', newPackaging);
+        
+        this.currentPackaging = newPackaging;
+        this._updateHiddenPackagingField(newPackaging.id);
+        this._updatePackagingInfo();
     },
 
     /**
-     * Convert quantity when switching between units
-     * Rules:
-     * - g → kg: divide by 1000
-     * - kg → g: multiply by 1000
-     * - g/kg → unidades: reset to 1
-     * - unidades → g/kg: keep current value
+     * Update packaging info display
      */
-    _convertQuantity: function (qty, fromUnit, toUnit) {
-        // g to kg
-        if (fromUnit === 'g' && toUnit === 'kg') {
-            return qty / 1000;
-        }
-
-        // kg to g
-        if (fromUnit === 'kg' && toUnit === 'g') {
-            return qty * 1000;
-        }
-
-        // From weight units to unidades: reset to 1
-        if ((fromUnit === 'g' || fromUnit === 'kg') && toUnit === 'unidades') {
-            return 1;
-        }
-
-        // From unidades to weight: keep current value
-        if (fromUnit === 'unidades' && (toUnit === 'g' || toUnit === 'kg')) {
-            return qty;
-        }
-
-        // No conversion needed
-        return qty;
-    },
-
-    /**
-     * Update equivalence display based on selected unit and quantity
-     */
-    _updateEquivalence: function () {
-        var selectedUnit = this._getSelectedUnit();
+    _updatePackagingInfo: function () {
+        var packaging = this._getSelectedPackaging();
         var quantity = this._getQuantity();
-        var $equivalence = this.$('.guapante-unit-equivalence');
-        var $equivalenceText = $equivalence.find('.equivalence-text');
+        var $infoText = this.$('.packaging-info-text');
 
-        // Calculate and display equivalence
-        if (selectedUnit === 'kg' && this.conversions.kg_to_units) {
-            var equivalentUnits = (quantity * this.conversions.kg_to_units).toFixed(1);
-            $equivalenceText.text('≃ ' + equivalentUnits + ' uds');
-            $equivalence.fadeIn(200);
-        } else if (selectedUnit === 'g' && this.conversions.g_to_units) {
-            var equivalentUnits = (quantity * this.conversions.g_to_units).toFixed(1);
-            $equivalenceText.text('≃ ' + equivalentUnits + ' uds');
-            $equivalence.fadeIn(200);
+        if (packaging.qty > 1) {
+            var totalUnits = (quantity * packaging.qty).toFixed(0);
+            $infoText.text(`${quantity} ${packaging.name} = ${totalUnits} unidades`);
+            this.$('.guapante-packaging-info').fadeIn(200);
         } else {
-            $equivalence.fadeOut(200);
+            this.$('.guapante-packaging-info').fadeOut(200);
         }
     },
 
     /**
      * Update hidden field value for backend submission
      */
-    _updateHiddenUnitField: function (unit) {
-        var $hiddenField = this.$('input[name="product_uom"]');
+    _updateHiddenPackagingField: function (packagingId) {
+        var $hiddenField = this.$('input[name="product_packaging_id"]');
         if ($hiddenField.length) {
-            $hiddenField.val(unit);
+            $hiddenField.val(packagingId);
         }
     },
 });

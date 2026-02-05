@@ -1,12 +1,15 @@
 services:
   db:
-    image: postgres:15
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=odoo
       - POSTGRES_PASSWORD=odoo
     volumes:
       - guapante-db-data:/var/lib/postgresql/data
+      - ./init-data:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     healthcheck:
@@ -26,6 +29,7 @@ services:
       - ./theme_guapante:/mnt/extra-addons/theme_guapante
       - ./enterprise:/mnt/enterprise
       - ./odoo-entrypoint.sh:/odoo-entrypoint.sh:ro
+      - ./init-data/filestore:/var/lib/odoo/filestore/guapante
       - odoo-web-data:/var/lib/odoo
     environment:
       - HOST=db
