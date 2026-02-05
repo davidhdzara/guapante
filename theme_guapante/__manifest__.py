@@ -19,7 +19,7 @@
         'views/shop/products_item.xml',
         'views/shop/product.xml',
         'views/shop/layout.xml',
-        # 'views/shop/address.xml',  # Temporarily disabled - needs proper investigation of l10n_co structure
+        'views/shop/address.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
