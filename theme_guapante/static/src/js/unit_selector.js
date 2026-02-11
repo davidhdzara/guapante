@@ -59,10 +59,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             // Check if Unit mode should be enabled
             if (this.hasPackaging) {
                 $unitInput.prop('disabled', false);
-                $unitOption.removeClass('disabled btn-outline-secondary').addClass('btn-outline-primary');
+                $unitOption.removeClass('disabled btn-outline-secondary').addClass('btn-outline-success');
             } else {
                 $unitInput.prop('disabled', true);
-                $unitOption.addClass('disabled btn-outline-secondary').removeClass('btn-outline-primary');
+                $unitOption.addClass('disabled btn-outline-secondary').removeClass('btn-outline-success');
                 // Ensure we are not in unit mode
                 if (this.currentMode === 'unit') this.currentMode = 'kg';
             }

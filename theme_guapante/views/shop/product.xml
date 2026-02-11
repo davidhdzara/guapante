@@ -35,14 +35,14 @@
                 <!-- Only visible via JS if is-weight-uom is true -->
                 <div class="guapante-uom-mode-selector mb-3 d-none">
                     <div class="btn-group w-100" role="group" aria-label="Modo de venta">
+                        <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_unit" value="unit"/>
+                        <label class="btn btn-outline-success" for="mode_unit">Unidades</label>
+
                         <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_kg" value="kg" checked="checked"/>
-                        <label class="btn btn-outline-primary" for="mode_kg">Kg</label>
+                        <label class="btn btn-outline-success" for="mode_kg">Peso (Kg)</label>
 
                         <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_g" value="g"/>
-                        <label class="btn btn-outline-primary" for="mode_g">Gramos</label>
-
-                        <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_unit" value="unit"/>
-                        <label class="btn btn-outline-primary active-unit-mode" for="mode_unit">Unidad</label>
+                        <label class="btn btn-outline-success" for="mode_g">Peso (g)</label>
                     </div>
                 </div>
                 

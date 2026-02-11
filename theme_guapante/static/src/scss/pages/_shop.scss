@@ -463,6 +463,52 @@
     }
 }
 
+// UoM Mode Selector Styling (Unidades / Peso (Kg) / Peso (g))
+.guapante-uom-mode-selector {
+    .btn-group {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        overflow: hidden;
+
+        .btn-check:checked+.btn-outline-success {
+            background-color: $primary;
+            color: white;
+            font-weight: 600;
+            border-color: $primary;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-outline-success {
+            border: 1.5px solid #E5E7EB;
+            background: white;
+            color: #374151;
+            font-size: 0.875rem;
+            padding: 0.65rem 1rem;
+            transition: all 0.2s;
+            font-weight: 500;
+            flex: 1;
+
+            &:not(:last-child) {
+                border-right: 1px solid #E5E7EB;
+            }
+
+            &:hover:not(:has(.btn-check:checked)) {
+                background-color: #D1FAE5;
+                border-color: $primary;
+                color: #065F46;
+            }
+
+            &:first-child {
+                border-radius: 8px 0 0 8px;
+            }
+
+            &:last-child {
+                border-radius: 0 8px 8px 0;
+            }
+        }
+    }
+}
+
 // Unit Selector Container background
 .guapante-unit-selector-container {
     background-color: #F3F4F6 !important;
