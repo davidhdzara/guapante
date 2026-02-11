@@ -89,8 +89,32 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     // --------------------------------------------------------------------------
 
     _onModeChange: function (ev) {
+        var previousMode = this.currentMode;
         this.currentMode = $(ev.currentTarget).val();
-        console.log('Guapante: Switched to mode:', this.currentMode);
+        console.log('Guapante: Switched from', previousMode, 'to:', this.currentMode);
+
+        // Smart conversion of quantity between modes
+        var $qtyInput = this.$('.guapante-qty-input');
+        var currentVal = parseFloat($qtyInput.val()) || 1;
+
+        if (previousMode === 'kg' && this.currentMode === 'g') {
+            // Kg → g: multiply by 1000
+            $qtyInput.val(Math.round(currentVal * 1000));
+        } else if (previousMode === 'g' && this.currentMode === 'kg') {
+            // g → Kg: divide by 1000
+            var kgVal = currentVal / 1000;
+            $qtyInput.val(Math.max(0.1, parseFloat(kgVal.toFixed(2))));
+        } else if (this.currentMode === 'unit') {
+            // Anything → Unidades: reset to 1 (avoid 500 units)
+            $qtyInput.val(1);
+        } else if (previousMode === 'unit' && this.currentMode === 'kg') {
+            // Unidades → Kg: reset to 1
+            $qtyInput.val(1);
+        } else if (previousMode === 'unit' && this.currentMode === 'g') {
+            // Unidades → g: reset to 500
+            $qtyInput.val(500);
+        }
+
         this._updateUIBasedOnMode();
     },
 
