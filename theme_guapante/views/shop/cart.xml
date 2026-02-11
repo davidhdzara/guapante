@@ -2,49 +2,47 @@
 <odoo>
 
     <!-- ============================================================ -->
-    <!-- CART PAGE: Guapante Order Review Redesign                     -->
-    <!-- Inherits website_sale.cart to customize the order review page -->
+    <!-- 1. CART PAGE: Title and info banner                           -->
+    <!--    Inherits: website_sale.cart                                -->
     <!-- ============================================================ -->
 
-    <template id="cart_guapante" inherit_id="website_sale.cart" name="Guapante Cart Redesign">
+    <template id="cart_guapante" inherit_id="website_sale.cart" name="Guapante Cart">
+        <!-- Change "Order overview" title -->
+        <xpath expr="//h3[@class='mb-4']" position="replace">
+            <h3 class="mb-4">Vista previa de la orden</h3>
+        </xpath>
 
-        <!-- ========================================================= -->
-        <!-- 1. HIDE ALL PRICES in the cart lines                       -->
-        <!-- ========================================================= -->
+        <!-- Add blue info banner after cart lines -->
+        <xpath expr="//t[@t-call='website_sale.cart_lines']" position="after">
+            <div class="guapante-cart-info-banner alert alert-info mt-3 d-flex align-items-start">
+                <i class="fa fa-info-circle me-2 mt-1 fs-5"></i>
+                <div>
+                    <strong>Información importante sobre su entrega:</strong>
+                    Los tiempos de entrega pueden variar según la disponibilidad.
+                    Garantizamos la frescura de todos nuestros productos.
+                </div>
+            </div>
+        </xpath>
+    </template>
 
-        <!-- Hide unit price column header -->
-        <xpath expr="//table[@id='cart_products']//thead//th[contains(@class, 'text-center')][1]" position="attributes">
+    <!-- ============================================================ -->
+    <!-- 2. CART LINES: UoM badge, hide prices, custom quantity        -->
+    <!--    Inherits: website_sale.cart_lines                          -->
+    <!-- ============================================================ -->
+
+    <template id="cart_lines_guapante" inherit_id="website_sale.cart_lines" name="Guapante Cart Lines">
+
+        <!-- HIDE price column -->
+        <xpath expr="//div[@name='website_sale_cart_line_price']" position="attributes">
             <attribute name="class" add="d-none" separator=" "/>
         </xpath>
 
-        <!-- Hide total price column header -->
-        <xpath expr="//table[@id='cart_products']//thead//th[contains(@class, 'text-end')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-
-        <!-- Hide unit price cells in each line -->
-        <xpath expr="//td[hasclass('o_wsale_product_price')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-
-        <!-- Hide subtotal cells in each line -->
-        <xpath expr="//td[hasclass('oe_cart_line_subtotal')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-
-        <!-- ========================================================= -->
-        <!-- 2. ADD UoM Badge and custom quantity controls per line     -->
-        <!-- ========================================================= -->
-
-        <!-- Inject UoM badge after product name/description -->
-        <xpath expr="//td[hasclass('o_wsale_product_information')]//a[hasclass('text-reset')]" position="after">
+        <!-- ADD UoM badge after product name link -->
+        <xpath expr="//t[@t-call='website_sale.cart_line_product_link']" position="after">
             <div class="guapante-cart-uom-badge mt-1">
-                <t t-set="line_uom_mode" t-value="line.uom_mode or 'unit'"/>
-                <span t-if="line_uom_mode == 'kg'" class="badge bg-success rounded-pill small">
+                <t t-set="is_weight_product" t-value="line.product_id.uom_id.category_id.id == request.env.ref('uom.product_uom_categ_kgm').id"/>
+                <span t-if="is_weight_product" class="badge bg-success rounded-pill small">
                     <i class="fa fa-balance-scale me-1"/>Peso (Kg)
-                </span>
-                <span t-elif="line_uom_mode == 'g'" class="badge bg-success rounded-pill small">
-                    <i class="fa fa-balance-scale me-1"/>Peso (g)
                 </span>
                 <span t-else="" class="badge bg-success rounded-pill small">
                     <i class="fa fa-cube me-1"/>Unidades
@@ -52,103 +50,90 @@
             </div>
         </xpath>
 
-        <!-- Replace the standard quantity input with our custom +/- controls -->
-        <xpath expr="//td[hasclass('o_wsale_product_quantity')]" position="replace">
-            <td class="o_wsale_product_quantity text-center align-middle">
-                <t t-set="line_uom_mode" t-value="line.uom_mode or 'unit'"/>
-                <div class="guapante-cart-qty-controls d-inline-flex align-items-center"
-                     t-att-data-line-id="line.id"
-                     t-att-data-product-id="line.product_id.id"
-                     t-att-data-uom-mode="line_uom_mode">
-                    <button type="button" class="btn btn-sm btn-outline-success guapante-cart-qty-minus rounded-circle">
-                        <i class="fa fa-minus"></i>
-                    </button>
-                    <input type="number"
-                           class="form-control form-control-sm text-center guapante-cart-qty-input mx-2"
-                           t-att-value="line.product_uom_qty"
-                           t-att-data-line-id="line.id"
-                           t-att-min="'0.1' if line_uom_mode in ('kg',) else ('50' if line_uom_mode == 'g' else '1')"
-                           t-att-step="'0.5' if line_uom_mode == 'kg' else ('50' if line_uom_mode == 'g' else '1')"
-                           style="width: 70px;"
-                           readonly="readonly"/>
-                    <button type="button" class="btn btn-sm btn-outline-success guapante-cart-qty-plus rounded-circle">
-                        <i class="fa fa-plus"></i>
-                    </button>
-                    <span class="ms-1 text-muted small guapante-cart-qty-suffix">
-                        <t t-if="line_uom_mode == 'kg'">kg</t>
-                        <t t-elif="line_uom_mode == 'g'">g</t>
-                        <t t-else="">uds</t>
-                    </span>
-                </div>
-            </td>
-        </xpath>
-
-        <!-- ========================================================= -->
-        <!-- 3. REPLACE the Order Summary sidebar                       -->
-        <!-- ========================================================= -->
-
-        <!-- Hide original monetary summary (subtotal, taxes, total) -->
-        <xpath expr="//div[@id='cart_total']" position="replace">
-            <div id="cart_total" class="card guapante-order-summary">
-                <div class="card-body">
-                    <h5 class="card-title fw-bold mb-3">Resumen del pedido</h5>
-                    
-                    <div class="d-flex justify-content-between mb-3 text-muted">
-                        <span>Total de productos:</span>
-                        <span class="fw-bold text-dark">
-                            <t t-esc="len(website_sale_order.order_line)"/>
+        <!-- REPLACE quantity controls with UoM-aware +/- -->
+        <xpath expr="//div[@name='website_sale_cart_line_quantity']" position="replace">
+            <div name="website_sale_cart_line_quantity" class="css_quantity mb-2">
+                <t t-set="is_weight" t-value="line.product_id.uom_id.category_id.id == request.env.ref('uom.product_uom_categ_kgm').id"/>
+                <t t-if="not line._is_not_sellable_line()">
+                    <div class="guapante-cart-qty-controls d-inline-flex align-items-center"
+                         t-att-data-line-id="line.id"
+                         t-att-data-product-id="line.product_id.id"
+                         t-att-data-uom-mode="'kg' if is_weight else 'unit'">
+                        <a href="#" class="btn btn-sm btn-outline-success guapante-cart-qty-minus rounded-circle" aria-label="Quitar uno" title="Quitar uno">
+                            <i class="fa fa-minus"></i>
+                        </a>
+                        <input type="text"
+                               class="js_quantity form-control form-control-sm text-center guapante-cart-qty-input mx-2"
+                               t-att-data-line-id="line.id"
+                               t-att-data-product-id="line.product_id.id"
+                               t-att-value="line._get_displayed_quantity()"
+                               style="width: 70px;"
+                               readonly="readonly"/>
+                        <a href="#" class="btn btn-sm btn-outline-success guapante-cart-qty-plus rounded-circle" aria-label="Agregar uno" title="Agregar uno">
+                            <i class="fa fa-plus"></i>
+                        </a>
+                        <span class="ms-1 text-muted small">
+                            <t t-if="is_weight">kg</t>
+                            <t t-else="">uds</t>
                         </span>
                     </div>
-
-                    <hr class="my-3"/>
-
-                    <!-- Ordenar Button -->
-                    <a href="/shop/checkout?express=1" class="btn btn-success btn-lg w-100 mb-3 guapante-order-btn">
-                        Ordenar
-                    </a>
-
-                    <!-- Continue Shopping -->
-                    <div class="text-center">
-                        <a href="/shop" class="text-muted small">
-                            <i class="fa fa-chevron-left me-1"></i>Seguir comprando
-                        </a>
-                    </div>
-                </div>
+                </t>
+                <t t-else="">
+                    <span class="w-100 text-muted" t-esc="int(line.product_uom_qty)"/>
+                    <input type="hidden" class="js_quantity form-control quantity"
+                           t-att-data-line-id="line.id"
+                           t-att-data-product-id="line.product_id.id"
+                           t-att-value="line._get_displayed_quantity()"/>
+                </t>
             </div>
         </xpath>
 
-        <!-- ========================================================= -->
-        <!-- 4. ADD Blue info banner below products                     -->
-        <!-- ========================================================= -->
-
-        <xpath expr="//table[@id='cart_products']" position="after">
-            <div class="guapante-cart-info-banner alert alert-info mt-3 d-flex align-items-start">
-                <i class="fa fa-info-circle me-2 mt-1 fs-5"></i>
-                <div>
-                    <strong>Información importante sobre su entrega:</strong> 
-                    Los tiempos de entrega pueden variar según la disponibilidad. 
-                    Garantizamos la frescura de todos nuestros productos.
-                </div>
+        <!-- CHANGE "Remove" to "Eliminar" -->
+        <xpath expr="//div[@name='o_wsale_cart_line_button_container']" position="replace">
+            <div name="o_wsale_cart_line_button_container">
+                <a href="#" class="js_delete_product d-none d-md-inline-block small text-danger" aria-label="Eliminar" title="Eliminar">Eliminar</a>
+                <span class="d-none d-md-inline-block small mx-1 text-muted">·</span>
+                <a href="#" class="d-none d-md-inline-block small text-muted">Guardar para después</a>
+                <button class="js_delete_product btn btn-light d-inline-block d-md-none" title="Eliminar">
+                    <i class="fa fa-trash-o"/>
+                </button>
             </div>
         </xpath>
-
-        <!-- ========================================================= -->
-        <!-- 5. HIDE discount code section                              -->
-        <!-- ========================================================= -->
-
-        <xpath expr="//form[contains(@action, 'pricelist')]" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
-
     </template>
 
     <!-- ============================================================ -->
-    <!-- HIDE prices in cart line subtotals (additional safety)         -->
+    <!-- 3. CHECKOUT LAYOUT: Replace summary sidebar                   -->
+    <!--    Inherits: website_sale.checkout_layout                     -->
     <!-- ============================================================ -->
 
-    <template id="cart_guapante_hide_totals" inherit_id="website_sale.total" name="Guapante Hide Cart Totals">
-        <xpath expr="//div[@id='order_total']" position="attributes">
-            <attribute name="class" add="d-none" separator=" "/>
+    <template id="checkout_layout_guapante" inherit_id="website_sale.checkout_layout" name="Guapante Checkout Summary">
+        <xpath expr="//div[@id='o_cart_summary']" position="replace">
+            <div id="o_cart_summary" class="offset-xl-1 col-lg-5 col-xl-4 order-2">
+                <div class="guapante-order-summary card sticky-lg-top">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3" style="color: #2E7D32;">Resumen del pedido</h5>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-muted">Total de productos:</span>
+                            <span class="fw-bold">
+                                <t t-esc="len(website_sale_order.website_order_line)"/>
+                            </span>
+                        </div>
+
+                        <hr class="my-3"/>
+
+                        <a href="/shop/checkout?express=1" class="btn btn-success btn-lg w-100 mb-3 guapante-order-btn">
+                            Ordenar
+                        </a>
+
+                        <div class="text-center">
+                            <a href="/shop" class="text-muted small">
+                                <i class="fa fa-chevron-left me-1"></i>Seguir comprando
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </xpath>
     </template>
 
