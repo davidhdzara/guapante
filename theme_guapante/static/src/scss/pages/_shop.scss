@@ -302,22 +302,22 @@
             }
 
 
-            // Radio Buttons Logic (Size/Variants) - REDUCED 50%
+            // Radio Buttons Logic (Size/Variants)
             // Target the actual Odoo structure: label > div.form-check > input:checked
             label {
                 cursor: pointer;
 
                 .form-check {
                     background: white;
-                    border: 1px solid #E5E7EB;
+                    border: 1.5px solid #E5E7EB;
                     border-radius: 12px;
-                    padding: 0.375rem 0.75rem; // Reducido 50%
+                    padding: 0.75rem 1.25rem;
                     font-weight: 600;
                     color: #374151;
                     transition: all 0.2s;
-                    min-width: 50px; // Reducido 50%
+                    min-width: 90px;
                     text-align: center;
-                    font-size: 0.75rem;
+                    font-size: 0.9rem;
 
                     // When radio is checked, apply green style
                     &:has(input:checked) {
