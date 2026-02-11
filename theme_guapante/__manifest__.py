@@ -19,6 +19,7 @@
         'views/shop/products_item.xml',
         'views/shop/product.xml',
         'views/shop/layout.xml',
+        'views/shop/cart.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
@@ -48,6 +49,7 @@
             'theme_guapante/static/src/scss/pages/_auth.scss',
             'theme_guapante/static/src/scss/pages/_shop.scss',
             'theme_guapante/static/src/scss/pages/_shop_grid.scss',  # Product cards premium style
+            'theme_guapante/static/src/scss/pages/_cart.scss',  # Cart page styles
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',
@@ -65,6 +67,7 @@
             'theme_guapante/static/src/js/product_layout_fix.js',  # Layout Fix JS
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
             'theme_guapante/static/src/js/unit_selector.js',  # Unit selector (Unidades/Kg/g)
+            'theme_guapante/static/src/js/cart_quantity.js',  # Cart quantity controls
             'theme_guapante/static/src/js/address_error_fix.js',  # Fix address errors
         ],
     },

@@ -1,0 +1,143 @@
+// ============================================================
+// Guapante Cart Page Styles
+// ============================================================
+
+// UoM Badge in cart lines
+.guapante-cart-uom-badge {
+    .badge {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        padding: 4px 10px;
+    }
+}
+
+// Custom Quantity Controls
+.guapante-cart-qty-controls {
+
+    .guapante-cart-qty-minus,
+    .guapante-cart-qty-plus {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        border-width: 2px;
+        transition: all 0.2s ease;
+
+        &:hover:not(:disabled) {
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+        }
+    }
+
+    .guapante-cart-qty-input {
+        border: 2px solid #e0e0e0;
+        border-radius: 8px !important;
+        font-weight: 600;
+        font-size: 0.9rem;
+        background: #fafafa;
+
+        &:focus {
+            border-color: #2E7D32;
+            box-shadow: 0 0 0 0.2rem rgba(46, 125, 50, 0.15);
+        }
+    }
+
+    .guapante-cart-qty-suffix {
+        font-weight: 500;
+        color: #666;
+        min-width: 30px;
+    }
+}
+
+// Order Summary Card
+.guapante-order-summary {
+    border: none;
+    border-radius: 16px;
+    background: #f8f9fa;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+
+    .card-title {
+        color: #2E7D32;
+        font-size: 1.2rem;
+    }
+
+    .guapante-order-btn {
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        padding: 12px 24px;
+        background: #2E7D32;
+        border-color: #2E7D32;
+        transition: all 0.3s ease;
+
+        &:hover {
+            background: darken(#2E7D32, 8%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(46, 125, 50, 0.35);
+        }
+    }
+}
+
+// Blue Information Banner
+.guapante-cart-info-banner {
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    color: #1565c0;
+    padding: 16px 20px;
+
+    .fa-info-circle {
+        color: #1976d2;
+    }
+
+    strong {
+        color: #0d47a1;
+    }
+}
+
+// ============================================================
+// Hide elements we don't need
+// ============================================================
+
+// Hide the standard Odoo total row in cart table
+#cart_products tfoot {
+    display: none !important;
+}
+
+// Make product image slightly larger
+.o_wsale_product_cart_img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 12px;
+}
+
+// Product card-like row styling
+#cart_products tbody tr {
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid #f0f0f0;
+
+    &:hover {
+        background-color: #fafafa;
+    }
+
+    td {
+        padding: 16px 8px;
+        vertical-align: middle;
+    }
+}
+
+// Cart page title enhancement
+.oe_cart h3,
+.oe_cart h2 {
+    color: #333;
+    font-weight: 700;
+}
