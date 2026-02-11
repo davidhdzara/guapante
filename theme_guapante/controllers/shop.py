@@ -95,8 +95,11 @@ class GuapanteWebsiteSale(WebsiteSale):
         """
         Override to return cart_lines_count (number of unique items)
         instead of just quantity sum.
-        Also handles uom_mode for traceability.
         """
+        # Log uom_mode for traceability (no DB field in theme module)
+        if uom_mode:
+            _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
+
         # 1. Call super to perform standard logic
         response = super().cart_update_json(
             product_id=product_id, 
@@ -111,28 +114,6 @@ class GuapanteWebsiteSale(WebsiteSale):
         order = request.website.sale_get_order()
         if order:
             response['cart_lines_count'] = len(order.order_line)
-            
-            # 3. Update uom_mode if provided
-            # We need to find the line that was just updated/created.
-            # Since cart_update_json doesn't return the line ID directly in all cases,
-            # we look for the line with the matching product_id.
-            # NOTE: This might be inexact if multiple lines exist for same product (unlikely in standard website_sale),
-            # but it is the best approximation without overriding the whole method.
-            if uom_mode and uom_mode in ['kg', 'g', 'unit']:
-                # If we have a line_id from arguments, use it (update case)
-                target_line = None
-                if line_id:
-                     target_line = order.order_line.filtered(lambda l: l.id == line_id)
-                else:
-                    # If it was an add, find the line for this product
-                    # We sort by write_date desc to get the most recently modified
-                    domain = [('product_id', '=', product_id)]
-                    target_line = order.order_line.filtered_domain(domain).sorted('write_date', reverse=True)[:1]
-                
-                if target_line:
-                    target_line.sudo().write({'uom_mode': uom_mode})
-                    _logger.info(f"Updated uom_mode to {uom_mode} for line {target_line.id}")
-
         else:
             response['cart_lines_count'] = 0
             
