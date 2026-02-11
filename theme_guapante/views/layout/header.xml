@@ -96,12 +96,12 @@
                                 </div>
 
                                 <!-- Desktop Cart -->
-                                <a href="/shop/cart" class="btn-cart-guapante position-relative d-flex align-items-center gap-2 px-3 py-2 fw-bold text-decoration-none transition-base">
+                                <a href="/shop/cart" class="btn-cart-guapante position-relative d-flex align-items-center justify-content-center px-3 py-2 fw-bold text-decoration-none transition-base">
                                     <i class="fa fa-shopping-basket fs-5"></i>
                                     <!-- Badge -->
-                                    <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
-                                         <t t-esc="cart_qty"/>
-                                    </span>
+                                    <sup t-attf-class="my_cart_quantity badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light #{'d-none' if not (website_sale_order and website_sale_order.cart_quantity) else ''}" style="font-size: 0.6rem;">
+                                         <t t-esc="website_sale_order and website_sale_order.cart_quantity or ''"/>
+                                    </sup>
                                 </a>
                             </div>
                         </div>
