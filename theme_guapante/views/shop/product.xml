@@ -19,14 +19,35 @@
             <!-- Gray container for unit selector -->
             <div class="guapante-unit-selector-container bg-light rounded-3 p-3 mt-3" 
                  t-att-data-product-id="product_variant.id"
-                 t-att-data-product-tmpl-id="product.id">
+                 t-att-data-product-tmpl-id="product.id"
+                 t-att-data-uom-id="product.uom_id.id"
+                 t-att-data-uom-name="product.uom_id.name"
+                 t-att-data-uom-category-id="product.uom_id.category_id.id"
+                 t-att-data-is-weight-uom="'true' if product.uom_id.category_id.id == request.env.ref('uom.product_uom_categ_kgm').id else 'false'"
+                 t-att-data-has-packaging="'true' if product_variant.sudo().packaging_ids.filtered(lambda p: p.sales) else 'false'">
                 
-                <label class="form-label text-muted small fw-semibold text-uppercase mb-3 d-flex align-items-center">
+                <label class="form-label text-muted small fw-semibold text-uppercase mb-2 d-flex align-items-center">
                     <i class="fa fa-balance-scale me-2"></i>
                     Unidad de Medida
                 </label>
+
+                <!-- UoM Mode Selector (Tabs) -->
+                <!-- Only visible via JS if is-weight-uom is true -->
+                <div class="guapante-uom-mode-selector mb-3 d-none">
+                    <div class="btn-group w-100" role="group" aria-label="Modo de venta">
+                        <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_kg" value="kg" checked="checked"/>
+                        <label class="btn btn-outline-primary" for="mode_kg">Kg</label>
+
+                        <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_g" value="g"/>
+                        <label class="btn btn-outline-primary" for="mode_g">Gramos</label>
+
+                        <input type="radio" class="btn-check uom-mode-option" name="uom_mode" id="mode_unit" value="unit"/>
+                        <label class="btn btn-outline-primary active-unit-mode" for="mode_unit">Unidad</label>
+                    </div>
+                </div>
                 
-                <div class="guapante-unit-selector mb-3">
+                <!-- Packaging Selector (Original) - Only visible in Unit Mode -->
+                <div class="guapante-unit-selector mb-3 d-none">
                     <div class="btn-group w-100 guapante-packaging-options" role="group" aria-label="Selector de embalaje">
                         <!-- Get packagings for current variant (product_product) with sudo for public access -->
                         <t t-set="packagings" t-value="product_variant.sudo().packaging_ids.filtered(lambda p: p.sales)"/>
@@ -72,11 +93,16 @@
                             </label>
                         </t>
                     </div>
-                    
-                    <!-- Info de cantidad del embalaje -->
-                    <div class="guapante-packaging-info text-muted small mt-2">
-                        <span class="packaging-info-text"></span>
-                    </div>
+                </div>
+
+                <!-- Info Display -->
+                <div class="guapante-mode-info text-center mb-2 text-primary fw-bold small">
+                    <!-- JS updates this text -->
+                </div>
+                
+                <!-- Info de cantidad del embalaje (Solo modo unidad) -->
+                <div class="guapante-packaging-info text-muted small mt-2 d-none">
+                    <span class="packaging-info-text"></span>
                 </div>
                 
                 <!-- Quantity selector with +/- buttons -->
