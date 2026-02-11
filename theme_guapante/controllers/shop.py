@@ -93,11 +93,9 @@ class GuapanteWebsiteSale(WebsiteSale):
     @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, uom_mode=None, **kwargs):
         """
-        Override to:
-        1. Return cart_lines_count (number of unique items)
-        2. Persist uom_mode on the sale.order.line
+        Override to return cart_lines_count (number of unique items).
+        uom_mode is now computed from product UoM, no need to persist.
         """
-        # Log uom_mode for traceability
         if uom_mode:
             _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
 
@@ -111,23 +109,8 @@ class GuapanteWebsiteSale(WebsiteSale):
             **kwargs
         )
         
-        # 2. Persist uom_mode on the order line
+        # 2. Add line count to response
         order = request.website.sale_get_order()
-        if order and uom_mode:
-            # Find the line for this product (most recently modified)
-            line = order.order_line.filtered(
-                lambda l: l.product_id.id == int(product_id)
-            )
-            if line:
-                # If multiple lines for same product, take the last one
-                line = line[-1:]
-                try:
-                    line.sudo().write({'uom_mode': uom_mode})
-                    _logger.info(f"Saved uom_mode={uom_mode} on line {line.id}")
-                except Exception as e:
-                    _logger.warning(f"Could not save uom_mode: {e}")
-        
-        # 3. Add line count to response
         if order:
             response['cart_lines_count'] = len(order.order_line)
         else:
