@@ -21,7 +21,7 @@
         </xpath>
         
         <!-- Continue Shopping Link (Bottom Left) -->
-        <!-- FIX: Target div.col ID structure instead of oe_cart which doesn't exist here -->
+        <!-- FIX: Target div ID structure instead of oe_cart which doesn't exist here -->
         <xpath expr="//div[@id='oe_structure_website_sale_cart_1']" position="before">
             <a href="/shop" class="guapante-continue-shopping mt-4 mb-3 d-inline-block">
                 <i class="fa fa-arrow-left"></i> Seguir comprando frutas y verduras
@@ -36,15 +36,14 @@
 
     <template id="cart_lines_guapante" inherit_id="website_sale.cart_lines" name="Guapante Cart Lines">
         
-        <!-- FIX: Target DIVs instead of TRs. The base template uses div.o_cart_product -->
-        <xpath expr="//div[hasclass('o_cart_product')]" position="attributes">
+        <!-- FIX: Target DIVs by t-foreach attribute instead of hasclass. This is more robust. -->
+        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="attributes">
             <attribute name="class" add="guapante-cart-item text-decoration-none" separator=" "/>
-            <!-- Remove default flex classes if they conflict, but usually add is safer -->
         </xpath>
 
         <!-- Replace the inner content of the product loop -->
         <!-- The inner content is inside a t-if="line.product_id" -->
-        <xpath expr="//div[hasclass('o_cart_product')]//t[@t-if='line.product_id']" position="replace">
+        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']//t[@t-if='line.product_id']" position="replace">
             <t t-if="line.product_id">
                 <div class="img-container me-3">
                     <span t-if="line._is_not_sellable_line() and line.product_id.image_128">
