@@ -89,7 +89,7 @@
                                     </t>
 
                                     <!-- Address Form Wrapper -->
-                                    <div class="guapante-new-address-form">
+                                    <div class="guapante-new-address-form"><!-- Interactive -->
                                         
                                         <!-- Separator only if shippings exist (otherwise it's the only form) -->
                                         <t t-if="shippings">
