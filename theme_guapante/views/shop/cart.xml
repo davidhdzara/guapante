@@ -29,16 +29,6 @@
         </xpath>
     </template>
 
-    <template id="cart_guapante_header_injection" inherit_id="website_sale.cart" name="Guapante Cart Header Injection">
-        <xpath expr="//div[@id='cart_products']" position="before">
-            <div class="guapante-cart-list-header d-none d-md-flex px-3 mb-2 mt-4">
-                <div class="header-label flex-grow-1">Producto</div>
-                <div class="header-label text-center" style="width: 140px; margin: 0 1rem;">Cantidad</div>
-                <div class="header-label" style="width: 25px;"></div>
-            </div>
-        </xpath>
-    </template>
-
     <!-- ============================================================ -->
     <!-- 2. CART LINES: Card Layout for DIV Structure                  -->
     <!--    Inherits: website_sale.cart_lines                          -->
@@ -46,6 +36,15 @@
 
     <template id="cart_lines_guapante" inherit_id="website_sale.cart_lines" name="Guapante Cart Lines">
         
+        <!-- Inject Header BEFORE the product loop -->
+        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="before">
+            <div class="guapante-cart-list-header d-none d-md-flex px-3 mb-2 mt-4">
+                <div class="header-label flex-grow-1">Producto</div>
+                <div class="header-label text-center" style="width: 140px; margin: 0 1rem;">Cantidad</div>
+                <div class="header-label" style="width: 25px;"></div>
+            </div>
+        </xpath>
+
         <!-- FIX: Target DIVs by t-foreach attribute instead of hasclass. This is more robust. -->
         <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="attributes">
             <attribute name="class" add="guapante-cart-item text-decoration-none" separator=" "/>
