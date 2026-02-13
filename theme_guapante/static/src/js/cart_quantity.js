@@ -11,6 +11,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
     events: {
         'click .guapante-cart-qty-plus': '_onPlus',
         'click .guapante-cart-qty-minus': '_onMinus',
+        'change .guapante-cart-qty-input': '_onChange',
     },
 
     start: function () {
@@ -32,7 +33,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         ev.preventDefault();
         if (this._isUpdating) return;
 
-        let val = parseFloat(this.$input.val()) || 0;
+        let val = this._parseValue(this.$input.val());
         let step = this._getStep();
         let newVal = val + step;
 
@@ -45,7 +46,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         ev.preventDefault();
         if (this._isUpdating) return;
 
-        let val = parseFloat(this.$input.val()) || 0;
+        let val = this._parseValue(this.$input.val());
         let step = this._getStep();
         let newVal = val - step;
         let min = this._getMin();
@@ -56,6 +57,26 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
 
         newVal = this._round(newVal);
         this._updateQuantity(newVal);
+    },
+
+    _onChange: function (ev) {
+        let val = this._parseValue($(ev.currentTarget).val());
+        let min = this._getMin();
+
+        if (val < min) {
+            val = min;
+        }
+
+        val = this._round(val);
+        this._updateQuantity(val);
+    },
+
+    _parseValue: function (val) {
+        // Replace comma with dot for locales like ES/CO
+        if (typeof val === 'string') {
+            val = val.replace(',', '.');
+        }
+        return parseFloat(val) || 0;
     },
 
     // --------------------------------------------------------------------------
