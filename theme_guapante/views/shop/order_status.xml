@@ -53,7 +53,7 @@
                                             <i class="fa fa-check"></i>
                                         </div>
                                         <div class="step-label fw-bold small">Recibido</div>
-                                        <div class="step-time text-muted small"><span t-field="order.date_order" t-options='{"widget": "time"}'/></div>
+                                        <div class="step-time text-muted small"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
                                     </div>
 
                                     <!-- Step 2: Preparado -->
