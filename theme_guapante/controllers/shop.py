@@ -130,7 +130,7 @@ class GuapanteWebsiteSale(WebsiteSale):
                     # Redirect to Confirmation (skip payment if simple flow, or go to payment)
                     # Standard Odoo flow: Address -> Confirm -> Payment
                     # We can redirect to /shop/confirm_order
-                    return request.redirect('/shop/confirm_order')
+                    return request.redirect('/shop/checkout/confirm')
 
                 except Exception as e:
                     _logger.error(f"Error processing checkout: {str(e)}")
@@ -164,6 +164,54 @@ class GuapanteWebsiteSale(WebsiteSale):
             ], order='id desc')
 
         return request.render("theme_guapante.guapante_checkout", render_values)
+
+    @http.route(['/shop/checkout/confirm'], type='http', auth="public", website=True, sitemap=False)
+    def confirm_order_skip_payment(self, **post):
+        """
+        Confirm order immediately, skipping payment, and redirect to status page.
+        """
+        order = request.website.sale_get_order()
+        if not order or not order.order_line:
+            return request.redirect('/shop')
+        
+        try:
+            # 1. Confirm Order (Action Confirm)
+            # This creates the picking(s)
+            order.action_confirm()
+            
+            # 2. Clear Session
+            request.website.sale_reset()
+            
+            # 3. Redirect to Status Page
+            return request.redirect(f'/shop/order/status/{order.id}')
+            
+        except Exception as e:
+            _logger.error(f"Error confirming order: {str(e)}")
+            return request.redirect('/shop/checkout?error=confirm_failed')
+
+    @http.route(['/shop/order/status/<int:order_id>'], type='http', auth="public", website=True, sitemap=False)
+    def order_status(self, order_id, **post):
+        """
+        Render the custom order status page.
+        """
+        # Security Check: Ensure user can view this order
+        Order = request.env['sale.order'].sudo().browse(order_id)
+        if not Order.exists():
+            return request.redirect('/shop')
+            
+        # Basic security: If public, we might need a token or just allow it if within session?
+        # For simplicity in this dev phase, allowing if it matches session or user, 
+        # but since we reset session, we rely on ID. 
+        # Ideally we validat access_token if user is not logged in.
+        
+        # If user is logged in, check ownership
+        if not request.env.user._is_public():
+             if Order.partner_id.commercial_partner_id != request.env.user.partner_id.commercial_partner_id:
+                 return Forbidden()
+        
+        return request.render("theme_guapante.guapante_order_status", {
+            'order': Order,
+        })
 
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):

@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="guapante_order_status" name="Guapante Order Status">
+        <t t-call="website.layout">
+            <div id="wrap" class="guapante-status-wrapper bg-light">
+                <div class="container py-5">
+                    
+                    <!-- HEADER -->
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-5">
+                        <div>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <h1 class="fw-bold mb-0">Pedido #<t t-esc="order.name"/></h1>
+                                <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary">
+                                    <t t-esc="dict(order._fields['guapante_delivery_status'].selection).get(order.guapante_delivery_status)"/>
+                                </span>
+                            </div>
+                            <p class="text-muted mb-0">Realizado el <span t-field="order.date_order" t-options='{"widget": "date"}'/> • <t t-esc="len(order.order_line)"/> Artículos</p>
+                        </div>
+                        <div class="mt-3 mt-md-0" t-if="order.guapante_delivery_status == 'shipping' or order.guapante_delivery_status == 'preparing'">
+                            <div class="alert alert-success d-flex align-items-center py-2 px-4 shadow-sm border-0 mb-0">
+                                <i class="fa fa-clock-o me-2 fs-5"></i>
+                                <div>
+                                    <small class="d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Llegada Estimada</small>
+                                    <span class="fw-bold">Pronto</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TIMELINE -->
+                    <div class="card border-0 shadow-sm mb-5 overflow-hidden">
+                        <div class="card-body p-5">
+                            <div class="position-relative">
+                                <!-- Progress Bar Background -->
+                                <div class="progress" style="height: 4px;">
+                                    <div class="progress-bar bg-success" role="progressbar" 
+                                         t-att-style="'width: ' + (
+                                            '25%' if order.guapante_delivery_status == 'received' else 
+                                            '50%' if order.guapante_delivery_status == 'preparing' else 
+                                            '75%' if order.guapante_delivery_status == 'shipping' else 
+                                            '100%'
+                                         )" 
+                                         aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                
+                                <!-- Steps -->
+                                <div class="d-flex justify-content-between position-absolute top-0 w-100" style="margin-top: -14px;">
+                                    
+                                    <!-- Step 1: Recibido -->
+                                    <div class="text-center step-item">
+                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
+                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'bg-white text-muted border'">
+                                            <i class="fa fa-check"></i>
+                                        </div>
+                                        <div class="step-label fw-bold small">Recibido</div>
+                                        <div class="step-time text-muted small"><span t-field="order.date_order" t-options='{"widget": "time"}'/></div>
+                                    </div>
+
+                                    <!-- Step 2: Preparado -->
+                                    <div class="text-center step-item">
+                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
+                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'bg-white text-muted border'">
+                                            <i class="fa fa-box-open"></i>
+                                        </div>
+                                        <div class="step-label fw-bold small">Preparado</div>
+                                    </div>
+
+                                    <!-- Step 3: En camino -->
+                                    <div class="text-center step-item">
+                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
+                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['shipping', 'delivered'] else 'bg-white text-muted border'">
+                                            <i class="fa fa-truck"></i>
+                                        </div>
+                                        <div class="step-label fw-bold small">En camino</div>
+                                        <div class="step-time text-muted small" t-if="order.guapante_delivery_status == 'shipping'">Actual</div>
+                                    </div>
+
+                                    <!-- Step 4: Entregado -->
+                                    <div class="text-center step-item">
+                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
+                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status == 'delivered' else 'bg-white text-muted border'">
+                                            <i class="fa fa-home"></i>
+                                        </div>
+                                        <div class="step-label fw-bold small">Entregado</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- LEFT: SUMMARY -->
+                        <div class="col-12 col-lg-5 mb-4">
+                            <h5 class="fw-bold mb-3">Resumen del Pedido</h5>
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body p-0">
+                                    <div class="guapante-mini-cart p-4">
+                                        <t t-foreach="order.order_line" t-as="line">
+                                            <div class="d-flex align-items-center mb-3">
+                                                 <div class="flex-shrink-0 position-relative">
+                                                    <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 64px; height: 64px; object-fit: cover;'}"/>
+                                                </div>
+                                                <div class="flex-grow-1 ms-3">
+                                                    <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
+                                                    <div class="mb-1">
+                                                        <span class="badge bg-light text-dark border">
+                                                            <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <!-- Price Visibility Logic: Only if PREPARED or later -->
+                                                    <t t-if="order.guapante_delivery_status != 'received'">
+                                                        <div class="fw-bold text-dark mt-1">
+                                                            <span t-field="line.price_subtotal" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                                        </div>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <small class="text-muted fst-italic">Precio por confirmar</small>
+                                                    </t>
+                                                </div>
+                                            </div>
+                                        </t>
+                                    </div>
+                                    
+                                    <div class="bg-light p-4 rounded-bottom">
+                                        <t t-if="order.guapante_delivery_status != 'received'">
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span class="text-muted">Subtotal</span>
+                                                <span class="fw-bold" t-field="order.amount_untaxed" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                            </div>
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span class="text-muted">Envío</span>
+                                                <span class="text-success fw-bold">Gratis</span>
+                                            </div>
+                                            <hr class="my-3"/>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="fw-bold fs-5">Total</span>
+                                                <span class="fw-bold fs-4 text-dark" t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                            </div>
+                                        </t>
+                                        <t t-else="">
+                                            <div class="alert alert-info mb-0 small">
+                                                <i class="fa fa-info-circle me-1"></i>
+                                                El valor total será confirmado una vez pesemos sus productos.
+                                            </div>
+                                        </t>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <a href="/shop" class="btn btn-outline-secondary w-100">
+                                    <i class="fa fa-arrow-left me-2"></i> Volver a la Tienda
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: MAP & DRIVER -->
+                        <div class="col-12 col-lg-7">
+                            
+                            <!-- If we have a driver/vehicle assigned, show this card -->
+                            <t t-set="picking" t-value="order.picking_ids.filtered(lambda p: p.state != 'cancel')[:1]"/>
+                            
+                            <div class="card border-0 shadow-sm overflow-hidden h-100" style="min-height: 400px;">
+                                <!-- Placeholder Map Image - In real implementation this would be a dynamic map -->
+                                <div class="bg-light w-100 h-100 position-relative d-flex align-items-center justify-content-center" 
+                                     style="background-image: url('/theme_guapante/static/src/img/map_placeholder.jpg'); background-size: cover; background-position: center; min-height: 300px;">
+                                    
+                                    <!-- Driver Overlay -->
+                                    <div class="position-absolute bottom-0 start-0 m-4 p-3 bg-white rounded shadow-sm d-flex align-items-center" style="max-width: 350px;" 
+                                         t-if="picking and picking.driver_id">
+                                        <div class="flex-shrink-0">
+                                            <span t-field="picking.driver_id.image_128" t-options="{'widget': 'image', 'class': 'rounded-circle', 'style': 'width: 50px; height: 50px; object-fit: cover;'}"/>
+                                        </div>
+                                        <div class="flex-grow-1 ms-3">
+                                            <h6 class="mb-0 fw-bold"><t t-esc="picking.driver_id.name"/></h6>
+                                            <div class="small text-muted mb-1">
+                                                <t t-if="picking.vehicle_id">
+                                                    <i class="fa fa-car me-1"></i> <t t-esc="picking.vehicle_id.model_id.name"/> • <t t-esc="picking.vehicle_id.license_plate"/>
+                                                </t>
+                                                <t t-else="">
+                                                    Conductor Verificado
+                                                </t>
+                                            </div>
+                                            <!-- <div class="badge bg-success bg-opacity-10 text-success">Conductor Verificado</div> -->
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Empty State if no driver yet -->
+                                    <div class="text-center p-4 bg-white rounded shadow-sm opacity-75" t-if="not picking or not picking.driver_id">
+                                        <i class="fa fa-map-marker text-danger fs-1 mb-2"></i>
+                                        <h6 class="fw-bold text-dark">Bodega Central</h6>
+                                        <p class="small text-muted mb-0">Su pedido está siendo procesado en nuestra central.</p>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

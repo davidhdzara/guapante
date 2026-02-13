@@ -8,8 +8,10 @@
         'static/description/guapante_preview.png',
         'static/description/icon.png',
     ],
-    'depends': ['website', 'website_sale', 'auth_signup', 'l10n_co'],
+    'depends': ['website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet'],
     'data': [
+        'views/stock_picking_views.xml',
+        'views/shop/order_status.xml',
         'views/product_template_view.xml',
         'views/layout/header.xml',
         'views/layout/footer.xml',
@@ -52,6 +54,7 @@
             'theme_guapante/static/src/scss/pages/_shop_grid.scss',  # Product cards premium style
             'theme_guapante/static/src/scss/pages/_cart.scss',  # Cart page styles
             'theme_guapante/static/src/scss/pages/_checkout.scss',  # Checkout page styles
+            'theme_guapante/static/src/scss/pages/_order_status.scss',  # Order status page styles
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',
