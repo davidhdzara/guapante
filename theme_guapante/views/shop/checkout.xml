@@ -4,6 +4,10 @@
     <!-- ============================================================ -->
     <!-- GUAPANTE CHECKOUT PAGE                                      -->
     <!-- Replaces standard address/checkout steps with a single page -->
+    <!-- NOTE: We do NOT use a <form> wrapper because Odoo's         -->
+    <!--       website.layout already has a parent form, and          -->
+    <!--       browsers strip nested forms silently.                  -->
+    <!--       Instead, JS handles the submission via POST.           -->
     <!-- ============================================================ -->
 
     <template id="guapante_checkout" name="Guapante Checkout">
@@ -14,199 +18,197 @@
                     <h1 class="mb-2">Confirmación de Pedido</h1>
                     <p class="text-muted mb-5">Complete sus datos para agendar su pedido. El pago se realizará contra entrega o tras confirmación de peso.</p>
 
-                    <form action="/shop/address" method="post" class="checkout_autoformat">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                        
-                        <div class="row">
-                            <!-- LEFT COLUMN: FORMS -->
-                            <div class="col-12 col-lg-7">
-                                
-                                <!-- 1. CONTACT INFO -->
-                                <div class="card border-0 shadow-sm mb-4 guapante-checkout-card">
-                                    <div class="card-body p-4">
-                                        <div class="d-flex align-items-center mb-4">
-                                            <div class="step-circle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px; font-weight: bold;">1</div>
-                                            <h5 class="mb-0 fw-bold">Información de Contacto</h5>
-                                        </div>
+                    <!-- Hidden CSRF token for JS submission -->
+                    <input type="hidden" id="csrf_token" t-att-value="request.csrf_token()"/>
 
-                                        <div class="mb-3">
-                                            <label class="form-label fw-bold small">Nombre Completo</label>
-                                            <input type="text" name="name" class="form-control" required="required" 
-                                                   t-att-value="checkout.get('name')"
-                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                                   t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
-                                        </div>
-                                        
-                                        <div class="row">
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label fw-bold small">Correo Electrónico</label>
-                                                <input type="email" name="email" class="form-control" required="required" 
-                                                       t-att-value="checkout.get('email')"
-                                                       t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                                       t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
-                                            </div>
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label fw-bold small">Teléfono Celular</label>
-                                                <input type="tel" name="phone" class="form-control" required="required" 
-                                                       t-att-value="checkout.get('phone')"
-                                                       t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                                       t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- WhatsApp Checkbox (Visual only for now) -->
-                                        <div class="form-check mb-3">
-                                            <input class="form-check-input" type="checkbox" name="whatsapp_notifications" id="whatsappCheck"/>
-                                            <label class="form-check-label text-muted small" for="whatsappCheck">
-                                                Mantenerme informado sobre el estado de mi pedido vía WhatsApp.
-                                            </label>
-                                        </div>
-
+                    <div class="row">
+                        <!-- LEFT COLUMN: FORMS -->
+                        <div class="col-12 col-lg-7">
+                            
+                            <!-- 1. CONTACT INFO -->
+                            <div class="card border-0 shadow-sm mb-4 guapante-checkout-card">
+                                <div class="card-body p-4">
+                                    <div class="d-flex align-items-center mb-4">
+                                        <div class="step-circle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px; font-weight: bold;">1</div>
+                                        <h5 class="mb-0 fw-bold">Información de Contacto</h5>
                                     </div>
-                                </div>
 
-                                <!-- 2. SHIPPING ADDRESS -->
-                                <div class="card border-0 shadow-sm mb-4 guapante-checkout-card">
-                                    <div class="card-body p-4">
-                                        <div class="d-flex align-items-center mb-4">
-                                            <div class="step-circle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px; font-weight: bold;">2</div>
-                                            <h5 class="mb-0 fw-bold">Dirección de Envío</h5>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small">Nombre Completo</label>
+                                        <input type="text" name="name" class="form-control guapante-field" required="required" 
+                                               t-att-value="checkout.get('name')"
+                                               t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                               t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold small">Correo Electrónico</label>
+                                            <input type="email" name="email" class="form-control guapante-field" required="required" 
+                                                   t-att-value="checkout.get('email')"
+                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                                   t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
                                         </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold small">Teléfono Celular</label>
+                                            <input type="tel" name="phone" class="form-control guapante-field" required="required" 
+                                                   t-att-value="checkout.get('phone')"
+                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                                   t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
+                                        </div>
+                                    </div>
 
-                                        <!-- Address Selector (If user has addresses) -->
+                                    <!-- WhatsApp Checkbox -->
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" name="whatsapp_notifications" id="whatsappCheck"/>
+                                        <label class="form-check-label text-muted small" for="whatsappCheck">
+                                            Mantenerme informado sobre el estado de mi pedido vía WhatsApp.
+                                        </label>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            <!-- 2. SHIPPING ADDRESS -->
+                            <div class="card border-0 shadow-sm mb-4 guapante-checkout-card">
+                                <div class="card-body p-4">
+                                    <div class="d-flex align-items-center mb-4">
+                                        <div class="step-circle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px; font-weight: bold;">2</div>
+                                        <h5 class="mb-0 fw-bold">Dirección de Envío</h5>
+                                    </div>
+
+                                    <!-- Address Selector (If user has addresses) -->
+                                    <t t-if="shippings">
+                                        <div class="mb-4">
+                                            <label class="form-label fw-bold small">Seleccionar dirección guardada</label>
+                                            <select class="form-select guapante-field" name="shipping_id">
+                                                <option value="0">Escoge una dirección...</option>
+                                                <t t-foreach="shippings" t-as="ship">
+                                                    <option t-att-value="ship.id" t-att-selected="ship.id == website_sale_order.partner_shipping_id.id">
+                                                        <t t-esc="ship.street"/>, <t t-esc="ship.city"/>
+                                                    </option>
+                                                </t>
+                                                <option value="-1">Otra dirección...</option>
+                                            </select>
+                                        </div>
+                                    </t>
+
+                                    <!-- Address Form Wrapper -->
+                                    <div class="guapante-new-address-form">
+                                        
+                                        <!-- Separator only if shippings exist -->
                                         <t t-if="shippings">
-                                            <div class="mb-4">
-                                                <label class="form-label fw-bold small">Seleccionar dirección guardada</label>
-                                                <select class="form-select" name="shipping_id">
-                                                    <option value="0">Escoge una dirección...</option>
-                                                    <t t-foreach="shippings" t-as="ship">
-                                                        <option t-att-value="ship.id" t-att-selected="ship.id == website_sale_order.partner_shipping_id.id">
-                                                            <t t-esc="ship.street"/>, <t t-esc="ship.city"/>
-                                                        </option>
-                                                    </t>
-                                                    <option value="-1">Otra dirección...</option>
-                                                </select>
+                                            <div class="mb-4 separator-container">
+                                                <div class="separator-text text-muted small">O INGRESA UNA NUEVA</div>
+                                                <hr class="mt-2 mb-4"/>
                                             </div>
                                         </t>
 
-                                        <!-- Address Form Wrapper -->
-                                        <div class="guapante-new-address-form"><!-- Interactive -->
-                                            
-                                            <!-- Separator only if shippings exist (otherwise it's the only form) -->
-                                            <t t-if="shippings">
-                                                <div class="mb-4 separator-container">
-                                                    <div class="separator-text text-muted small">O INGRESA UNA NUEVA</div>
-                                                    <hr class="mt-2 mb-4"/>
-                                                </div>
-                                            </t>
-
-                                            <!-- Address Form -->
-                                            <div class="mb-3">
-                                                <label class="form-label fw-bold small">Dirección</label>
-                                                <div class="input-group">
-                                                    <span class="input-group-text bg-white border-end-0"><i class="fa fa-map-marker text-muted"></i></span>
-                                                    <input type="text" name="street" class="form-control border-start-0" placeholder="Calle 123 # 45-67, Barrio..." required="required" t-att-value="checkout.get('street')"/>
-                                                </div>
-                                            </div>
-
-                                            <div class="row">
-                                                <div class="col-md-6 mb-3">
-                                                    <label class="form-label fw-bold small">Departamento</label>
-                                                    <select name="state_id" class="form-select" required="required">
-                                                        <option value="">Seleccionar...</option>
-                                                        <t t-foreach="states" t-as="s">
-                                                            <option t-att-value="s.id" t-att-selected="s.id == int(checkout.get('state_id') or 0)">
-                                                                <t t-esc="s.name"/>
-                                                            </option>
-                                                        </t>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-6 mb-3">
-                                                    <label class="form-label fw-bold small">Ciudad</label>
-                                                    <input type="text" name="city" class="form-control" required="required" t-att-value="checkout.get('city')"/>
-                                                </div>
-                                            </div>
-
-                                            <!-- Additional Notes -->
-                                            <div class="mb-3">
-                                                <label class="form-label fw-bold small">Notas Adicionales (Opcional)</label>
-                                                <textarea name="comment" class="form-control" rows="3" placeholder="Instrucciones para la portería, color de casa, etc."><t t-esc="checkout.get('comment')"/></textarea>
+                                        <!-- Address Fields -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold small">Dirección</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text bg-white border-end-0"><i class="fa fa-map-marker text-muted"></i></span>
+                                                <input type="text" name="street" class="form-control border-start-0 guapante-field" placeholder="Calle 123 # 45-67, Barrio..." t-att-value="checkout.get('street')"/>
                                             </div>
                                         </div>
 
-                                    </div>
-                                </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold small">Departamento</label>
+                                                <select name="state_id" class="form-select guapante-field">
+                                                    <option value="">Seleccionar...</option>
+                                                    <t t-foreach="states" t-as="s">
+                                                        <option t-att-value="s.id" t-att-selected="s.id == int(checkout.get('state_id') or 0)">
+                                                            <t t-esc="s.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold small">Ciudad</label>
+                                                <input type="text" name="city" class="form-control guapante-field" t-att-value="checkout.get('city')"/>
+                                            </div>
+                                        </div>
 
+                                        <!-- Additional Notes -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold small">Notas Adicionales (Opcional)</label>
+                                            <textarea name="comment" class="form-control guapante-field" rows="3" placeholder="Instrucciones para la portería, color de casa, etc."><t t-esc="checkout.get('comment')"/></textarea>
+                                        </div>
+                                    </div>
+
+                                </div>
                             </div>
 
-                            <!-- RIGHT COLUMN: ORDER SUMMARY -->
-                            <div class="col-12 col-lg-5">
-                                <div class="card border-0 shadow-sm guapante-summary-card">
-                                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
-                                        <h5 class="fw-bold">Productos Seleccionados</h5>
-                                    </div>
-                                    <div class="card-body p-4">
-                                        
-                                        <!-- Product List -->
-                                        <div class="guapante-mini-cart mb-4">
-                                            <t t-foreach="website_sale_order.website_order_line" t-as="line">
-                                                <div class="d-flex align-items-center mb-3">
-                                                    <div class="flex-shrink-0 position-relative">
-                                                        <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 64px; height: 64px; object-fit: cover;'}"/>
-                                                    </div>
-                                                    <div class="flex-grow-1 ms-3">
-                                                        <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
-                                                        
-                                                        <!-- Badge moved below name -->
-                                                        <div class="mb-1">
-                                                            <span class="guapante-qty-badge-inline">
-                                                                <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
-                                                            </span>
-                                                        </div>
-
-                                                        <small class="text-muted"><t t-esc="line.product_id.description_sale"/></small>
-                                                    </div>
-                                                </div>
-                                            </t>
-                                        </div>
-
-                                        <hr class="my-4"/>
-
-                                        <!-- Blue Info Box -->
-                                        <div class="guapante-info-note p-3 d-flex gap-3 mb-4" role="alert">
-                                            <i class="fa fa-info-circle mt-1"></i>
-                                            <div class="small">
-                                                <strong>Nota Importante:</strong><br/>
-                                                El valor final se confirmará una vez pesemos sus productos y verifiquemos el stock. Recibirá la confirmación total antes del despacho.
-                                            </div>
-                                        </div>
-
-                                        <!-- Confirm Button -->
-                                        <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4">
-                                            <i class="fa fa-paper-plane me-2"></i> Confirmar Pedido
-                                        </button>
-                                        
-                                        <div class="text-center text-muted small">
-                                            <i class="fa fa-clock-o me-1"></i> Entrega Flexible
-                                        </div>
-
-                                    </div>
-                                </div>
-                                
-                                <!-- Refresh Guarantee -->
-                                <div class="card border-0 bg-success bg-opacity-10 mt-3">
-                                    <div class="card-body d-flex align-items-start gap-3">
-                                        <i class="fa fa-certificate text-success fs-4 mt-1"></i>
-                                        <div>
-                                            <h6 class="fw-bold text-success mb-1">Garantía de Frescura</h6>
-                                            <p class="small text-muted mb-0">Si no está satisfecho con la calidad de sus productos, le devolvemos su dinero o reemplazamos el producto.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div>
                         </div>
-                    </form>
+
+                        <!-- RIGHT COLUMN: ORDER SUMMARY -->
+                        <div class="col-12 col-lg-5">
+                            <div class="card border-0 shadow-sm guapante-summary-card">
+                                <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+                                    <h5 class="fw-bold">Productos Seleccionados</h5>
+                                </div>
+                                <div class="card-body p-4">
+                                    
+                                    <!-- Product List -->
+                                    <div class="guapante-mini-cart mb-4">
+                                        <t t-foreach="website_sale_order.website_order_line" t-as="line">
+                                            <div class="d-flex align-items-center mb-3">
+                                                <div class="flex-shrink-0 position-relative">
+                                                    <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 64px; height: 64px; object-fit: cover;'}"/>
+                                                </div>
+                                                <div class="flex-grow-1 ms-3">
+                                                    <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
+                                                    
+                                                    <div class="mb-1">
+                                                        <span class="guapante-qty-badge-inline">
+                                                            <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                        </span>
+                                                    </div>
+
+                                                    <small class="text-muted"><t t-esc="line.product_id.description_sale"/></small>
+                                                </div>
+                                            </div>
+                                        </t>
+                                    </div>
+
+                                    <hr class="my-4"/>
+
+                                    <!-- Blue Info Box -->
+                                    <div class="guapante-info-note p-3 d-flex gap-3 mb-4" role="alert">
+                                        <i class="fa fa-info-circle mt-1"></i>
+                                        <div class="small">
+                                            <strong>Nota Importante:</strong><br/>
+                                            El valor final se confirmará una vez pesemos sus productos y verifiquemos el stock. Recibirá la confirmación total antes del despacho.
+                                        </div>
+                                    </div>
+
+                                    <!-- Confirm Button (JS-handled, not form submit) -->
+                                    <button type="button" id="guapante_confirm_btn" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4">
+                                        <i class="fa fa-paper-plane me-2"></i> Confirmar Pedido
+                                    </button>
+                                    
+                                    <div class="text-center text-muted small">
+                                        <i class="fa fa-clock-o me-1"></i> Entrega Flexible
+                                    </div>
+
+                                </div>
+                            </div>
+                            
+                            <!-- Refresh Guarantee -->
+                            <div class="card border-0 bg-success bg-opacity-10 mt-3">
+                                <div class="card-body d-flex align-items-start gap-3">
+                                    <i class="fa fa-certificate text-success fs-4 mt-1"></i>
+                                    <div>
+                                        <h6 class="fw-bold text-success mb-1">Garantía de Frescura</h6>
+                                        <p class="small text-muted mb-0">Si no está satisfecho con la calidad de sus productos, le devolvemos su dinero o reemplazamos el producto.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
                 </div>
             </div>
         </t>

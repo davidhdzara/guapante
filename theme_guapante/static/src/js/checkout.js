@@ -6,6 +6,7 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
     selector: '.guapante-checkout-wrapper',
     events: {
         'change select[name="shipping_id"]': '_onShippingChange',
+        'click #guapante_confirm_btn': '_onConfirmClick',
     },
 
     /**
@@ -14,51 +15,95 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
     start: function () {
         this._super.apply(this, arguments);
         console.log("[GuapanteCheckout] Widget started.");
-        // Initialize state based on current value
         this._onShippingChange();
         return Promise.resolve();
     },
 
     /**
-     * Handles the change event of the shipping address dropdown.
-     * Shows/hides the new address form AND toggles 'required' attributes
-     * so HTML5 validation does not block form submission.
+     * Handle shipping address dropdown changes.
+     * Shows/hides the new address form.
      */
     _onShippingChange: function () {
-        console.log("[GuapanteCheckout] _onShippingChange called.");
-
         const $select = this.$('select[name="shipping_id"]');
         if ($select.length === 0) {
-            console.log("[GuapanteCheckout] No shipping_id select found, keeping form visible.");
+            console.log("[GuapanteCheckout] No shipping_id select found.");
             return;
         }
 
-        const value = $select.val();
-        console.log("[GuapanteCheckout] Selected value:", value);
-
+        const value = parseInt($select.val(), 10);
         const $newAddressForm = this.$('.guapante-new-address-form');
-        if ($newAddressForm.length === 0) {
-            console.warn("[GuapanteCheckout] WARNING: .guapante-new-address-form not found!");
-            return;
-        }
+        if ($newAddressForm.length === 0) return;
 
-        // Fields that are required only when entering a NEW address
-        const $requiredFields = $newAddressForm.find('input[name="street"], input[name="city"], select[name="state_id"]');
-
-        const intValue = parseInt(value, 10);
-
-        // Logic:
-        // -1: "Otra dirección..." -> Show form, enable required
-        //  0: Placeholder "Escoge una dirección..." -> Show form, enable required
-        // >0: Existing Address -> Hide form, disable required
-        if (intValue > 0) {
-            console.log("[GuapanteCheckout] Hiding new address form, removing required.");
+        if (value > 0) {
+            // Existing address selected → hide new address form
+            console.log("[GuapanteCheckout] Existing address selected, hiding form.");
             $newAddressForm.addClass('d-none');
-            $requiredFields.removeAttr('required');
         } else {
-            console.log("[GuapanteCheckout] Showing new address form, adding required.");
+            // No address or "Other" → show form
+            console.log("[GuapanteCheckout] Showing new address form.");
             $newAddressForm.removeClass('d-none');
-            $requiredFields.attr('required', 'required');
         }
+    },
+
+    /**
+     * Handle "Confirmar Pedido" button click.
+     * Collects all field values and submits via a dynamically created form
+     * to bypass the nested-form issue.
+     */
+    _onConfirmClick: function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        console.log("[GuapanteCheckout] Confirm button clicked.");
+
+        const $btn = this.$('#guapante_confirm_btn');
+
+        // 1. Basic validation
+        const shippingId = parseInt(this.$('select[name="shipping_id"]').val() || '0', 10);
+        const isNewAddress = shippingId <= 0;
+
+        if (isNewAddress) {
+            // Validate address fields
+            const street = this.$('input[name="street"]').val();
+            const city = this.$('input[name="city"]').val();
+            if (!street || !city) {
+                alert('Por favor complete los campos de dirección (Dirección y Ciudad).');
+                return;
+            }
+        }
+
+        // 2. Disable button to prevent double-click
+        $btn.prop('disabled', true);
+        $btn.html('<i class="fa fa-spinner fa-spin me-2"></i> Procesando...');
+
+        // 3. Create a dynamic form and submit it
+        const $form = $('<form>', {
+            method: 'POST',
+            action: '/shop/address',
+        });
+
+        // Add CSRF token
+        const csrfToken = this.$('#csrf_token').val() ||
+            document.querySelector('input[name="csrf_token"]')?.value ||
+            odoo.csrf_token;
+
+        $form.append($('<input>', { type: 'hidden', name: 'csrf_token', value: csrfToken }));
+
+        // 4. Collect all field values and add to form
+        const fieldsToCollect = ['name', 'email', 'phone', 'shipping_id', 'street', 'state_id', 'city', 'comment'];
+        fieldsToCollect.forEach((fieldName) => {
+            const $field = this.$('[name="' + fieldName + '"]');
+            if ($field.length > 0) {
+                $form.append($('<input>', {
+                    type: 'hidden',
+                    name: fieldName,
+                    value: $field.val() || ''
+                }));
+            }
+        });
+
+        // 5. Append form to body and submit
+        $form.appendTo('body');
+        console.log("[GuapanteCheckout] Submitting dynamic form to /shop/address");
+        $form.submit();
     },
 });
