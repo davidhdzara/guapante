@@ -6,86 +6,107 @@
 }
 
 // ========================================
-// TIMELINE (mockup-matching design)
+// TIMELINE — 3-row layout:
+//   Row 1: Circles (above the line)
+//   Row 2: Two-tone progress line
+//   Row 3: Labels + times (below the line)
 // ========================================
 .guapante-timeline {
     position: relative;
+    padding-left: 1rem;
+    padding-right: 1rem;
 }
 
-// The horizontal connecting line
-.guapante-timeline-line {
+// --- Row 1: Circles ---
+.guapante-timeline-circles {
+    position: relative;
+    z-index: 2;
+    margin-bottom: 0; // circles sit right on top of the line
+}
+
+.guapante-step-circle-wrap {
+    flex: 1;
+}
+
+.guapante-step-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+
+    i {
+        font-size: 0.8rem;
+    }
+
+    &.completed {
+        background-color: #28a745;
+        color: #fff;
+    }
+
+    &.active {
+        background-color: #28a745;
+        color: #fff;
+        box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.15);
+
+        i {
+            font-size: 0.85rem;
+        }
+    }
+
+    &.pending {
+        background-color: #e9ecef;
+        color: #adb5bd;
+    }
+}
+
+// --- Row 2: Two-tone progress line ---
+.guapante-timeline-track {
+    position: relative;
+    height: 4px;
+    margin-top: 4px; // small gap between circles and line
+    margin-bottom: 10px;
+}
+
+.guapante-timeline-track-bg {
     position: absolute;
-    top: 18px; // Center of the circles (36px / 2)
-    left: 5%;
-    right: 5%;
-    height: 3px;
-    background-color: #e0e0e0;
-    z-index: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background-color: #e9ecef;
+    border-radius: 2px;
 }
 
-// Steps container
-.guapante-timeline-steps {
+.guapante-timeline-track-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #34ce57);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+}
+
+// --- Row 3: Labels ---
+.guapante-timeline-labels {
     position: relative;
     z-index: 1;
 }
 
-// Each step
-.guapante-timeline-step {
+.guapante-step-info {
     flex: 1;
-    position: relative;
 }
 
-// Step circle (base)
-.guapante-step-circle {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 8px;
-    transition: all 0.3s ease;
-
-    i {
-        font-size: 0.85rem;
-    }
-
-    // Completed state — solid green with white check
-    &.completed {
-        background-color: #28a745;
-        color: #fff;
-        border: none;
-    }
-
-    // Active state — green with slight glow (for "En camino")
-    &.active {
-        background-color: #28a745;
-        color: #fff;
-        border: none;
-        box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.2);
-
-        i {
-            font-size: 0.9rem;
-        }
-    }
-
-    // Pending state — light gray circle with muted icon
-    &.pending {
-        background-color: #e9ecef;
-        color: #adb5bd;
-        border: none;
-    }
-}
-
-// Step label (text below circle)
 .guapante-step-label {
     font-size: 0.8rem;
     font-weight: 600;
     color: #333;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
-// Step time (small text below label)
 .guapante-step-time {
     font-size: 0.7rem;
     color: #6c757d;
@@ -113,15 +134,11 @@
     }
 
     .guapante-step-circle {
-        width: 30px;
-        height: 30px;
+        width: 26px;
+        height: 26px;
 
         i {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
         }
-    }
-
-    .guapante-timeline-line {
-        top: 15px;
     }
 }

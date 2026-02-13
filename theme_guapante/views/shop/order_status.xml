@@ -28,55 +28,71 @@
                     </div>
 
                     <!-- TIMELINE (no card wrapper, sits on page background) -->
-                    <div class="guapante-timeline mb-5 py-4">
-                        <div class="position-relative">
-                            <!-- Horizontal connecting line -->
-                            <div class="guapante-timeline-line"></div>
+                    <div class="guapante-timeline mb-5 pt-3 pb-2">
 
-                            <!-- Steps container -->
-                            <div class="d-flex justify-content-between align-items-start guapante-timeline-steps">
-                                
-                                <!-- Step 1: Recibido -->
-                                <div class="guapante-timeline-step text-center">
-                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'pending')">
-                                        <i class="fa fa-check"></i>
-                                    </div>
-                                    <div class="guapante-step-label">Recibido</div>
-                                    <div class="guapante-step-time"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
+                        <!-- ROW 1: Circles (above the line) -->
+                        <div class="d-flex justify-content-between guapante-timeline-circles">
+                            <!-- Step 1: Recibido -->
+                            <div class="guapante-step-circle-wrap text-center">
+                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'pending')">
+                                    <i class="fa fa-check"></i>
                                 </div>
-
-                                <!-- Step 2: Preparado -->
-                                <div class="guapante-timeline-step text-center">
-                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'pending')">
-                                        <i class="fa fa-check"></i>
-                                    </div>
-                                    <div class="guapante-step-label">Preparado</div>
-                                    <t t-if="order.guapante_delivery_status in ['preparing', 'shipping', 'delivered']">
-                                        <div class="guapante-step-time">—</div>
-                                    </t>
+                            </div>
+                            <!-- Step 2: Preparado -->
+                            <div class="guapante-step-circle-wrap text-center">
+                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'pending')">
+                                    <i class="fa fa-check"></i>
                                 </div>
-
-                                <!-- Step 3: En camino -->
-                                <div class="guapante-timeline-step text-center">
-                                    <div t-att-class="'guapante-step-circle ' + ('active' if order.guapante_delivery_status == 'shipping' else 'completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
-                                        <i t-att-class="'fa ' + ('fa-truck' if order.guapante_delivery_status == 'shipping' else 'fa-check')"></i>
-                                    </div>
-                                    <div class="guapante-step-label">En camino</div>
-                                    <t t-if="order.guapante_delivery_status == 'shipping'">
-                                        <div class="guapante-step-time">Actual</div>
-                                    </t>
+                            </div>
+                            <!-- Step 3: En camino -->
+                            <div class="guapante-step-circle-wrap text-center">
+                                <div t-att-class="'guapante-step-circle ' + ('active' if order.guapante_delivery_status == 'shipping' else 'completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                    <i t-att-class="'fa ' + ('fa-truck' if order.guapante_delivery_status in ['shipping'] else 'fa-check')"></i>
                                 </div>
-
-                                <!-- Step 4: Entregado -->
-                                <div class="guapante-timeline-step text-center">
-                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
-                                        <i class="fa fa-check"></i>
-                                    </div>
-                                    <div class="guapante-step-label">Entregado</div>
+                            </div>
+                            <!-- Step 4: Entregado -->
+                            <div class="guapante-step-circle-wrap text-center">
+                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                    <i class="fa fa-check"></i>
                                 </div>
-
                             </div>
                         </div>
+
+                        <!-- ROW 2: Two-tone progress line -->
+                        <div class="guapante-timeline-track">
+                            <div class="guapante-timeline-track-bg"></div>
+                            <div class="guapante-timeline-track-fill"
+                                 t-att-style="'width: ' + (
+                                    '0%' if order.guapante_delivery_status == 'received' else
+                                    '33%' if order.guapante_delivery_status == 'preparing' else
+                                    '66%' if order.guapante_delivery_status == 'shipping' else
+                                    '100%'
+                                 )"></div>
+                        </div>
+
+                        <!-- ROW 3: Labels + times (below the line) -->
+                        <div class="d-flex justify-content-between guapante-timeline-labels">
+                            <div class="guapante-step-info text-start">
+                                <div class="guapante-step-label">Recibido</div>
+                                <div class="guapante-step-time"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
+                            </div>
+                            <div class="guapante-step-info text-center">
+                                <div class="guapante-step-label">Preparado</div>
+                                <t t-if="order.guapante_delivery_status in ['preparing', 'shipping', 'delivered']">
+                                    <div class="guapante-step-time">—</div>
+                                </t>
+                            </div>
+                            <div class="guapante-step-info text-center">
+                                <div class="guapante-step-label">En camino</div>
+                                <t t-if="order.guapante_delivery_status == 'shipping'">
+                                    <div class="guapante-step-time">Actual</div>
+                                </t>
+                            </div>
+                            <div class="guapante-step-info text-end">
+                                <div class="guapante-step-label">Entregado</div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <div class="row">
