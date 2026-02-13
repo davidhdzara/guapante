@@ -63,8 +63,8 @@
                             <div class="guapante-timeline-track-bg"></div>
                             <div class="guapante-timeline-track-fill"
                                  t-att-style="'width: ' + (
-                                    '0%' if order.guapante_delivery_status == 'received' else
-                                    '33%' if order.guapante_delivery_status == 'preparing' else
+                                    '33%' if order.guapante_delivery_status == 'received' else
+                                    '66%' if order.guapante_delivery_status == 'preparing' else
                                     '66%' if order.guapante_delivery_status == 'shipping' else
                                     '100%'
                                  )"></div>
