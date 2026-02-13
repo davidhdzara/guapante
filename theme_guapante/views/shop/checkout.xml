@@ -4,10 +4,12 @@
     <!-- ============================================================ -->
     <!-- GUAPANTE CHECKOUT PAGE                                      -->
     <!-- Replaces standard address/checkout steps with a single page -->
-    <!-- NOTE: We do NOT use a <form> wrapper because Odoo's         -->
-    <!--       website.layout already has a parent form, and          -->
-    <!--       browsers strip nested forms silently.                  -->
-    <!--       Instead, JS handles the submission via POST.           -->
+    <!--                                                              -->
+    <!-- NO <form> wrapper — Odoo's layout already wraps in a form.  -->
+    <!-- NO required attributes — there's no form submission.         -->
+    <!-- The "Confirmar Pedido" button is a simple <a> link that      -->
+    <!-- redirects to /shop/checkout/confirm.                         -->
+    <!-- Address changes use Odoo's native /shop/update_address API.  -->
     <!-- ============================================================ -->
 
     <template id="guapante_checkout" name="Guapante Checkout">
@@ -16,16 +18,13 @@
                 <div class="container oe_website_sale py-5">
                     
                     <h1 class="mb-2">Confirmación de Pedido</h1>
-                    <p class="text-muted mb-5">Complete sus datos para agendar su pedido. El pago se realizará contra entrega o tras confirmación de peso.</p>
-
-                    <!-- Hidden CSRF token for JS submission -->
-                    <input type="hidden" id="csrf_token" t-att-value="request.csrf_token()"/>
+                    <p class="text-muted mb-5">Revise sus datos y confirme su pedido. El pago se realizará contra entrega o tras confirmación de peso.</p>
 
                     <div class="row">
-                        <!-- LEFT COLUMN: FORMS -->
+                        <!-- LEFT COLUMN: INFO (READ-ONLY) -->
                         <div class="col-12 col-lg-7">
                             
-                            <!-- 1. CONTACT INFO -->
+                            <!-- 1. CONTACT INFO (Read-Only from Partner) -->
                             <div class="card border-0 shadow-sm mb-4 guapante-checkout-card">
                                 <div class="card-body p-4">
                                     <div class="d-flex align-items-center mb-4">
@@ -35,26 +34,23 @@
 
                                     <div class="mb-3">
                                         <label class="form-label fw-bold small">Nombre Completo</label>
-                                        <input type="text" name="name" class="form-control guapante-field" required="required" 
-                                               t-att-value="checkout.get('name')"
-                                               t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                               t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
+                                        <div class="form-control bg-light text-muted">
+                                            <t t-esc="website_sale_order.partner_id.name"/>
+                                        </div>
                                     </div>
                                     
                                     <div class="row">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-bold small">Correo Electrónico</label>
-                                            <input type="email" name="email" class="form-control guapante-field" required="required" 
-                                                   t-att-value="checkout.get('email')"
-                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                                   t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
+                                            <div class="form-control bg-light text-muted">
+                                                <t t-esc="website_sale_order.partner_id.email"/>
+                                            </div>
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-bold small">Teléfono Celular</label>
-                                            <input type="tel" name="phone" class="form-control guapante-field" required="required" 
-                                                   t-att-value="checkout.get('phone')"
-                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
-                                                   t-att-class="'form-control text-muted bg-light guapante-field' if not request.env.user._is_public() else 'form-control guapante-field'"/>
+                                            <div class="form-control bg-light text-muted">
+                                                <t t-esc="website_sale_order.partner_id.phone or website_sale_order.partner_id.mobile or '-'"/>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -81,62 +77,50 @@
                                     <t t-if="shippings">
                                         <div class="mb-4">
                                             <label class="form-label fw-bold small">Seleccionar dirección guardada</label>
-                                            <select class="form-select guapante-field" name="shipping_id">
-                                                <option value="0">Escoge una dirección...</option>
+                                            <select class="form-select guapante-field" id="guapante_shipping_select">
                                                 <t t-foreach="shippings" t-as="ship">
                                                     <option t-att-value="ship.id" t-att-selected="ship.id == website_sale_order.partner_shipping_id.id">
-                                                        <t t-esc="ship.street"/>, <t t-esc="ship.city"/>
+                                                        <t t-esc="ship.street or ''"/><t t-if="ship.city">, <t t-esc="ship.city"/></t>
                                                     </option>
                                                 </t>
-                                                <option value="-1">Otra dirección...</option>
                                             </select>
+                                        </div>
+
+                                        <!-- Display Selected Address Details -->
+                                        <div class="guapante-address-detail p-3 bg-light rounded">
+                                            <div class="d-flex align-items-start gap-2">
+                                                <i class="fa fa-map-marker text-success mt-1"></i>
+                                                <div>
+                                                    <strong><t t-esc="website_sale_order.partner_shipping_id.name"/></strong><br/>
+                                                    <span class="text-muted">
+                                                        <t t-esc="website_sale_order.partner_shipping_id.street or ''"/>
+                                                        <t t-if="website_sale_order.partner_shipping_id.street2">, <t t-esc="website_sale_order.partner_shipping_id.street2"/></t>
+                                                        <br/>
+                                                        <t t-esc="website_sale_order.partner_shipping_id.city or ''"/>
+                                                        <t t-if="website_sale_order.partner_shipping_id.state_id">, <t t-esc="website_sale_order.partner_shipping_id.state_id.name"/></t>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Link to add a new address via Odoo's native form -->
+                                        <div class="mt-3">
+                                            <a href="/shop/address?address_type=delivery" class="btn btn-outline-secondary btn-sm">
+                                                <i class="fa fa-plus me-1"></i> Agregar otra dirección
+                                            </a>
                                         </div>
                                     </t>
 
-                                    <!-- Address Form Wrapper -->
-                                    <div class="guapante-new-address-form">
-                                        
-                                        <!-- Separator only if shippings exist -->
-                                        <t t-if="shippings">
-                                            <div class="mb-4 separator-container">
-                                                <div class="separator-text text-muted small">O INGRESA UNA NUEVA</div>
-                                                <hr class="mt-2 mb-4"/>
-                                            </div>
-                                        </t>
-
-                                        <!-- Address Fields -->
-                                        <div class="mb-3">
-                                            <label class="form-label fw-bold small">Dirección</label>
-                                            <div class="input-group">
-                                                <span class="input-group-text bg-white border-end-0"><i class="fa fa-map-marker text-muted"></i></span>
-                                                <input type="text" name="street" class="form-control border-start-0 guapante-field" placeholder="Calle 123 # 45-67, Barrio..." t-att-value="checkout.get('street')"/>
+                                    <!-- If no addresses exist, show a message and link to Odoo's address form -->
+                                    <t t-if="not shippings">
+                                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                                            <i class="fa fa-exclamation-triangle me-2"></i>
+                                            <div>
+                                                No tiene direcciones de envío registradas. 
+                                                <a href="/shop/address?address_type=delivery" class="alert-link">Agregar una dirección</a>
                                             </div>
                                         </div>
-
-                                        <div class="row">
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label fw-bold small">Departamento</label>
-                                                <select name="state_id" class="form-select guapante-field">
-                                                    <option value="">Seleccionar...</option>
-                                                    <t t-foreach="states" t-as="s">
-                                                        <option t-att-value="s.id" t-att-selected="s.id == int(checkout.get('state_id') or 0)">
-                                                            <t t-esc="s.name"/>
-                                                        </option>
-                                                    </t>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label fw-bold small">Ciudad</label>
-                                                <input type="text" name="city" class="form-control guapante-field" t-att-value="checkout.get('city')"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- Additional Notes -->
-                                        <div class="mb-3">
-                                            <label class="form-label fw-bold small">Notas Adicionales (Opcional)</label>
-                                            <textarea name="comment" class="form-control guapante-field" rows="3" placeholder="Instrucciones para la portería, color de casa, etc."><t t-esc="checkout.get('comment')"/></textarea>
-                                        </div>
-                                    </div>
+                                    </t>
 
                                 </div>
                             </div>
@@ -184,10 +168,10 @@
                                         </div>
                                     </div>
 
-                                    <!-- Confirm Button (JS-handled, not form submit) -->
-                                    <button type="button" id="guapante_confirm_btn" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4">
+                                    <!-- Confirm Button — Simple link, no form submission -->
+                                    <a href="/shop/checkout/confirm" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4 text-center" id="guapante_confirm_btn">
                                         <i class="fa fa-paper-plane me-2"></i> Confirmar Pedido
-                                    </button>
+                                    </a>
                                     
                                     <div class="text-center text-muted small">
                                         <i class="fa fa-clock-o me-1"></i> Entrega Flexible
@@ -196,7 +180,7 @@
                                 </div>
                             </div>
                             
-                            <!-- Refresh Guarantee -->
+                            <!-- Freshness Guarantee -->
                             <div class="card border-0 bg-success bg-opacity-10 mt-3">
                                 <div class="card-body d-flex align-items-start gap-3">
                                     <i class="fa fa-certificate text-success fs-4 mt-1"></i>
