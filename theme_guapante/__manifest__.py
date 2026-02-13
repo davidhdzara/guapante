@@ -70,7 +70,9 @@
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart
             'theme_guapante/static/src/js/unit_selector.js',  # Unit selector (Unidades/Kg/g)
             'theme_guapante/static/src/js/cart_quantity.js',  # Cart quantity controls
+            'theme_guapante/static/src/js/cart_quantity.js',  # Cart quantity controls
             'theme_guapante/static/src/js/address_error_fix.js',  # Fix address errors
+            'theme_guapante/static/src/js/checkout.js',  # Checkout interaction
         ],
     },
     'application': False,

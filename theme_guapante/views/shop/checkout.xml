@@ -77,40 +77,51 @@
                                                 <option value="-1">Otra dirección...</option>
                                             </select>
                                         </div>
-                                        <div class="text-center text-muted small mb-4 separator-text">O INGRESA UNA NUEVA</div>
                                     </t>
 
-                                    <!-- Address Form -->
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold small">Dirección</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text bg-white border-end-0"><i class="fa fa-map-marker text-muted"></i></span>
-                                            <input type="text" name="street" class="form-control border-start-0" placeholder="Calle 123 # 45-67, Barrio..." required="required" t-att-value="checkout.get('street')"/>
-                                        </div>
-                                    </div>
+                                    <!-- Address Form Wrapper -->
+                                    <div class="guapante-new-address-form">
+                                        
+                                        <!-- Separator only if shippings exist (otherwise it's the only form) -->
+                                        <t t-if="shippings">
+                                            <div class="mb-4 separator-container">
+                                                <div class="separator-text text-muted small">O INGRESA UNA NUEVA</div>
+                                                <hr class="mt-2 mb-4"/>
+                                            </div>
+                                        </t>
 
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label fw-bold small">Departamento</label>
-                                            <select name="state_id" class="form-select" required="required">
-                                                <option value="">Seleccionar...</option>
-                                                <t t-foreach="states" t-as="s">
-                                                    <option t-att-value="s.id" t-att-selected="s.id == int(checkout.get('state_id') or 0)">
-                                                        <t t-esc="s.name"/>
-                                                    </option>
-                                                </t>
-                                            </select>
+                                        <!-- Address Form -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold small">Dirección</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text bg-white border-end-0"><i class="fa fa-map-marker text-muted"></i></span>
+                                                <input type="text" name="street" class="form-control border-start-0" placeholder="Calle 123 # 45-67, Barrio..." required="required" t-att-value="checkout.get('street')"/>
+                                            </div>
                                         </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label fw-bold small">Ciudad</label>
-                                            <input type="text" name="city" class="form-control" required="required" t-att-value="checkout.get('city')"/>
-                                        </div>
-                                    </div>
 
-                                    <!-- Additional Notes -->
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold small">Notas Adicionales (Opcional)</label>
-                                        <textarea name="comment" class="form-control" rows="3" placeholder="Instrucciones para la portería, color de casa, etc."><t t-esc="checkout.get('comment')"/></textarea>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold small">Departamento</label>
+                                                <select name="state_id" class="form-select" required="required">
+                                                    <option value="">Seleccionar...</option>
+                                                    <t t-foreach="states" t-as="s">
+                                                        <option t-att-value="s.id" t-att-selected="s.id == int(checkout.get('state_id') or 0)">
+                                                            <t t-esc="s.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold small">Ciudad</label>
+                                                <input type="text" name="city" class="form-control" required="required" t-att-value="checkout.get('city')"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Additional Notes -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold small">Notas Adicionales (Opcional)</label>
+                                            <textarea name="comment" class="form-control" rows="3" placeholder="Instrucciones para la portería, color de casa, etc."><t t-esc="checkout.get('comment')"/></textarea>
+                                        </div>
                                     </div>
 
                                 </div>
@@ -132,13 +143,17 @@
                                             <div class="d-flex align-items-center mb-3">
                                                 <div class="flex-shrink-0 position-relative">
                                                     <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 64px; height: 64px; object-fit: cover;'}"/>
-                                                    <!-- Improved Badge: Inside image, top left, Guapante Styling -->
-                                                    <span class="guapante-qty-badge">
-                                                        <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
-                                                    </span>
                                                 </div>
                                                 <div class="flex-grow-1 ms-3">
-                                                    <h6 class="mb-0 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
+                                                    <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
+                                                    
+                                                    <!-- Badge moved below name -->
+                                                    <div class="mb-1">
+                                                        <span class="guapante-qty-badge-inline">
+                                                            <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                        </span>
+                                                    </div>
+
                                                     <small class="text-muted"><t t-esc="line.product_id.description_sale"/></small>
                                                 </div>
                                             </div>
