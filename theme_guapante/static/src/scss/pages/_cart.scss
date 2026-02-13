@@ -42,146 +42,150 @@ $guapante-border-radius: 12px;
 }
 
 // 2. PRODUCT CARDS (LIST)
-.guapante-cart-list {
+// Removed nesting .guapante-cart-list wrapper to ensure styles apply directly to items
+.guapante-cart-item {
+    background: $guapante-card-bg;
+    border-radius: $guapante-border-radius;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     display: flex;
-    flex-direction: column;
-    gap: 1rem; // Spacing between cards
+    align-items: center;
+    width: 100%;
+    margin-bottom: 1rem; // Add spacing between items directly
+    transition: transform 0.2s ease;
 
-    .guapante-cart-item {
-        background: $guapante-card-bg;
-        border-radius: $guapante-border-radius;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    }
+
+    // Image
+    .img-container {
+        width: 80px;
+        height: 80px;
+        flex-shrink: 0;
+        margin-right: 1.5rem;
+        overflow: hidden; // Ensure no overflow
+        border-radius: 8px;
+
+        img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
+            border-radius: 8px;
+            max-width: none; // Override bootstrap limits inside container
+        }
+    }
+
+    // Content
+    .content {
+        flex-grow: 1;
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        width: 100%;
-        transition: transform 0.2s ease;
+        flex-wrap: wrap; // Allow wrapping on very small screens if needed
 
-        &:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-        }
+        // Product Info
+        .info {
+            // max-width: 40%; // Remove strict width constraint
+            flex: 1;
+            min-width: 150px;
 
-        // Image
-        .img-container {
-            width: 80px;
-            height: 80px;
-            flex-shrink: 0;
-            margin-right: 1.5rem;
+            h5 {
+                font-weight: 700;
+                font-size: 1.1rem;
+                color: $guapante-primary-black;
+                margin-bottom: 0.2rem;
+            }
 
-            img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                border-radius: 8px;
+            .variant {
+                color: #7d7d7d;
+                font-size: 0.9rem;
             }
         }
 
-        // Content
-        .content {
-            flex-grow: 1;
+        // Quantity Section
+        .qty-section {
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
+            min-width: 140px;
+            margin: 0 1rem; // Add horizontal margin
 
-            // Product Info
-            .info {
-                max-width: 40%;
-
-                h5 {
-                    font-weight: 700;
-                    font-size: 1.1rem;
-                    color: $guapante-primary-black;
-                    margin-bottom: 0.2rem;
-                }
-
-                .variant {
-                    color: #7d7d7d;
-                    font-size: 0.9rem;
-                }
+            .label {
+                font-size: 0.7rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: $guapante-label-gray;
+                letter-spacing: 0.5px;
+                margin-bottom: 6px;
             }
 
-            // Quantity Section
-            .qty-section {
+            .qty-control {
                 display: flex;
-                flex-direction: column;
                 align-items: center;
-                min-width: 140px;
+                background: $guapante-control-bg;
+                border-radius: 8px;
+                padding: 4px;
 
-                .label {
-                    font-size: 0.7rem;
-                    font-weight: 700;
-                    text-transform: uppercase;
-                    color: $guapante-label-gray;
-                    letter-spacing: 0.5px;
-                    margin-bottom: 6px;
-                }
-
-                .qty-control {
+                button {
+                    width: 32px;
+                    height: 32px;
+                    border: none;
+                    background: transparent;
+                    font-size: 1.2rem;
+                    font-weight: 300;
+                    color: #333;
                     display: flex;
                     align-items: center;
-                    background: $guapante-control-bg;
-                    border-radius: 8px;
-                    padding: 4px;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: color 0.2s;
 
-                    button {
-                        width: 32px;
-                        height: 32px;
-                        border: none;
-                        background: transparent;
-                        font-size: 1.2rem;
-                        font-weight: 300;
-                        color: #333;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        cursor: pointer;
-                        transition: color 0.2s;
-
-                        &:hover {
-                            color: $guapante-success-green;
-                        }
-
-                        &:disabled {
-                            opacity: 0.3;
-                        }
+                    &:hover {
+                        color: $guapante-success-green;
                     }
 
-                    input {
-                        width: 50px;
-                        border: none;
-                        background: transparent;
-                        text-align: center;
-                        font-weight: 700;
-                        font-size: 1rem;
-                        color: $guapante-primary-black;
-                        padding: 0;
+                    &:disabled {
+                        opacity: 0.3;
+                    }
+                }
 
-                        &:focus {
-                            outline: none;
-                        }
+                input {
+                    width: 50px;
+                    border: none;
+                    background: transparent;
+                    text-align: center;
+                    font-weight: 700;
+                    font-size: 1rem;
+                    color: $guapante-primary-black;
+                    padding: 0;
+
+                    &:focus {
+                        outline: none;
                     }
                 }
             }
+        }
 
-            // Actions
-            .actions {
-                margin-left: 1rem;
+        // Actions
+        .actions {
+            margin-left: 1rem;
 
-                .delete-btn {
-                    color: $guapante-label-gray;
-                    font-size: 1.2rem;
-                    transition: color 0.2s;
-                    cursor: pointer;
+            .delete-btn {
+                color: $guapante-label-gray;
+                font-size: 1.2rem;
+                transition: color 0.2s;
+                cursor: pointer;
 
-                    &:hover {
-                        color: #ef5350; // Red on hover
-                    }
+                &:hover {
+                    color: #ef5350; // Red on hover
                 }
             }
         }
     }
 }
+
 
 // 3. SUMMARY CARD
 .guapante-order-summary {
@@ -331,22 +335,15 @@ $guapante-border-radius: 12px;
     padding: 0 !important;
 }
 
-// Override table structure for card layout
-// We are forcing the table to behave like blocks
+// Allow flex behavior on items
 @media (min-width: 768px) {
 
     #cart_products,
-    #cart_products tbody,
-    #cart_products tr,
-    #cart_products td {
-        display: block;
+    #cart_products tbody {
+        display: block; // Or flex column
         width: 100%;
     }
 
-    // Hide original tr border
-    #cart_products tr {
-        border: none !important;
-        margin-bottom: 0 !important;
-        padding: 0 !important;
-    }
+    // The items themselves (divs with .guapante-cart-item) are blocks
+    // So we don't need detailed TR fixes anymore since we are using DIVs
 }
