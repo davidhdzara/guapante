@@ -43,7 +43,8 @@ $guapante-border-radius: 12px;
 
 // 2. PRODUCT CARDS (LIST)
 // Removed nesting .guapante-cart-list wrapper to ensure styles apply directly to items
-.guapante-cart-item {
+// TARGET ODOO CLASS DIRECTLY since custom class addition might fail in template
+.js_cart_lines .o_cart_product {
     background: $guapante-card-bg;
     border-radius: $guapante-border-radius;
     padding: 1.5rem;
