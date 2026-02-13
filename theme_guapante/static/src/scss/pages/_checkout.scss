@@ -1,6 +1,80 @@
-// Checkout Page Styles
-// Placeholder for future checkout custom styles
+/* =========================================
+   CHECKOUT PAGE STYLES
+   ========================================= */
 
-.guapante-checkout {
-    /* Add styles here */
+.guapante-checkout-card {
+    border-radius: 12px;
+    background-color: #ffffff;
+
+    .step-circle {
+        background-color: #00E676 !important;
+        /* Guapante Green */
+        font-size: 1.1rem;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    h5 {
+        color: #333;
+    }
+
+    label {
+        color: #555;
+    }
+
+    .form-control,
+    .form-select {
+        border-radius: 8px;
+        padding: 10px 15px;
+        border-color: #e0e0e0;
+
+        &:focus {
+            border-color: #00E676;
+            box-shadow: 0 0 0 0.2rem rgba(0, 230, 118, 0.25);
+        }
+    }
+
+    .separator-text {
+        position: relative;
+        z-index: 1;
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #e0e0e0;
+            z-index: -1;
+        }
+
+        span {
+            background: #fff;
+            padding: 0 10px;
+        }
+    }
+}
+
+.guapante-summary-card {
+    border-radius: 12px;
+    overflow: hidden;
+
+    .card-header {
+        background-color: #ffffff;
+    }
+
+    .guapante-mini-cart {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .btn-order {
+        border-radius: 8px;
+        transition: transform 0.2s;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 230, 118, 0.3) !important;
+        }
+    }
 }
