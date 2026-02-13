@@ -30,7 +30,7 @@
     </template>
 
     <template id="cart_guapante_header_injection" inherit_id="website_sale.cart" name="Guapante Cart Header Injection">
-        <xpath expr="//div[@id='cart_products']//t[@t-call='website_sale.cart_lines']" position="before">
+        <xpath expr="//div[@id='cart_products']" position="before">
             <div class="guapante-cart-list-header d-none d-md-flex px-3 mb-2 mt-4">
                 <div class="header-label flex-grow-1">Producto</div>
                 <div class="header-label text-center" style="width: 140px; margin: 0 1rem;">Cantidad</div>
