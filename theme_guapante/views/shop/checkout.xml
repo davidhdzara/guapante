@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Placeholder for Checkout Page customizations -->
+    <!-- Referenced in __manifest__.py but content not yet provided -->
+    <template id="guapante_checkout" name="Guapante Checkout">
+        <t t-call="website.layout">
+            <div id="wrap">
+                <div class="container oe_website_sale py-2">
+                    <h1>Checkout</h1>
+                    <p>Checkout customizations pending.</p>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>
