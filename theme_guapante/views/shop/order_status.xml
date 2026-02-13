@@ -27,64 +27,54 @@
                         </div>
                     </div>
 
-                    <!-- TIMELINE -->
-                    <div class="card border-0 shadow-sm mb-5 overflow-hidden">
-                        <div class="card-body p-5">
-                            <div class="position-relative">
-                                <!-- Progress Bar Background -->
-                                <div class="progress" style="height: 4px;">
-                                    <div class="progress-bar bg-success" role="progressbar" 
-                                         t-att-style="'width: ' + (
-                                            '25%' if order.guapante_delivery_status == 'received' else 
-                                            '50%' if order.guapante_delivery_status == 'preparing' else 
-                                            '75%' if order.guapante_delivery_status == 'shipping' else 
-                                            '100%'
-                                         )" 
-                                         aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
-                                </div>
+                    <!-- TIMELINE (no card wrapper, sits on page background) -->
+                    <div class="guapante-timeline mb-5 py-4">
+                        <div class="position-relative">
+                            <!-- Horizontal connecting line -->
+                            <div class="guapante-timeline-line"></div>
+
+                            <!-- Steps container -->
+                            <div class="d-flex justify-content-between align-items-start guapante-timeline-steps">
                                 
-                                <!-- Steps -->
-                                <div class="d-flex justify-content-between position-absolute top-0 w-100" style="margin-top: -14px;">
-                                    
-                                    <!-- Step 1: Recibido -->
-                                    <div class="text-center step-item">
-                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
-                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'bg-white text-muted border'">
-                                            <i class="fa fa-check"></i>
-                                        </div>
-                                        <div class="step-label fw-bold small">Recibido</div>
-                                        <div class="step-time text-muted small"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
+                                <!-- Step 1: Recibido -->
+                                <div class="guapante-timeline-step text-center">
+                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'pending')">
+                                        <i class="fa fa-check"></i>
                                     </div>
-
-                                    <!-- Step 2: Preparado -->
-                                    <div class="text-center step-item">
-                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
-                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'bg-white text-muted border'">
-                                            <i class="fa fa-box-open"></i>
-                                        </div>
-                                        <div class="step-label fw-bold small">Preparado</div>
-                                    </div>
-
-                                    <!-- Step 3: En camino -->
-                                    <div class="text-center step-item">
-                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
-                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status in ['shipping', 'delivered'] else 'bg-white text-muted border'">
-                                            <i class="fa fa-truck"></i>
-                                        </div>
-                                        <div class="step-label fw-bold small">En camino</div>
-                                        <div class="step-time text-muted small" t-if="order.guapante_delivery_status == 'shipping'">Actual</div>
-                                    </div>
-
-                                    <!-- Step 4: Entregado -->
-                                    <div class="text-center step-item">
-                                        <div class="step-circle rounded-circle d-flex align-items-center justify-content-center shadow-sm mx-auto mb-2"
-                                             t-att-class="'bg-success text-white' if order.guapante_delivery_status == 'delivered' else 'bg-white text-muted border'">
-                                            <i class="fa fa-home"></i>
-                                        </div>
-                                        <div class="step-label fw-bold small">Entregado</div>
-                                    </div>
-
+                                    <div class="guapante-step-label">Recibido</div>
+                                    <div class="guapante-step-time"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
                                 </div>
+
+                                <!-- Step 2: Preparado -->
+                                <div class="guapante-timeline-step text-center">
+                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'pending')">
+                                        <i class="fa fa-check"></i>
+                                    </div>
+                                    <div class="guapante-step-label">Preparado</div>
+                                    <t t-if="order.guapante_delivery_status in ['preparing', 'shipping', 'delivered']">
+                                        <div class="guapante-step-time">—</div>
+                                    </t>
+                                </div>
+
+                                <!-- Step 3: En camino -->
+                                <div class="guapante-timeline-step text-center">
+                                    <div t-att-class="'guapante-step-circle ' + ('active' if order.guapante_delivery_status == 'shipping' else 'completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                        <i t-att-class="'fa ' + ('fa-truck' if order.guapante_delivery_status == 'shipping' else 'fa-check')"></i>
+                                    </div>
+                                    <div class="guapante-step-label">En camino</div>
+                                    <t t-if="order.guapante_delivery_status == 'shipping'">
+                                        <div class="guapante-step-time">Actual</div>
+                                    </t>
+                                </div>
+
+                                <!-- Step 4: Entregado -->
+                                <div class="guapante-timeline-step text-center">
+                                    <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                        <i class="fa fa-check"></i>
+                                    </div>
+                                    <div class="guapante-step-label">Entregado</div>
+                                </div>
+
                             </div>
                         </div>
                     </div>

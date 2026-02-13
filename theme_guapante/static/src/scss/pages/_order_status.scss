@@ -5,65 +5,123 @@
     min-height: 100vh;
 }
 
-.step-item {
+// ========================================
+// TIMELINE (mockup-matching design)
+// ========================================
+.guapante-timeline {
     position: relative;
-    width: 25%;
 }
 
-.step-circle {
-    width: 40px;
-    height: 40px;
+// The horizontal connecting line
+.guapante-timeline-line {
+    position: absolute;
+    top: 18px; // Center of the circles (36px / 2)
+    left: 5%;
+    right: 5%;
+    height: 3px;
+    background-color: #e0e0e0;
+    z-index: 0;
+}
+
+// Steps container
+.guapante-timeline-steps {
+    position: relative;
+    z-index: 1;
+}
+
+// Each step
+.guapante-timeline-step {
+    flex: 1;
+    position: relative;
+}
+
+// Step circle (base)
+.guapante-step-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
     transition: all 0.3s ease;
-    z-index: 2;
-    background-color: white; // Default
 
     i {
-        font-size: 1.1rem;
+        font-size: 0.85rem;
+    }
+
+    // Completed state — solid green with white check
+    &.completed {
+        background-color: #28a745;
+        color: #fff;
+        border: none;
+    }
+
+    // Active state — green with slight glow (for "En camino")
+    &.active {
+        background-color: #28a745;
+        color: #fff;
+        border: none;
+        box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.2);
+
+        i {
+            font-size: 0.9rem;
+        }
+    }
+
+    // Pending state — light gray circle with muted icon
+    &.pending {
+        background-color: #e9ecef;
+        color: #adb5bd;
+        border: none;
     }
 }
 
-.step-label {
-    margin-top: 0.5rem;
+// Step label (text below circle)
+.guapante-step-label {
+    font-size: 0.8rem;
+    font-weight: 600;
     color: #333;
+    margin-bottom: 2px;
 }
 
-.step-time {
-    font-size: 0.75rem;
-    margin-top: 0.2rem;
+// Step time (small text below label)
+.guapante-step-time {
+    font-size: 0.7rem;
+    color: #6c757d;
 }
 
-// Progress Bar alignment
-.progress {
-    overflow: visible; // Allow circles to overflow if needed
-    background-color: #e9ecef;
-    border-radius: 0.25rem;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .075);
-}
-
-// Map Card
+// ========================================
+// MAP & DRIVER
+// ========================================
 .guapante-map-card {
     border-radius: 1rem;
     overflow: hidden;
 }
 
-// Driver Overlay
 .driver-overlay {
     backdrop-filter: blur(5px);
     background-color: rgba(255, 255, 255, 0.9);
 }
 
-// Responsive adjustments
+// ========================================
+// RESPONSIVE
+// ========================================
 @include media-breakpoint-down(md) {
-    .step-label {
+    .guapante-step-label {
         font-size: 0.7rem;
     }
 
-    .step-circle {
-        width: 32px;
-        height: 32px;
+    .guapante-step-circle {
+        width: 30px;
+        height: 30px;
 
         i {
-            font-size: 0.9rem;
+            font-size: 0.75rem;
         }
+    }
+
+    .guapante-timeline-line {
+        top: 15px;
     }
 }
