@@ -15,8 +15,8 @@
             </div>
         </xpath>
 
-        <!-- Hide original alerts or banners if any -->
-        <xpath expr="//div[@class='o_structure_website_sale_cart_2']" position="attributes">
+        <!-- Hide original alerts or banners if any. FIX: Use ID selector -->
+        <xpath expr="//div[@id='oe_structure_website_sale_cart_2']" position="attributes">
             <attribute name="class" add="d-none" separator=" "/>
         </xpath>
         
@@ -29,34 +29,22 @@
     </template>
 
     <!-- ============================================================ -->
-    <!-- 2. CART LINES: Card Layout                                    -->
+    <!-- 2. CART LINES: Card Layout for DIV Structure                  -->
     <!--    Inherits: website_sale.cart_lines                          -->
     <!-- ============================================================ -->
 
     <template id="cart_lines_guapante" inherit_id="website_sale.cart_lines" name="Guapante Cart Lines">
         
-        <!-- Hide table header -->
-        <xpath expr="//table[@id='cart_products']//thead" position="replace">
-            <thead class="d-none"></thead>
+        <!-- FIX: Target DIVs instead of TRs. The base template uses div.o_cart_product -->
+        <xpath expr="//div[hasclass('o_cart_product')]" position="attributes">
+            <attribute name="class" add="guapante-cart-item text-decoration-none" separator=" "/>
+            <!-- Remove default flex classes if they conflict, but usually add is safer -->
         </xpath>
 
-        <!-- Transform row into Card -->
-        <xpath expr="//table[@id='cart_products']//tbody//tr" position="attributes">
-            <attribute name="class">guapante-cart-item-row</attribute>
-            <attribute name="style">display: block; border: none; margin-bottom: 1rem;</attribute>
-        </xpath>
-        
-        <!-- Replace content of the row to create the card structure -->
-        <xpath expr="//table[@id='cart_products']//tbody//tr" position="inside">
-            <!-- We need to completely restructure the inner TD content using a div wrapper -->
-            <script>
-                // Hack to force table display block styling in Odoo specific context if CSS fails
-            </script>
-        </xpath>
-        
-        <!-- Redefine Product Image Cell -->
-        <xpath expr="//td[hasclass('td-img')]" position="replace">
-             <td class="guapante-cart-item d-flex align-items-center w-100 p-0 border-0 bg-transparent">
+        <!-- Replace the inner content of the product loop -->
+        <!-- The inner content is inside a t-if="line.product_id" -->
+        <xpath expr="//div[hasclass('o_cart_product')]//t[@t-if='line.product_id']" position="replace">
+            <t t-if="line.product_id">
                 <div class="img-container me-3">
                     <span t-if="line._is_not_sellable_line() and line.product_id.image_128">
                         <img t-att-src="image_data_uri(line.product_id.image_128)" class="rounded" t-att-alt="line.name_short"/>
@@ -104,17 +92,8 @@
                         </a>
                     </div>
                 </div>
-             </td>
+            </t>
         </xpath>
-
-        <!-- Hide original Product Name Cell (merged above) -->
-        <xpath expr="//td[hasclass('td-product_name')]" position="replace"/>
-
-        <!-- Hide original Price Cell -->
-        <xpath expr="//td[hasclass('td-price')]" position="replace"/>
-        
-        <!-- Hide original Qty Cell if existing separately -->
-        <xpath expr="//td[hasclass('td-qty')]" position="replace"/>
 
     </template>
 
@@ -124,7 +103,7 @@
     <!-- ============================================================ -->
 
     <template id="checkout_layout_guapante" inherit_id="website_sale.checkout_layout" name="Guapante Checkout Summary">
-        <!-- Custom Summary Card -->
+        <!-- Custom Summary Card (Target inner card div) -->
         <xpath expr="//div[@id='o_cart_summary']//div[hasclass('o_total_card')]" position="replace">
             <div class="o_total_card guapante-order-summary card sticky-lg-top border-0 shadow-sm">
                 <div class="card-body p-4">
