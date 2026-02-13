@@ -2,11 +2,163 @@
 from odoo import http, models
 from odoo.http import request
 from odoo.addons.website_sale.controllers.main import WebsiteSale
+from werkzeug.exceptions import Forbidden
 import logging
 
 _logger = logging.getLogger(__name__)
 
 class GuapanteWebsiteSale(WebsiteSale):
+
+    @http.route(['/shop/address'], type='http', methods=['GET', 'POST'], auth="public", website=True, sitemap=False)
+    def address(self, **kw):
+        """Override address to use custom single-page checkout logic"""
+        Partner = request.env['res.partner']
+        Order = request.website.sale_get_order()
+        
+        redirection = self.checkout_redirection(Order)
+        if redirection:
+            return redirection
+
+        mode = (False, False)
+        can_edit_vat = False
+        def_country_id = Order.partner_id.country_id
+        values, errors = {}, {}
+
+        partner_id = int(kw.get('partner_id', -1))
+
+        # IF LOGGED IN
+        if partner_id > 0:
+             if partner_id == Order.partner_id.id:
+                mode = ('edit', 'billing')
+                can_edit_vat = Order.partner_id.can_edit_vat()
+             else:
+                shippings = Partner.search([('id', 'child_of', Order.partner_id.commercial_partner_id.ids)])
+                if partner_id in shippings.mapped('id'):
+                    mode = ('edit', 'shipping')
+                else:
+                    return Forbidden()
+        # IF GUEST
+        else:
+             mode = ('new', 'shipping')
+             values = kw
+
+        # HANDLE POST REQUEST (Form Submission)
+        if request.httprequest.method == 'POST':
+            # 1. Validate required fields
+            required_fields = ['name', 'email', 'phone', 'street', 'city', 'country_id']
+            # Add state_id if country requires it (assuming Colombia for now)
+            # if 'state_id' in kw and kw['state_id']: required_fields.append('state_id')
+
+            errors = {}
+            for field in required_fields:
+                if not kw.get(field):
+                    # We can be smarter here, checking if we are using an existing address
+                    # If shipping_id is providing, we don't need address fields
+                    if field in ['street', 'city'] and kw.get('shipping_id') and kw.get('shipping_id') != '0' and kw.get('shipping_id') != '-1':
+                        continue
+                    errors[field] = 'missing'
+            
+            # 2. Process specific logic
+            if not errors:
+                try:
+                    # Logic to Update/Create Partner
+                    # If shipping_id is selected (existing address)
+                    shipping_id = kw.get('shipping_id', 0)
+                    try:
+                        shipping_id = int(shipping_id)
+                    except:
+                        shipping_id = 0
+
+                    partner_values = {
+                        'name': kw.get('name'),
+                        'email': kw.get('email'),
+                        'phone': kw.get('phone'),
+                        'street': kw.get('street'),
+                        'city': kw.get('city'),
+                        'state_id': int(kw.get('state_id')) if kw.get('state_id') else False,
+                        'country_id': int(kw.get('country_id')) if kw.get('country_id') else request.env.ref('base.co').id, # Default Colombia
+                        'type': 'delivery',
+                        'comment': kw.get('comment'), # Additional notes
+                    }
+                    
+                    # Handle WhatsApp Checkbox (store in comment for now or specific field later)
+                    if kw.get('whatsapp_notifications'):
+                        partner_values['comment'] = (partner_values.get('comment') or '') + "\n[WhatsApp: SI]"
+
+                    # LOGIC:
+                    # A. Public User -> Create new partner
+                    # B. Logged User -> 
+                    #    - If 'shipping_id' > 0 -> Use that address (update order)
+                    #    - If 'shipping_id' == -1 (New) -> Create child partner
+                    #    - If 'shipping_id' == 0 (Default/None) -> Check if we are editing main address?
+
+                    if request.env.user._is_public():
+                        # Create standard partner
+                        partner = Partner.sudo().create(partner_values)
+                        Order.partner_id = partner.id
+                        Order.partner_invoice_id = partner.id
+                        Order.partner_shipping_id = partner.id
+                    else:
+                        # Logged User
+                        user_partner = request.env.user.partner_id
+                        
+                        # Update main contact info (phone/mobile) if changed? 
+                        # Ideally we keep billing separate, but for this simple flow we might want to sync
+                        # checks if values differ significantly? For now let's just create shipping address.
+
+                        if shipping_id and shipping_id > 0:
+                            # Use existing
+                            Order.partner_shipping_id = shipping_id
+                            # Maybe update notes?
+                            Order.note = kw.get('comment')
+                        else:
+                            # Create new shipping address for this user
+                            partner_values['parent_id'] = user_partner.id
+                            partner_values['type'] = 'delivery'
+                            # Remove email from shipping address to avoid confusion? or keep it.
+                            # Usually shipping address doesn't need email if parent has it.
+                            
+                            new_shipping = Partner.create(partner_values)
+                            Order.partner_shipping_id = new_shipping.id
+                            Order.note = kw.get('comment')
+
+                    # Redirect to Confirmation (skip payment if simple flow, or go to payment)
+                    # Standard Odoo flow: Address -> Confirm -> Payment
+                    # We can redirect to /shop/confirm_order
+                    return request.redirect('/shop/confirm_order')
+
+                except Exception as e:
+                    _logger.error(f"Error processing checkout: {str(e)}")
+                    errors['form'] = str(e)
+            
+            if errors:
+                values = kw
+
+        # 2. Get Data for the template (same as before)
+        country = request.env['res.country'].search([('code', '=', 'CO')], limit=1) # Default Colombia
+        if not country:
+            country = request.env['res.country'].search([], limit=1)
+
+        render_values = {
+            'website_sale_order': Order,
+            'partner_id': partner_id,
+            'mode': mode,
+            'checkout': values,
+            'can_edit_vat': can_edit_vat,
+            'error': errors,
+            'countries': request.env['res.country'].search([]),
+            'states': country.state_ids, # Filter states by default country
+            'shippings': [],
+        }
+
+        # 3. If logged in, get shipping addresses
+        if not request.env.user._is_public():
+            render_values['shippings'] = Partner.search([
+                ("id", "child_of", request.env.user.partner_id.commercial_partner_id.ids),
+                '|', ("type", "in", ["delivery", "other"]), ("id", "=", request.env.user.partner_id.id)
+            ], order='id desc')
+
+        return request.render("theme_guapante.guapante_checkout", render_values)
 
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):

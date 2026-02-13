@@ -20,6 +20,7 @@
         'views/shop/product.xml',
         'views/shop/layout.xml',
         'views/shop/cart.xml',
+        'views/shop/checkout.xml',
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
@@ -50,6 +51,7 @@
             'theme_guapante/static/src/scss/pages/_shop.scss',
             'theme_guapante/static/src/scss/pages/_shop_grid.scss',  # Product cards premium style
             'theme_guapante/static/src/scss/pages/_cart.scss',  # Cart page styles
+            'theme_guapante/static/src/scss/pages/_checkout.scss',  # Checkout page styles
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',

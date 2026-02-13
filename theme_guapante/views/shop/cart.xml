@@ -78,14 +78,16 @@
                             <t t-else="">CANTIDAD (UNIDADES)</t>
                         </div>
                         
-                        <div class="qty-control d-flex align-items-center bg-light rounded px-2 py-1">
+                        <div class="qty-control guapante-cart-qty-controls d-flex align-items-center bg-light rounded px-2 py-1"
+                             t-att-data-line-id="line.id"
+                             t-att-data-product-id="line.product_id.id"
+                             t-att-data-uom-mode="'kg' if is_weight else 'unit'">
+                             
                             <a href="#" class="js_add_cart_json btn btn-link text-dark p-0 guapante-cart-qty-minus" aria-label="Remove one" title="Remove one">
                                 <i class="fa fa-minus small"/>
                             </a>
                             <input type="text" 
-                                   class="js_quantity form-control border-0 bg-transparent text-center p-0 mx-2 fw-bold" 
-                                   t-att-data-line-id="line.id" 
-                                   t-att-data-product-id="line.product_id.id" 
+                                   class="js_quantity guapante-cart-qty-input form-control border-0 bg-transparent text-center p-0 mx-2 fw-bold" 
                                    t-att-value="line._get_displayed_quantity()"
                                    style="width: 40px;"/>
                             <a href="#" class="js_add_cart_json btn btn-link text-dark p-0 guapante-cart-qty-plus" aria-label="Add one" title="Add one">
