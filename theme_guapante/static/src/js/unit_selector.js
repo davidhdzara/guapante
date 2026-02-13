@@ -57,12 +57,20 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             $modeSelector.removeClass('d-none');
 
             // Check if Unit mode should be enabled
+            // LOGIC CHANGE: If no packaging, HIDE the option completely
             if (this.hasPackaging) {
-                $unitInput.prop('disabled', false);
-                $unitOption.removeClass('disabled btn-outline-secondary').addClass('btn-outline-success');
+                $unitInput.removeClass('d-none').prop('disabled', false);
+                $unitOption.removeClass('d-none disabled btn-outline-secondary').addClass('btn-outline-success');
+
+                // Reset rounding on Kg (it's in the middle)
+                this.$('#mode_kg').next('label').removeClass('guapante-force-first');
             } else {
-                $unitInput.prop('disabled', true);
-                $unitOption.addClass('disabled btn-outline-secondary').removeClass('btn-outline-success');
+                $unitInput.addClass('d-none').prop('disabled', true);
+                $unitOption.addClass('d-none disabled btn-outline-secondary').removeClass('btn-outline-success');
+
+                // Fix rounding on Kg (it becomes the first visible)
+                this.$('#mode_kg').next('label').addClass('guapante-force-first');
+
                 // Ensure we are not in unit mode
                 if (this.currentMode === 'unit') this.currentMode = 'kg';
             }
