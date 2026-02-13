@@ -4,8 +4,8 @@
 
 // Variables based on mockup
 $guapante-primary-black: #1a1a1a;
-$guapante-subtitle-green: #67aa80;
-$guapante-bg-light: #fdfdfd;
+$guapante-subtitle-gray: #6B7280; // Changed from green to gray
+$guapante-bg-light: #f9f9f9; // Ensure this is applied
 $guapante-card-bg: #ffffff;
 $guapante-control-bg: #f3f4f6;
 $guapante-success-green: #00e676; // Bright green
@@ -14,8 +14,10 @@ $guapante-label-gray: #8d8d8d;
 $guapante-border-radius: 12px;
 
 // Global Cart Page Enhancements
-.guapante-cart-page {
-    background-color: $guapante-bg-light;
+// Global Cart Page Enhancements
+.guapante-cart-page,
+.o_website_sale_checkout {
+    background-color: $guapante-bg-light !important;
     min-height: 80vh;
 }
 
@@ -34,10 +36,26 @@ $guapante-border-radius: 12px;
     }
 
     .subtitle {
-        color: $guapante-subtitle-green;
+        color: $guapante-subtitle-gray;
         font-weight: 500;
         font-size: 1rem;
         letter-spacing: 0.2px;
+    }
+}
+
+// 1.5 LIST HEADERS (New)
+.guapante-cart-list-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 1.5rem; // Match card padding
+    margin-bottom: 0.5rem;
+
+    .header-label {
+        color: $guapante-label-gray;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 }
 
@@ -202,6 +220,12 @@ $guapante-border-radius: 12px;
         color: $guapante-primary-black;
         margin-bottom: 1.5rem;
     }
+
+    // Fix sticky positioning
+    position: sticky;
+    top: 120px !important; // Adjust based on header height, ensure enough space
+    z-index: 900; // Ensure it stays above other content but below modals
+    transition: top 0.3s ease; // Smooth transition if top changes
 
     // Info Box
     .info-box {
