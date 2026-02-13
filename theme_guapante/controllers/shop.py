@@ -15,9 +15,8 @@ class GuapanteWebsiteSale(WebsiteSale):
         Partner = request.env['res.partner']
         Order = request.website.sale_get_order()
         
-        redirection = self.checkout_redirection(Order)
-        if redirection:
-            return redirection
+        if not Order or not Order.order_line:
+            return request.redirect('/shop')
 
         mode = (False, False)
         can_edit_vat = False
