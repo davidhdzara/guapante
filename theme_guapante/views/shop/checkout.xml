@@ -30,17 +30,26 @@
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <div class="mb-3">
                                             <label class="form-label fw-bold small">Nombre Completo</label>
-                                            <input type="text" name="name" class="form-control" required="required" t-att-value="checkout.get('name')"/>
+                                            <input type="text" name="name" class="form-control" required="required" 
+                                                   t-att-value="checkout.get('name')"
+                                                   t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                                   t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
                                         </div>
                                         
                                         <div class="row">
                                             <div class="col-md-6 mb-3">
                                                 <label class="form-label fw-bold small">Correo Electrónico</label>
-                                                <input type="email" name="email" class="form-control" required="required" t-att-value="checkout.get('email')"/>
+                                                <input type="email" name="email" class="form-control" required="required" 
+                                                       t-att-value="checkout.get('email')"
+                                                       t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                                       t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label class="form-label fw-bold small">Teléfono Celular</label>
-                                                <input type="tel" name="phone" class="form-control" required="required" t-att-value="checkout.get('phone')"/>
+                                                <input type="tel" name="phone" class="form-control" required="required" 
+                                                       t-att-value="checkout.get('phone')"
+                                                       t-att-readonly="'readonly' if not request.env.user._is_public() else None"
+                                                       t-att-class="'form-control text-muted bg-light' if not request.env.user._is_public() else 'form-control'"/>
                                             </div>
                                         </div>
 

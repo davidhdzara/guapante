@@ -30,6 +30,12 @@ class GuapanteWebsiteSale(WebsiteSale):
              if partner_id == Order.partner_id.id:
                 mode = ('edit', 'billing')
                 can_edit_vat = Order.partner_id.can_edit_vat()
+                # Pre-fill values for logged-in user
+                values = {
+                    'name': Order.partner_id.name,
+                    'email': Order.partner_id.email,
+                    'phone': Order.partner_id.phone,
+                }
              else:
                 shippings = Partner.search([('id', 'child_of', Order.partner_id.commercial_partner_id.ids)])
                 if partner_id in shippings.mapped('id'):
