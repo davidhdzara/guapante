@@ -21,8 +21,9 @@
         </xpath>
         
         <!-- Continue Shopping Link (Bottom Left) -->
-        <xpath expr="//div[@class='oe_cart']" position="inside">
-            <a href="/shop" class="guapante-continue-shopping mt-4">
+        <!-- FIX: Target div.col ID structure instead of oe_cart which doesn't exist here -->
+        <xpath expr="//div[@id='oe_structure_website_sale_cart_1']" position="before">
+            <a href="/shop" class="guapante-continue-shopping mt-4 mb-3 d-inline-block">
                 <i class="fa fa-arrow-left"></i> Seguir comprando frutas y verduras
             </a>
         </xpath>
