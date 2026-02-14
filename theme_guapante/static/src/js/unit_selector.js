@@ -334,13 +334,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             });
             $('input[name="product_packaging_id"]').val(packagings[0].id);
         } else {
-            const radioHtml = `
-                    <input type="radio" class="btn-check packaging-option" name="packaging_selector_${productId}"
-                        id="pkg_default_${productId}" value="0" data-packaging-name="Unidad" data-packaging-qty="1" checked
-                        autocomplete="off" />
-                    <label class="btn btn-outline-success" for="pkg_default_${productId}">Unidad</label>
-                `;
-            $container.append(radioHtml);
+            // No packaging options to show
             $('input[name="product_packaging_id"]').val(0);
         }
     },

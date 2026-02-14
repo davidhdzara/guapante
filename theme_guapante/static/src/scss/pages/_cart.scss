@@ -1,6 +1,18 @@
 /* =========================================
    CART PAGE STYLES - GUAPANTE
    ========================================= */
+// Image Container Fix (Prevent Huge Images)
+.img-container {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+}
 
 // Quantity Controls (Mockup Matching)
 .guapante-cart-qty-controls {

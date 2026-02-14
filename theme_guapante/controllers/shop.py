@@ -242,7 +242,8 @@ class GuapanteWebsiteSale(WebsiteSale):
                 if line_id_from_response:
                     line = request.env['sale.order.line'].browse(line_id_from_response)
                     if line.exists():
-                        line.write({'uom_mode': uom_mode})
+                        # Use sudo() to ensure public/portal users can update this field
+                        line.sudo().write({'uom_mode': uom_mode})
                         _logger.info(f"DB: saved uom_mode='{uom_mode}' for line {line_id_from_response}")
             except Exception as e:
                 _logger.error(f"Error saving uom_mode to DB: {e}")

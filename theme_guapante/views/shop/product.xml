@@ -74,23 +74,7 @@
                             </t>
                         </t>
                         <t t-else="">
-                            <!-- Fallback: Si no hay packagings, mostrar opción por defecto -->
-                            <input 
-                                type="radio" 
-                                class="btn-check packaging-option" 
-                                t-att-name="'packaging_selector_' + str(product_variant.id)"
-                                t-att-id="'pkg_default_' + str(product_variant.id)"
-                                value="0"
-                                data-packaging-name="Unidad"
-                                data-packaging-qty="1"
-                                checked="checked"
-                                autocomplete="off"
-                            />
-                            <label 
-                                class="btn btn-outline-success" 
-                                t-att-for="'pkg_default_' + str(product_variant.id)">
-                                Unidad
-                            </label>
+                            <!-- No packaging: Do not show any radio button, just hidden input default -->
                         </t>
                     </div>
                 </div>
