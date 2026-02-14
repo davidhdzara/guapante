@@ -104,8 +104,11 @@ class GuapanteWebsiteSale(WebsiteSale):
         result = {}
 
         for line in order.order_line:
-            # Determine mode: session first, then fallback
-            mode = uom_modes.get(str(line.id))
+            # Determine mode: DB first, then session, then fallback
+            mode = line.uom_mode
+            if not mode:
+                mode = uom_modes.get(str(line.id))
+            
             if not mode:
                 is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
                 mode = 'kg' if is_weight else 'unit'
@@ -232,14 +235,25 @@ class GuapanteWebsiteSale(WebsiteSale):
             **kwargs
         )
         
-        # 2. Save the user's chosen uom_mode in the session (temporary, no DB)
+        # 2. Save the user's chosen uom_mode to the line (Persistent) and session (Legacy/Fallback)
         if uom_mode and uom_mode in ('g', 'kg', 'unit'):
+            try:
+                line_id_from_response = response.get('line_id')
+                if line_id_from_response:
+                    line = request.env['sale.order.line'].browse(line_id_from_response)
+                    if line.exists():
+                        line.write({'uom_mode': uom_mode})
+                        _logger.info(f"DB: saved uom_mode='{uom_mode}' for line {line_id_from_response}")
+            except Exception as e:
+                _logger.error(f"Error saving uom_mode to DB: {e}")
+            
+            # Keep session update for immediate consistency slightly, but DB is source of truth now
+            # This can be removed later if fully robust
             line_id_from_response = response.get('line_id')
             if line_id_from_response:
                 uom_modes = request.session.get('guapante_uom_modes', {})
                 uom_modes[str(line_id_from_response)] = uom_mode
                 request.session['guapante_uom_modes'] = uom_modes
-                _logger.info(f"Session: saved uom_mode='{uom_mode}' for line {line_id_from_response}")
 
         # 3. Add line count to response
         order = request.website.sale_get_order()
