@@ -21,8 +21,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     start: function () {
         // 1. Read Configuration from DOM
-        this.isWeightUom = this.$el.data('is-weight-uom'); // Boolean
-        this.hasPackaging = this.$el.data('has-packaging'); // Boolean
+        const rawWeight = this.$el.data('is-weight-uom');
+        this.isWeightUom = (rawWeight === true || rawWeight === 'true'); // Robust parsing
+
+        const rawPkg = this.$el.data('has-packaging');
+        this.hasPackaging = (rawPkg === true || rawPkg === 'true'); // Robust parsing
+
         this.uomName = this.$el.data('uom-name') || 'Unidades';
 
         // 2. Initialize State
