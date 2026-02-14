@@ -37,6 +37,9 @@ class GuapanteWebsiteSale(WebsiteSale):
                 '|', ("type", "in", ["delivery", "other"]), ("id", "=", request.env.user.partner_id.id)
             ], order='id desc')
 
+        # Build display data from session for the template
+        render_values['uom_display'] = self._build_uom_display(Order)
+
         return request.render("theme_guapante.guapante_checkout", render_values)
 
     @http.route(['/shop/checkout/confirm'], type='http', auth="public", website=True, sitemap=False)
@@ -53,7 +56,9 @@ class GuapanteWebsiteSale(WebsiteSale):
             # This creates the picking(s)
             order.action_confirm()
             
-            # 2. Clear Session
+            # 2. Clear Session (cart + uom display modes)
+            if 'guapante_uom_modes' in request.session:
+                del request.session['guapante_uom_modes']
             request.website.sale_reset()
             
             # 3. Redirect to Status Page
@@ -88,6 +93,43 @@ class GuapanteWebsiteSale(WebsiteSale):
             'warehouse_lat': '4.6486',   # Bodega Central latitude (Bogotá default)
             'warehouse_lng': '-74.1003', # Bodega Central longitude (Bogotá default)
         })
+
+    def _build_uom_display(self, order):
+        """Build a dict of display data per line from session uom_modes.
+        Returns {line_id: {'qty': '900', 'label': 'g', 'header': 'PESO (G)', 'mode': 'g'}}
+        Reads from session, falls back to product UoM category.
+        """
+        uom_modes = request.session.get('guapante_uom_modes', {})
+        weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        result = {}
+
+        for line in order.order_line:
+            # Determine mode: session first, then fallback
+            mode = uom_modes.get(str(line.id))
+            if not mode:
+                is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+                mode = 'kg' if is_weight else 'unit'
+
+            if mode == 'g':
+                grams = int(round(line.product_uom_qty * 1000))
+                result[line.id] = {'qty': str(grams), 'label': 'g', 'header': 'PESO (G)', 'mode': 'g'}
+            elif mode == 'kg':
+                val = round(line.product_uom_qty, 2)
+                qty_str = str(int(val)) if val == int(val) else str(val)
+                result[line.id] = {'qty': qty_str, 'label': 'kg', 'header': 'PESO (KG)', 'mode': 'kg'}
+            else:
+                result[line.id] = {'qty': str(int(line.product_uom_qty)), 'label': line.product_uom.name or 'Unidades', 'header': 'CANTIDAD (UNIDADES)', 'mode': 'unit'}
+
+        return result
+
+    @http.route()
+    def cart(self, **post):
+        """Override cart to inject uom display data from session."""
+        response = super().cart(**post)
+        order = request.website.sale_get_order()
+        if order:
+            response.qcontext['uom_display'] = self._build_uom_display(order)
+        return response
 
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):
@@ -174,7 +216,8 @@ class GuapanteWebsiteSale(WebsiteSale):
     @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, uom_mode=None, **kwargs):
         """
-        Override to return cart_lines_count and persist the user's chosen uom_mode.
+        Override to return cart_lines_count and store the user's chosen uom_mode
+        in the HTTP session (no DB column needed).
         """
         if uom_mode:
             _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
@@ -189,28 +232,17 @@ class GuapanteWebsiteSale(WebsiteSale):
             **kwargs
         )
         
-        # 2. Persist the user's chosen uom_mode on the order line
-        #    Uses a savepoint so a DB error (e.g. missing column) doesn't
-        #    abort the entire cart transaction.
-        order = request.website.sale_get_order()
-        if order and uom_mode and uom_mode in ('g', 'kg', 'unit'):
-            try:
-                with request.env.cr.savepoint():
-                    # Find the line that was just added/updated
-                    target_line = None
-                    line_id_from_response = response.get('line_id')
-                    if line_id_from_response:
-                        target_line = order.order_line.filtered(lambda l: l.id == line_id_from_response)
-                    if not target_line:
-                        target_line = order.order_line.filtered(lambda l: l.product_id.id == int(product_id))
-                    if target_line:
-                        target_line = target_line[0] if len(target_line) > 1 else target_line
-                        target_line.sudo().write({'uom_mode': uom_mode})
-                        _logger.info(f"Saved uom_mode='{uom_mode}' on line {target_line.id}")
-            except Exception as e:
-                _logger.warning(f"Could not save uom_mode: {e}. Run -u theme_guapante to add DB column.")
+        # 2. Save the user's chosen uom_mode in the session (temporary, no DB)
+        if uom_mode and uom_mode in ('g', 'kg', 'unit'):
+            line_id_from_response = response.get('line_id')
+            if line_id_from_response:
+                uom_modes = request.session.get('guapante_uom_modes', {})
+                uom_modes[str(line_id_from_response)] = uom_mode
+                request.session['guapante_uom_modes'] = uom_modes
+                _logger.info(f"Session: saved uom_mode='{uom_mode}' for line {line_id_from_response}")
 
         # 3. Add line count to response
+        order = request.website.sale_get_order()
         if order:
             response['cart_lines_count'] = len(order.order_line)
         else:

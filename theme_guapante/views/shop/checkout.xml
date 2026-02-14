@@ -145,9 +145,10 @@
                                                 <div class="flex-grow-1 ms-3">
                                                     <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
                                                     
+                                                    <t t-set="line_disp" t-value="uom_display.get(line.id, {})"/>
                                                     <div class="mb-1">
                                                         <span class="guapante-qty-badge-inline">
-                                                            <t t-esc="line.display_qty"/> <t t-esc="line.display_uom_label"/>
+                                                            <t t-esc="line_disp.get('qty', '1')"/> <t t-esc="line_disp.get('label', '')"/>
                                                         </span>
                                                     </div>
 

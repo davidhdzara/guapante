@@ -1,4 +1,5 @@
-# -*- cfrom . import sale_order_line
+# -*- coding: utf-8 -*-
+from . import sale_order_line
 from . import res_users
 from . import product_template
 from . import stock_picking
