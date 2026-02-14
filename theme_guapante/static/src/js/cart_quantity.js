@@ -153,3 +153,54 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         }
     },
 });
+
+/**
+ * Guapante Cart Delete Widget
+ * Handles product deletion from the cart
+ */
+publicWidget.registry.GuapanteCartDelete = publicWidget.Widget.extend({
+    selector: '.guapante-delete-line',
+    events: {
+        'click': '_onDelete',
+    },
+
+    _onDelete: async function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const $el = $(ev.currentTarget);
+        const lineId = parseInt($el.data('line-id'));
+        const productId = parseInt($el.data('product-id'));
+
+        if (!lineId || !productId) {
+            console.error('Guapante Cart: Missing line/product ID for delete');
+            return;
+        }
+
+        // Fade out the row
+        $el.closest('.guapante-cart-item').css('opacity', '0.4');
+
+        try {
+            await $.ajax({
+                url: '/shop/cart/update_json',
+                method: 'POST',
+                dataType: 'json',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'call',
+                    params: {
+                        product_id: productId,
+                        line_id: lineId,
+                        set_qty: 0,
+                        display: false,
+                    }
+                })
+            });
+            window.location.reload();
+        } catch (error) {
+            console.error('Guapante Cart: Error deleting product', error);
+            $el.closest('.guapante-cart-item').css('opacity', '1');
+        }
+    },
+});

@@ -1,43 +1,83 @@
 /* =========================================
    CART PAGE STYLES - GUAPANTE
+   Matches the clean card-row mockup
    ========================================= */
-// Image Container Fix (Prevent Huge Images)
-.img-container {
-    width: 80px;
-    height: 80px;
+
+// --- Cart Item (Card Row) ---
+.guapante-cart-item {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    transition: box-shadow 0.2s ease;
+
+    &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+}
+
+// --- Product Image ---
+.guapante-cart-img {
+    width: 70px;
+    height: 70px;
     flex-shrink: 0;
 
     img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        border-radius: 8px;
     }
 }
 
-// Quantity Controls (Mockup Matching)
-.guapante-cart-qty-controls {
-    border: 1px solid #e0e0e0;
+// --- Product Info ---
+.guapante-cart-info {
+    h6 {
+        font-size: 0.95rem;
+        color: #1a1a1a;
+    }
 
-    .btn-link {
-        text-decoration: none;
-        color: #333;
-        transition: all 0.2s;
+    small {
+        font-size: 0.8rem;
+    }
+}
+
+// --- Quantity Controls ---
+.guapante-cart-qty-controls {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 4px 6px;
+    background: #fff;
+
+    .btn-outline-secondary {
+        border: none;
+        background: transparent;
+        color: #555;
+        line-height: 1;
+        min-width: 28px;
+        min-height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: all 0.15s ease;
 
         &:hover {
-            color: #00E676; // Guapante Green
-            background-color: rgba(0, 230, 118, 0.1);
-            border-radius: 4px;
+            background: #f0f0f0;
+            color: #00C853;
         }
 
-        &:disabled,
-        &.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            color: #ccc;
+        &:active {
+            background: #e0e0e0;
         }
     }
 
     .guapante-cart-qty-input {
+        font-size: 0.95rem;
+
         &:focus {
             box-shadow: none;
             outline: none;
@@ -45,12 +85,105 @@
     }
 }
 
-// Ensure the header labels align with the columns
+// --- Quantity Section ---
+.guapante-cart-qty-section {
+    min-width: 140px;
+}
+
+// --- Delete Button ---
+.guapante-cart-delete {
+    .guapante-delete-line {
+        color: #00C853;
+        transition: all 0.2s ease;
+        opacity: 0.7;
+
+        &:hover {
+            opacity: 1;
+            transform: scale(1.15);
+        }
+    }
+}
+
+// --- Column Header ---
 .guapante-cart-list-header {
     background-color: transparent;
     font-weight: 600;
-    color: #666;
-    font-size: 0.9rem;
+    color: #888;
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
+}
+
+// --- Cart Header ---
+.guapante-cart-header {
+    h1 {
+        font-weight: 700;
+        font-size: 1.8rem;
+        color: #1a1a1a;
+    }
+
+    .subtitle {
+        color: #666;
+        font-size: 0.9rem;
+    }
+}
+
+// --- Continue Shopping Link ---
+.guapante-continue-shopping {
+    color: #00C853;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+
+    &:hover {
+        color: #00A844;
+        text-decoration: underline;
+    }
+
+    .fa {
+        margin-right: 6px;
+    }
+}
+
+// --- Order Summary Card ---
+.guapante-order-summary {
+    border-radius: 12px;
+    background: #fff;
+
+    .title {
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+
+    .info-box {
+        background: #E3F2FD !important;
+        border-radius: 10px;
+
+        i {
+            color: #1976D2;
+        }
+
+        p {
+            color: #1565C0;
+        }
+    }
+
+    .btn-order {
+        background-color: #00C853 !important;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 12px 0;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background-color: #00A844 !important;
+        }
+    }
+
+    .security-badges {
+        color: #999;
+    }
 }

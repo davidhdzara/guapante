@@ -40,65 +40,71 @@
         <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="before">
             <div class="guapante-cart-list-header d-none d-md-flex px-3 mb-2 mt-4">
                 <div class="header-label flex-grow-1">Producto</div>
-                <div class="header-label text-center" style="width: 140px; margin: 0 1rem;">Cantidad</div>
-                <div class="header-label" style="width: 25px;"></div>
+                <div class="header-label text-center" style="width: 200px;">Cantidad</div>
+                <div class="header-label" style="width: 30px;"></div>
             </div>
         </xpath>
 
-        <!-- FIX: Target DIVs by t-foreach attribute instead of hasclass. This is more robust. -->
+        <!-- Add guapante class + data attributes to each line container -->
         <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="attributes">
-            <attribute name="class" add="guapante-cart-item text-decoration-none" separator=" "/>
+            <attribute name="class" add="guapante-cart-item" separator=" "/>
+            <attribute name="t-att-data-line-id">line.id</attribute>
+            <attribute name="t-att-data-product-id">line.product_id.id</attribute>
         </xpath>
 
         <!-- Replace the inner content of the product loop -->
-        <!-- The inner content is inside a t-if="line.product_id" -->
         <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']//t[@t-if='line.product_id']" position="replace">
             <t t-if="line.product_id">
-                <div class="img-container me-3">
+                <t t-set="line_display" t-value="uom_display.get(line.id, {})"/>
+
+                <!-- Product Image -->
+                <div class="guapante-cart-img me-3">
                     <span t-if="line._is_not_sellable_line() and line.product_id.image_128">
                         <img t-att-src="image_data_uri(line.product_id.image_128)" class="rounded" t-att-alt="line.name_short"/>
                     </span>
                     <span t-else="" t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded'}"/>
                 </div>
                 
-                <div class="content d-flex flex-grow-1 align-items-center justify-content-between">
+                <div class="d-flex flex-grow-1 align-items-center justify-content-between">
                     <!-- Product Info -->
-                    <div class="info">
-                        <h5 t-field="line.name_short" class="mb-1"/>
-                        <div class="variant text-muted small">
+                    <div class="guapante-cart-info flex-grow-1">
+                        <h6 t-field="line.name_short" class="mb-0 fw-bold"/>
+                        <small class="text-muted">
                             Variante: <span t-field="line.product_id.name"/>
-                        </div>
+                        </small>
                     </div>
 
-                    <!-- Quantity Control -->
-                    <div class="qty-section text-center mx-3">
-                        <t t-set="line_display" t-value="uom_display.get(line.id, {})"/>
-                        <div class="label text-muted small fw-bold mb-1">
+                    <!-- Quantity Section -->
+                    <div class="guapante-cart-qty-section text-center">
+                        <div class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">
                             <t t-esc="line_display.get('header', 'CANTIDAD')"/>
                         </div>
                         
-                        <div class="qty-control guapante-cart-qty-controls d-flex align-items-center bg-light rounded px-2 py-1"
+                        <div class="guapante-cart-qty-controls d-inline-flex align-items-center"
                              t-att-data-line-id="line.id"
                              t-att-data-product-id="line.product_id.id"
                              t-att-data-uom-mode="line_display.get('mode', 'unit')">
                              
-                            <a href="#" class="btn btn-link text-dark p-0 guapante-cart-qty-minus" aria-label="Remove one" title="Remove one">
-                                <i class="fa fa-minus small"/>
-                            </a>
+                            <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-minus px-2 py-1">
+                                <i class="fa fa-minus" style="font-size: 0.7rem;"/>
+                            </button>
                             <input type="text" 
-                                   class="js_quantity guapante-cart-qty-input form-control border-0 bg-transparent text-center p-0 mx-2 fw-bold" 
+                                   class="guapante-cart-qty-input form-control text-center border-0 bg-transparent fw-bold mx-1 p-0" 
                                    t-att-value="line_display.get('qty', '1')"
-                                   style="width: 40px;"/>
-                            <a href="#" class="btn btn-link text-dark p-0 guapante-cart-qty-plus" aria-label="Add one" title="Add one">
-                                <i class="fa fa-plus small"/>
-                            </a>
+                                   style="width: 50px; font-size: 0.95rem;"/>
+                            <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-plus px-2 py-1">
+                                <i class="fa fa-plus" style="font-size: 0.7rem;"/>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Delete Action -->
-                    <div class="actions">
-                        <a href="#" class="js_delete_product text-success" aria-label="Eliminar" title="Eliminar">
-                            <i class="fa fa-trash fs-5"></i>
+                    <!-- Delete Button -->
+                    <div class="guapante-cart-delete ms-3">
+                        <a href="#" class="guapante-delete-line text-success" 
+                           t-att-data-line-id="line.id"
+                           t-att-data-product-id="line.product_id.id"
+                           aria-label="Eliminar" title="Eliminar">
+                            <i class="fa fa-trash" style="font-size: 1.1rem;"/>
                         </a>
                     </div>
                 </div>
