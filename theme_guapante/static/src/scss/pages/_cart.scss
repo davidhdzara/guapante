@@ -3,15 +3,15 @@
    Matches the clean card-row mockup
    ========================================= */
 
-// --- Cart Item (Card Row) ---
+// --- Cart Item (Card Row) --- Force override Odoo defaults
 .guapante-cart-item {
-    display: flex;
-    align-items: center;
-    background: #fff;
-    border: 1px solid #e8e8e8;
-    border-radius: 12px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    display: flex !important;
+    align-items: center !important;
+    background: #fff !important;
+    border: 1px solid #e8e8e8 !important;
+    border-radius: 12px !important;
+    padding: 16px 20px !important;
+    margin-bottom: 12px !important;
     transition: box-shadow 0.2s ease;
 
     &:hover {
@@ -156,16 +156,16 @@
         color: #1a1a1a;
     }
 
-    .info-box {
-        background: #E3F2FD !important;
+    .guapante-info-box {
+        background: #E8EAF6;
         border-radius: 10px;
 
         i {
-            color: #1976D2;
+            color: #5C6BC0;
         }
 
         p {
-            color: #1565C0;
+            color: #3949AB;
         }
     }
 

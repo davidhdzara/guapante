@@ -97,7 +97,7 @@ class GuapanteWebsiteSale(WebsiteSale):
     def _build_uom_display(self, order):
         """Build a dict of display data per line from session uom_modes.
         Returns {line_id: {'qty': '900', 'label': 'g', 'header': 'PESO (G)', 'mode': 'g'}}
-        Reads from session, falls back to product UoM category.
+        Reads from DB field first, then session, then falls back to product UoM category.
         """
         uom_modes = request.session.get('guapante_uom_modes', {})
         weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
@@ -121,7 +121,22 @@ class GuapanteWebsiteSale(WebsiteSale):
                 qty_str = str(int(val)) if val == int(val) else str(val)
                 result[line.id] = {'qty': qty_str, 'label': 'kg', 'header': 'PESO (KG)', 'mode': 'kg'}
             else:
-                result[line.id] = {'qty': str(int(line.product_uom_qty)), 'label': line.product_uom.name or 'Unidades', 'header': 'CANTIDAD (UNIDADES)', 'mode': 'unit'}
+                # Unit mode: for weight products, convert kg back to units via packaging
+                qty_val = line.product_uom_qty
+                is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+                if is_weight:
+                    # Find the sales packaging to get the conversion factor
+                    packaging = line.product_id.packaging_ids.filtered(
+                        lambda p: p.sales and p.qty > 0
+                    )[:1]
+                    if packaging:
+                        qty_val = round(line.product_uom_qty / packaging.qty)
+                    else:
+                        qty_val = int(line.product_uom_qty) if line.product_uom_qty == int(line.product_uom_qty) else line.product_uom_qty
+                else:
+                    qty_val = int(line.product_uom_qty) if line.product_uom_qty == int(line.product_uom_qty) else line.product_uom_qty
+                
+                result[line.id] = {'qty': str(int(qty_val)), 'label': 'Unidades', 'header': 'CANTIDAD (UNIDADES)', 'mode': 'unit'}
 
         return result
 
