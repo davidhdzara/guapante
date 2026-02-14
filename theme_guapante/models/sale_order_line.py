@@ -29,3 +29,12 @@ class SaleOrderLine(models.Model):
                 line.uom_mode = 'kg'
             else:
                 line.uom_mode = 'unit'
+
+    # DEPRECATED: Kept temporarily to prevent crashes with stale views
+    display_qty = fields.Char(compute='_compute_legacy_display')
+    display_uom_label = fields.Char(compute='_compute_legacy_display')
+
+    def _compute_legacy_display(self):
+        for line in self:
+            line.display_qty = str(line.product_uom_qty)
+            line.display_uom_label = line.product_uom.name or ''
