@@ -85,6 +85,8 @@ class GuapanteWebsiteSale(WebsiteSale):
         
         return request.render("theme_guapante.guapante_order_status", {
             'order': Order,
+            'warehouse_lat': '4.6486',   # Bodega Central latitude (Bogotá default)
+            'warehouse_lng': '-74.1003', # Bodega Central longitude (Bogotá default)
         })
 
     @http.route()
@@ -190,18 +192,21 @@ class GuapanteWebsiteSale(WebsiteSale):
         # 2. Persist the user's chosen uom_mode on the order line
         order = request.website.sale_get_order()
         if order and uom_mode and uom_mode in ('g', 'kg', 'unit'):
-            # Find the line that was just added/updated
-            target_line = None
-            line_id_from_response = response.get('line_id')
-            if line_id_from_response:
-                target_line = order.order_line.filtered(lambda l: l.id == line_id_from_response)
-            if not target_line:
-                # Fallback: find by product_id
-                target_line = order.order_line.filtered(lambda l: l.product_id.id == int(product_id))
-            if target_line:
-                target_line = target_line[0] if len(target_line) > 1 else target_line
-                target_line.sudo().write({'uom_mode': uom_mode})
-                _logger.info(f"Saved uom_mode='{uom_mode}' on line {target_line.id}")
+            try:
+                # Find the line that was just added/updated
+                target_line = None
+                line_id_from_response = response.get('line_id')
+                if line_id_from_response:
+                    target_line = order.order_line.filtered(lambda l: l.id == line_id_from_response)
+                if not target_line:
+                    # Fallback: find by product_id
+                    target_line = order.order_line.filtered(lambda l: l.product_id.id == int(product_id))
+                if target_line:
+                    target_line = target_line[0] if len(target_line) > 1 else target_line
+                    target_line.sudo().write({'uom_mode': uom_mode})
+                    _logger.info(f"Saved uom_mode='{uom_mode}' on line {target_line.id}")
+            except Exception as e:
+                _logger.warning(f"Could not save uom_mode: {e}. Module update may be needed.")
 
         # 3. Add line count to response
         if order:
