@@ -147,7 +147,7 @@
                                                     
                                                     <div class="mb-1">
                                                         <span class="guapante-qty-badge-inline">
-                                                            <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                            <t t-esc="line.display_qty"/> <t t-esc="line.display_uom_label"/>
                                                         </span>
                                                     </div>
 

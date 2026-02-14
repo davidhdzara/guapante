@@ -134,6 +134,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
                         product_id: this.productId,
                         line_id: this.lineId,
                         set_qty: finalQty,
+                        uom_mode: this.uomMode,
                         display: false,
                     }
                 })
