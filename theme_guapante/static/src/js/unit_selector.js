@@ -74,16 +74,16 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         var currentVal = this._parseValue($qtyInput.val());
 
         if (previousMode === 'kg' && this.currentMode === 'g') {
-            $qtyInput.val(Math.round(currentVal * 1000));
+            $qtyInput.val(this._formatValue(Math.round(currentVal * 1000)));
         } else if (previousMode === 'g' && this.currentMode === 'kg') {
             var kgVal = currentVal / 1000;
-            $qtyInput.val(Math.max(0.1, parseFloat(kgVal.toFixed(2))));
+            $qtyInput.val(this._formatValue(Math.max(0.1, parseFloat(kgVal.toFixed(2)))));
         } else if (this.currentMode === 'unit') {
-            $qtyInput.val(1);
+            $qtyInput.val(this._formatValue(1));
         } else if (previousMode === 'unit' && this.currentMode === 'kg') {
-            $qtyInput.val(1);
+            $qtyInput.val(this._formatValue(1));
         } else if (previousMode === 'unit' && this.currentMode === 'g') {
-            $qtyInput.val(500);
+            $qtyInput.val(this._formatValue(500));
         }
         this._updateUIBasedOnMode();
     },
@@ -97,7 +97,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         switch (this.currentMode) {
             case 'kg':
                 $qtyInput.attr('step', '0.01').attr('min', '0.1');
-                if (this._parseValue($qtyInput.val()) < 0.1) $qtyInput.val(1.0);
+                if (this._parseValue($qtyInput.val()) < 0.1) $qtyInput.val(this._formatValue(1.0));
                 $packagingSelector.addClass('d-none');
                 $packagingInfo.addClass('d-none');
                 $modeInfo.text('Precio por Kilogramo');
@@ -105,15 +105,15 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             case 'g':
                 $qtyInput.attr('step', '50').attr('min', '50');
                 let val = this._parseValue($qtyInput.val());
-                if (val < 50) $qtyInput.val(500);
-                else $qtyInput.val(Math.round(val));
+                if (val < 50) $qtyInput.val(this._formatValue(500));
+                else $qtyInput.val(this._formatValue(Math.round(val)));
                 $packagingSelector.addClass('d-none');
                 $packagingInfo.addClass('d-none');
                 $modeInfo.text('Precio calculado por peso (aprox)');
                 break;
             case 'unit':
                 $qtyInput.attr('step', '1').attr('min', '1');
-                if (this._parseValue($qtyInput.val()) < 1) $qtyInput.val(1);
+                if (this._parseValue($qtyInput.val()) < 1) $qtyInput.val(this._formatValue(1));
                 if (this.isWeightUom) {
                     $packagingSelector.removeClass('d-none');
                     $modeInfo.text('Venta por Unidad / Paquete');
@@ -150,7 +150,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             val = parseFloat(val.toFixed(2));
         }
 
-        this.$('.guapante-qty-input').val(val);
+        this.$('.guapante-qty-input').val(this._formatValue(val));
 
         if (this.currentMode === 'unit') {
             this._updatePackagingInfo();
@@ -163,7 +163,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         if (this.currentMode === 'kg') step = 0.5;
         if (this.currentMode === 'g') step = 50;
 
-        this.$('.guapante-qty-input').val(val + step).trigger('change');
+        this.$('.guapante-qty-input').val(this._formatValue(val + step)).trigger('change');
     },
 
     _onQuantityMinus: function () {
@@ -176,7 +176,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         const min = parseFloat(this.$('.guapante-qty-input').attr('min'));
         if (newVal < min) newVal = min;
 
-        this.$('.guapante-qty-input').val(newVal).trigger('change');
+        this.$('.guapante-qty-input').val(this._formatValue(newVal)).trigger('change');
     },
 
     _onPackagingChange: function (ev) {
@@ -207,7 +207,9 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
         if (this.isWeightUom) {
             const totalKg = (qty * pkg.qty).toFixed(2);
-            $text.text(`${qty} ${pkg.name} x ${pkg.qty} kg = ${totalKg} kg Total`);
+            // Display formatted totalKg
+            const formattedTotal = totalKg.toString().replace('.', ',');
+            $text.text(`${qty} ${pkg.name} x ${pkg.qty} kg = ${formattedTotal} kg Total`);
             $info.removeClass('d-none');
         } else {
             $info.addClass('d-none');
@@ -341,6 +343,13 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             $container.append(radioHtml);
             $('input[name="product_packaging_id"]').val(0);
         }
+    },
+
+    _formatValue: function (val) {
+        if (typeof val === 'number') {
+            return val.toString().replace('.', ',');
+        }
+        return val;
     },
 
     _parseValue: function (val) {
