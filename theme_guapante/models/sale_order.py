@@ -1,4 +1,8 @@
+import math
+import logging
 from odoo import models, fields, api
+
+_logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
@@ -37,3 +41,62 @@ class SaleOrder(models.Model):
                     status = 'preparing'
             
             order.guapante_delivery_status = status
+
+    def _cart_update(self, product_id, line_id=None, add_qty=0, set_qty=0, **kwargs):
+        """Override to support fractional quantities (grams, packaging units).
+
+        Odoo 18 truncates both add_qty and set_qty with int() in the standard
+        _cart_update. This override detects fractional values, lets super()
+        create/find the line with a ceiled integer, then corrects the quantity
+        to the actual desired float value.
+        """
+        float_add = float(add_qty or 0)
+        float_set = float(set_qty or 0)
+
+        is_fractional = (float_add and float_add != int(float_add)) or \
+                        (float_set and float_set != int(float_set))
+
+        if not is_fractional:
+            return super()._cart_update(
+                product_id, line_id=line_id,
+                add_qty=add_qty, set_qty=set_qty, **kwargs
+            )
+
+        # Calculate the real desired quantity
+        if float_set:
+            desired_qty = float_set
+        else:
+            # Find existing line to add to its current qty
+            if line_id is not False:
+                order_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
+            else:
+                order_line = self.env['sale.order.line']
+            current_qty = order_line.product_uom_qty if order_line else 0
+            desired_qty = current_qty + float_add
+
+        if desired_qty <= 0:
+            # Deletion: let super handle it normally
+            return super()._cart_update(
+                product_id, line_id=line_id,
+                add_qty=0, set_qty=0, **kwargs
+            )
+
+        # Call super with ceiled integer so the line gets created/found
+        ceil_qty = max(1, math.ceil(desired_qty))
+        result = super()._cart_update(
+            product_id, line_id=line_id,
+            set_qty=ceil_qty, **kwargs
+        )
+
+        # Fix the actual quantity to the desired float value
+        if result.get('line_id'):
+            line = self.env['sale.order.line'].browse(result['line_id'])
+            if line.exists() and line.product_uom_qty != desired_qty:
+                line.product_uom_qty = desired_qty
+                result['quantity'] = desired_qty
+                _logger.info(
+                    f"Guapante: Set fractional qty={desired_qty} on line {line.id}"
+                )
+
+        return result
+

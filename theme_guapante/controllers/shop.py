@@ -225,27 +225,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         if uom_mode:
             _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
 
-        # 1. Fix: Odoo's _cart_update truncates add_qty with int().
-        #    For fractional quantities (e.g. 0.9 kg from 900g), convert to set_qty.
-        if add_qty is not None and set_qty is None:
-            try:
-                qty_float = float(add_qty)
-                if qty_float != int(qty_float):  # Has decimal part
-                    order = request.website.sale_get_order()
-                    if order:
-                        existing = order.order_line.filtered(
-                            lambda l: l.product_id.id == int(product_id) and not l.is_delivery
-                        )
-                        if existing:
-                            set_qty = existing[0].product_uom_qty + qty_float
-                        else:
-                            set_qty = qty_float
-                        add_qty = None
-                        _logger.info(f"Guapante: Converted decimal add_qty to set_qty={set_qty}")
-            except (ValueError, TypeError):
-                pass
-
-        # 2. Call super to perform standard logic
+        # 1. Call super to perform standard logic (fractional qty handled by sale_order._cart_update override)
         response = super().cart_update_json(
             product_id=product_id, 
             line_id=line_id, 
