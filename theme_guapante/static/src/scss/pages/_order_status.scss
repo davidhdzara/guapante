@@ -1,144 +1,158 @@
 // Order Status Page Styles
 
 .guapante-status-wrapper {
-    background-color: #f8f9fa;
+    background-color: #f5f7fa;
     min-height: 100vh;
 }
 
 // ========================================
-// TIMELINE — 3-row layout:
-//   Row 1: Circles (above the line)
-//   Row 2: Two-tone progress line
-//   Row 3: Labels + times (below the line)
+// VERTICAL TIMELINE
 // ========================================
-.guapante-timeline {
+.guapante-vtimeline {
     position: relative;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding-left: 0;
 }
 
-// --- Row 1: Circles ---
-.guapante-timeline-circles {
+.guapante-vt-step {
+    display: flex;
+    align-items: flex-start;
     position: relative;
-    z-index: 2;
-    margin-bottom: 0; // circles sit right on top of the line
+    padding-bottom: 28px;
+    padding-left: 52px;
+
+    // Vertical connecting line
+    &::before {
+        content: '';
+        position: absolute;
+        left: 17px;
+        top: 32px;
+        bottom: 0;
+        width: 2px;
+        background-color: #e0e0e0;
+    }
+
+    // Hide the line for the last step
+    &.last::before {
+        display: none;
+    }
+
+    // ---- Completed state ----
+    &.completed {
+        .guapante-vt-icon {
+            background-color: #28a745;
+            color: #fff;
+            border-color: #28a745;
+        }
+
+        &::before {
+            background-color: #28a745;
+        }
+
+        .guapante-vt-title {
+            color: #1a1a2e;
+        }
+    }
+
+    // ---- Active state ----
+    &.active {
+        .guapante-vt-icon {
+            background-color: #28a745;
+            color: #fff;
+            border-color: #28a745;
+            box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.15);
+        }
+
+        &::before {
+            background: linear-gradient(to bottom, #28a745 0%, #e0e0e0 100%);
+        }
+
+        .guapante-vt-title {
+            color: #28a745;
+            font-weight: 700;
+        }
+    }
+
+    // ---- Pending state ----
+    &.pending {
+        .guapante-vt-icon {
+            background-color: #f0f0f0;
+            color: #bbb;
+            border-color: #e0e0e0;
+        }
+
+        .guapante-vt-title {
+            color: #999;
+        }
+
+        .guapante-vt-desc {
+            color: #bbb !important;
+        }
+    }
 }
 
-.guapante-step-circle-wrap {
-    flex: 1;
-}
-
-.guapante-step-circle {
-    width: 32px;
-    height: 32px;
+// Circle icon
+.guapante-vt-icon {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
+    border: 2px solid;
     transition: all 0.3s ease;
+    flex-shrink: 0;
 
     i {
         font-size: 0.8rem;
     }
-
-    &.completed {
-        background-color: #28a745;
-        color: #fff;
-    }
-
-    &.active {
-        background-color: #28a745;
-        color: #fff;
-        box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.15);
-
-        i {
-            font-size: 0.85rem;
-        }
-    }
-
-    &.pending {
-        background-color: #e9ecef;
-        color: #adb5bd;
-    }
 }
 
-// --- Row 2: Two-tone progress line ---
-.guapante-timeline-track {
-    position: relative;
-    height: 4px;
-    margin-top: 4px; // small gap between circles and line
-    margin-bottom: 10px;
+// Content area
+.guapante-vt-content {
+    padding-top: 2px;
 }
 
-.guapante-timeline-track-bg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100%;
-    background-color: #e9ecef;
-    border-radius: 2px;
-}
-
-.guapante-timeline-track-fill {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    background: linear-gradient(90deg, #28a745, #34ce57);
-    border-radius: 2px;
-    transition: width 0.5s ease;
-}
-
-// --- Row 3: Labels ---
-.guapante-timeline-labels {
-    position: relative;
-    z-index: 1;
-}
-
-.guapante-step-info {
-    flex: 1;
-}
-
-.guapante-step-label {
-    font-size: 0.8rem;
+.guapante-vt-title {
     font-weight: 600;
-    color: #333;
-    margin-bottom: 1px;
+    font-size: 0.9rem;
+    margin-bottom: 2px;
 }
 
-.guapante-step-time {
-    font-size: 0.7rem;
-    color: #6c757d;
+.guapante-vt-desc {
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
 
-// ========================================
-// MAP & DRIVER
-// ========================================
-.guapante-map-card {
-    border-radius: 1rem;
-    overflow: hidden;
-}
-
-.driver-overlay {
-    backdrop-filter: blur(5px);
-    background-color: rgba(255, 255, 255, 0.9);
+.guapante-vt-time {
+    font-size: 0.75rem;
 }
 
 // ========================================
 // RESPONSIVE
 // ========================================
 @include media-breakpoint-down(md) {
-    .guapante-step-label {
-        font-size: 0.7rem;
+    .guapante-vt-step {
+        padding-bottom: 20px;
+        padding-left: 44px;
+
+        &::before {
+            left: 14px;
+        }
     }
 
-    .guapante-step-circle {
-        width: 26px;
-        height: 26px;
+    .guapante-vt-icon {
+        width: 30px;
+        height: 30px;
 
         i {
             font-size: 0.7rem;
         }
+    }
+
+    .guapante-vt-title {
+        font-size: 0.82rem;
     }
 }

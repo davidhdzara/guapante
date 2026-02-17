@@ -76,7 +76,6 @@
             'theme_guapante/static/src/js/cart_quantity.js',  # Cart quantity controls
             'theme_guapante/static/src/js/address_error_fix.js',  # Fix address errors
             'theme_guapante/static/src/js/checkout.js',  # Checkout interaction
-            'theme_guapante/static/src/js/order_map.js',  # Leaflet map for order status
         ],
     },
     'application': False,

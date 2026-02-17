@@ -2,226 +2,189 @@
 <odoo>
     <template id="guapante_order_status" name="Guapante Order Status">
         <t t-call="website.layout">
-            <div id="wrap" class="guapante-status-wrapper bg-light">
-                <div class="container py-5">
-                    
-                    <!-- HEADER -->
-                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-5">
+            <div id="wrap" class="guapante-status-wrapper">
+                <div class="container py-4">
+
+                    <!-- ============ HEADER ============ -->
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
                         <div>
-                            <div class="d-flex align-items-center gap-2 mb-1">
-                                <h1 class="fw-bold mb-0">Pedido #<t t-esc="order.name"/></h1>
-                                <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary">
-                                    <t t-esc="dict(order._fields['guapante_delivery_status'].selection).get(order.guapante_delivery_status)"/>
-                                </span>
-                            </div>
-                            <p class="text-muted mb-0">Realizado el <span t-field="order.date_order" t-options='{"widget": "date"}'/> • <t t-esc="len(order.order_line)"/> Artículos</p>
+                            <small class="text-muted">Orden #<t t-esc="order.name"/></small>
+                            <h2 class="fw-bold mb-0 mt-1">
+                                <t t-if="order.guapante_delivery_status == 'received'">Pedido Recibido</t>
+                                <t t-if="order.guapante_delivery_status == 'preparing'">En Preparación</t>
+                                <t t-if="order.guapante_delivery_status == 'shipping'">En Camino</t>
+                                <t t-if="order.guapante_delivery_status == 'delivered'">Entregado</t>
+                            </h2>
                         </div>
-                        <div class="mt-3 mt-md-0" t-if="order.guapante_delivery_status == 'shipping' or order.guapante_delivery_status == 'preparing'">
-                            <div class="alert alert-success d-flex align-items-center py-2 px-4 shadow-sm border-0 mb-0">
-                                <i class="fa fa-clock-o me-2 fs-5"></i>
-                                <div>
-                                    <small class="d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Llegada Estimada</small>
-                                    <span class="fw-bold">Pronto</span>
-                                </div>
+                        <div class="mt-2 mt-md-0">
+                            <div class="d-inline-flex align-items-center bg-success bg-opacity-10 text-success rounded-pill px-3 py-2">
+                                <i class="fa fa-clock-o me-2"></i>
+                                <span class="fw-semibold small">Entrega estimada: Hoy, 2pm - 4pm</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- TIMELINE (no card wrapper, sits on page background) -->
-                    <div class="guapante-timeline mb-5 pt-3 pb-2">
+                    <!-- ============ TWO-COLUMN LAYOUT ============ -->
+                    <div class="row g-4">
 
-                        <!-- ROW 1: Circles (above the line) -->
-                        <div class="d-flex justify-content-between guapante-timeline-circles">
-                            <!-- Step 1: Recibido -->
-                            <div class="guapante-step-circle-wrap text-center">
-                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'pending')">
-                                    <i class="fa fa-check"></i>
-                                </div>
-                            </div>
-                            <!-- Step 2: Preparado -->
-                            <div class="guapante-step-circle-wrap text-center">
-                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status in ['preparing', 'shipping', 'delivered'] else 'pending')">
-                                    <i class="fa fa-check"></i>
-                                </div>
-                            </div>
-                            <!-- Step 3: En camino -->
-                            <div class="guapante-step-circle-wrap text-center">
-                                <div t-att-class="'guapante-step-circle ' + ('active' if order.guapante_delivery_status == 'shipping' else 'completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
-                                    <i t-att-class="'fa ' + ('fa-truck' if order.guapante_delivery_status in ['shipping'] else 'fa-check')"></i>
-                                </div>
-                            </div>
-                            <!-- Step 4: Entregado -->
-                            <div class="guapante-step-circle-wrap text-center">
-                                <div t-att-class="'guapante-step-circle ' + ('completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
-                                    <i class="fa fa-check"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ROW 2: Two-tone progress line -->
-                        <div class="guapante-timeline-track">
-                            <div class="guapante-timeline-track-bg"></div>
-                            <div class="guapante-timeline-track-fill"
-                                 t-att-style="'width: ' + (
-                                    '33%' if order.guapante_delivery_status == 'received' else
-                                    '66%' if order.guapante_delivery_status == 'preparing' else
-                                    '66%' if order.guapante_delivery_status == 'shipping' else
-                                    '100%'
-                                 )"></div>
-                        </div>
-
-                        <!-- ROW 3: Labels + times (below the line) -->
-                        <div class="d-flex justify-content-between guapante-timeline-labels">
-                            <div class="guapante-step-info text-start">
-                                <div class="guapante-step-label">Recibido</div>
-                                <div class="guapante-step-time"><span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/></div>
-                            </div>
-                            <div class="guapante-step-info text-center">
-                                <div class="guapante-step-label">Preparado</div>
-                                <t t-if="order.guapante_delivery_status in ['preparing', 'shipping', 'delivered']">
-                                    <div class="guapante-step-time">—</div>
-                                </t>
-                            </div>
-                            <div class="guapante-step-info text-center">
-                                <div class="guapante-step-label">En camino</div>
-                                <t t-if="order.guapante_delivery_status == 'shipping'">
-                                    <div class="guapante-step-time">Actual</div>
-                                </t>
-                            </div>
-                            <div class="guapante-step-info text-end">
-                                <div class="guapante-step-label">Entregado</div>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <!-- GARANTÍA DE LOGÍSTICA -->
-                    <div class="card border-0 shadow-sm mb-4" style="max-width: 420px;">
-                        <div class="card-body py-3 px-4">
-                            <div class="text-uppercase fw-bold small text-muted mb-2" style="font-size: 0.7rem; letter-spacing: 0.5px;">Garantía de Logística</div>
-                            <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-2">
-                                <i class="fa fa-check-circle me-1"></i> Calidad Verificada
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <!-- LEFT: SUMMARY -->
-                        <div class="col-12 col-lg-5 mb-4">
-                            <h5 class="fw-bold mb-3">Resumen del Pedido</h5>
-                            <div class="card border-0 shadow-sm">
-                                <div class="card-body p-0">
-                                    <div class="guapante-mini-cart p-4">
-                                        <t t-foreach="order.order_line" t-as="line">
-                                            <div class="d-flex align-items-center mb-3">
-                                                 <div class="flex-shrink-0 position-relative">
-                                                    <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 64px; height: 64px; object-fit: cover;'}"/>
-                                                </div>
-                                                <div class="flex-grow-1 ms-3">
-                                                    <h6 class="mb-1 fw-bold text-dark"><t t-esc="line.name_short"/></h6>
-                                                    <div class="mb-1">
-                                                        <span class="badge bg-light text-dark border">
-                                                            <t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    <!-- Price Visibility Logic: Only if PREPARED or later -->
-                                                    <t t-if="order.guapante_delivery_status != 'received'">
-                                                        <div class="fw-bold text-dark mt-1">
-                                                            <span t-field="line.price_subtotal" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
-                                                        </div>
-                                                    </t>
-                                                    <t t-else="">
-                                                        <small class="text-muted fst-italic">Precio por confirmar</small>
-                                                    </t>
-                                                </div>
-                                            </div>
-                                        </t>
-                                    </div>
-                                    
-                                    <div class="bg-light p-4 rounded-bottom">
-                                        <t t-if="order.guapante_delivery_status != 'received'">
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <span class="text-muted">Subtotal</span>
-                                                <span class="fw-bold" t-field="order.amount_untaxed" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
-                                            </div>
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <span class="text-muted">Envío</span>
-                                                <span class="text-success fw-bold">Gratis</span>
-                                            </div>
-                                            <hr class="my-3"/>
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <span class="fw-bold fs-5">Total</span>
-                                                <span class="fw-bold fs-4 text-dark" t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
-                                            </div>
-                                        </t>
-                                        <t t-else="">
-                                            <div class="alert alert-info mb-0 small">
-                                                <i class="fa fa-info-circle me-1"></i>
-                                                El valor total será confirmado una vez pesemos sus productos.
-                                            </div>
-                                        </t>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="mt-4">
-                                <a href="/shop" class="btn btn-outline-secondary w-100">
-                                    <i class="fa fa-arrow-left me-2"></i> Volver a la Tienda
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- RIGHT: MAP & DRIVER -->
+                        <!-- ========== LEFT COLUMN ========== -->
                         <div class="col-12 col-lg-7">
-                            
-                            <t t-set="picking" t-value="order.picking_ids.filtered(lambda p: p.state != 'cancel')[:1]"/>
-                            <t t-set="delivery_partner" t-value="order.partner_shipping_id or order.partner_id"/>
-                            
-                            <div class="card border-0 shadow-sm overflow-hidden h-100" style="min-height: 400px;">
-                                <!-- Live Leaflet Map -->
-                                <div id="guapante_order_map" 
-                                     style="width:100%; min-height:350px; z-index:0;"
-                                     t-att-data-warehouse-lat="warehouse_lat or '4.6486'"
-                                     t-att-data-warehouse-lng="warehouse_lng or '-74.1003'"
-                                     t-att-data-client-lat="delivery_partner.partner_latitude or '0'"
-                                     t-att-data-client-lng="delivery_partner.partner_longitude or '0'"
-                                     t-att-data-warehouse-name="'Bodega Central'"
-                                     t-att-data-client-name="delivery_partner.name"
-                                     t-att-data-delivery-status="order.guapante_delivery_status">
-                                </div>
-                                
-                                <!-- Driver Overlay (shown over the map at the bottom) -->
-                                <div class="position-relative">
-                                    <div class="p-3 bg-white d-flex align-items-center" 
-                                         t-if="picking and picking.driver_id">
-                                        <div class="flex-shrink-0">
-                                            <span t-field="picking.driver_id.image_128" t-options="{'widget': 'image', 'class': 'rounded-circle', 'style': 'width: 50px; height: 50px; object-fit: cover;'}"/>
+
+                            <!-- CARD: Progreso del Pedido (Vertical Timeline) -->
+                            <div class="card border-0 shadow-sm mb-4">
+                                <div class="card-body p-4">
+                                    <h6 class="fw-bold mb-4">Progreso del Pedido</h6>
+
+                                    <div class="guapante-vtimeline">
+
+                                        <!-- Step 1: Pedido Recibido -->
+                                        <div t-att-class="'guapante-vt-step ' + ('completed' if order.guapante_delivery_status in ['received', 'preparing', 'shipping', 'delivered'] else 'pending')">
+                                            <div class="guapante-vt-icon">
+                                                <i class="fa fa-check"></i>
+                                            </div>
+                                            <div class="guapante-vt-content">
+                                                <div class="guapante-vt-title">Pedido Recibido</div>
+                                                <div class="guapante-vt-desc text-muted small">Hemos recibido tu orden y confirmado el inventario inicial.</div>
+                                                <div class="guapante-vt-time text-muted small mt-1">
+                                                    <span t-field="order.date_order" t-options='{"widget": "datetime", "format": "hh:mm a"}'/>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="flex-grow-1 ms-3">
-                                            <h6 class="mb-0 fw-bold"><t t-esc="picking.driver_id.name"/></h6>
-                                            <div class="small text-muted mb-1">
-                                                <t t-if="picking.vehicle_id">
-                                                    <i class="fa fa-car me-1"></i> <t t-esc="picking.vehicle_id.model_id.name"/> • <t t-esc="picking.vehicle_id.license_plate"/>
+
+                                        <!-- Step 2: Validación y Pesaje -->
+                                        <div t-att-class="'guapante-vt-step ' + ('active' if order.guapante_delivery_status == 'preparing' else 'completed' if order.guapante_delivery_status in ['shipping', 'delivered'] else 'pending')">
+                                            <div class="guapante-vt-icon">
+                                                <t t-if="order.guapante_delivery_status == 'preparing'">
+                                                    <i class="fa fa-spinner fa-spin"></i>
                                                 </t>
                                                 <t t-else="">
-                                                    Conductor Verificado
+                                                    <i class="fa fa-check"></i>
                                                 </t>
                                             </div>
+                                            <div class="guapante-vt-content">
+                                                <div class="guapante-vt-title">Validación y Pesaje</div>
+                                                <div class="guapante-vt-desc text-muted small">Estamos seleccionando los mejores productos y pesándolos para ajustar el valor final.</div>
+                                            </div>
                                         </div>
+
+                                        <!-- Step 3: En Camino -->
+                                        <div t-att-class="'guapante-vt-step ' + ('active' if order.guapante_delivery_status == 'shipping' else 'completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                            <div class="guapante-vt-icon">
+                                                <t t-if="order.guapante_delivery_status == 'shipping'">
+                                                    <i class="fa fa-truck"></i>
+                                                </t>
+                                                <t t-else="">
+                                                    <i class="fa fa-check"></i>
+                                                </t>
+                                            </div>
+                                            <div class="guapante-vt-content">
+                                                <div class="guapante-vt-title">En Camino</div>
+                                                <div class="guapante-vt-desc text-muted small">Tu pedido ha salido de nuestro centro de distribución hacia tu dirección.</div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Step 4: Entregado -->
+                                        <div t-att-class="'guapante-vt-step last ' + ('completed' if order.guapante_delivery_status == 'delivered' else 'pending')">
+                                            <div class="guapante-vt-icon">
+                                                <i class="fa fa-check"></i>
+                                            </div>
+                                            <div class="guapante-vt-content">
+                                                <div class="guapante-vt-title">Entregado</div>
+                                                <div class="guapante-vt-desc text-muted small">¡Disfruta de la frescura en tu hogar!</div>
+                                            </div>
+                                        </div>
+
                                     </div>
-                                    
-                                    <!-- Empty State if no driver yet -->
-                                    <div class="p-3 bg-white text-center" t-if="not picking or not picking.driver_id">
-                                        <i class="fa fa-map-marker text-danger fs-3 mb-1"></i>
-                                        <h6 class="fw-bold text-dark mb-0">Bodega Central</h6>
-                                        <p class="small text-muted mb-0">Su pedido está siendo procesado en nuestra central.</p>
+                                </div>
+                            </div>
+
+                            <!-- CARD: Notificación de Pago -->
+                            <div class="card border-0 shadow-sm mb-4" style="border-left: 4px solid #17a2b8 !important;">
+                                <div class="card-body p-3 d-flex align-items-start">
+                                    <i class="fa fa-info-circle text-info me-3 mt-1 fs-5"></i>
+                                    <div>
+                                        <div class="fw-bold small">Notificación de Pago</div>
+                                        <p class="text-muted small mb-0">Una vez finalicemos el pesaje de tus productos frescos, recibirás un mensaje por <strong>WhatsApp</strong> con el valor exacto a pagar y el link de pago.</p>
                                     </div>
                                 </div>
                             </div>
 
                         </div>
-                    </div>
+
+                        <!-- ========== RIGHT COLUMN ========== -->
+                        <div class="col-12 col-lg-5">
+
+                            <!-- CARD: Detalles del Envío -->
+                            <t t-set="delivery_partner" t-value="order.partner_shipping_id or order.partner_id"/>
+                            <div class="card border-0 shadow-sm mb-4">
+                                <div class="card-body p-4">
+                                    <h6 class="fw-bold mb-3"><i class="fa fa-truck me-2"></i>Detalles del Envío</h6>
+                                    
+                                    <div class="mb-3">
+                                        <div class="text-uppercase text-muted small fw-bold mb-1" style="font-size:0.7rem; letter-spacing:0.5px;">Cliente</div>
+                                        <div class="fw-semibold"><t t-esc="delivery_partner.name"/></div>
+                                    </div>
+
+                                    <hr class="my-2"/>
+
+                                    <div class="mb-3">
+                                        <div class="text-uppercase text-muted small fw-bold mb-1" style="font-size:0.7rem; letter-spacing:0.5px;">Dirección de Entrega</div>
+                                        <div class="small">
+                                            <t t-if="delivery_partner.street"><t t-esc="delivery_partner.street"/><br/></t>
+                                            <t t-if="delivery_partner.street2"><t t-esc="delivery_partner.street2"/><br/></t>
+                                            <t t-if="delivery_partner.city"><t t-esc="delivery_partner.city"/></t>
+                                            <t t-if="delivery_partner.state_id">, <t t-esc="delivery_partner.state_id.name"/></t>
+                                        </div>
+                                    </div>
+
+                                    <hr class="my-2"/>
+
+                                    <div>
+                                        <div class="text-uppercase text-muted small fw-bold mb-1" style="font-size:0.7rem; letter-spacing:0.5px;">Ventana de Entrega</div>
+                                        <div class="small fw-semibold">Hoy, 2:00 PM - 4:00 PM</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CARD: Productos -->
+                            <div class="card border-0 shadow-sm mb-4">
+                                <div class="card-body p-4">
+                                    <h6 class="fw-bold mb-3"><i class="fa fa-shopping-bag me-2"></i>Productos (<t t-esc="len(order.order_line)"/>)</h6>
+
+                                    <t t-foreach="order.order_line" t-as="line">
+                                        <div class="d-flex align-items-center py-2">
+                                            <div class="flex-shrink-0">
+                                                <span t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded', 'style': 'width: 48px; height: 48px; object-fit: cover;'}"/>
+                                            </div>
+                                            <div class="flex-grow-1 ms-3">
+                                                <div class="fw-semibold small"><t t-esc="line.name_short"/></div>
+                                                <div class="text-muted" style="font-size:0.75rem;">
+                                                    <t t-if="line.product_id.description_sale">
+                                                        <t t-esc="line.product_id.description_sale[:40]"/>
+                                                    </t>
+                                                </div>
+                                            </div>
+                                            <div class="text-end ms-2">
+                                                <span class="badge bg-light text-dark border small">
+                                                    x<t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <t t-if="not line_last">
+                                            <hr class="my-1 opacity-25"/>
+                                        </t>
+                                    </t>
+                                </div>
+                            </div>
+
+                            <!-- BUTTON: ¿Necesitas ayuda? -->
+                            <a href="/contactus" class="btn btn-dark w-100 py-3 rounded-3 fw-semibold shadow-sm">
+                                <i class="fa fa-headphones me-2"></i> ¿Necesitas ayuda?
+                            </a>
+
+                        </div>
+
+                    </div><!-- /row -->
 
                 </div>
             </div>
