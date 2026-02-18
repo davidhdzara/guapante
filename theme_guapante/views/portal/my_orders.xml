@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Override sale.portal_my_orders: Replace content with Guapante design -->
     <template id="portal_my_orders_guapante" inherit_id="sale.portal_my_orders" name="Guapante: My Orders" priority="99">
         <xpath expr="//t[@t-call='portal.portal_layout']" position="replace">
             <t t-call="portal.portal_layout">
                 <t t-set="breadcrumbs_searchbar" t-value="True"/>
 
-                <!-- Guapante Sidebar + Content Wrapper -->
+                <!-- Guapante Custom Layout with Sidebar -->
                 <t t-call="theme_guapante.guapante_portal_layout">
 
                     <!-- HEADER -->
@@ -27,7 +26,7 @@
                                     </div>
                                     <div>
                                         <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Total Pedidos</small>
-                                        <h3 class="fw-bold mb-0"><t t-esc="pager.get('total', 0) if pager else 0"/></h3>
+                                        <h3 class="fw-bold mb-0"><t t-esc="total_orders_count or 0"/></h3>
                                     </div>
                                 </div>
                             </div>
@@ -48,16 +47,36 @@
                     </div>
 
                     <!-- FILTERS TOOLBAR -->
-                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
-                        <!-- Status Filter -->
+                    <div class="d-flex flex-column flex-md-row align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
+
+                        <!-- Filter 1: Date Range -->
+                        <div class="dropdown" t-if="date_range_filters">
+                            <button class="btn btn-outline-secondary dropdown-toggle fw-semibold d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" style="min-width: 190px;">
+                                <i class="fa fa-calendar-o"></i>
+                                <span t-esc="date_range_filters.get(date_filter, {}).get('label', 'Todo el tiempo')"/>
+                            </button>
+                            <ul class="dropdown-menu border-0 shadow">
+                                <t t-foreach="date_range_filters" t-as="df">
+                                    <li>
+                                        <a t-attf-href="/my/orders?filterby=#{filterby}&amp;date_filter=#{df}"
+                                           t-att-class="'dropdown-item' + (' active' if date_filter == df else '')">
+                                            <span t-esc="date_range_filters[df].get('label')"/>
+                                        </a>
+                                    </li>
+                                </t>
+                            </ul>
+                        </div>
+
+                        <!-- Filter 2: Status -->
                         <div class="dropdown" t-if="searchbar_filters">
-                            <button class="btn btn-outline-secondary dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
+                            <button class="btn btn-outline-secondary dropdown-toggle fw-semibold d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" style="min-width: 190px;">
+                                <i class="fa fa-filter"></i>
                                 <span t-esc="searchbar_filters.get(filterby, {}).get('label', 'Todos')"/>
                             </button>
                             <ul class="dropdown-menu border-0 shadow">
                                 <t t-foreach="searchbar_filters" t-as="option">
                                     <li>
-                                        <a t-attf-href="/my/orders?filterby=#{option}"
+                                        <a t-attf-href="/my/orders?filterby=#{option}&amp;date_filter=#{date_filter}"
                                            t-att-class="'dropdown-item' + (' active' if filterby == option else '')">
                                             <span t-esc="searchbar_filters[option].get('label')"/>
                                         </a>
@@ -66,9 +85,10 @@
                             </ul>
                         </div>
 
+                        <!-- Clear Filters -->
                         <div class="ms-md-auto">
                             <a href="/my/orders" class="text-decoration-none text-success small fw-bold">
-                                <i class="fa fa-filter me-1"></i> Limpiar filtros
+                                <i class="fa fa-times-circle me-1"></i> Limpiar filtros
                             </a>
                         </div>
                     </div>
@@ -91,17 +111,14 @@
                                     <tbody>
                                         <t t-foreach="orders" t-as="order">
                                             <tr>
-                                                <!-- Order ID -->
                                                 <td class="ps-4 fw-bold text-dark">
                                                     <a t-att-href="order.get_portal_url()" class="text-decoration-none text-dark">
                                                         <t t-esc="order.name"/>
                                                     </a>
                                                 </td>
-                                                <!-- Date -->
                                                 <td class="text-muted">
                                                     <span t-field="order.date_order" t-options='{"widget": "date"}'/>
                                                 </td>
-                                                <!-- Status Badge -->
                                                 <td>
                                                     <t t-if="order.state == 'cancel'">
                                                         <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(220,53,69,0.1); color: #dc3545;">
@@ -129,11 +146,9 @@
                                                         </span>
                                                     </t>
                                                 </td>
-                                                <!-- Total -->
                                                 <td class="fw-bold">
                                                     <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
                                                 </td>
-                                                <!-- Product Avatars -->
                                                 <td>
                                                     <div class="d-flex align-items-center">
                                                         <t t-foreach="order.order_line[:3]" t-as="line">
@@ -148,9 +163,9 @@
                                                                 +<t t-esc="len(order.order_line) - 3"/>
                                                             </span>
                                                         </t>
+                                                        <span t-if="not order.order_line" class="text-muted small fst-italic">Sin productos</span>
                                                     </div>
                                                 </td>
-                                                <!-- Actions -->
                                                 <td class="pe-4 text-end">
                                                     <div class="d-flex justify-content-end gap-2">
                                                         <t t-if="order.state != 'cancel' and order.guapante_delivery_status == 'delivered'">
@@ -175,8 +190,11 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <!-- Pager Footer -->
-                            <div t-if="pager" class="card-footer bg-white py-3 d-flex justify-content-center">
+                            <!-- Pager -->
+                            <div t-if="pager" class="card-footer bg-white py-3 d-flex justify-content-between align-items-center px-4">
+                                <span class="text-muted small">
+                                    Mostrando <b t-esc="pager.get('page_start', 1)"/> a <b t-esc="pager.get('page_end', 0)"/> de <b t-esc="pager.get('total', 0)"/> resultados
+                                </span>
                                 <t t-call="portal.pager"/>
                             </div>
                         </div>
@@ -193,6 +211,17 @@
                             <a href="/shop" class="btn btn-success rounded-pill px-4 fw-bold">Ir a la tienda</a>
                         </div>
                     </t>
+
+                    <!-- HELP BANNER -->
+                    <div class="guapante-help-banner mt-4 rounded-4 p-4 d-flex flex-column flex-md-row align-items-center justify-content-between" style="background: #1a1a2e; color: white;">
+                        <div class="mb-3 mb-md-0">
+                            <h5 class="fw-bold mb-1" style="color: white;">¿Necesitas ayuda con tu pedido?</h5>
+                            <p class="mb-0 opacity-75" style="font-size: 0.9rem;">Nuestro equipo de logística está disponible para resolver cualquier duda sobre tus entregas activas.</p>
+                        </div>
+                        <a href="/contactus" class="btn btn-success rounded-pill px-4 fw-bold d-flex align-items-center gap-2 flex-shrink-0">
+                            <i class="fa fa-headphones"></i> Contactar Soporte
+                        </a>
+                    </div>
 
                 </t>
             </t>

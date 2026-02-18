@@ -2,43 +2,34 @@
    GUAPANTE PORTAL STYLES
    ========================================= */
 
-// 1. Sidebar
+// 1. Portal wrapper
+.o_portal_wrap {
+    background-color: #f8f9fa !important;
+    min-height: calc(100vh - 200px);
+}
+
+// 2. Sidebar — Full height with left border
 .guapante-portal-sidebar {
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    min-height: calc(100vh - 100px);
     transition: all 0.3s ease;
 
-    .btn-circle {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        padding: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: white;
-        transition: all 0.2s ease;
-
-        &:hover {
-            transform: scale(1.1);
-            background: #f8f9fa;
-        }
-    }
-
     .list-group-item {
-        color: #6c757d; // Text muted
+        color: #6c757d;
         font-weight: 500;
+        font-size: 0.9rem;
         transition: all 0.2s ease;
 
         &:hover {
             background-color: rgba(0, 0, 0, 0.02);
             color: #212529;
-            transform: translateX(4px);
+            transform: translateX(3px);
         }
 
         &.active {
-            background-color: rgba(25, 135, 84, 0.1) !important; // Success-ish light bg
-            color: #198754 !important; // Success color
-            border-color: transparent;
+            background-color: rgba(25, 135, 84, 0.08) !important;
+            color: #198754 !important;
+            border-color: transparent !important;
 
             i {
                 opacity: 1 !important;
@@ -48,32 +39,20 @@
     }
 }
 
-// 2. Order List
-.table-hover tbody tr:hover {
-    background-color: rgba(0, 0, 0, 0.015);
-}
-
-// 3. Status Badges Customization
+// 3. Status Badges
 .badge {
-    font-size: 0.75rem;
+    font-size: 0.73rem;
     letter-spacing: 0.3px;
 }
 
-// 4. KPI Cards
-.card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-
-    // Only apply hover effect to interactive cards if any (KPIs are static mostly)
-}
-
-// 5. Dropdowns
+// 4. Dropdowns
 .dropdown-menu {
     border-radius: 0.75rem;
     margin-top: 0.5rem !important;
 
     .dropdown-item {
         padding: 0.5rem 1rem;
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         font-weight: 500;
         border-radius: 0.5rem;
         margin: 0 0.25rem;
@@ -88,9 +67,29 @@
     }
 }
 
-// 6. Navigation Container
-.o_portal_wrap {
-    // Ensure background is light gray for contrast with white cards
-    background-color: #f8f9fa !important;
-    min-height: calc(100vh - 350px);
+// 5. Orders table rows
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.015);
+}
+
+// 6. Help Banner
+.guapante-help-banner {
+    overflow: hidden;
+    position: relative;
+    transition: transform 0.2s ease;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 200px;
+        height: 200px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 50%;
+    }
+
+    &:hover {
+        transform: translateY(-2px);
+    }
 }

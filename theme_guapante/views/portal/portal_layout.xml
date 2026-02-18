@@ -2,25 +2,21 @@
 <odoo>
     <!-- Standalone callable layout for Guapante portal pages with sidebar -->
     <template id="guapante_portal_layout" name="Guapante Portal Layout (Sidebar)">
-        <div class="container py-4 py-lg-5">
-            <div class="row g-4">
+        <div class="container-fluid px-0">
+            <div class="row g-0">
 
-                <!-- SIDEBAR -->
-                <div class="col-12 col-lg-3">
-                    <div class="guapante-portal-sidebar bg-white rounded-4 shadow-sm p-4 sticky-top" style="top: 100px; z-index: 900;">
+                <!-- SIDEBAR — full height with right border -->
+                <div class="col-12 col-lg-3 col-xl-2">
+                    <div class="guapante-portal-sidebar bg-white p-4 pt-5">
                         <!-- User Profile -->
-                        <div class="text-center mb-4">
-                            <div class="position-relative d-inline-block mb-3">
-                                <img t-att-src="image_data_uri(request.env.user.partner_id.avatar_128)"
-                                     class="rounded-circle object-fit-cover shadow-sm"
-                                     style="width: 80px; height: 80px;"
-                                     alt="User Avatar"/>
-                                <a href="/my/account" class="btn btn-sm position-absolute bottom-0 end-0 border shadow-sm bg-white" style="width: 28px; height: 28px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;" title="Editar Perfil">
-                                    <i class="fa fa-pencil text-muted small"></i>
-                                </a>
+                        <div class="d-flex align-items-center gap-3 mb-4 pb-3 border-bottom">
+                            <img t-att-src="image_data_uri(request.env.user.partner_id.avatar_128)"
+                                 class="rounded-circle object-fit-cover shadow-sm flex-shrink-0"
+                                 style="width: 48px; height: 48px;"
+                                 alt="User Avatar"/>
+                            <div class="overflow-hidden">
+                                <h6 class="fw-bold mb-0 text-truncate" style="font-size: 0.9rem;"><t t-esc="request.env.user.name"/></h6>
                             </div>
-                            <h6 class="fw-bold mb-0 text-truncate"><t t-esc="request.env.user.name"/></h6>
-                            <small class="text-muted d-block text-truncate"><t t-esc="request.env.user.email"/></small>
                         </div>
 
                         <!-- Navigation -->
@@ -48,7 +44,7 @@
                 </div>
 
                 <!-- MAIN CONTENT -->
-                <div class="col-12 col-lg-9">
+                <div class="col-12 col-lg-9 col-xl-10 p-4 p-lg-5 bg-light">
                     <t t-out="0"/>
                 </div>
 
