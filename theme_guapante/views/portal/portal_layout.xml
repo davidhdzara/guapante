@@ -51,4 +51,12 @@
             </div>
         </div>
     </template>
+
+    <!-- Override breadcrumb home icon: /my/home → /my/profile -->
+    <template id="guapante_portal_breadcrumbs" inherit_id="portal.portal_breadcrumbs" name="Guapante: Breadcrumb Home" priority="99">
+        <xpath expr="//a[@href='/my/home']" position="attributes">
+            <attribute name="href">/my/profile</attribute>
+        </xpath>
+    </template>
+
 </odoo>
