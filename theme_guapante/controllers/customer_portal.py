@@ -258,19 +258,26 @@ class GuapanteCustomerPortal(CustomerPortal):
         """Render the Addresses page with all child contacts for this partner."""
         values = self._prepare_portal_layout_values()
         partner = request.env.user.partner_id
+        # Use the commercial partner (company) — addresses belong to the company
+        company_partner = partner.commercial_partner_id
 
-        # Get all active child contacts/addresses
-        addresses = partner.child_ids.filtered(lambda c: c.active)
+        # Get all active child contacts/addresses of the COMPANY
+        addresses = company_partner.child_ids.filtered(lambda c: c.active)
 
         # Countries & states for the add/edit modal
         countries = request.env['res.country'].sudo().search([])
-        states = request.env['res.country.state'].sudo().search([])
-
-        # Default country to Colombia
+        # Default country to Colombia — pre-filter states
         default_country = request.env.ref('base.co', raise_if_not_found=False)
+        if default_country:
+            states = request.env['res.country.state'].sudo().search(
+                [('country_id', '=', default_country.id)]
+            )
+        else:
+            states = request.env['res.country.state'].sudo().search([])
 
         values.update({
             'partner': partner,
+            'company_partner': company_partner,
             'addresses': addresses,
             'countries': countries,
             'states': states,
@@ -284,17 +291,18 @@ class GuapanteCustomerPortal(CustomerPortal):
 
     @http.route(['/my/addresses/add'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
     def portal_address_add(self, **post):
-        """Create a new child partner (address) for the logged-in user."""
+        """Create a new child partner (address) under the COMPANY partner."""
         partner = request.env.user.partner_id
+        company_partner = partner.commercial_partner_id
 
         address_type = post.get('type', 'delivery')
-        if address_type not in ('delivery', 'invoice', 'contact', 'other'):
+        if address_type not in ('delivery', 'invoice', 'contact', 'other', 'followup'):
             address_type = 'delivery'
 
         vals = {
-            'parent_id': partner.id,
+            'parent_id': company_partner.id,  # Child of the COMPANY, not the user
             'type': address_type,
-            'name': post.get('name', '').strip() or partner.name,
+            'name': post.get('name', '').strip() or company_partner.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
             'city': post.get('city', '').strip(),
@@ -324,7 +332,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             vals['phone'] = phone
 
         request.env['res.partner'].sudo().create(vals)
-        _logger.info("Guapante Addresses: Created child address for partner %s", partner.id)
+        _logger.info("Guapante Addresses: Created child address for company partner %s", company_partner.id)
 
         return request.redirect('/my/addresses?success=added')
 
@@ -332,14 +340,15 @@ class GuapanteCustomerPortal(CustomerPortal):
     def portal_address_edit(self, address_id, **post):
         """Update an existing child partner (address)."""
         partner = request.env.user.partner_id
+        company_partner = partner.commercial_partner_id
         address = request.env['res.partner'].sudo().browse(address_id)
 
-        # Security: verify the address belongs to this partner
-        if not address.exists() or address.parent_id.id != partner.id:
+        # Security: verify the address belongs to this COMPANY
+        if not address.exists() or address.parent_id.id != company_partner.id:
             return request.redirect('/my/addresses?error=not_found')
 
         address_type = post.get('type', address.type)
-        if address_type not in ('delivery', 'invoice', 'contact', 'other'):
+        if address_type not in ('delivery', 'invoice', 'contact', 'other', 'followup'):
             address_type = address.type
 
         vals = {
@@ -373,7 +382,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         vals['phone'] = phone if phone else False
 
         address.write(vals)
-        _logger.info("Guapante Addresses: Updated address %s for partner %s", address_id, partner.id)
+        _logger.info("Guapante Addresses: Updated address %s for company partner %s", address_id, company_partner.id)
 
         return request.redirect('/my/addresses?success=updated')
 
@@ -381,15 +390,16 @@ class GuapanteCustomerPortal(CustomerPortal):
     def portal_address_delete(self, address_id, **post):
         """Archive (deactivate) a child partner address."""
         partner = request.env.user.partner_id
+        company_partner = partner.commercial_partner_id
         address = request.env['res.partner'].sudo().browse(address_id)
 
-        # Security: verify the address belongs to this partner
-        if not address.exists() or address.parent_id.id != partner.id:
+        # Security: verify the address belongs to this COMPANY
+        if not address.exists() or address.parent_id.id != company_partner.id:
             return request.redirect('/my/addresses?error=not_found')
 
         # Archive instead of unlink to preserve references in existing orders
         address.write({'active': False})
-        _logger.info("Guapante Addresses: Archived address %s for partner %s", address_id, partner.id)
+        _logger.info("Guapante Addresses: Archived address %s for company partner %s", address_id, company_partner.id)
 
         return request.redirect('/my/addresses?success=deleted')
 

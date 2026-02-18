@@ -144,6 +144,11 @@
                                                     <i class="fa fa-user me-1"></i>Contacto
                                                 </span>
                                             </t>
+                                            <t t-elif="addr.type == 'followup'">
+                                                <span class="guapante-address-type-badge badge-other">
+                                                    <i class="fa fa-crosshairs me-1"></i>Seguimiento
+                                                </span>
+                                            </t>
                                             <t t-else="">
                                                 <span class="guapante-address-type-badge badge-other">
                                                     <i class="fa fa-map-marker me-1"></i>Otro
@@ -298,6 +303,7 @@
                                                 <option value="delivery">Entrega</option>
                                                 <option value="invoice">Facturación</option>
                                                 <option value="contact">Contacto</option>
+                                                <option value="followup">Seguimiento</option>
                                                 <option value="other">Otro</option>
                                             </select>
                                         </div>
