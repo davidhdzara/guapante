@@ -101,7 +101,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             'date_filter': date_filter, # Pass to view to highlight active filter
             'active_shipments_count': active_shipments_count, # Pass KPI
         })
-        return request.render("portal.portal_my_orders", values)
+        return request.render("sale.portal_my_orders", values)
 
     @http.route(['/my/orders/reorder/<int:order_id>'], type='http', auth="user", website=True)
     def portal_reorder(self, order_id, **kw):

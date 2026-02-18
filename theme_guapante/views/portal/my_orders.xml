@@ -1,412 +1,200 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-
-    <template id="portal_my_orders" inherit_id="sale.portal_my_orders" name="Guapante Portal: My Orders">
-        
-        <!-- Use our custom layout instead of the default portal layout -->
-        <!-- Inheriting 'sale.portal_my_orders' usually replaces the content inside. 
-             But 'sale.portal_my_orders' calls 'portal.portal_layout'. 
-             We want to use 'theme_guapante.portal_layout_guapante'. 
-             
-             Strategy: Replace the t-call="portal.portal_layout" with our own IF possible, 
-             OR just ensure our layout inherits/replaces portal.portal_layout content globally 
-             (which we did with xpath replace of wrap).
-             
-             So we just need to replace the Inside Content of the sales order view.
-        -->
-
-        <xpath expr="//t[@t-call='portal.portal_layout']" position="attributes">
-            <attribute name="t-call">theme_guapante.portal_layout_guapante</attribute>
-        </xpath>
-
-        <xpath expr="//t[@t-call='portal.portal_layout']" position="inside">
-            
-            <!-- HEADER: Title & KPIs -->
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
-                <div>
-                    <h2 class="fw-bold text-dark mb-1">Historial de Pedidos</h2>
-                    <p class="text-muted mb-0">Consulta, rastrea y repite tus pedidos anteriores fácilmente.</p>
-                </div>
-            </div>
-
-            <!-- KPI Cards -->
-            <div class="row g-3 mb-4">
-                <div class="col-12 col-md-6">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body d-flex align-items-center p-4">
-                            <div class="bg-light rounded-circle p-3 me-3 text-secondary">
-                                <i class="fa fa-shopping-bag fs-4"></i>
-                            </div>
-                            <div>
-                                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem;">Total Pedidos</small>
-                                <h3 class="fw-bold mb-0"><t t-esc="pager['total']"/></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body d-flex align-items-center p-4">
-                            <div class="bg-success bg-opacity-10 rounded-circle p-3 me-3 text-success">
-                                <i class="fa fa-truck fs-4"></i>
-                            </div>
-                            <div>
-                                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem;">Envíos Activos</small>
-                                <h3 class="fw-bold mb-0"><t t-esc="active_shipments_count or 0"/></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TOOLBAR: Filters & Sort -->
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
-                
-                <!-- Date Filter (Mockup: 'Últimos 30 días') -->
-                <div class="dropdown">
-                    <button class="btn btn-outline-light text-dark border fw-semibold dropdown-toggle d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
-                        <span>
-                            <t t-if="date_filter == 'last_30_days'">Últimos 30 días</t>
-                            <t t-else="">Todos los tiempos</t>
-                        </span>
-                    </button>
-                    <ul class="dropdown-menu border-0 shadow">
-                        <li><a t-att-href="keep('/my/orders', date_filter='all')" class="dropdown-item">Todos los tiempos</a></li>
-                        <li><a t-att-href="keep('/my/orders', date_filter='last_30_days')" class="dropdown-item">Últimos 30 días</a></li>
-                    </ul>
-                </div>
-
-                <!-- Status Filter (Mockup: 'Estado del pedido') -->
-                 <div class="dropdown">
-                    <button class="btn btn-outline-light text-dark border fw-semibold dropdown-toggle d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
-                        <span t-esc="searchbar_filters[filterby]['label']"/>
-                    </button>
-                    <ul class="dropdown-menu border-0 shadow">
-                        <t t-foreach="searchbar_filters" t-as="option">
-                             <li><a t-att-class="'dropdown-item %s' % ('active' if filterby == option else '')" 
-                                    t-att-href="keep('/my/orders', filterby=option)">
-                                 <span t-esc="searchbar_filters[option]['label']"/>
-                             </a></li>
-                        </t>
-                    </ul>
-                </div>
-
-                <div class="ms-md-auto text-success small fw-bold cursor-pointer">
-                    <a t-att-href="keep('/my/orders', filterby='all', date_filter='all')" class="text-decoration-none text-success">
-                        <i class="fa fa-filter me-1"></i> Limpiar filtros
-                    </a>
-                </div>
-            </div>
-
-            <!-- ORDERS TABLE (List) -->
-            <div class="card border-0 shadow-sm overflow-hidden">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-light text-muted small text-uppercase">
-                            <tr>
-                                <th class="py-3 ps-4 border-0">ID Pedido</th>
-                                <th class="py-3 border-0">Fecha</th>
-                                <th class="py-3 border-0">Estado</th>
-                                <th class="py-3 border-0">Total</th>
-                                <th class="py-3 border-0">Productos</th>
-                                <th class="py-3 pe-4 border-0 text-end">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <t t-foreach="orders" t-as="order">
-                                <tr>
-                                    <td class="ps-4 fw-bold text-dark">
-                                        <a t-att-href="order.get_portal_url()" class="text-decoration-none text-dark">
-                                            <t t-esc="order.name"/>
-                                        </a>
-                                    </td>
-                                    <td class="text-muted">
-                                        <span t-field="order.date_order" t-options='{"widget": "date"}'/>
-                                    </td>
-                                    <td>
-                                        <!-- Custom Badge Logic -->
-                                        <t t-set="status_class" t-value="'bg-secondary'"/>
-                                        <t t-set="status_label" t-value="order.guapante_delivery_status"/>
-                                        
-                                        <t t-if="order.state == 'cancel'">
-                                            <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-3 py-2 fw-normal">
-                                                <i class="fa fa-times me-1"></i> Cancelado
-                                            </span>
-                                        </t>
-                                        <t t-elif="order.guapante_delivery_status == 'delivered'">
-                                            <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-normal">
-                                                <i class="fa fa-check me-1"></i> Entregado
-                                            </span>
-                                        </t>
-                                        <t t-elif="order.guapante_delivery_status == 'shipping'">
-                                            <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-3 py-2 fw-normal">
-                                                <i class="fa fa-truck me-1"></i> En Camino
-                                            </span>
-                                        </t>
-                                        <t t-elif="order.guapante_delivery_status == 'preparing'">
-                                            <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill px-3 py-2 fw-normal">
-                                                <i class="fa fa-spinner fa-spin me-1"></i> Preparando
-                                            </span>
-                                        </t>
-                                        <t t-else="">
-                                            <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-normal">
-                                                <t t-esc="order.guapante_delivery_status or 'Recibido'"/>
-                                            </span>
-                                        </t>
-                                    </td>
-                                    <td class="fw-bold">
-                                        <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.pricelist_id.currency_id}'/>
-                                    </td>
-                                    <td>
-                                        <!-- Avatar Stack for Products -->
-                                        <div class="d-flex align-items-center">
-                                            <t t-foreach="order.order_line[:3]" t-as="line">
-                                                 <span t-field="line.product_id.image_128" 
-                                                       t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded-circle border border-white shadow-sm', 'style': 'width: 35px; height: 35px; object-fit: cover; margin-right: -10px; z-index: %s;' % (10-line_index)}"/>
-                                            </t>
-                                            <t t-if="len(order.order_line) > 3">
-                                                <span class="rounded-circle bg-light border border-white shadow-sm d-flex align-items-center justify-content-center fw-bold small text-muted" 
-                                                      style="width: 35px; height: 35px; margin-left: -10px; z-index: 0; font-size: 0.7rem;">
-                                                    +<t t-esc="len(order.order_line) - 3"/>
-                                                </span>
-                                            </t>
-                                            <span t-if="not order.order_line" class="text-muted small fst-italic">Sin productos</span>
-                                        </div>
-                                    </td>
-                                    <td class="pe-4 text-end">
-                                        <div class="d-flex justify-content-end gap-2">
-                                            <!-- Logic: 
-                                                 If delivered -> "Volver a pedir" (Green)
-                                                 If shipping/preparing -> "Rastrear" (White/Black)
-                                                 If cancelled -> "Ver detalles" (Text)
-                                            -->
-                                            <t t-if="order.state != 'cancel' and order.guapante_delivery_status == 'delivered'">
-                                                 <a t-attf-href="/my/orders/reorder/#{order.id}" class="btn btn-success btn-sm rounded-pill fw-bold text-white shadow-sm px-3 d-flex align-items-center gap-2">
-                                                    <i class="fa fa-refresh"></i> Volver a pedir
-                                                 </a>
-                                            </t>
-                                            <t t-elif="order.state != 'cancel' and order.guapante_delivery_status in ['preparing', 'shipping', 'received']">
-                                                 <a t-att-href="order.get_portal_url()" class="btn btn-outline-dark btn-sm rounded-pill fw-bold px-3 d-flex align-items-center gap-2">
-                                                    <i class="fa fa-truck"></i> Rastrear
-                                                 </a>
-                                            </t>
-                                            <t t-else="">
-                                                 <a t-att-href="order.get_portal_url()" class="btn btn-link btn-sm text-decoration-none text-muted">Ver detalles</a>
-                                            </t>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </t>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Pager -->
-                <div class="card-footer bg-white border-top-0 py-3 d-flex justify-content-between align-items-center">
-                     <span class="text-muted small">
-                         Mostrando <b t-esc="pager['page_start']"/> a <b t-esc="pager['page_end']"/> de <b t-esc="pager['total']"/> resultados
-                     </span>
-                     <t t-call="portal.pager"/>
-                </div>
-            </div>
-
-        </xpath>
-        
-        <!-- Remove default list content if necessary, but using 'replace' on layout call wraps everything differently.
-             Wait, standard view has content inside t-call="portal.portal_layout". 
-             Our xpath replaces the 'inside' of that call. 
-             But standard view ALREADY has content inside. 
-             If we use 'inside', we append. 
-             We should use 'replace' on the CONTENT inside the layout call.
-             
-             Standard view structure:
-             <t t-call="portal.portal_layout">
-                <t t-set="breadcrumbs_searchbar" .../>
-                <t t-call="portal.portal_searchbar"/>
-                <t t-if="orders" ... table ... />
-             </t>
-             
-             So we should replace the entire inner content.
-             Best way: Replace the <t t-call="portal.portal_layout"> node entirely with our new structure calling our new layout.
-        -->
-        
-    </template>
-    
-    <!-- FIX: The above xpath strategy 'position="inside"' might result in double content (old + new). 
-         Let's try to replace the whole template content properly.
-    -->
-    <template id="portal_my_orders_fix" inherit_id="sale.portal_my_orders" priority="99">
+    <!-- Override sale.portal_my_orders: Replace content with Guapante design -->
+    <template id="portal_my_orders_guapante" inherit_id="sale.portal_my_orders" name="Guapante: My Orders" priority="99">
         <xpath expr="//t[@t-call='portal.portal_layout']" position="replace">
-            <t t-call="theme_guapante.portal_layout_guapante">
-                <t t-set="page_name" t-value="'order'"/>
-                
-                <!-- Our Custom Content Here (Same as above) -->
-                 <!-- HEADER: Title & KPIs -->
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
-                    <div>
-                        <h2 class="fw-bold text-dark mb-1">Historial de Pedidos</h2>
-                        <p class="text-muted mb-0">Consulta, rastrea y repite tus pedidos anteriores fácilmente.</p>
-                    </div>
-                </div>
+            <t t-call="portal.portal_layout">
+                <t t-set="breadcrumbs_searchbar" t-value="True"/>
 
-                <!-- KPI Cards -->
-                <div class="row g-3 mb-4">
-                    <div class="col-12 col-md-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body d-flex align-items-center p-4">
-                                <div class="bg-light rounded-circle p-3 me-3 text-secondary">
-                                    <i class="fa fa-shopping-bag fs-4"></i>
+                <!-- Guapante Sidebar + Content Wrapper -->
+                <t t-call="theme_guapante.guapante_portal_layout">
+
+                    <!-- HEADER -->
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+                        <div>
+                            <h2 class="fw-bold text-dark mb-1">Historial de Pedidos</h2>
+                            <p class="text-muted mb-0">Consulta, rastrea y repite tus pedidos anteriores.</p>
+                        </div>
+                    </div>
+
+                    <!-- KPI Cards -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-6">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center p-4">
+                                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                        <i class="fa fa-shopping-bag text-secondary"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Total Pedidos</small>
+                                        <h3 class="fw-bold mb-0"><t t-esc="pager.get('total', 0) if pager else 0"/></h3>
+                                    </div>
                                 </div>
-                                <div>
-                                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem;">Total Pedidos</small>
-                                    <h3 class="fw-bold mb-0"><t t-esc="pager['total']"/></h3>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center p-4">
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px; background: rgba(25,135,84,0.1);">
+                                        <i class="fa fa-truck text-success"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Envíos Activos</small>
+                                        <h3 class="fw-bold mb-0"><t t-esc="active_shipments_count or 0"/></h3>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body d-flex align-items-center p-4">
-                                <div class="bg-success bg-opacity-10 rounded-circle p-3 me-3 text-success">
-                                    <i class="fa fa-truck fs-4"></i>
-                                </div>
-                                <div>
-                                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem;">Envíos Activos</small>
-                                    <h3 class="fw-bold mb-0"><t t-esc="active_shipments_count or 0"/></h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- TOOLBAR -->
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
-                    
-                    <!-- Date Filter -->
-                    <div class="dropdown">
-                        <button class="btn btn-outline-light text-dark border fw-semibold dropdown-toggle d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
-                            <span>
-                                <t t-if="date_filter == 'last_30_days'">Últimos 30 días</t>
-                                <t t-else="">Todos los tiempos</t>
-                            </span>
-                        </button>
-                        <ul class="dropdown-menu border-0 shadow">
-                            <li><a t-att-href="keep('/my/orders', date_filter='all')" class="dropdown-item">Todos los tiempos</a></li>
-                            <li><a t-att-href="keep('/my/orders', date_filter='last_30_days')" class="dropdown-item">Últimos 30 días</a></li>
-                        </ul>
-                    </div>
-
-                    <!-- Status Filter -->
-                     <div class="dropdown">
-                        <button class="btn btn-outline-light text-dark border fw-semibold dropdown-toggle d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
-                            <span t-esc="searchbar_filters[filterby]['label']"/>
-                        </button>
-                        <ul class="dropdown-menu border-0 shadow">
-                            <t t-foreach="searchbar_filters" t-as="option">
-                                 <li><a t-att-class="'dropdown-item %s' % ('active' if filterby == option else '')" 
-                                        t-att-href="keep('/my/orders', filterby=option)">
-                                     <span t-esc="searchbar_filters[option]['label']"/>
-                                 </a></li>
-                            </t>
-                        </ul>
-                    </div>
-
-                    <div class="ms-md-auto text-success small fw-bold cursor-pointer">
-                        <a t-att-href="keep('/my/orders', filterby='all', date_filter='all')" class="text-decoration-none text-success">
-                            <i class="fa fa-filter me-1"></i> Limpiar filtros
-                        </a>
-                    </div>
-                </div>
-
-                <!-- TABLE -->
-                <div class="card border-0 shadow-sm overflow-hidden">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="bg-light text-muted small text-uppercase">
-                                <tr>
-                                    <th class="py-3 ps-4 border-0">ID Pedido</th>
-                                    <th class="py-3 border-0">Fecha</th>
-                                    <th class="py-3 border-0">Estado</th>
-                                    <th class="py-3 border-0">Total</th>
-                                    <th class="py-3 border-0">Productos</th>
-                                    <th class="py-3 pe-4 border-0 text-end">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <t t-foreach="orders" t-as="order">
-                                    <tr>
-                                        <td class="ps-4 fw-bold text-dark">
-                                            <a t-att-href="order.get_portal_url()" class="text-decoration-none text-dark">
-                                                <t t-esc="order.name"/>
-                                            </a>
-                                        </td>
-                                        <td class="text-muted">
-                                            <span t-field="order.date_order" t-options='{"widget": "date"}'/>
-                                        </td>
-                                        <td>
-                                            <t t-if="order.state == 'cancel'">
-                                                <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-3 py-2 fw-normal">Cancelado</span>
-                                            </t>
-                                            <t t-elif="order.guapante_delivery_status == 'delivered'">
-                                                <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-normal">Entregado</span>
-                                            </t>
-                                            <t t-elif="order.guapante_delivery_status == 'shipping'">
-                                                <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-3 py-2 fw-normal">En Camino</span>
-                                            </t>
-                                            <t t-else="">
-                                                 <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-normal">
-                                                    <t t-esc="dict(order._fields['guapante_delivery_status'].selection).get(order.guapante_delivery_status) or 'Recibido'"/>
-                                                </span>
-                                            </t>
-                                        </td>
-                                        <td class="fw-bold">
-                                            <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.pricelist_id.currency_id}'/>
-                                        </td>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <t t-foreach="order.order_line[:3]" t-as="line">
-                                                     <span t-field="line.product_id.image_128" 
-                                                           t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded-circle border border-white shadow-sm', 'style': 'width: 35px; height: 35px; object-fit: cover; margin-right: -10px; z-index: %s;' % (10-line_index)}"/>
-                                                </t>
-                                                <t t-if="len(order.order_line) > 3">
-                                                    <span class="rounded-circle bg-light border border-white shadow-sm d-flex align-items-center justify-content-center fw-bold small text-muted" 
-                                                          style="width: 35px; height: 35px; margin-left: -10px; z-index: 0; font-size: 0.7rem;">
-                                                        +<t t-esc="len(order.order_line) - 3"/>
-                                                    </span>
-                                                </t>
-                                                 <span t-if="not order.order_line" class="text-muted small">Sin productos</span>
-                                            </div>
-                                        </td>
-                                        <td class="pe-4 text-end">
-                                             <div class="d-flex justify-content-end gap-2">
-                                                <t t-if="order.state != 'cancel' and order.guapante_delivery_status == 'delivered'">
-                                                     <a t-attf-href="/my/orders/reorder/#{order.id}" class="btn btn-success btn-sm rounded-pill fw-bold text-white shadow-sm px-3 d-flex align-items-center gap-2">
-                                                        <i class="fa fa-refresh"></i> Volver a pedir
-                                                     </a>
-                                                </t>
-                                                <t t-elif="order.state != 'cancel' and order.guapante_delivery_status in ['preparing', 'shipping', 'received']">
-                                                     <a t-att-href="order.get_portal_url()" class="btn btn-outline-dark btn-sm rounded-pill fw-bold px-3 d-flex align-items-center gap-2">
-                                                        <i class="fa fa-truck"></i> Rastrear
-                                                     </a>
-                                                </t>
-                                                <t t-else="">
-                                                     <a t-att-href="order.get_portal_url()" class="btn btn-link btn-sm text-decoration-none text-muted">Ver detalles</a>
-                                                </t>
-                                             </div>
-                                        </td>
-                                    </tr>
+                    <!-- FILTERS TOOLBAR -->
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
+                        <!-- Status Filter -->
+                        <div class="dropdown" t-if="searchbar_filters">
+                            <button class="btn btn-outline-secondary dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown" style="min-width: 180px;">
+                                <span t-esc="searchbar_filters.get(filterby, {}).get('label', 'Todos')"/>
+                            </button>
+                            <ul class="dropdown-menu border-0 shadow">
+                                <t t-foreach="searchbar_filters" t-as="option">
+                                    <li>
+                                        <a t-attf-href="/my/orders?filterby=#{option}"
+                                           t-att-class="'dropdown-item' + (' active' if filterby == option else '')">
+                                            <span t-esc="searchbar_filters[option].get('label')"/>
+                                        </a>
+                                    </li>
                                 </t>
-                            </tbody>
-                        </table>
-                    </div>
-                     <div class="card-footer bg-white border-top-0 py-3 d-flex justify-content-between align-items-center">
-                         <span class="text-muted small">
-                             Mostrando <b t-esc="pager['page_start']"/> a <b t-esc="pager['page_end']"/> de <b t-esc="pager['total']"/> resultados
-                         </span>
-                         <t t-call="portal.pager"/>
-                    </div>
-                </div>
+                            </ul>
+                        </div>
 
+                        <div class="ms-md-auto">
+                            <a href="/my/orders" class="text-decoration-none text-success small fw-bold">
+                                <i class="fa fa-filter me-1"></i> Limpiar filtros
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- ORDERS TABLE -->
+                    <t t-if="orders">
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light text-muted small text-uppercase">
+                                        <tr>
+                                            <th class="py-3 ps-4 border-0">ID Pedido</th>
+                                            <th class="py-3 border-0">Fecha</th>
+                                            <th class="py-3 border-0">Estado</th>
+                                            <th class="py-3 border-0">Total</th>
+                                            <th class="py-3 border-0">Productos</th>
+                                            <th class="py-3 pe-4 border-0 text-end">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="orders" t-as="order">
+                                            <tr>
+                                                <!-- Order ID -->
+                                                <td class="ps-4 fw-bold text-dark">
+                                                    <a t-att-href="order.get_portal_url()" class="text-decoration-none text-dark">
+                                                        <t t-esc="order.name"/>
+                                                    </a>
+                                                </td>
+                                                <!-- Date -->
+                                                <td class="text-muted">
+                                                    <span t-field="order.date_order" t-options='{"widget": "date"}'/>
+                                                </td>
+                                                <!-- Status Badge -->
+                                                <td>
+                                                    <t t-if="order.state == 'cancel'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(220,53,69,0.1); color: #dc3545;">
+                                                            <i class="fa fa-times me-1"></i>Cancelado
+                                                        </span>
+                                                    </t>
+                                                    <t t-elif="order.guapante_delivery_status == 'delivered'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(25,135,84,0.1); color: #198754;">
+                                                            <i class="fa fa-check me-1"></i>Entregado
+                                                        </span>
+                                                    </t>
+                                                    <t t-elif="order.guapante_delivery_status == 'shipping'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(13,110,253,0.1); color: #0d6efd;">
+                                                            <i class="fa fa-truck me-1"></i>En Camino
+                                                        </span>
+                                                    </t>
+                                                    <t t-elif="order.guapante_delivery_status == 'preparing'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(255,193,7,0.15); color: #cc9a06;">
+                                                            <i class="fa fa-clock-o me-1"></i>Preparando
+                                                        </span>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-normal" style="background: rgba(108,117,125,0.1); color: #6c757d;">
+                                                            Recibido
+                                                        </span>
+                                                    </t>
+                                                </td>
+                                                <!-- Total -->
+                                                <td class="fw-bold">
+                                                    <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                                </td>
+                                                <!-- Product Avatars -->
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <t t-foreach="order.order_line[:3]" t-as="line">
+                                                            <img t-att-src="image_data_uri(line.product_id.image_128)"
+                                                                 class="rounded-circle border border-2 border-white shadow-sm"
+                                                                 t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
+                                                                 t-att-alt="line.product_id.name"/>
+                                                        </t>
+                                                        <t t-if="len(order.order_line) > 3">
+                                                            <span class="rounded-circle bg-light border border-2 border-white shadow-sm d-flex align-items-center justify-content-center fw-bold text-muted"
+                                                                  style="width: 32px; height: 32px; font-size: 0.65rem; position: relative; z-index: 0;">
+                                                                +<t t-esc="len(order.order_line) - 3"/>
+                                                            </span>
+                                                        </t>
+                                                    </div>
+                                                </td>
+                                                <!-- Actions -->
+                                                <td class="pe-4 text-end">
+                                                    <div class="d-flex justify-content-end gap-2">
+                                                        <t t-if="order.state != 'cancel' and order.guapante_delivery_status == 'delivered'">
+                                                            <a t-attf-href="/my/orders/reorder/#{order.id}" class="btn btn-success btn-sm rounded-pill fw-bold text-white px-3">
+                                                                <i class="fa fa-refresh me-1"></i> Volver a pedir
+                                                            </a>
+                                                        </t>
+                                                        <t t-elif="order.state != 'cancel'">
+                                                            <a t-att-href="order.get_portal_url()" class="btn btn-outline-dark btn-sm rounded-pill fw-bold px-3">
+                                                                <i class="fa fa-truck me-1"></i> Rastrear
+                                                            </a>
+                                                        </t>
+                                                        <t t-else="">
+                                                            <a t-att-href="order.get_portal_url()" class="btn btn-link btn-sm text-muted text-decoration-none">
+                                                                Ver detalles
+                                                            </a>
+                                                        </t>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Pager Footer -->
+                            <div t-if="pager" class="card-footer bg-white py-3 d-flex justify-content-center">
+                                <t t-call="portal.pager"/>
+                            </div>
+                        </div>
+                    </t>
+
+                    <!-- Empty State -->
+                    <t t-else="">
+                        <div class="card border-0 shadow-sm text-center p-5">
+                            <div class="mb-3">
+                                <i class="fa fa-shopping-bag fa-3x text-muted opacity-50"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark">No tienes pedidos aún</h5>
+                            <p class="text-muted mb-4">¡Explora nuestra tienda y realiza tu primer pedido!</p>
+                            <a href="/shop" class="btn btn-success rounded-pill px-4 fw-bold">Ir a la tienda</a>
+                        </div>
+                    </t>
+
+                </t>
             </t>
         </xpath>
     </template>
