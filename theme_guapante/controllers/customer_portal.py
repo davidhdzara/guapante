@@ -249,3 +249,147 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         return request.redirect('/my/profile?success=1')
 
+    # ------------------------------------------------------------------
+    # MIS DIRECCIONES
+    # ------------------------------------------------------------------
+
+    @http.route(['/my/addresses'], type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_addresses(self, **kw):
+        """Render the Addresses page with all child contacts for this partner."""
+        values = self._prepare_portal_layout_values()
+        partner = request.env.user.partner_id
+
+        # Get all active child contacts/addresses
+        addresses = partner.child_ids.filtered(lambda c: c.active)
+
+        # Countries & states for the add/edit modal
+        countries = request.env['res.country'].sudo().search([])
+        states = request.env['res.country.state'].sudo().search([])
+
+        # Default country to Colombia
+        default_country = request.env.ref('base.co', raise_if_not_found=False)
+
+        values.update({
+            'partner': partner,
+            'addresses': addresses,
+            'countries': countries,
+            'states': states,
+            'default_country_id': default_country.id if default_country else False,
+            'page_name': 'details',  # Highlights "Direcciones" in sidebar
+            'success': kw.get('success'),
+            'error_message': kw.get('error'),
+        })
+
+        return request.render('theme_guapante.guapante_my_addresses', values)
+
+    @http.route(['/my/addresses/add'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
+    def portal_address_add(self, **post):
+        """Create a new child partner (address) for the logged-in user."""
+        partner = request.env.user.partner_id
+
+        address_type = post.get('type', 'delivery')
+        if address_type not in ('delivery', 'invoice', 'contact', 'other'):
+            address_type = 'delivery'
+
+        vals = {
+            'parent_id': partner.id,
+            'type': address_type,
+            'name': post.get('name', '').strip() or partner.name,
+            'street': post.get('street', '').strip(),
+            'street2': post.get('street2', '').strip() or False,
+            'city': post.get('city', '').strip(),
+            'zip': post.get('zip', '').strip() or False,
+            'comment': post.get('comment', '').strip() or False,
+        }
+
+        # Country
+        country_id = post.get('country_id')
+        if country_id:
+            try:
+                vals['country_id'] = int(country_id)
+            except (ValueError, TypeError):
+                pass
+
+        # State
+        state_id = post.get('state_id')
+        if state_id:
+            try:
+                vals['state_id'] = int(state_id)
+            except (ValueError, TypeError):
+                pass
+
+        # Phone (optional for child contacts)
+        phone = post.get('phone', '').strip()
+        if phone:
+            vals['phone'] = phone
+
+        request.env['res.partner'].sudo().create(vals)
+        _logger.info("Guapante Addresses: Created child address for partner %s", partner.id)
+
+        return request.redirect('/my/addresses?success=added')
+
+    @http.route(['/my/addresses/edit/<int:address_id>'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
+    def portal_address_edit(self, address_id, **post):
+        """Update an existing child partner (address)."""
+        partner = request.env.user.partner_id
+        address = request.env['res.partner'].sudo().browse(address_id)
+
+        # Security: verify the address belongs to this partner
+        if not address.exists() or address.parent_id.id != partner.id:
+            return request.redirect('/my/addresses?error=not_found')
+
+        address_type = post.get('type', address.type)
+        if address_type not in ('delivery', 'invoice', 'contact', 'other'):
+            address_type = address.type
+
+        vals = {
+            'type': address_type,
+            'name': post.get('name', '').strip() or address.name,
+            'street': post.get('street', '').strip(),
+            'street2': post.get('street2', '').strip() or False,
+            'city': post.get('city', '').strip(),
+            'zip': post.get('zip', '').strip() or False,
+            'comment': post.get('comment', '').strip() or False,
+        }
+
+        # Country
+        country_id = post.get('country_id')
+        if country_id:
+            try:
+                vals['country_id'] = int(country_id)
+            except (ValueError, TypeError):
+                pass
+
+        # State
+        state_id = post.get('state_id')
+        if state_id:
+            try:
+                vals['state_id'] = int(state_id)
+            except (ValueError, TypeError):
+                pass
+
+        # Phone
+        phone = post.get('phone', '').strip()
+        vals['phone'] = phone if phone else False
+
+        address.write(vals)
+        _logger.info("Guapante Addresses: Updated address %s for partner %s", address_id, partner.id)
+
+        return request.redirect('/my/addresses?success=updated')
+
+    @http.route(['/my/addresses/delete/<int:address_id>'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
+    def portal_address_delete(self, address_id, **post):
+        """Archive (deactivate) a child partner address."""
+        partner = request.env.user.partner_id
+        address = request.env['res.partner'].sudo().browse(address_id)
+
+        # Security: verify the address belongs to this partner
+        if not address.exists() or address.parent_id.id != partner.id:
+            return request.redirect('/my/addresses?error=not_found')
+
+        # Archive instead of unlink to preserve references in existing orders
+        address.write({'active': False})
+        _logger.info("Guapante Addresses: Archived address %s for partner %s", address_id, partner.id)
+
+        return request.redirect('/my/addresses?success=deleted')
+

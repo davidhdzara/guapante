@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================
+         MIS DIRECCIONES — Standalone template (NO inherit_id)
+         Route: /my/addresses
+         Controller: GuapanteCustomerPortal.portal_my_addresses
+         ============================================================ -->
+    <template id="guapante_my_addresses" name="Guapante: Mis Direcciones">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="False"/>
+
+            <!-- Guapante Custom Layout with Sidebar -->
+            <t t-call="theme_guapante.guapante_portal_layout">
+
+                <!-- HEADER -->
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+                    <div>
+                        <h2 class="fw-bold text-dark mb-1">Perfil y Direcciones</h2>
+                        <p class="text-muted mb-0">Gestiona tus datos personales y lugares de entrega para una logística eficiente de tus productos frescos.</p>
+                    </div>
+                </div>
+
+                <!-- SUCCESS ALERTS -->
+                <div t-if="success == 'added'" class="alert guapante-alert-success d-flex align-items-center gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-check-circle fs-5"></i>
+                    <span>Dirección agregada correctamente.</span>
+                </div>
+                <div t-if="success == 'updated'" class="alert guapante-alert-success d-flex align-items-center gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-check-circle fs-5"></i>
+                    <span>Dirección actualizada correctamente.</span>
+                </div>
+                <div t-if="success == 'deleted'" class="alert guapante-alert-success d-flex align-items-center gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-check-circle fs-5"></i>
+                    <span>Dirección eliminada correctamente.</span>
+                </div>
+
+                <!-- ERROR ALERT -->
+                <div t-if="error_message" class="alert alert-danger d-flex align-items-center gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <span>Ocurrió un error. Intenta de nuevo.</span>
+                </div>
+
+                <!-- =============================================
+                     INFORMACIÓN PERSONAL (READ-ONLY)
+                     ============================================= -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold text-dark mb-0">Información Personal</h5>
+                    <a href="/my/profile" class="text-success text-decoration-none fw-semibold small">
+                        <i class="fa fa-pencil me-1"></i>Editar información
+                    </a>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-5">
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            <!-- Name -->
+                            <div class="col-12 col-md-6">
+                                <div class="guapante-info-field">
+                                    <label class="small fw-semibold text-muted mb-1">Nombre Completo</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="form-control guapante-info-readonly rounded-3">
+                                            <t t-esc="partner.name"/>
+                                        </div>
+                                        <i class="fa fa-user text-muted opacity-50"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Email -->
+                            <div class="col-12 col-md-6">
+                                <div class="guapante-info-field">
+                                    <label class="small fw-semibold text-muted mb-1">Correo Electrónico</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="form-control guapante-info-readonly rounded-3">
+                                            <t t-esc="partner.email or '—'"/>
+                                        </div>
+                                        <i class="fa fa-envelope text-muted opacity-50"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Phone -->
+                            <div class="col-12 col-md-6">
+                                <div class="guapante-info-field">
+                                    <label class="small fw-semibold text-muted mb-1">Teléfono Celular (Colombia)</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="form-control guapante-info-readonly rounded-3">
+                                            <t t-esc="partner.phone or '—'"/>
+                                        </div>
+                                        <i class="fa fa-phone text-muted opacity-50"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- VAT / ID -->
+                            <div class="col-12 col-md-6">
+                                <div class="guapante-info-field">
+                                    <label class="small fw-semibold text-muted mb-1">Cédula / NIT</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="form-control guapante-info-readonly rounded-3">
+                                            <t t-esc="partner.vat or '—'"/>
+                                        </div>
+                                        <i class="fa fa-id-card text-muted opacity-50"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- =============================================
+                     MIS DIRECCIONES
+                     ============================================= -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold text-dark mb-0">Mis Direcciones</h5>
+                    <button type="button" class="btn btn-success rounded-pill px-4 fw-bold d-flex align-items-center gap-2"
+                            data-bs-toggle="modal" data-bs-target="#addressModal"
+                            onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';">
+                        <i class="fa fa-plus"></i> Nueva Dirección
+                    </button>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <!-- Existing Address Cards -->
+                    <t t-foreach="addresses" t-as="addr">
+                        <div class="col-12 col-md-6">
+                            <div class="guapante-address-card card border-0 shadow-sm rounded-4 h-100">
+                                <div class="card-body p-4">
+                                    <!-- Type Badge + Actions -->
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <t t-if="addr.type == 'delivery'">
+                                                <span class="guapante-address-type-badge badge-delivery">
+                                                    <i class="fa fa-truck me-1"></i>Entrega
+                                                </span>
+                                            </t>
+                                            <t t-elif="addr.type == 'invoice'">
+                                                <span class="guapante-address-type-badge badge-invoice">
+                                                    <i class="fa fa-file-text-o me-1"></i>Facturación
+                                                </span>
+                                            </t>
+                                            <t t-elif="addr.type == 'contact'">
+                                                <span class="guapante-address-type-badge badge-contact">
+                                                    <i class="fa fa-user me-1"></i>Contacto
+                                                </span>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="guapante-address-type-badge badge-other">
+                                                    <i class="fa fa-map-marker me-1"></i>Otro
+                                                </span>
+                                            </t>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-light rounded-circle guapante-addr-action-btn"
+                                                    data-bs-toggle="modal" data-bs-target="#addressModal"
+                                                    t-att-data-address-id="addr.id"
+                                                    t-att-data-name="addr.name"
+                                                    t-att-data-type="addr.type"
+                                                    t-att-data-street="addr.street or ''"
+                                                    t-att-data-street2="addr.street2 or ''"
+                                                    t-att-data-city="addr.city or ''"
+                                                    t-att-data-state_id="addr.state_id.id if addr.state_id else ''"
+                                                    t-att-data-zip="addr.zip or ''"
+                                                    t-att-data-country_id="addr.country_id.id if addr.country_id else ''"
+                                                    t-att-data-phone="addr.phone or ''"
+                                                    t-att-data-comment="addr.comment or ''"
+                                                    onclick="fillEditModal(this)">
+                                                <i class="fa fa-pencil"></i>
+                                            </button>
+                                            <form t-attf-action="/my/addresses/delete/#{addr.id}" method="POST" class="d-inline"
+                                                  onsubmit="return confirm('¿Estás seguro de eliminar esta dirección?');">
+                                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <button type="submit" class="btn btn-sm btn-light rounded-circle guapante-addr-action-btn text-danger">
+                                                    <i class="fa fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <!-- Address Name -->
+                                    <h6 class="fw-bold text-dark mb-2">
+                                        <t t-if="addr.type == 'delivery'"><i class="fa fa-home me-2 text-success"></i></t>
+                                        <t t-elif="addr.type == 'invoice'"><i class="fa fa-building me-2 text-primary"></i></t>
+                                        <t t-elif="addr.type == 'contact'"><i class="fa fa-user me-2 text-secondary"></i></t>
+                                        <t t-else=""><i class="fa fa-map-marker me-2 text-warning"></i></t>
+                                        <t t-esc="addr.name"/>
+                                    </h6>
+
+                                    <!-- Street Address -->
+                                    <p class="text-muted mb-1 small">
+                                        <t t-if="addr.street"><t t-esc="addr.street"/><br/></t>
+                                        <t t-if="addr.street2"><t t-esc="addr.street2"/><br/></t>
+                                        <t t-if="addr.city"><t t-esc="addr.city"/></t>
+                                        <t t-if="addr.state_id">, <t t-esc="addr.state_id.name"/></t>
+                                        <t t-if="addr.zip"> - <t t-esc="addr.zip"/></t>
+                                    </p>
+
+                                    <t t-if="addr.country_id">
+                                        <p class="text-muted mb-1 small"><t t-esc="addr.country_id.name"/></p>
+                                    </t>
+
+                                    <t t-if="addr.phone">
+                                        <p class="text-muted mb-1 small">
+                                            <i class="fa fa-phone me-1"></i><t t-esc="addr.phone"/>
+                                        </p>
+                                    </t>
+
+                                    <!-- Notes / Instructions -->
+                                    <t t-if="addr.comment">
+                                        <p class="fst-italic text-muted small mb-0 mt-2" style="color: #198754 !important;">
+                                            "<t t-esc="addr.comment"/>"
+                                        </p>
+                                    </t>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+
+                    <!-- ADD NEW ADDRESS CARD -->
+                    <div class="col-12 col-md-6">
+                        <div class="guapante-address-add-card card rounded-4 h-100 d-flex align-items-center justify-content-center"
+                             data-bs-toggle="modal" data-bs-target="#addressModal"
+                             onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';"
+                             style="cursor: pointer; min-height: 220px;">
+                            <div class="text-center p-4">
+                                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle"
+                                     style="width: 56px; height: 56px; background-color: rgba(25,135,84,0.1);">
+                                    <i class="fa fa-plus fs-4 text-success"></i>
+                                </div>
+                                <p class="fw-semibold text-muted mb-0">Agregar nueva dirección</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EMPTY STATE (when no addresses) -->
+                <t t-if="not addresses">
+                    <div class="card border-0 shadow-sm text-center p-5 mb-4 rounded-4">
+                        <div class="mb-3">
+                            <i class="fa fa-map-marker fa-3x text-muted opacity-50"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark">No tienes direcciones registradas</h5>
+                        <p class="text-muted mb-4">Agrega tu primera dirección de entrega para agilizar tus futuros pedidos.</p>
+                        <button type="button"
+                                class="btn btn-success rounded-pill px-4 fw-bold mx-auto"
+                                data-bs-toggle="modal" data-bs-target="#addressModal"
+                                onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';">
+                            <i class="fa fa-plus me-2"></i>Agregar Dirección
+                        </button>
+                    </div>
+                </t>
+
+                <!-- =============================================
+                     LOGISTICS BANNER
+                     ============================================= -->
+                <div class="guapante-logistics-banner mt-2 rounded-4 p-4 d-flex flex-column flex-md-row align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-3 mb-3 mb-md-0">
+                        <div>
+                            <h5 class="fw-bold mb-1" style="color: white;">🚚 Logística Eficiente</h5>
+                            <p class="mb-0 opacity-75" style="font-size: 0.9rem; color: rgba(255,255,255,0.8);">
+                                Mantén tus direcciones actualizadas para garantizar que tus frutas y verduras lleguen frescas. Nuestros camiones salen diariamente a las 5:00 AM.
+                            </p>
+                        </div>
+                    </div>
+                    <a href="/contactus" class="btn btn-outline-light rounded-pill px-4 fw-bold d-flex align-items-center gap-2 flex-shrink-0" style="border-color: #198754; color: #198754; background: white;">
+                        Ver zonas de cobertura
+                    </a>
+                </div>
+
+
+                <!-- =============================================
+                     ADD / EDIT ADDRESS MODAL
+                     ============================================= -->
+                <div class="modal fade" id="addressModal" tabindex="-1" aria-labelledby="addressModalTitle" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-lg">
+                        <div class="modal-content border-0 rounded-4 shadow">
+                            <div class="modal-header border-0 pb-0 px-4 pt-4">
+                                <h5 class="modal-title fw-bold" id="addressModalTitle">Nueva Dirección</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body px-4 py-3">
+                                <form id="addressModalForm" method="POST" action="/my/addresses/add">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                                    <div class="row g-3">
+                                        <!-- Name -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_name" class="form-label small fw-semibold text-muted">Nombre / Etiqueta</label>
+                                            <input type="text" id="addr_name" name="name" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="Ej: Casa, Oficina, Finca..." required="required"/>
+                                        </div>
+
+                                        <!-- Type -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_type" class="form-label small fw-semibold text-muted">Tipo de Dirección</label>
+                                            <select id="addr_type" name="type" class="form-select guapante-profile-input rounded-3">
+                                                <option value="delivery">Entrega</option>
+                                                <option value="invoice">Facturación</option>
+                                                <option value="contact">Contacto</option>
+                                                <option value="other">Otro</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Street -->
+                                        <div class="col-12">
+                                            <label for="addr_street" class="form-label small fw-semibold text-muted">Dirección (Calle)</label>
+                                            <input type="text" id="addr_street" name="street" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="Calle 123 #45-67, Torre 2, Apto 501" required="required"/>
+                                        </div>
+
+                                        <!-- Street2 (Barrio, etc.) -->
+                                        <div class="col-12">
+                                            <label for="addr_street2" class="form-label small fw-semibold text-muted">Barrio / Referencia</label>
+                                            <input type="text" id="addr_street2" name="street2" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="Barrio El Poblado"/>
+                                        </div>
+
+                                        <!-- City -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_city" class="form-label small fw-semibold text-muted">Ciudad</label>
+                                            <input type="text" id="addr_city" name="city" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="Medellín" required="required"/>
+                                        </div>
+
+                                        <!-- State -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_state" class="form-label small fw-semibold text-muted">Departamento / Estado</label>
+                                            <select id="addr_state" name="state_id" class="form-select guapante-profile-input rounded-3">
+                                                <option value="">— Seleccionar —</option>
+                                                <t t-foreach="states" t-as="st">
+                                                    <option t-att-value="st.id" t-att-data-country="st.country_id.id">
+                                                        <t t-esc="st.name"/>
+                                                    </option>
+                                                </t>
+                                            </select>
+                                        </div>
+
+                                        <!-- ZIP -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_zip" class="form-label small fw-semibold text-muted">Código Postal</label>
+                                            <input type="text" id="addr_zip" name="zip" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="050021"/>
+                                        </div>
+
+                                        <!-- Country -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_country" class="form-label small fw-semibold text-muted">País</label>
+                                            <select id="addr_country" name="country_id" class="form-select guapante-profile-input rounded-3">
+                                                <option value="">— Seleccionar —</option>
+                                                <t t-foreach="countries" t-as="country">
+                                                    <option t-att-value="country.id"
+                                                            t-att-selected="country.id == default_country_id">
+                                                        <t t-esc="country.name"/>
+                                                    </option>
+                                                </t>
+                                            </select>
+                                        </div>
+
+                                        <!-- Phone -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_phone" class="form-label small fw-semibold text-muted">Teléfono (opcional)</label>
+                                            <input type="tel" id="addr_phone" name="phone" class="form-control guapante-profile-input rounded-3"
+                                                   placeholder="300 123 4567"/>
+                                        </div>
+
+                                        <!-- Comment / Instructions -->
+                                        <div class="col-12">
+                                            <label for="addr_comment" class="form-label small fw-semibold text-muted">Instrucciones de Entrega</label>
+                                            <textarea id="addr_comment" name="comment" rows="2"
+                                                      class="form-control guapante-profile-input rounded-3"
+                                                      placeholder="Ej: Dejar en portería si no contesto"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-end gap-2 mt-4">
+                                        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+                                            Cancelar
+                                        </button>
+                                        <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold">
+                                            <i class="fa fa-check me-1"></i>Guardar Dirección
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INLINE JS for modal edit pre-fill -->
+                <script type="text/javascript">
+                    function fillEditModal(btn) {
+                        var form = document.getElementById('addressModalForm');
+                        var title = document.getElementById('addressModalTitle');
+                        var id = btn.getAttribute('data-address-id');
+
+                        title.textContent = 'Editar Dirección';
+                        form.action = '/my/addresses/edit/' + id;
+
+                        document.getElementById('addr_name').value = btn.getAttribute('data-name') || '';
+                        document.getElementById('addr_type').value = btn.getAttribute('data-type') || 'delivery';
+                        document.getElementById('addr_street').value = btn.getAttribute('data-street') || '';
+                        document.getElementById('addr_street2').value = btn.getAttribute('data-street2') || '';
+                        document.getElementById('addr_city').value = btn.getAttribute('data-city') || '';
+                        document.getElementById('addr_zip').value = btn.getAttribute('data-zip') || '';
+                        document.getElementById('addr_phone').value = btn.getAttribute('data-phone') || '';
+                        document.getElementById('addr_comment').value = btn.getAttribute('data-comment') || '';
+
+                        var countryId = btn.getAttribute('data-country_id');
+                        if (countryId) {
+                            document.getElementById('addr_country').value = countryId;
+                        }
+                        var stateId = btn.getAttribute('data-state_id');
+                        if (stateId) {
+                            document.getElementById('addr_state').value = stateId;
+                        }
+                    }
+                </script>
+
+            </t>
+        </t>
+    </template>
+</odoo>

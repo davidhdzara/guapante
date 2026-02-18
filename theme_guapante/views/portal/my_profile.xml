@@ -121,7 +121,7 @@
                 <div class="row g-3 mb-4">
                     <!-- Mis Direcciones -->
                     <div class="col-12 col-md-4">
-                        <a href="/my/account" class="text-decoration-none">
+                        <a href="/my/addresses" class="text-decoration-none">
                             <div class="guapante-quick-access-card card border-0 shadow-sm rounded-4 h-100 text-center p-4">
                                 <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width: 56px; height: 56px; background-color: rgba(25,135,84,0.1);">
                                     <i class="fa fa-map-marker fs-4 text-success"></i>

@@ -27,7 +27,7 @@
                             <a href="/my/orders" t-attf-class="list-group-item list-group-item-action border-0 rounded-3 px-3 py-2 d-flex align-items-center gap-3 #{'active fw-bold' if page_name == 'order' else 'text-muted'}">
                                 <i class="fa fa-shopping-bag opacity-75" style="width: 18px;"></i> Mis Pedidos
                             </a>
-                            <a href="/my/account" t-attf-class="list-group-item list-group-item-action border-0 rounded-3 px-3 py-2 d-flex align-items-center gap-3 #{'active fw-bold' if page_name == 'details' else 'text-muted'}">
+                            <a href="/my/addresses" t-attf-class="list-group-item list-group-item-action border-0 rounded-3 px-3 py-2 d-flex align-items-center gap-3 #{'active fw-bold' if page_name == 'details' else 'text-muted'}">
                                 <i class="fa fa-map-marker opacity-75" style="width: 18px;"></i> Direcciones
                             </a>
                             <a href="/contactus" class="list-group-item list-group-item-action border-0 rounded-3 px-3 py-2 d-flex align-items-center gap-3 text-muted">
