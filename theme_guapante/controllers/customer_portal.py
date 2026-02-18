@@ -40,7 +40,10 @@ class GuapanteCustomerPortal(CustomerPortal):
         total_orders_count = SaleOrder.search_count(base_domain)
 
         # --- Active shipments count (KPI card) ---
-        active_domain = base_domain + [
+        # Only sale/done orders that are preparing or shipping (never cancelled)
+        active_domain = [
+            ('message_partner_ids', 'child_of', [partner.commercial_partner_id.id]),
+            ('state', 'in', ['sale', 'done']),
             ('guapante_delivery_status', 'in', ['preparing', 'shipping'])
         ]
         active_shipments_count = SaleOrder.sudo().search_count(active_domain)
@@ -105,6 +108,10 @@ class GuapanteCustomerPortal(CustomerPortal):
         orders = SaleOrder.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
         request.session['my_orders_history'] = orders.ids[:100]
 
+        # 6. Pager display numbers (avoid raw dict in template)
+        page_start_num = pager['offset'] + 1 if order_count else 0
+        page_end_num = min(pager['offset'] + self._items_per_page, order_count)
+
         values.update({
             'orders': orders,
             'page_name': 'order',
@@ -118,6 +125,9 @@ class GuapanteCustomerPortal(CustomerPortal):
             'date_range_filters': date_range_filters,
             'total_orders_count': total_orders_count,
             'active_shipments_count': active_shipments_count,
+            'page_start_num': page_start_num,
+            'page_end_num': page_end_num,
+            'order_count': order_count,
         })
         return request.render("sale.portal_my_orders", values)
 

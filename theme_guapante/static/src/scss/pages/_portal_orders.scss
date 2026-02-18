@@ -2,15 +2,15 @@
    GUAPANTE PORTAL STYLES
    ========================================= */
 
-// 1. Portal wrapper
+// 1. Portal wrapper — subtle light background per mockup
 .o_portal_wrap {
-    background-color: #f8f9fa !important;
+    background-color: #f5f6f8 !important;
     min-height: calc(100vh - 200px);
 }
 
-// 2. Sidebar — Full height with left border
+// 2. Sidebar — Full height with right border
 .guapante-portal-sidebar {
-    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    border-right: 1px solid #e8e8e8;
     min-height: calc(100vh - 100px);
     transition: all 0.3s ease;
 
@@ -39,13 +39,35 @@
     }
 }
 
-// 3. Status Badges
-.badge {
-    font-size: 0.73rem;
-    letter-spacing: 0.3px;
+// 3. Custom filter button — light gray, professional
+.guapante-filter-btn {
+    border: 1px solid #dee2e6 !important;
+    color: #495057 !important;
+    background-color: #fff !important;
+    font-size: 0.88rem;
+
+    &:hover,
+    &:focus {
+        border-color: #c4c8cc !important;
+        background-color: #f8f9fa !important;
+        box-shadow: none !important;
+    }
+
+    &.show,
+    &[aria-expanded="true"] {
+        border-color: #198754 !important;
+        color: #198754 !important;
+    }
 }
 
-// 4. Dropdowns
+// 4. Status Badges — stronger backgrounds
+.badge {
+    font-size: 0.75rem;
+    letter-spacing: 0.3px;
+    font-weight: 500;
+}
+
+// 5. Dropdowns
 .dropdown-menu {
     border-radius: 0.75rem;
     margin-top: 0.5rem !important;
@@ -59,20 +81,24 @@
         width: auto;
 
         &:hover,
-        &:focus,
-        &.active {
+        &:focus {
             background-color: rgba(25, 135, 84, 0.08);
+            color: #198754;
+        }
+
+        &.active {
+            background-color: rgba(25, 135, 84, 0.12);
             color: #198754;
         }
     }
 }
 
-// 5. Orders table rows
+// 6. Orders table rows
 .table-hover tbody tr:hover {
     background-color: rgba(0, 0, 0, 0.015);
 }
 
-// 6. Help Banner
+// 7. Help Banner
 .guapante-help-banner {
     overflow: hidden;
     position: relative;
