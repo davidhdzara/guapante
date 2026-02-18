@@ -4,4 +4,10 @@
 
 # Exceptions
 !theme_guapante/
+!theme_guapante/**
 !.gitignore
+!README.md
+
+# Always ignore compiled Python files
+__pycache__/
+*.pyc

@@ -1,0 +1,87 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# * theme_guapante
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-18 18:00+0000\n"
+"PO-Revision-Date: 2026-02-18 18:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. module: theme_guapante
+#: model:product.template,field_description:theme_guapante.field_product_template__is_seasonal
+msgid "Seasonal"
+msgstr "De Temporada"
+
+#. module: theme_guapante
+#: model:product.template,help:theme_guapante.field_product_template__is_seasonal
+msgid "Mark this product to appear in the \"Seasonal Harvest\" section on the homepage"
+msgstr "Marcar este producto para que aparezca en la sección \"Cosecha en temporada\" del home"
+
+#. module: theme_guapante
+#: model:sale.order,field_description:theme_guapante.field_sale_order__guapante_delivery_status
+msgid "Delivery Status (Guapante)"
+msgstr "Estado de Entrega (Guapante)"
+
+#. module: theme_guapante
+#: model:sale.order,selection:theme_guapante.field_sale_order__guapante_delivery_status__received
+msgid "Received"
+msgstr "Recibido"
+
+#. module: theme_guapante
+#: model:sale.order,selection:theme_guapante.field_sale_order__guapante_delivery_status__preparing
+msgid "Preparing"
+msgstr "Preparando"
+
+#. module: theme_guapante
+#: model:sale.order,selection:theme_guapante.field_sale_order__guapante_delivery_status__shipping
+msgid "On the Way"
+msgstr "En Camino"
+
+#. module: theme_guapante
+#: model:sale.order,selection:theme_guapante.field_sale_order__guapante_delivery_status__delivered
+msgid "Delivered"
+msgstr "Entregado"
+
+#. module: theme_guapante
+#: model:sale.order.line,field_description:theme_guapante.field_sale_order_line__uom_mode
+msgid "Customer UoM Mode"
+msgstr "Modo de UoM del Cliente"
+
+#. module: theme_guapante
+#: model:sale.order.line,selection:theme_guapante.field_sale_order_line__uom_mode__unit
+msgid "Units"
+msgstr "Unidades"
+
+#. module: theme_guapante
+#: model:sale.order.line,selection:theme_guapante.field_sale_order_line__uom_mode__kg
+msgid "Kilograms"
+msgstr "Kilogramos"
+
+#. module: theme_guapante
+#: model:sale.order.line,selection:theme_guapante.field_sale_order_line__uom_mode__g
+msgid "Grams"
+msgstr "Gramos"
+
+#. module: theme_guapante
+#: model:sale.order.line,help:theme_guapante.field_sale_order_line__uom_mode
+msgid "Unit of measure mode selected by the user (e.g. Grams vs Kg)."
+msgstr "Modo de unidad de medida seleccionado por el usuario (ej. Gramos vs Kg)."
+
+#. module: theme_guapante
+#: model:stock.picking,field_description:theme_guapante.field_stock_picking__vehicle_id
+msgid "Assigned Vehicle"
+msgstr "Vehículo Asignado"
+
+#. module: theme_guapante
+#: model:stock.picking,field_description:theme_guapante.field_stock_picking__driver_id
+msgid "Driver"
+msgstr "Conductor"
