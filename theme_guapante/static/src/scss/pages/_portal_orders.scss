@@ -8,10 +8,10 @@
     min-height: calc(100vh - 200px);
 }
 
-// 2. Sidebar — Full height with right border
+// 2. Sidebar — stretches to match content height via flexbox
 .guapante-portal-sidebar {
     border-right: 1px solid #e8e8e8;
-    min-height: calc(100vh - 100px);
+    height: 100%;
     transition: all 0.3s ease;
 
     .list-group-item {

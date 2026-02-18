@@ -3,7 +3,7 @@
     <!-- Standalone callable layout for Guapante portal pages with sidebar -->
     <template id="guapante_portal_layout" name="Guapante Portal Layout (Sidebar)">
         <div class="container-fluid px-0">
-            <div class="row g-0">
+            <div class="row g-0 align-items-stretch">
 
                 <!-- SIDEBAR — full height with right border -->
                 <div class="col-12 col-lg-3 col-xl-3">
