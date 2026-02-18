@@ -60,11 +60,41 @@
     }
 }
 
-// 4. Status Badges — stronger backgrounds
-.badge {
-    font-size: 0.75rem;
-    letter-spacing: 0.3px;
-    font-weight: 500;
+// 4. Status Badges — dedicated classes to avoid Bootstrap overrides
+.guapante-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem !important;
+    border-radius: 50rem !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+.guapante-badge-cancelled {
+    background-color: rgba(220, 53, 69, 0.12) !important;
+    color: #dc3545 !important;
+}
+
+.guapante-badge-delivered {
+    background-color: rgba(25, 135, 84, 0.12) !important;
+    color: #198754 !important;
+}
+
+.guapante-badge-shipping {
+    background-color: rgba(13, 110, 253, 0.12) !important;
+    color: #0d6efd !important;
+}
+
+.guapante-badge-preparing {
+    background-color: rgba(255, 193, 7, 0.18) !important;
+    color: #cc9a06 !important;
+}
+
+.guapante-badge-received {
+    background-color: rgba(108, 117, 125, 0.12) !important;
+    color: #6c757d !important;
 }
 
 // 5. Dropdowns

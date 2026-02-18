@@ -63,6 +63,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         # 2. Status Filters (Spanish)
         searchbar_filters = {
             'all':       {'label': 'Todos', 'domain': []},
+            'received':  {'label': 'Recibido', 'domain': [('guapante_delivery_status', '=', 'received')]},
             'active':    {'label': 'Envíos Activos', 'domain': [('guapante_delivery_status', 'in', ['preparing', 'shipping'])]},
             'delivered': {'label': 'Entregado', 'domain': [('guapante_delivery_status', '=', 'delivered')]},
             'cancelled': {'label': 'Cancelado', 'domain': [('state', '=', 'cancel')]},
