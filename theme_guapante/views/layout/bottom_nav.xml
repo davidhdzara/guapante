@@ -40,7 +40,7 @@
                         <i class="fa fa-user-circle-o fs-4 mb-1"></i>
                         <span class="d-block small" style="font-size: 0.7rem;">Cuenta</span>
                     </a>
-                    <a t-else="" href="/my/home" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/my/home' in request.httprequest.path else 'text-muted' }}">
+                    <a t-else="" href="/my/profile" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if '/my/' in request.httprequest.path else 'text-muted' }}">
                         <i class="fa fa-user-circle fs-4 mb-1 text-primary"></i>
                         <span class="d-block small" style="font-size: 0.7rem;">Mi Cuenta</span>
                     </a>
