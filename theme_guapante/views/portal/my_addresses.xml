@@ -115,7 +115,7 @@
                     <h5 class="fw-bold text-dark mb-0">Mis Direcciones</h5>
                     <button type="button" class="btn btn-success rounded-pill px-4 fw-bold d-flex align-items-center gap-2"
                             data-bs-toggle="modal" data-bs-target="#addressModal"
-                            onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';">
+                            onclick="resetAddressModal()">
                         <i class="fa fa-plus"></i> Nueva Dirección
                     </button>
                 </div>
@@ -165,6 +165,7 @@
                                                     t-att-data-street="addr.street or ''"
                                                     t-att-data-street2="addr.street2 or ''"
                                                     t-att-data-city="addr.city or ''"
+                                                    t-att-data-city_id="addr.city_id.id if addr.city_id else ''"
                                                     t-att-data-state_id="addr.state_id.id if addr.state_id else ''"
                                                     t-att-data-zip="addr.zip or ''"
                                                     t-att-data-country_id="addr.country_id.id if addr.country_id else ''"
@@ -226,7 +227,7 @@
                     <div class="col-12 col-md-6">
                         <div class="guapante-address-add-card card rounded-4 h-100 d-flex align-items-center justify-content-center"
                              data-bs-toggle="modal" data-bs-target="#addressModal"
-                             onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';"
+                             onclick="resetAddressModal()"
                              style="cursor: pointer; min-height: 220px;">
                             <div class="text-center p-4">
                                 <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle"
@@ -250,7 +251,7 @@
                         <button type="button"
                                 class="btn btn-success rounded-pill px-4 fw-bold mx-auto"
                                 data-bs-toggle="modal" data-bs-target="#addressModal"
-                                onclick="document.getElementById('addressModalForm').reset(); document.getElementById('addressModalTitle').textContent='Nueva Dirección'; document.getElementById('addressModalForm').action='/my/addresses/add';">
+                                onclick="resetAddressModal()">
                             <i class="fa fa-plus me-2"></i>Agregar Dirección
                         </button>
                     </div>
@@ -322,18 +323,11 @@
                                                    placeholder="Barrio El Poblado"/>
                                         </div>
 
-                                        <!-- City -->
-                                        <div class="col-12 col-md-6">
-                                            <label for="addr_city" class="form-label small fw-semibold text-muted">Ciudad</label>
-                                            <input type="text" id="addr_city" name="city" class="form-control guapante-profile-input rounded-3"
-                                                   placeholder="Medellín" required="required"/>
-                                        </div>
-
-                                        <!-- State -->
+                                        <!-- Departamento (select first — drives city dropdown) -->
                                         <div class="col-12 col-md-6">
                                             <label for="addr_state" class="form-label small fw-semibold text-muted">Departamento / Estado</label>
-                                            <select id="addr_state" name="state_id" class="form-select guapante-profile-input rounded-3">
-                                                <option value="">— Seleccionar —</option>
+                                            <select id="addr_state" name="state_id" class="form-select guapante-profile-input rounded-3" required="required">
+                                                <option value="">— Seleccionar Departamento —</option>
                                                 <t t-foreach="states" t-as="st">
                                                     <option t-att-value="st.id" t-att-data-country="st.country_id.id">
                                                         <t t-esc="st.name"/>
@@ -342,11 +336,19 @@
                                             </select>
                                         </div>
 
-                                        <!-- ZIP -->
+                                        <!-- Ciudad (cascading dropdown — populated by JS) -->
+                                        <div class="col-12 col-md-6">
+                                            <label for="addr_city" class="form-label small fw-semibold text-muted">Ciudad / Municipio</label>
+                                            <select id="addr_city" name="city_id" class="form-select guapante-profile-input rounded-3" required="required">
+                                                <option value="">— Primero selecciona Departamento —</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- ZIP (auto-filled from city) -->
                                         <div class="col-12 col-md-6">
                                             <label for="addr_zip" class="form-label small fw-semibold text-muted">Código Postal</label>
                                             <input type="text" id="addr_zip" name="zip" class="form-control guapante-profile-input rounded-3"
-                                                   placeholder="050021"/>
+                                                   placeholder="Auto-completado al seleccionar ciudad" readonly="readonly"/>
                                         </div>
 
                                         <!-- Country -->
@@ -395,32 +397,108 @@
 
                 <!-- INLINE JS for modal edit pre-fill -->
                 <script type="text/javascript">
-                    function fillEditModal(btn) {
-                        var form = document.getElementById('addressModalForm');
-                        var title = document.getElementById('addressModalTitle');
-                        var id = btn.getAttribute('data-address-id');
+                    // ====== Cascading: Departamento → Ciudad → ZIP ======
+                    (function() {
+                        var stateSelect = document.getElementById('addr_state');
+                        var citySelect = document.getElementById('addr_city');
+                        var zipInput = document.getElementById('addr_zip');
 
-                        title.textContent = 'Editar Dirección';
-                        form.action = '/my/addresses/edit/' + id;
+                        // Load cities via AJAX when state changes
+                        stateSelect.addEventListener('change', function() {
+                            var stateId = this.value;
+                            citySelect.innerHTML = '&lt;option value=""&gt;Cargando...&lt;/option&gt;';
+                            zipInput.value = '';
+                            if (!stateId) {
+                                citySelect.innerHTML = '&lt;option value=""&gt;— Primero selecciona Departamento —&lt;/option&gt;';
+                                return;
+                            }
+                            fetch('/my/addresses/get_cities', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {state_id: parseInt(stateId)}})
+                            })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                var cities = data.result || [];
+                                var html = '&lt;option value=""&gt;— Seleccionar Ciudad —&lt;/option&gt;';
+                                cities.forEach(function(c) {
+                                    html += '&lt;option value="' + c.id + '" data-zipcode="' + (c.zipcode || '') + '"&gt;' + c.name + '&lt;/option&gt;';
+                                });
+                                citySelect.innerHTML = html;
+                            })
+                            .catch(function() {
+                                citySelect.innerHTML = '&lt;option value=""&gt;Error al cargar ciudades&lt;/option&gt;';
+                            });
+                        });
 
-                        document.getElementById('addr_name').value = btn.getAttribute('data-name') || '';
-                        document.getElementById('addr_type').value = btn.getAttribute('data-type') || 'delivery';
-                        document.getElementById('addr_street').value = btn.getAttribute('data-street') || '';
-                        document.getElementById('addr_street2').value = btn.getAttribute('data-street2') || '';
-                        document.getElementById('addr_city').value = btn.getAttribute('data-city') || '';
-                        document.getElementById('addr_zip').value = btn.getAttribute('data-zip') || '';
-                        document.getElementById('addr_phone').value = btn.getAttribute('data-phone') || '';
-                        document.getElementById('addr_comment').value = btn.getAttribute('data-comment') || '';
+                        // Auto-fill ZIP when city is selected
+                        citySelect.addEventListener('change', function() {
+                            var opt = this.options[this.selectedIndex];
+                            if (opt) {
+                                zipInput.value = opt.getAttribute('data-zipcode') || '';
+                            }
+                        });
 
-                        var countryId = btn.getAttribute('data-country_id');
-                        if (countryId) {
-                            document.getElementById('addr_country').value = countryId;
-                        }
-                        var stateId = btn.getAttribute('data-state_id');
-                        if (stateId) {
-                            document.getElementById('addr_state').value = stateId;
-                        }
-                    }
+                        // ====== Fill modal for editing ======
+                        window.fillEditModal = function(btn) {
+                            var form = document.getElementById('addressModalForm');
+                            var title = document.getElementById('addressModalTitle');
+                            var id = btn.getAttribute('data-address-id');
+
+                            title.textContent = 'Editar Dirección';
+                            form.action = '/my/addresses/edit/' + id;
+
+                            document.getElementById('addr_name').value = btn.getAttribute('data-name') || '';
+                            document.getElementById('addr_type').value = btn.getAttribute('data-type') || 'delivery';
+                            document.getElementById('addr_street').value = btn.getAttribute('data-street') || '';
+                            document.getElementById('addr_street2').value = btn.getAttribute('data-street2') || '';
+                            document.getElementById('addr_phone').value = btn.getAttribute('data-phone') || '';
+                            document.getElementById('addr_comment').value = btn.getAttribute('data-comment') || '';
+                            zipInput.value = btn.getAttribute('data-zip') || '';
+
+                            var countryId = btn.getAttribute('data-country_id');
+                            if (countryId) {
+                                document.getElementById('addr_country').value = countryId;
+                            }
+
+                            // Set state, then load cities, then pre-select city
+                            var editStateId = btn.getAttribute('data-state_id');
+                            var editCityId = btn.getAttribute('data-city_id');
+
+                            if (editStateId) {
+                                stateSelect.value = editStateId;
+                                // Load cities for this state, then pre-select
+                                fetch('/my/addresses/get_cities', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {state_id: parseInt(editStateId)}})
+                                })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    var cities = data.result || [];
+                                    var html = '&lt;option value=""&gt;— Seleccionar Ciudad —&lt;/option&gt;';
+                                    cities.forEach(function(c) {
+                                        html += '&lt;option value="' + c.id + '" data-zipcode="' + (c.zipcode || '') + '"&gt;' + c.name + '&lt;/option&gt;';
+                                    });
+                                    citySelect.innerHTML = html;
+                                    if (editCityId) {
+                                        citySelect.value = editCityId;
+                                    }
+                                });
+                            } else {
+                                citySelect.innerHTML = '&lt;option value=""&gt;— Primero selecciona Departamento —&lt;/option&gt;';
+                            }
+                        };
+
+                        // ====== Reset modal for adding ======
+                        window.resetAddressModal = function() {
+                            document.getElementById('addressModalForm').reset();
+                            document.getElementById('addressModalTitle').textContent = 'Nueva Dirección';
+                            document.getElementById('addressModalForm').action = '/my/addresses/add';
+                            citySelect.innerHTML = '&lt;option value=""&gt;— Primero selecciona Departamento —&lt;/option&gt;';
+                            zipInput.value = '';
+                        };
+                    })();
                 </script>
 
             </t>

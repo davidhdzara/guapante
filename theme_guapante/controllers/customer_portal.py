@@ -253,6 +253,18 @@ class GuapanteCustomerPortal(CustomerPortal):
     # MIS DIRECCIONES
     # ------------------------------------------------------------------
 
+    @http.route(['/my/addresses/get_cities'], type='json', auth='user', website=True)
+    def portal_get_cities(self, state_id=None, **kw):
+        """Return cities for a given state (department) as JSON."""
+        domain = []
+        default_country = request.env.ref('base.co', raise_if_not_found=False)
+        if state_id:
+            domain.append(('state_id', '=', int(state_id)))
+        elif default_country:
+            domain.append(('country_id', '=', default_country.id))
+        cities = request.env['res.city'].sudo().search(domain, order='name')
+        return [{'id': c.id, 'name': c.name, 'zipcode': c.zipcode or ''} for c in cities]
+
     @http.route(['/my/addresses'], type='http', auth='user', website=True, methods=['GET'])
     def portal_my_addresses(self, **kw):
         """Render the Addresses page with all child contacts for this partner."""
@@ -305,24 +317,46 @@ class GuapanteCustomerPortal(CustomerPortal):
             'name': post.get('name', '').strip() or company_partner.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
-            'city': post.get('city', '').strip(),
             'zip': post.get('zip', '').strip() or False,
             'comment': post.get('comment', '').strip() or False,
         }
 
-        # Country (always set explicitly)
-        country_id = post.get('country_id', '').strip()
+        # City (from res.city dropdown — auto-fills city text, state, zip)
+        city_id = post.get('city_id', '').strip()
         try:
-            vals['country_id'] = int(country_id) if country_id else False
+            if city_id:
+                city_rec = request.env['res.city'].sudo().browse(int(city_id))
+                if city_rec.exists():
+                    vals['city_id'] = city_rec.id
+                    vals['city'] = city_rec.name
+                    if city_rec.state_id:
+                        vals['state_id'] = city_rec.state_id.id
+                    if city_rec.zipcode:
+                        vals['zip'] = city_rec.zipcode
+                    if city_rec.country_id:
+                        vals['country_id'] = city_rec.country_id.id
+            else:
+                vals['city_id'] = False
+                vals['city'] = post.get('city_fallback', '').strip() or False
         except (ValueError, TypeError):
-            vals['country_id'] = False
+            vals['city_id'] = False
+            vals['city'] = post.get('city_fallback', '').strip() or False
 
-        # State (always set explicitly)
-        state_id = post.get('state_id', '').strip()
-        try:
-            vals['state_id'] = int(state_id) if state_id else False
-        except (ValueError, TypeError):
-            vals['state_id'] = False
+        # Country — only set if city didn't already set it
+        if 'country_id' not in vals:
+            country_id = post.get('country_id', '').strip()
+            try:
+                vals['country_id'] = int(country_id) if country_id else False
+            except (ValueError, TypeError):
+                vals['country_id'] = False
+
+        # State — only set if city didn't already set it
+        if 'state_id' not in vals:
+            state_id = post.get('state_id', '').strip()
+            try:
+                vals['state_id'] = int(state_id) if state_id else False
+            except (ValueError, TypeError):
+                vals['state_id'] = False
 
         # Phone (optional for child contacts)
         phone = post.get('phone', '').strip()
@@ -354,24 +388,46 @@ class GuapanteCustomerPortal(CustomerPortal):
             'name': post.get('name', '').strip() or address.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
-            'city': post.get('city', '').strip(),
             'zip': post.get('zip', '').strip() or False,
             'comment': post.get('comment', '').strip() or False,
         }
 
-        # Country (always set explicitly)
-        country_id = post.get('country_id', '').strip()
+        # City (from res.city dropdown — auto-fills city text, state, zip)
+        city_id = post.get('city_id', '').strip()
         try:
-            vals['country_id'] = int(country_id) if country_id else False
+            if city_id:
+                city_rec = request.env['res.city'].sudo().browse(int(city_id))
+                if city_rec.exists():
+                    vals['city_id'] = city_rec.id
+                    vals['city'] = city_rec.name
+                    if city_rec.state_id:
+                        vals['state_id'] = city_rec.state_id.id
+                    if city_rec.zipcode:
+                        vals['zip'] = city_rec.zipcode
+                    if city_rec.country_id:
+                        vals['country_id'] = city_rec.country_id.id
+            else:
+                vals['city_id'] = False
+                vals['city'] = post.get('city_fallback', '').strip() or False
         except (ValueError, TypeError):
-            vals['country_id'] = False
+            vals['city_id'] = False
+            vals['city'] = post.get('city_fallback', '').strip() or False
 
-        # State (always set explicitly)
-        state_id = post.get('state_id', '').strip()
-        try:
-            vals['state_id'] = int(state_id) if state_id else False
-        except (ValueError, TypeError):
-            vals['state_id'] = False
+        # Country — only set if city didn't already set it
+        if 'country_id' not in vals:
+            country_id = post.get('country_id', '').strip()
+            try:
+                vals['country_id'] = int(country_id) if country_id else False
+            except (ValueError, TypeError):
+                vals['country_id'] = False
+
+        # State — only set if city didn't already set it
+        if 'state_id' not in vals:
+            state_id = post.get('state_id', '').strip()
+            try:
+                vals['state_id'] = int(state_id) if state_id else False
+            except (ValueError, TypeError):
+                vals['state_id'] = False
 
         # Phone
         phone = post.get('phone', '').strip()
