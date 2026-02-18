@@ -60,11 +60,12 @@ class GuapanteCustomerPortal(CustomerPortal):
             sortby = 'date'
         order = searchbar_sortings[sortby]['order']
 
-        # 2. Status Filters (Spanish)
+        # 2. Status Filters (Spanish — ordered by lifecycle)
         searchbar_filters = {
             'all':       {'label': 'Todos', 'domain': []},
             'received':  {'label': 'Recibido', 'domain': [('guapante_delivery_status', '=', 'received')]},
-            'active':    {'label': 'Envíos Activos', 'domain': [('guapante_delivery_status', 'in', ['preparing', 'shipping'])]},
+            'preparing': {'label': 'Preparando', 'domain': [('guapante_delivery_status', '=', 'preparing')]},
+            'shipping':  {'label': 'En Camino', 'domain': [('guapante_delivery_status', '=', 'shipping')]},
             'delivered': {'label': 'Entregado', 'domain': [('guapante_delivery_status', '=', 'delivered')]},
             'cancelled': {'label': 'Cancelado', 'domain': [('state', '=', 'cancel')]},
         }
