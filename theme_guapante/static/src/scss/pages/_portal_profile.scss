@@ -1,0 +1,52 @@
+/* =========================================
+   GUAPANTE PORTAL — MI PERFIL
+   ========================================= */
+
+// 1. Profile Form Card
+.guapante-profile-card {
+    overflow: hidden;
+
+    .card-body {
+        position: relative;
+    }
+}
+
+// 2. Custom form inputs — green accent on focus
+.guapante-profile-input {
+    border: 1px solid #dee2e6;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.92rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:focus {
+        border-color: #198754 !important;
+        box-shadow: 0 0 0 0.15rem rgba(25, 135, 84, 0.15) !important;
+    }
+
+    &.is-invalid {
+        border-color: #dc3545;
+    }
+}
+
+.form-select.guapante-profile-input {
+    cursor: pointer;
+}
+
+// 3. Quick-access cards — subtle hover lift
+.guapante-quick-access-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+
+    &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.08) !important;
+    }
+}
+
+// 4. Success alert — green themed
+.guapante-alert-success {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: #198754;
+    font-weight: 500;
+    font-size: 0.9rem;
+}

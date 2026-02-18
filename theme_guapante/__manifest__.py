@@ -25,6 +25,7 @@
         'views/shop/checkout.xml',
         'views/portal/portal_layout.xml', # Custom Portal Layout
         'views/portal/my_orders.xml', # Custom My Orders View
+        'views/portal/my_profile.xml', # Custom Mi Perfil View
         'views/auth/login.xml',
         'views/auth/signup.xml',
         'views/snippets/s_hero.xml',
@@ -58,6 +59,7 @@
             'theme_guapante/static/src/scss/pages/_checkout.scss',  # Checkout page styles
             'theme_guapante/static/src/scss/pages/_order_status.scss',  # Order status page styles
             'theme_guapante/static/src/scss/pages/_portal_orders.scss', # Portal / My Orders styles
+            'theme_guapante/static/src/scss/pages/_portal_profile.scss', # Portal / Mi Perfil styles
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',

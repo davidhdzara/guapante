@@ -87,7 +87,7 @@
                                                 <span class="d-block fw-bold text-dark text-truncate"><t t-esc="user_id.email or user_id.name"/></span>
                                             </div>
                                             <div class="px-2 pb-2">
-                                                <li><a class="dropdown-item py-2" href="/my/home"><span>Mi Perfil</span></a></li>
+                                                <li><a class="dropdown-item py-2" href="/my/profile"><span>Mi Perfil</span></a></li>
                                                 <li><a class="dropdown-item py-2" href="/my/orders"><span>Mis Pedidos</span></a></li>
                                                 <li><a class="dropdown-item py-2" href="/web/session/logout?redirect=/"><span>Cerrar Sesión</span></a></li>
                                             </div>

@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================
+         MI PERFIL — Standalone template (NO inherit_id)
+         Route: /my/profile
+         Controller: GuapanteCustomerPortal.portal_my_profile
+         ============================================================ -->
+    <template id="guapante_my_profile" name="Guapante: Mi Perfil">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="False"/>
+
+            <!-- Guapante Custom Layout with Sidebar -->
+            <t t-call="theme_guapante.guapante_portal_layout">
+
+                <!-- HEADER -->
+                <div class="d-flex flex-column mb-4">
+                    <h2 class="fw-bold text-dark mb-1">Mi Perfil</h2>
+                    <p class="text-muted mb-0">Administra tu información personal y de contacto.</p>
+                </div>
+
+                <!-- SUCCESS ALERT -->
+                <div t-if="success" class="alert guapante-alert-success d-flex align-items-center gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-check-circle fs-5"></i>
+                    <span>Tus datos han sido actualizados correctamente.</span>
+                </div>
+
+                <!-- ERROR ALERTS -->
+                <div t-if="error_message" class="alert alert-danger d-flex align-items-start gap-2 mb-4 rounded-3 border-0" role="alert">
+                    <i class="fa fa-exclamation-triangle mt-1"></i>
+                    <div>
+                        <t t-foreach="error_message" t-as="err">
+                            <span t-esc="err"/><br t-if="not err_last"/>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- PROFILE FORM CARD -->
+                <div class="guapante-profile-card card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4 p-lg-5">
+                        <h5 class="fw-bold text-dark mb-4">
+                            <i class="fa fa-id-card-o me-2 text-muted opacity-50"></i>Información de Usuario
+                        </h5>
+
+                        <form method="POST" action="/my/profile" class="guapante-profile-form">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                            <!-- Nombre Completo -->
+                            <div class="mb-3">
+                                <label for="profile_name" class="form-label small fw-semibold text-muted">Nombre Completo</label>
+                                <input type="text"
+                                       id="profile_name"
+                                       name="name"
+                                       t-att-class="'form-control guapante-profile-input rounded-3' + (' is-invalid' if error.get('name') else '')"
+                                       t-att-value="post.get('name') if post else partner.name"
+                                       required="required"
+                                       placeholder="Tu nombre completo"/>
+                            </div>
+
+                            <!-- Correo Electrónico -->
+                            <div class="mb-3">
+                                <label for="profile_email" class="form-label small fw-semibold text-muted">Correo Electrónico</label>
+                                <input type="email"
+                                       id="profile_email"
+                                       name="email"
+                                       t-att-class="'form-control guapante-profile-input rounded-3' + (' is-invalid' if error.get('email') else '')"
+                                       t-att-value="post.get('email') if post else partner.email"
+                                       required="required"
+                                       placeholder="correo@ejemplo.com"/>
+                            </div>
+
+                            <!-- Teléfono de Contacto -->
+                            <div class="mb-3">
+                                <label for="profile_phone" class="form-label small fw-semibold text-muted">Teléfono de Contacto</label>
+                                <input type="tel"
+                                       id="profile_phone"
+                                       name="phone"
+                                       t-att-class="'form-control guapante-profile-input rounded-3' + (' is-invalid' if error.get('phone') else '')"
+                                       t-att-value="post.get('phone') if post else partner.phone"
+                                       required="required"
+                                       placeholder="300 123 4567"/>
+                            </div>
+
+                            <!-- Documento de Identidad (2 campos: tipo + número) -->
+                            <div class="mb-4">
+                                <label class="form-label small fw-semibold text-muted">Documento de Identidad</label>
+                                <div class="row g-2">
+                                    <div class="col-12 col-md-5">
+                                        <select name="l10n_latam_identification_type_id"
+                                                id="profile_id_type"
+                                                class="form-select guapante-profile-input rounded-3">
+                                            <option value="">— Tipo —</option>
+                                            <t t-foreach="identification_types" t-as="id_type">
+                                                <option t-att-value="id_type.id"
+                                                        t-att-selected="id_type.id == (partner.l10n_latam_identification_type_id.id if partner.l10n_latam_identification_type_id else False)">
+                                                    <t t-esc="id_type.name"/>
+                                                </option>
+                                            </t>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 col-md-7">
+                                        <input type="text"
+                                               id="profile_vat"
+                                               name="vat"
+                                               class="form-control guapante-profile-input rounded-3"
+                                               t-att-value="post.get('vat') if post else partner.vat"
+                                               placeholder="Número de documento"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="btn btn-success rounded-pill w-100 py-2 fw-bold">
+                                Actualizar Datos
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- QUICK ACCESS CARDS -->
+                <h5 class="fw-bold text-dark mb-3">Accesos Rápidos</h5>
+                <div class="row g-3 mb-4">
+                    <!-- Mis Direcciones -->
+                    <div class="col-12 col-md-4">
+                        <a href="/my/account" class="text-decoration-none">
+                            <div class="guapante-quick-access-card card border-0 shadow-sm rounded-4 h-100 text-center p-4">
+                                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width: 56px; height: 56px; background-color: rgba(25,135,84,0.1);">
+                                    <i class="fa fa-map-marker fs-4 text-success"></i>
+                                </div>
+                                <h6 class="fw-bold text-dark mb-1">Mis Direcciones</h6>
+                                <small class="text-muted">Agregar o modificar domicilios.</small>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Mis Pedidos -->
+                    <div class="col-12 col-md-4">
+                        <a href="/my/orders" class="text-decoration-none">
+                            <div class="guapante-quick-access-card card border-0 shadow-sm rounded-4 h-100 text-center p-4">
+                                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width: 56px; height: 56px; background-color: rgba(108,117,125,0.1);">
+                                    <i class="fa fa-shopping-bag fs-4 text-secondary"></i>
+                                </div>
+                                <h6 class="fw-bold text-dark mb-1">Mis Pedidos</h6>
+                                <small class="text-muted">Ver historial y estado de pedidos.</small>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Mis Facturas -->
+                    <div class="col-12 col-md-4">
+                        <a href="/my/invoices?filterby=invoices" class="text-decoration-none">
+                            <div class="guapante-quick-access-card card border-0 shadow-sm rounded-4 h-100 text-center p-4">
+                                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width: 56px; height: 56px; background-color: rgba(13,110,253,0.1);">
+                                    <i class="fa fa-file-text-o fs-4 text-primary"></i>
+                                </div>
+                                <h6 class="fw-bold text-dark mb-1">Mis Facturas</h6>
+                                <small class="text-muted">Acceder a documentos contables.</small>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+            </t>
+        </t>
+    </template>
+</odoo>

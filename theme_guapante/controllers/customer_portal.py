@@ -2,6 +2,7 @@
 from odoo import http, _
 from odoo.http import request
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
+from odoo.exceptions import UserError
 from datetime import datetime, timedelta
 import logging
 
@@ -153,3 +154,98 @@ class GuapanteCustomerPortal(CustomerPortal):
             )
 
         return request.redirect('/shop/cart')
+
+    # ------------------------------------------------------------------
+    # MI PERFIL
+    # ------------------------------------------------------------------
+
+    def _get_optional_fields(self):
+        """Add identification type to the optional fields so /my/account also
+        accepts it without raising 'Unknown field' errors."""
+        return super()._get_optional_fields() + ["l10n_latam_identification_type_id"]
+
+    @http.route(['/my/profile'], type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_profile(self, **kw):
+        """Render the Mi Perfil page with the user's partner data."""
+        values = self._prepare_portal_layout_values()
+        partner = request.env.user.partner_id
+
+        # Identification types for Colombia
+        country_co = request.env.ref('base.co', raise_if_not_found=False)
+        id_type_domain = [('country_id', '=', country_co.id)] if country_co else []
+        identification_types = request.env['l10n_latam.identification.type'].sudo().search(id_type_domain)
+
+        values.update({
+            'partner': partner,
+            'identification_types': identification_types,
+            'page_name': 'home',  # Highlights "Mi Perfil" in sidebar
+            'error': {},
+            'error_message': [],
+            'success': kw.get('success'),
+        })
+
+        return request.render('theme_guapante.guapante_my_profile', values)
+
+    @http.route(['/my/profile'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
+    def portal_my_profile_save(self, **post):
+        """Validate and save profile changes to res.partner (bidirectional)."""
+        partner = request.env.user.partner_id
+        error = {}
+        error_message = []
+
+        # --- Validation ---
+        if not post.get('name', '').strip():
+            error['name'] = 'missing'
+            error_message.append(_('El nombre es obligatorio.'))
+
+        if not post.get('email', '').strip():
+            error['email'] = 'missing'
+            error_message.append(_('El correo electrónico es obligatorio.'))
+
+        if not post.get('phone', '').strip():
+            error['phone'] = 'missing'
+            error_message.append(_('El teléfono es obligatorio.'))
+
+        if error:
+            # Re-render with errors
+            values = self._prepare_portal_layout_values()
+            country_co = request.env.ref('base.co', raise_if_not_found=False)
+            id_type_domain = [('country_id', '=', country_co.id)] if country_co else []
+            identification_types = request.env['l10n_latam.identification.type'].sudo().search(id_type_domain)
+
+            values.update({
+                'partner': partner,
+                'identification_types': identification_types,
+                'page_name': 'home',
+                'error': error,
+                'error_message': error_message,
+                # Preserve submitted values so the form doesn't reset
+                'post': post,
+            })
+            return request.render('theme_guapante.guapante_my_profile', values)
+
+        # --- Build write values ---
+        write_vals = {
+            'name': post['name'].strip(),
+            'email': post['email'].strip(),
+            'phone': post['phone'].strip(),
+        }
+
+        # VAT / identification number
+        vat = post.get('vat', '').strip()
+        write_vals['vat'] = vat if vat else False
+
+        # Identification type (Many2one)
+        id_type = post.get('l10n_latam_identification_type_id')
+        if id_type:
+            try:
+                write_vals['l10n_latam_identification_type_id'] = int(id_type)
+            except (ValueError, TypeError):
+                pass
+
+        # --- Write to res.partner (bidirectional with Contacts module) ---
+        partner.sudo().write(write_vals)
+        _logger.info("Guapante Profile: Updated partner %s (%s)", partner.id, partner.name)
+
+        return request.redirect('/my/profile?success=1')
+
