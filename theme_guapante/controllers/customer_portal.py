@@ -310,21 +310,19 @@ class GuapanteCustomerPortal(CustomerPortal):
             'comment': post.get('comment', '').strip() or False,
         }
 
-        # Country
-        country_id = post.get('country_id')
-        if country_id:
-            try:
-                vals['country_id'] = int(country_id)
-            except (ValueError, TypeError):
-                pass
+        # Country (always set explicitly)
+        country_id = post.get('country_id', '').strip()
+        try:
+            vals['country_id'] = int(country_id) if country_id else False
+        except (ValueError, TypeError):
+            vals['country_id'] = False
 
-        # State
-        state_id = post.get('state_id')
-        if state_id:
-            try:
-                vals['state_id'] = int(state_id)
-            except (ValueError, TypeError):
-                pass
+        # State (always set explicitly)
+        state_id = post.get('state_id', '').strip()
+        try:
+            vals['state_id'] = int(state_id) if state_id else False
+        except (ValueError, TypeError):
+            vals['state_id'] = False
 
         # Phone (optional for child contacts)
         phone = post.get('phone', '').strip()
@@ -361,21 +359,19 @@ class GuapanteCustomerPortal(CustomerPortal):
             'comment': post.get('comment', '').strip() or False,
         }
 
-        # Country
-        country_id = post.get('country_id')
-        if country_id:
-            try:
-                vals['country_id'] = int(country_id)
-            except (ValueError, TypeError):
-                pass
+        # Country (always set explicitly)
+        country_id = post.get('country_id', '').strip()
+        try:
+            vals['country_id'] = int(country_id) if country_id else False
+        except (ValueError, TypeError):
+            vals['country_id'] = False
 
-        # State
-        state_id = post.get('state_id')
-        if state_id:
-            try:
-                vals['state_id'] = int(state_id)
-            except (ValueError, TypeError):
-                pass
+        # State (always set explicitly)
+        state_id = post.get('state_id', '').strip()
+        try:
+            vals['state_id'] = int(state_id) if state_id else False
+        except (ValueError, TypeError):
+            vals['state_id'] = False
 
         # Phone
         phone = post.get('phone', '').strip()
