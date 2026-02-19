@@ -28,8 +28,8 @@
                         <div class="position-relative d-inline-block">
                             <i t-attf-class="fa fa-shopping-cart fs-4 mb-1 {{ 'text-primary' if '/shop/cart' in request.httprequest.path else '' }}"></i>
                             <t t-set="cart_quantity" t-value="request.website.sale_get_order().cart_quantity if request.website.sale_get_order() else 0"/>
-                            <span t-if="cart_quantity > 0" class="badge rounded-pill bg-danger position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem; transform: translate(-30%, -30%) !important;">
-                                <t t-esc="cart_quantity"/>
+                            <span t-attf-class="my_cart_quantity badge rounded-pill bg-danger position-absolute top-0 start-100 translate-middle p-1 border border-light #{'d-none' if not cart_quantity else ''}" style="font-size: 0.6rem; transform: translate(-30%, -30%) !important;">
+                                <t t-esc="cart_quantity or ''"/>
                             </span>
                         </div>
                         <span class="d-block small" style="font-size: 0.7rem;">Carrito</span>

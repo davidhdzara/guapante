@@ -30,8 +30,8 @@
                             <!-- Mobile Cart -->
                              <a href="/shop/cart" class="position-relative text-dark text-decoration-none">
                                 <i class="fa fa-shopping-basket fs-4"></i>
-                                <span t-if="cart_qty > 0" class="badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light" style="font-size: 0.6rem;">
-                                     <t t-esc="cart_qty"/>
+                                <span t-attf-class="my_cart_quantity badge bg-danger rounded-circle position-absolute top-0 start-100 translate-middle p-1 border border-light #{'d-none' if not cart_qty else ''}" style="font-size: 0.6rem;">
+                                     <t t-esc="cart_qty or ''"/>
                                 </span>
                              </a>
                         </div>

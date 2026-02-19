@@ -270,11 +270,13 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 })
             });
 
-            var itemCount = data.cart_lines_count || data.cart_quantity || 0;
-            var $badges = $('.my_cart_quantity, .o_wsale_my_cart .badge, .btn-cart-guapante .badge');
-            $badges.text(itemCount).removeClass('d-none');
+            const result = (data && data.result) ? data.result : data;
+            var itemCount = result.cart_quantity || result.cart_lines_count || 0;
+            var $badges = $('.my_cart_quantity');
             if (itemCount > 0) {
-                $badges.show(); $badges.parent().removeClass('d-none');
+                $badges.text(itemCount).removeClass('d-none').show();
+            } else {
+                $badges.text('').addClass('d-none');
             }
 
             $btn.removeClass('disabled').addClass('btn-success').html('<i class="fa fa-check me-2"></i> Agregado');
