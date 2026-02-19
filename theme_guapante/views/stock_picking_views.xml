@@ -9,6 +9,12 @@
                 <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
                 <field name="driver_id" placeholder="Conductor Asignado"/>
             </xpath>
+
+            <!-- Columnas: Cant. Cliente y UdM Cliente después de Demanda -->
+            <xpath expr="//field[@name='move_ids_without_package']//field[@name='product_uom_qty']" position="after">
+                <field name="customer_qty_display" string="Cant. Cliente" optional="show" readonly="1" class="text-end"/>
+                <field name="customer_uom_display" string="UdM Cliente" optional="show" readonly="1"/>
+            </xpath>
         </field>
     </record>
 </odoo>
