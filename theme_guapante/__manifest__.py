@@ -30,6 +30,7 @@
         'views/portal/my_addresses.xml', # Custom Mis Direcciones View
         'views/auth/login.xml',
         'views/auth/signup.xml',
+        'views/auth/reset_password.xml',
         'views/snippets/s_hero.xml',
         'views/snippets/s_features.xml',
         'views/snippets/s_categories.xml',
@@ -76,6 +77,7 @@
             'theme_guapante/static/src/scss/snippets/_s_about_cta.scss',
             # JavaScript files
             'theme_guapante/static/src/js/auth_signup.js',
+            'theme_guapante/static/src/js/reset_password.js',
             'theme_guapante/static/src/js/shop.js',
             'theme_guapante/static/src/js/product_layout_fix.js',  # Layout Fix JS
             'theme_guapante/static/src/js/cart_icon_replacement.js',  # Replace wishlist with cart

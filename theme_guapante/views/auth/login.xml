@@ -8,8 +8,9 @@
                 <t t-set="no_footer" t-value="True"/>
                 <t t-set="body_classname" t-value="'bg-white'"/>
                 
-                <!-- Detect Signup Page -->
+                <!-- Detect Signup / Reset Password Pages -->
                 <t t-set="is_signup" t-value="'/web/signup' in request.httprequest.path"/>
+                <t t-set="is_reset" t-value="'/web/reset_password' in request.httprequest.path"/>
                 
                 <div t-attf-class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white {{ 'flex-row-reverse' if is_signup else '' }}" style="min-height: 100vh;">
                     <!-- LEFT COLUMN (Becomes RIGHT on Signup): Form -->
