@@ -12,7 +12,7 @@ class SaleOrder(models.Model):
         ('preparing', 'Preparando'),
         ('shipping', 'En Camino'),
         ('delivered', 'Entregado'),
-    ], string="Estado de Entrega (Guapante)", compute='_compute_guapante_delivery_status')
+    ], string="Estado de Entrega (Guapante)", compute='_compute_guapante_delivery_status', store=True)
 
     @api.depends('state', 'picking_ids.state')
     def _compute_guapante_delivery_status(self):

@@ -228,7 +228,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         # If user is logged in, check ownership
         if not request.env.user._is_public():
              if Order.partner_id.commercial_partner_id != request.env.user.partner_id.commercial_partner_id:
-                 return Forbidden()
+                 raise Forbidden()
         
         return request.render("theme_guapante.guapante_order_status", {
             'order': Order,

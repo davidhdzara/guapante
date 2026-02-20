@@ -78,33 +78,5 @@ class GuapanteAuthSignupHome(AuthSignupHome):
 
         # Call parent signup
         self._signup_with_values(qcontext.get('token'), values)
-        request.env.cr.commit()
 
-    def _signup_create_user(self, values):
-        """ Override to inject custom partner fields during user creation. """
-        _logger.info("🟢 Guapante Signup - Creating User with values: %s", values)
-        
-        # Get custom values from context
-        company_type = request.env.context.get('signup_company_type', 'person')
-        vat = request.env.context.get('signup_vat')
-        identification_type_id = request.env.context.get('signup_identification_type_id')
-        
-        # Create user using parent method
-        user_sudo = super()._signup_create_user(values)
-        
-        # Immediately update the partner with custom fields
-        partner_values = {
-            'company_type': company_type,
-        }
-        
-        if vat:
-            partner_values['vat'] = vat
-            
-        if identification_type_id:
-            partner_values['l10n_latam_identification_type_id'] = identification_type_id
-        
-        _logger.info("🟡 Guapante Signup - Updating Partner %s with: %s", user_sudo.partner_id.id, partner_values)
-        user_sudo.partner_id.write(partner_values)
-        
-        _logger.info("🟢 Guapante Signup - Partner Updated Successfully!")
-        return user_sudo
+
