@@ -11,14 +11,59 @@ class GuapanteHomepage(http.Controller):
 
     @http.route('/shop/seasonal-products', type='http', auth='public', website=True, sitemap=False)
     def seasonal_products(self, **kwargs):
-        """Return rendered HTML of seasonal products — always fresh, no cache."""
+        """Return rendered HTML of seasonal products — always fresh, no cache.
+        HTML is built in Python to avoid dependency on a DB-registered template.
+        """
         domain = request.website.sale_product_domain() + [('is_seasonal', '=', True)]
-        seasonal_products = request.env['product.template'].sudo().search(domain, limit=8)
-        response = request.render('theme_guapante.s_seasonal_products_ajax', {
-            'seasonal_products': seasonal_products,
-        })
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
+        products = request.env['product.template'].sudo().search(domain, limit=8)
+
+        if not products:
+            html = (
+                '<div class="col-12">'
+                '<div class="alert alert-info text-center">'
+                '<p class="mb-0">No hay productos de temporada disponibles en este momento.</p>'
+                '</div></div>'
+            )
+        else:
+            parts = []
+            for p in products:
+                slug = request.env['ir.http']._slug(p)
+                img_url = '/web/image/product.template/%d/image_1024' % p.id
+                price = request.env['ir.qweb.field.monetary'].value_to_html(
+                    p.list_price,
+                    {'display_currency': p.currency_id},
+                ) if p.list_price else ''
+                discount = ''
+                if p.compare_list_price and p.compare_list_price > p.list_price:
+                    pct = int(((p.compare_list_price - p.list_price) / p.compare_list_price) * 100)
+                    discount = '<span class="badge bg-success rounded-2 fw-bold">-%d%%</span>' % pct
+                add_url = '/shop/cart/update?product_id=%d&add_qty=1' % p.product_variant_id.id
+                parts.append(
+                    '<div class="col-6 col-md-4 col-lg-3">'
+                    '<div class="product-card h-100 bg-white rounded-4 border overflow-hidden position-relative hover-shadow transition-base">'
+                    '<div class="position-absolute top-0 start-0 w-100 p-3 d-flex justify-content-between align-items-start z-1">'
+                    '%s'
+                    '<button type="button" class="btn btn-light rounded-circle shadow-sm p-0 d-flex align-items-center justify-content-center" style="width:35px;height:35px;" onclick="event.preventDefault();">'
+                    '<i class="fa fa-heart-o text-muted"></i></button></div>'
+                    '<a href="/shop/product/%s" class="d-block ratio ratio-1x1 bg-light">'
+                    '<img src="%s" class="img-fluid object-fit-cover w-100 h-100" alt="%s" loading="lazy"/></a>'
+                    '<div class="p-3 d-flex justify-content-between align-items-end">'
+                    '<div><a href="/shop/product/%s" class="text-decoration-none">'
+                    '<h5 class="fw-bold text-dark mb-1" style="font-size:1rem;">%s</h5></a>'
+                    '<p class="text-muted small mb-0">%s</p></div>'
+                    '<a href="%s" class="btn btn-light rounded-3 shadow-sm d-flex align-items-center justify-content-center" style="width:40px;height:40px;">'
+                    '<i class="fa fa-plus text-dark"></i></a></div>'
+                    '</div></div>'
+                    % (discount, slug, img_url, p.name, slug, p.name, price, add_url)
+                )
+            html = ''.join(parts)
+
+        from werkzeug.wrappers import Response as WerkzeugResponse
+        response = request.make_response(html, headers=[
+            ('Content-Type', 'text/html; charset=utf-8'),
+            ('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0'),
+            ('Pragma', 'no-cache'),
+        ])
         return response
 
 

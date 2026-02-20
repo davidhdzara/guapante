@@ -1,60 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Partial template rendered by the AJAX endpoint -->
-    <template id="s_seasonal_products_ajax" name="Seasonal Products AJAX Partial">
-        <t t-if="seasonal_products">
-            <t t-foreach="seasonal_products" t-as="product">
-                <div class="col-6 col-md-4 col-lg-3">
-                    <div class="product-card h-100 bg-white rounded-4 border overflow-hidden position-relative hover-shadow transition-base">
-                        <div class="position-absolute top-0 start-0 w-100 p-3 d-flex justify-content-between align-items-start z-1">
-                            <t t-if="product.compare_list_price > product.list_price">
-                                <t t-set="discount_pct" t-value="int(((product.compare_list_price - product.list_price) / product.compare_list_price) * 100)"/>
-                                <span class="badge bg-success rounded-2 fw-bold">-<t t-esc="discount_pct"/>%</span>
-                            </t>
-                            <span t-else=""/>
-                            <button type="button" class="btn btn-light rounded-circle shadow-sm p-0 d-flex align-items-center justify-content-center"
-                                    style="width: 35px; height: 35px;" onclick="event.preventDefault();">
-                                <i class="fa fa-heart-o text-muted"/>
-                            </button>
-                        </div>
-                        <a t-attf-href="/shop/product/#{slug(product)}" class="d-block ratio ratio-1x1 bg-light">
-                            <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
-                                 class="img-fluid object-fit-cover w-100 h-100"
-                                 t-att-alt="product.name" loading="lazy"/>
-                        </a>
-                        <div class="p-3 d-flex justify-content-between align-items-end">
-                            <div>
-                                <a t-attf-href="/shop/product/#{slug(product)}" class="text-decoration-none">
-                                    <h5 class="fw-bold text-dark mb-1" style="font-size: 1rem;"><t t-esc="product.name"/></h5>
-                                </a>
-                                <p class="text-muted small mb-0">
-                                    <t t-if="product.list_price">
-                                        <span t-field="product.list_price"
-                                              t-options="{'widget': 'monetary', 'display_currency': product.currency_id}"/>
-                                    </t>
-                                </p>
-                            </div>
-                            <a t-attf-href="/shop/cart/update?product_id=#{product.product_variant_id.id}&amp;add_qty=1"
-                               class="btn btn-light rounded-3 shadow-sm d-flex align-items-center justify-content-center"
-                               style="width: 40px; height: 40px;">
-                                <i class="fa fa-plus text-dark"/>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </t>
-        </t>
-        <t t-else="">
-            <div class="col-12">
-                <div class="alert alert-info text-center">
-                    <p class="mb-0">No hay productos de temporada disponibles en este momento.</p>
-                    <small class="text-muted">Ve al catálogo de productos y marca algunos como "De Temporada".</small>
-                </div>
-            </div>
-        </t>
-    </template>
-
     <!-- Main snippet: static shell only — products injected by seasonal_harvest.js -->
     <template id="s_seasonal_harvest_guapante" name="Seasonal Harvest">
         <section class="s_seasonal_harvest_guapante py-5 bg-white">
