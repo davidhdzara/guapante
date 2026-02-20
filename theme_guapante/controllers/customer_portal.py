@@ -318,8 +318,8 @@ class GuapanteCustomerPortal(CustomerPortal):
         # Use the commercial partner (company) — addresses belong to the company
         company_partner = partner.commercial_partner_id
 
-        # Get all active child contacts/addresses of the COMPANY
-        addresses = company_partner.child_ids.filtered(lambda c: c.active)
+        # Get only DELIVERY addresses of the COMPANY (portal only manages delivery)
+        addresses = company_partner.child_ids.filtered(lambda c: c.active and c.type == 'delivery')
 
         # Countries & states for the add/edit modal
         countries = request.env['res.country'].sudo().search([])
@@ -352,13 +352,10 @@ class GuapanteCustomerPortal(CustomerPortal):
         partner = request.env.user.partner_id
         company_partner = partner.commercial_partner_id
 
-        address_type = post.get('type', 'delivery')
-        if address_type not in ('delivery', 'invoice', 'contact', 'other', 'followup'):
-            address_type = 'delivery'
-
+        # Portal only creates delivery addresses
         vals = {
             'parent_id': company_partner.id,  # Child of the COMPANY, not the user
-            'type': address_type,
+            'type': 'delivery',
             'name': post.get('name', '').strip() or company_partner.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
@@ -424,12 +421,9 @@ class GuapanteCustomerPortal(CustomerPortal):
         if not address.exists() or address.parent_id.id != company_partner.id:
             return request.redirect('/my/addresses?error=not_found')
 
-        address_type = post.get('type', address.type)
-        if address_type not in ('delivery', 'invoice', 'contact', 'other', 'followup'):
-            address_type = address.type
-
+        # Portal only manages delivery addresses
         vals = {
-            'type': address_type,
+            'type': 'delivery',
             'name': post.get('name', '').strip() or address.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
