@@ -155,6 +155,51 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         return request.redirect('/shop/cart')
 
+    @http.route(['/my/orders/cancel/<int:order_id>'], type='http', auth="user", website=True, methods=['POST'], csrf=True)
+    def portal_cancel_order(self, order_id, **kw):
+        """Cancel a sale order from the portal.
+
+        Only allowed when:
+        - The order belongs to the authenticated user
+        - The order is in 'sale' state (confirmed)
+        - The delivery status is 'received' (no pickings processed yet)
+
+        This cancels:
+        1. Associated stock.picking records (inventory)
+        2. The sale.order itself via _action_cancel()
+        """
+        order = request.env['sale.order'].sudo().browse(order_id)
+
+        # Security: verify ownership
+        if not order.exists():
+            return request.redirect('/my/orders')
+
+        partner = request.env.user.partner_id
+        if order.partner_id.id != partner.id and order.partner_id.id != partner.commercial_partner_id.id:
+            _logger.warning("Guapante Cancel: User %s tried to cancel order %s that doesn't belong to them", partner.id, order_id)
+            return request.redirect('/my/orders')
+
+        # Only allow cancellation if order is confirmed and in 'received' status
+        if order.state != 'sale' or order.guapante_delivery_status != 'received':
+            _logger.warning("Guapante Cancel: Order %s cannot be cancelled (state=%s, delivery=%s)", order.name, order.state, order.guapante_delivery_status)
+            return request.redirect('/my/orders')
+
+        try:
+            # 1. Cancel associated stock pickings (inventory)
+            pickings_to_cancel = order.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
+            if pickings_to_cancel:
+                pickings_to_cancel.action_cancel()
+                _logger.info("Guapante Cancel: Cancelled %d pickings for order %s", len(pickings_to_cancel), order.name)
+
+            # 2. Cancel the sale order (also handles procurement cleanup)
+            order._action_cancel()
+            _logger.info("Guapante Cancel: Order %s cancelled successfully by user %s", order.name, partner.name)
+
+        except Exception as e:
+            _logger.error("Guapante Cancel: Error cancelling order %s: %s", order.name, str(e))
+
+        return request.redirect('/my/orders')
+
     # ------------------------------------------------------------------
     # MI PERFIL
     # ------------------------------------------------------------------
