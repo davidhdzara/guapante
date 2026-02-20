@@ -56,6 +56,14 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         // Move product detail into the column
         $productColumn.append($productDetail);
 
+        // Strip Odoo's sticky positioning from the carousel to prevent
+        // the product card from jumping/moving on scroll
+        var $carousel = $productDetail.find('#o-carousel-product');
+        if ($carousel.length) {
+            $carousel.removeClass('position-sticky');
+            $carousel.css({ 'position': 'relative', 'top': 'auto' });
+        }
+
         console.log('Guapante: Sidebar layout created via JavaScript.');
 
         // Load categories from the hidden XML source

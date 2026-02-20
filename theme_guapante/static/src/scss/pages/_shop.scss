@@ -133,23 +133,12 @@
     }
 }
 
-// Fix carousel sticky positioning globally
+// Fix carousel — disable Odoo's sticky positioning completely
+// Odoo core JS sets position-sticky + inline top on scroll, which causes
+// the entire product card to shift. Override unconditionally.
 #o-carousel-product {
-
-    // Disable sticky on mobile to prevent scroll glitch
-    @media (max-width: 991.98px) {
-        position: relative !important;
-        top: 0 !important;
-    }
-
-    // On desktop, keep sticky but adjust for header (approx 90-100px)
-    // On desktop, keep sticky but adjust for header (approx 90-100px)
-    @media (min-width: 992px) {
-        &.position-sticky {
-            top: auto !important; // Disable sticky top
-            position: relative !important; // Disable sticky
-        }
-    }
+    position: relative !important;
+    top: auto !important;
 
     // Border around carousel
     border: 1px solid #E5E7EB;
@@ -158,7 +147,7 @@
 
     // No padding - images should fill to border edge
     .carousel-item img {
-        border-radius: 0; // Sin border radius interno
+        border-radius: 0;
         width: 100%;
         object-fit: cover;
     }
