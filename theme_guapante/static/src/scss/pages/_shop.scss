@@ -398,10 +398,13 @@
 // 6. Unit Selector Styling (Unidades/Kg/g)
 .guapante-unit-selector {
     .form-label {
-        font-size: 0.7rem;
-        letter-spacing: 0.05em;
-        color: #6B7280;
-        margin-bottom: 0.5rem;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #9CA3AF;
+        margin-bottom: 0.85rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #f0f0f0;
 
         i {
             opacity: 0.7;
@@ -422,11 +425,12 @@
         }
 
         .btn-outline-success {
-            border: 1.5px solid #E5E7EB;
+            border: 1px solid #dee2e6;
             background: white;
             color: #374151;
             font-size: 0.875rem;
             padding: 0.65rem 1rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
             transition: all 0.2s;
             font-weight: 500;
             flex: 1;
@@ -484,11 +488,12 @@
         }
 
         .btn-outline-success {
-            border: 1.5px solid #E5E7EB;
+            border: 1px solid #dee2e6;
             background: white;
             color: #374151;
             font-size: 0.875rem;
             padding: 0.65rem 1rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
             transition: all 0.2s;
             font-weight: 500;
             flex: 1;
@@ -516,27 +521,31 @@
 
 // Unit Selector Container background
 .guapante-unit-selector-container {
-    background-color: #F3F4F6 !important;
-    border: 1px solid #E5E7EB;
+    background-color: #FFFFFF !important;
+    border: 1px solid #eee;
+    border-radius: 16px !important;
+    padding: 1.5rem !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    transition: box-shadow 0.2s ease;
 }
 
 // Quantity selector styling
 .guapante-quantity-selector {
     .input-group {
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
+        border-radius: 12px;
         overflow: hidden;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 
         .btn {
-            background: white;
-            border: 1.5px solid #E5E7EB;
+            border: none;
+            background: #f8f9fa;
             color: #374151;
             padding: 0.65rem 1rem;
             transition: all 0.2s;
 
             &:hover {
-                background-color: #F9FAFB;
-                border-color: darken(#E5E7EB, 10%);
+                background: #e9ecef;
             }
 
             i {
@@ -545,9 +554,9 @@
         }
 
         .guapante-qty-input {
-            border: 1.5px solid #E5E7EB;
-            border-left: none;
-            border-right: none;
+            border: none;
+            border-left: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
             background: white;
             font-size: 1.25rem;
             font-weight: 600;
@@ -557,11 +566,13 @@
             &::-webkit-outer-spin-button,
             &::-webkit-inner-spin-button {
                 -webkit-appearance: none;
+                appearance: none;
                 margin: 0;
             }
 
             &[type=number] {
                 -moz-appearance: textfield;
+                appearance: textfield;
             }
         }
     }
@@ -569,16 +580,18 @@
 
 // Add to cart button inside container
 .guapante-add-to-cart-btn {
-    font-weight: 600;
+    margin-top: 0.75rem;
+    border-radius: 12px;
     padding: 0.85rem 1.5rem;
+    font-weight: 600;
     font-size: 1rem;
-    border-radius: 8px;
+    letter-spacing: 0.2px;
     transition: all 0.2s;
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px rgba(25, 135, 84, 0.25);
 
     &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(25, 135, 84, 0.35);
     }
 }
 
