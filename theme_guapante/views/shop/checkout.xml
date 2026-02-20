@@ -86,27 +86,177 @@
                                             </select>
                                         </div>
 
-                                        <!-- Link to add a new address via Odoo's native form -->
+                                        <!-- Open modal to add new address -->
                                         <div class="mt-3">
-                                            <a href="/shop/address?address_type=delivery" class="btn btn-outline-secondary btn-sm">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                    data-bs-toggle="modal" data-bs-target="#checkoutAddressModal"
+                                                    onclick="resetCheckoutAddressModal()">
                                                 <i class="fa fa-plus me-1"></i> Agregar otra dirección
-                                            </a>
+                                            </button>
                                         </div>
                                     </t>
 
-                                    <!-- If no addresses exist, show a message and link to Odoo's address form -->
+                                    <!-- If no addresses exist -->
                                     <t t-if="not shippings">
                                         <div class="alert alert-warning d-flex align-items-center" role="alert">
                                             <i class="fa fa-exclamation-triangle me-2"></i>
                                             <div>
-                                                No tiene direcciones de envío registradas. 
-                                                <a href="/shop/address?address_type=delivery" class="alert-link">Agregar una dirección</a>
+                                                No tiene direcciones de envío registradas.
+                                                <button type="button" class="btn btn-link alert-link p-0 ms-1"
+                                                        data-bs-toggle="modal" data-bs-target="#checkoutAddressModal"
+                                                        onclick="resetCheckoutAddressModal()">
+                                                    Agregar una dirección
+                                                </button>
                                             </div>
                                         </div>
                                     </t>
 
                                 </div>
                             </div>
+
+                            <!-- ==========================================
+                                 ADD ADDRESS MODAL (Checkout)
+                                 ========================================== -->
+                            <div class="modal fade" id="checkoutAddressModal" tabindex="-1" aria-labelledby="checkoutAddressModalTitle" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered modal-lg">
+                                    <div class="modal-content border-0 rounded-4 shadow">
+                                        <div class="modal-header border-0 pb-0 px-4 pt-4">
+                                            <h5 class="modal-title fw-bold" id="checkoutAddressModalTitle">Nueva Dirección de Entrega</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                        </div>
+                                        <div class="modal-body px-4 py-3">
+                                            <form id="checkoutAddressForm" method="POST" action="/shop/address/add_from_checkout">
+                                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                <input type="hidden" name="type" value="delivery"/>
+
+                                                <div class="row g-3">
+                                                    <!-- Name -->
+                                                    <div class="col-12">
+                                                        <label for="chk_addr_name" class="form-label small fw-semibold text-muted">Nombre / Etiqueta</label>
+                                                        <input type="text" id="chk_addr_name" name="name" class="form-control rounded-3"
+                                                               placeholder="Ej: Casa, Oficina, Finca..." required="required"/>
+                                                    </div>
+
+                                                    <!-- Street -->
+                                                    <div class="col-12">
+                                                        <label for="chk_addr_street" class="form-label small fw-semibold text-muted">Dirección (Calle)</label>
+                                                        <input type="text" id="chk_addr_street" name="street" class="form-control rounded-3"
+                                                               placeholder="Calle 123 #45-67, Torre 2, Apto 501" required="required"/>
+                                                    </div>
+
+                                                    <!-- Street2 -->
+                                                    <div class="col-12">
+                                                        <label for="chk_addr_street2" class="form-label small fw-semibold text-muted">Barrio / Referencia</label>
+                                                        <input type="text" id="chk_addr_street2" name="street2" class="form-control rounded-3"
+                                                               placeholder="Barrio El Poblado"/>
+                                                    </div>
+
+                                                    <!-- Departamento -->
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="chk_addr_state" class="form-label small fw-semibold text-muted">Departamento / Estado</label>
+                                                        <select id="chk_addr_state" name="state_id" class="form-select rounded-3" required="required">
+                                                            <option value="">— Seleccionar Departamento —</option>
+                                                            <t t-foreach="states" t-as="st">
+                                                                <option t-att-value="st.id">
+                                                                    <t t-esc="st.name"/>
+                                                                </option>
+                                                            </t>
+                                                        </select>
+                                                    </div>
+
+                                                    <!-- Ciudad (cascading) -->
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="chk_addr_city" class="form-label small fw-semibold text-muted">Ciudad / Municipio</label>
+                                                        <select id="chk_addr_city" name="city_id" class="form-select rounded-3" required="required">
+                                                            <option value="">— Primero selecciona Departamento —</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <!-- ZIP (auto-filled) -->
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="chk_addr_zip" class="form-label small fw-semibold text-muted">Código Postal</label>
+                                                        <input type="text" id="chk_addr_zip" name="zip" class="form-control rounded-3"
+                                                               placeholder="Auto-completado" readonly="readonly"/>
+                                                    </div>
+
+                                                    <!-- Phone -->
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="chk_addr_phone" class="form-label small fw-semibold text-muted">Teléfono (opcional)</label>
+                                                        <input type="tel" id="chk_addr_phone" name="phone" class="form-control rounded-3"
+                                                               placeholder="300 123 4567"/>
+                                                    </div>
+
+                                                    <!-- Comment -->
+                                                    <div class="col-12">
+                                                        <label for="chk_addr_comment" class="form-label small fw-semibold text-muted">Instrucciones de Entrega</label>
+                                                        <textarea id="chk_addr_comment" name="comment" rows="2"
+                                                                  class="form-control rounded-3"
+                                                                  placeholder="Ej: Dejar en portería si no contesto"></textarea>
+                                                    </div>
+                                                </div>
+
+                                                <div class="d-flex justify-content-end gap-2 mt-4">
+                                                    <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+                                                        Cancelar
+                                                    </button>
+                                                    <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold">
+                                                        <i class="fa fa-check me-1"></i>Guardar y Usar
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cascading JS for checkout address modal -->
+                            <script type="text/javascript">
+                                (function() {
+                                    var stateSelect = document.getElementById('chk_addr_state');
+                                    var citySelect = document.getElementById('chk_addr_city');
+                                    var zipInput = document.getElementById('chk_addr_zip');
+
+                                    stateSelect.addEventListener('change', function() {
+                                        var stateId = this.value;
+                                        citySelect.innerHTML = '&lt;option value=""&gt;Cargando...&lt;/option&gt;';
+                                        zipInput.value = '';
+                                        if (!stateId) {
+                                            citySelect.innerHTML = '&lt;option value=""&gt;— Primero selecciona Departamento —&lt;/option&gt;';
+                                            return;
+                                        }
+                                        fetch('/my/addresses/get_cities', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {state_id: parseInt(stateId)}})
+                                        })
+                                        .then(function(r) { return r.json(); })
+                                        .then(function(data) {
+                                            var cities = data.result || [];
+                                            var html = '&lt;option value=""&gt;— Seleccionar Ciudad —&lt;/option&gt;';
+                                            cities.forEach(function(c) {
+                                                html += '&lt;option value="' + c.id + '" data-zipcode="' + (c.zipcode || '') + '"&gt;' + c.name + '&lt;/option&gt;';
+                                            });
+                                            citySelect.innerHTML = html;
+                                        })
+                                        .catch(function() {
+                                            citySelect.innerHTML = '&lt;option value=""&gt;Error al cargar ciudades&lt;/option&gt;';
+                                        });
+                                    });
+
+                                    citySelect.addEventListener('change', function() {
+                                        var opt = this.options[this.selectedIndex];
+                                        if (opt) {
+                                            zipInput.value = opt.getAttribute('data-zipcode') || '';
+                                        }
+                                    });
+
+                                    window.resetCheckoutAddressModal = function() {
+                                        document.getElementById('checkoutAddressForm').reset();
+                                        citySelect.innerHTML = '&lt;option value=""&gt;— Primero selecciona Departamento —&lt;/option&gt;';
+                                        zipInput.value = '';
+                                    };
+                                })();
+                            </script>
 
                         </div>
 

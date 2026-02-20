@@ -97,10 +97,92 @@ class GuapanteWebsiteSale(WebsiteSale):
                 '|', ("type", "in", ["delivery", "other"]), ("id", "=", request.env.user.partner_id.id)
             ], order='id desc')
 
+        # States for the "add address" modal (filtered to Colombia)
+        default_country = request.env.ref('base.co', raise_if_not_found=False)
+        if default_country:
+            render_values['states'] = request.env['res.country.state'].sudo().search(
+                [('country_id', '=', default_country.id)]
+            )
+            render_values['default_country_id'] = default_country.id
+        else:
+            render_values['states'] = request.env['res.country.state'].sudo().search([])
+            render_values['default_country_id'] = False
+
         # Build display data from session for the template
         render_values['uom_display'] = self._build_uom_display(Order)
 
         return request.render("theme_guapante.guapante_checkout", render_values)
+
+    @http.route(['/shop/address/add_from_checkout'], type='http', methods=['POST'], auth="user", website=True, csrf=True)
+    def add_address_from_checkout(self, **post):
+        """
+        Create a delivery address from the checkout modal and set it
+        as the shipping address on the current order.
+        """
+        partner = request.env.user.partner_id
+        company_partner = partner.commercial_partner_id
+        Order = request.website.sale_get_order()
+
+        if not Order:
+            return request.redirect('/shop')
+
+        vals = {
+            'parent_id': company_partner.id,
+            'type': 'delivery',
+            'name': post.get('name', '').strip() or company_partner.name,
+            'street': post.get('street', '').strip(),
+            'street2': post.get('street2', '').strip() or False,
+            'zip': post.get('zip', '').strip() or False,
+            'comment': post.get('comment', '').strip() or False,
+        }
+
+        # City (from res.city dropdown)
+        city_id = post.get('city_id', '').strip()
+        try:
+            if city_id:
+                city_rec = request.env['res.city'].sudo().browse(int(city_id))
+                if city_rec.exists():
+                    vals['city_id'] = city_rec.id
+                    vals['city'] = city_rec.name
+                    if city_rec.state_id:
+                        vals['state_id'] = city_rec.state_id.id
+                    if city_rec.zipcode:
+                        vals['zip'] = city_rec.zipcode
+                    if city_rec.country_id:
+                        vals['country_id'] = city_rec.country_id.id
+            else:
+                vals['city_id'] = False
+                vals['city'] = False
+        except (ValueError, TypeError):
+            vals['city_id'] = False
+            vals['city'] = False
+
+        # Country/state fallback if city didn't set them
+        if 'country_id' not in vals:
+            country_id = post.get('country_id', '').strip()
+            try:
+                vals['country_id'] = int(country_id) if country_id else False
+            except (ValueError, TypeError):
+                vals['country_id'] = False
+
+        if 'state_id' not in vals:
+            state_id = post.get('state_id', '').strip()
+            try:
+                vals['state_id'] = int(state_id) if state_id else False
+            except (ValueError, TypeError):
+                vals['state_id'] = False
+
+        phone = post.get('phone', '').strip()
+        if phone:
+            vals['phone'] = phone
+
+        new_address = request.env['res.partner'].sudo().create(vals)
+        _logger.info("Checkout: Created delivery address %s for company %s", new_address.id, company_partner.id)
+
+        # Set the new address as shipping address on the current order
+        Order.partner_shipping_id = new_address.id
+
+        return request.redirect('/shop/address')
 
     @http.route(['/shop/checkout/confirm'], type='http', auth="public", website=True, sitemap=False)
     def confirm_order_skip_payment(self, **post):
