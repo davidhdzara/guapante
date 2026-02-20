@@ -14,6 +14,6 @@ class ProductTemplate(models.Model):
     def write(self, vals):
         res = super().write(vals)
         if 'is_seasonal' in vals:
-            self.env['ir.qweb'].clear_caches()
+            self.env.registry.clear_cache()
             self.env['website'].sudo().search([]).invalidate_recordset()
         return res
