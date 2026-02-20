@@ -114,11 +114,17 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             case 'unit':
                 $qtyInput.attr('step', '1').attr('min', '1');
                 if (this._parseValue($qtyInput.val()) < 1) $qtyInput.val(this._formatValue(1));
+                // Only show packaging selector if there are 2+ options
+                var pkgCount = this.$('.packaging-option').length;
                 if (this.isWeightUom) {
-                    $packagingSelector.removeClass('d-none');
+                    if (pkgCount > 1) {
+                        $packagingSelector.removeClass('d-none');
+                    } else {
+                        $packagingSelector.addClass('d-none');
+                    }
                     $modeInfo.text('Venta por Unidad / Paquete');
                 } else {
-                    if (this.hasPackaging) {
+                    if (this.hasPackaging && pkgCount > 1) {
                         $packagingSelector.removeClass('d-none');
                     } else {
                         $packagingSelector.addClass('d-none');
