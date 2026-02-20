@@ -7,6 +7,21 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+class GuapanteHomepage(http.Controller):
+
+    @http.route('/shop/seasonal-products', type='http', auth='public', website=True, sitemap=False)
+    def seasonal_products(self, **kwargs):
+        """Return rendered HTML of seasonal products — always fresh, no cache."""
+        domain = request.website.sale_product_domain() + [('is_seasonal', '=', True)]
+        seasonal_products = request.env['product.template'].sudo().search(domain, limit=8)
+        response = request.render('theme_guapante.s_seasonal_products_ajax', {
+            'seasonal_products': seasonal_products,
+        })
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+
+
 class GuapanteWebsiteSale(WebsiteSale):
 
     @http.route(['/shop/address'], type='http', methods=['GET'], auth="public", website=True, sitemap=False)
@@ -151,45 +166,21 @@ class GuapanteWebsiteSale(WebsiteSale):
 
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):
-        """Override shop to add is_seasonal filter"""
-        _logger.info(f"=== SHOP METHOD ===")
-        _logger.info(f"is_seasonal: {is_seasonal}")
-        
-        # Call parent
+        """Override shop to pass is_seasonal flag."""
         response = super().shop(page=page, category=category, search=search, **post)
-        
-        # If is_seasonal is active, filter products AFTER parent processes everything
         if is_seasonal:
-            _logger.info("Filtering by seasonal products")
-            
-            # Get bins (the grid structure that template uses)
-            bins = response.qcontext.get('bins', [])
-            _logger.info(f"Original bins structure: {type(bins)}, length: {len(bins) if hasattr(bins, '__len__') else 'N/A'}")
-            
-            # Filter bins to only keep seasonal products, maintaining the grid structure
-            if bins:
-                seasonal_bins = []
-                for row in bins:
-                    seasonal_row = []
-                    for product_dict in row:
-                        # Each item in the row is a dict with product info
-                        product = product_dict.get('product') if isinstance(product_dict, dict) else product_dict
-                        if hasattr(product, 'is_seasonal') and product.is_seasonal:
-                            seasonal_row.append(product_dict)
-                    if seasonal_row:
-                        seasonal_bins.append(seasonal_row)
-                
-                # Update with filtered bins
-                response.qcontext['bins'] = seasonal_bins
-                
-                # Count total seasonal products
-                total_seasonal = sum(len(row) for row in seasonal_bins)
-                response.qcontext['search_count'] = total_seasonal
-                response.qcontext['is_seasonal'] = True
-                
-                _logger.info(f"Filtered to {total_seasonal} seasonal products in {len(seasonal_bins)} rows")
-        
+            response.qcontext['is_seasonal'] = True
         return response
+
+    def _shop_lookup_products(self, attrib_set, options, post, search, website):
+        """Filter search results to seasonal products when is_seasonal param is present."""
+        fuzzy_search_term, product_count, search_result = super()._shop_lookup_products(
+            attrib_set, options, post, search, website
+        )
+        if request.params.get('is_seasonal'):
+            search_result = search_result.filtered(lambda p: p.is_seasonal)
+            product_count = len(search_result)
+        return fuzzy_search_term, product_count, search_result
 
     @http.route()
     def product(self, product, category='', search='', **kwargs):
