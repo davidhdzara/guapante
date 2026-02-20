@@ -128,6 +128,19 @@ body {
 /* ========================================
    Reset Password Page
    ======================================== */
+
+// Scrollable page wrapper
+.guapante-reset-page {
+    overflow-y: auto;
+    height: 100vh;
+}
+
+// Top two-column section
+.guapante-reset-top {
+    min-height: 70vh;
+}
+
+// Confirmation state
 .guapante-reset-confirmation {
     .reset-check-icon {
         width: 72px;
@@ -153,7 +166,7 @@ body {
     }
 }
 
-// Reset password form tweaks
+// Reset form specifics
 .oe_reset_password_form {
     .form-control {
         padding: 0.75rem 1rem;
@@ -167,6 +180,11 @@ body {
             border-color: #22c55e;
             box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
         }
+    }
+
+    // Email input with envelope icon
+    .reset-email-input {
+        padding-left: 2.5rem;
     }
 
     // Toggle password visibility button
@@ -189,22 +207,77 @@ body {
     }
 }
 
-// Widen container when reset form is present
-.auth-form-col:has(.oe_reset_password_form),
-.auth-form-col:has(.guapante-reset-confirmation) {
-    >.w-100 {
-        max-width: 540px !important;
+/* ========================================
+   Support Steps Section (Full-width)
+   ======================================== */
+.guapante-support-steps-section {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e2e8f0;
+    padding: 3.5rem 1.5rem;
+}
+
+// Step cards
+.guapante-step-card {
+    background: #ffffff;
+    border: 1px solid #e8ecf0;
+    border-radius: 12px;
+    padding: 2rem 1.75rem;
+    height: 100%;
+    transition: box-shadow 0.2s ease;
+
+    &:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+
+    // Step label (e.g., "Paso 2: Confirmación")
+    .step-label {
+        display: block;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #94a3b8;
+        letter-spacing: 1.5px;
+        margin-bottom: 1.25rem;
+    }
+
+    // Green check circle
+    .step-check-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background-color: rgba(34, 197, 94, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 }
 
-// Support steps section
-.guapante-support-steps {
-    .border {
-        border-color: #e2e8f0 !important;
-        transition: box-shadow 0.2s;
+// Mock input field for preview cards
+.mock-input {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.55rem 0.75rem;
+    background-color: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: #94a3b8;
 
-        &:hover {
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-        }
+    i {
+        font-size: 0.75rem;
+        color: #94a3b8;
     }
+}
+
+// Mock button
+.mock-btn {
+    display: block;
+    background-color: #22c55e;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 0.55rem 1rem;
+    border-radius: 6px;
+    text-align: center;
 }

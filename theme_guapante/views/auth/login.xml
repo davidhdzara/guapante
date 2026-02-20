@@ -11,57 +11,176 @@
                 <!-- Detect Signup / Reset Password Pages -->
                 <t t-set="is_signup" t-value="'/web/signup' in request.httprequest.path"/>
                 <t t-set="is_reset" t-value="'/web/reset_password' in request.httprequest.path"/>
-                
-                <div t-attf-class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white {{ 'flex-row-reverse' if is_signup else '' }}" style="min-height: 100vh;">
-                    <!-- LEFT COLUMN (Becomes RIGHT on Signup): Form -->
-                    <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col bg-white text-start">
-                        <div class="w-100" style="max-width: 480px;">
-                             <!-- Logo Only (hidden on reset password page, already in navbar) -->
-                             <div t-if="not is_reset" class="mb-5">
-                                 <img src="/theme_guapante/static/src/img/logo_guapante.png" height="45" alt="Guapante"/>
-                             </div>
 
-                             <!-- CONTENT INJECTION POINT -->
-                            <t t-out="0"/>
-                            
-                        </div>
-                    </div>
-
-                    <!-- RIGHT COLUMN: Branding (Desktop Only) -->
-                    <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden auth-image-col">
-                        <!-- Background Image (No Animation) -->
-                        <div class="position-absolute top-0 start-0 w-100 h-100" 
-                             style="background-image: url('/theme_guapante/static/src/img/auth_bg.png'); background-size: cover; background-position: center;">
-                        </div>
-                        <!-- Gradient Overlay -->
-                        <div class="position-absolute top-0 start-0 w-100 h-100" 
-                             style="background: linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(26, 46, 35, 0.95) 100%);"></div>
-                        
-                        <!-- Content Overlay -->
-                        <div class="position-relative z-1 w-75 mb-5 text-white">
-                            <!-- Badge -->
-                            <span class="badge bg-success rounded-pill px-3 py-2 mb-3 text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">
-                                <i class="fa fa-truck me-1"/> Logística Premium
-                            </span>
-                            
-                            <!-- Quote/Text -->
-                            <h2 class="fw-bold mb-3">Frescura del campo colombiano a tu negocio</h2>
-                            <p class="opacity-75 mb-4 small">
-                                Optimizamos la cadena de suministro para garantizar la mejor rentabilidad y calidad en cada entrega.
-                            </p>
-                            
-                            <!-- Badges -->
-                            <div class="d-flex gap-3">
-                                <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
-                                    <span class="text-success">✔</span> Calidad Garantizada
+                <!-- ==============================================
+                     LAYOUT A: Reset Password (scrollable with
+                     full-width support steps below)
+                     ============================================== -->
+                <t t-if="is_reset">
+                    <div class="guapante-reset-page">
+                        <!-- Top: Two-column section -->
+                        <div class="container-fluid p-0 d-flex bg-white guapante-reset-top">
+                            <!-- LEFT COLUMN: Form -->
+                            <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 auth-form-col bg-white text-start">
+                                <div class="w-100" style="max-width: 560px;">
+                                    <t t-out="0"/>
                                 </div>
-                                <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
-                                    <i class="fa fa-clock-o text-success"/> Entregas a Tiempo
+                            </div>
+
+                            <!-- RIGHT COLUMN: Branding Image (Desktop Only) -->
+                            <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden auth-image-col">
+                                <div class="position-absolute top-0 start-0 w-100 h-100" 
+                                     style="background-image: url('/theme_guapante/static/src/img/auth_bg.png'); background-size: cover; background-position: center;">
+                                </div>
+                                <div class="position-absolute top-0 start-0 w-100 h-100" 
+                                     style="background: linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(26, 46, 35, 0.95) 100%);"></div>
+                                <div class="position-relative z-1 w-75 mb-5 text-white">
+                                    <span class="badge bg-success rounded-pill px-3 py-2 mb-3 text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">
+                                        <i class="fa fa-truck me-1"/> Logística Premium
+                                    </span>
+                                    <h2 class="fw-bold mb-3">Frescura del campo a tu negocio</h2>
+                                    <p class="opacity-75 mb-4 small">
+                                        Gestionamos la cadena de suministro más eficiente de Colombia
+                                        para garantizar la rentabilidad de tu comercio.
+                                    </p>
+                                    <div class="d-flex gap-3">
+                                        <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                            <span class="text-success">✔</span> Calidad Garantizada
+                                        </div>
+                                        <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                            <i class="fa fa-clock-o text-success"/> Entregas a Tiempo
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom: Full-width Support Steps Section -->
+                        <div class="guapante-support-steps-section">
+                            <div class="container" style="max-width: 960px;">
+                                <div class="text-center mb-5">
+                                    <span class="text-success text-uppercase fw-bold small" style="letter-spacing: 2px;">Flujo de usuario</span>
+                                    <h4 class="fw-bold mt-2 mb-1">Estados Siguientes del Proceso</h4>
+                                    <p class="text-muted small mb-0">Vistas previas de las pantallas de confirmación y restablecimiento.</p>
+                                </div>
+
+                                <div class="row g-4">
+                                    <!-- === PASO 2: Confirmación === -->
+                                    <div class="col-12 col-md-6">
+                                        <div class="guapante-step-card text-center">
+                                            <span class="step-label">Paso 2: Confirmación</span>
+
+                                            <div class="step-check-icon mx-auto mb-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                                    <polyline points="22 4 12 14.01 9 11.01"/>
+                                                </svg>
+                                            </div>
+
+                                            <h5 class="fw-bold mb-2">Revisa tu correo</h5>
+                                            <p class="text-muted mb-2" style="font-size: 0.875rem; line-height: 1.6;">
+                                                Hemos enviado un enlace de recuperación a
+                                                <strong class="text-dark">usuario@ejemplo.com</strong>.
+                                                Sigue las instrucciones para crear una nueva contraseña.
+                                            </p>
+                                            <a href="#" class="text-success fw-semibold text-decoration-underline d-inline-block mb-2" style="font-size: 0.875rem;">
+                                                Abrir aplicación de correo
+                                            </a>
+                                            <p class="text-muted small mb-2">
+                                                ¿No lo recibiste? <span class="text-success fw-bold">Reenviar</span>
+                                            </p>
+                                            <span class="text-muted small">← Volver al inicio de sesión</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- === PASO 3: Crear nueva contraseña === -->
+                                    <div class="col-12 col-md-6">
+                                        <div class="guapante-step-card">
+                                            <span class="step-label">Paso 3: Nueva contraseña</span>
+
+                                            <h5 class="fw-bold mb-1">Crear nueva contraseña</h5>
+                                            <p class="text-muted mb-3" style="font-size: 0.8rem; line-height: 1.5;">
+                                                Tu nueva contraseña debe ser diferente a las utilizadas anteriormente.
+                                            </p>
+
+                                            <!-- Mock: Nueva contraseña -->
+                                            <div class="mb-3">
+                                                <label class="form-label mb-1 fw-semibold" style="font-size: 0.8rem;">Nueva contraseña</label>
+                                                <div class="mock-input">
+                                                    <span>••••••••</span>
+                                                    <i class="fa fa-eye"/>
+                                                </div>
+                                                <small class="text-muted d-block mt-1" style="font-size: 0.75rem;">
+                                                    <i class="fa fa-info-circle me-1"/>Mínimo 8 caracteres
+                                                </small>
+                                            </div>
+
+                                            <!-- Mock: Confirmar contraseña -->
+                                            <div class="mb-3">
+                                                <label class="form-label mb-1 fw-semibold" style="font-size: 0.8rem;">Confirmar contraseña</label>
+                                                <div class="mock-input">
+                                                    <span>••••••••</span>
+                                                    <i class="fa fa-eye"/>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <span class="mock-btn">Restablecer contraseña</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </t>
+
+                <!-- ==============================================
+                     LAYOUT B: Login / Signup (full-height, 2 cols)
+                     ============================================== -->
+                <t t-if="not is_reset">
+                    <div t-attf-class="container-fluid h-100 p-0 d-flex overflow-hidden bg-white {{ 'flex-row-reverse' if is_signup else '' }}" style="min-height: 100vh;">
+                        <!-- LEFT COLUMN (Becomes RIGHT on Signup): Form -->
+                        <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col bg-white text-start">
+                            <div class="w-100" style="max-width: 480px;">
+                                 <!-- Logo Only -->
+                                 <div class="mb-5">
+                                     <img src="/theme_guapante/static/src/img/logo_guapante.png" height="45" alt="Guapante"/>
+                                 </div>
+
+                                 <!-- CONTENT INJECTION POINT -->
+                                <t t-out="0"/>
+                                
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN: Branding (Desktop Only) -->
+                        <div class="d-none d-lg-flex col-lg-6 position-relative bg-dark px-0 align-items-end justify-content-center pb-5 overflow-hidden auth-image-col">
+                            <div class="position-absolute top-0 start-0 w-100 h-100" 
+                                 style="background-image: url('/theme_guapante/static/src/img/auth_bg.png'); background-size: cover; background-position: center;">
+                            </div>
+                            <div class="position-absolute top-0 start-0 w-100 h-100" 
+                                 style="background: linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(26, 46, 35, 0.95) 100%);"></div>
+                            <div class="position-relative z-1 w-75 mb-5 text-white">
+                                <span class="badge bg-success rounded-pill px-3 py-2 mb-3 text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">
+                                    <i class="fa fa-truck me-1"/> Logística Premium
+                                </span>
+                                <h2 class="fw-bold mb-3">Frescura del campo colombiano a tu negocio</h2>
+                                <p class="opacity-75 mb-4 small">
+                                    Optimizamos la cadena de suministro para garantizar la mejor rentabilidad y calidad en cada entrega.
+                                </p>
+                                <div class="d-flex gap-3">
+                                    <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                        <span class="text-success">✔</span> Calidad Garantizada
+                                    </div>
+                                    <div class="badge bg-black bg-opacity-50 border border-secondary rounded-pill fw-normal px-3 py-2 d-flex align-items-center gap-2">
+                                        <i class="fa fa-clock-o text-success"/> Entregas a Tiempo
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </t>
             </t>
         </xpath>
     </template>
