@@ -161,6 +161,7 @@ body {
         border: 1px solid #e2e8f0;
         font-size: 0.95rem;
         min-height: 48px;
+        width: 100%;
 
         &:focus {
             border-color: #22c55e;
@@ -184,6 +185,26 @@ body {
 
         &:focus {
             box-shadow: none;
+        }
+    }
+}
+
+// Widen container when reset form is present
+.auth-form-col:has(.oe_reset_password_form),
+.auth-form-col:has(.guapante-reset-confirmation) {
+    >.w-100 {
+        max-width: 540px !important;
+    }
+}
+
+// Support steps section
+.guapante-support-steps {
+    .border {
+        border-color: #e2e8f0 !important;
+        transition: box-shadow 0.2s;
+
+        &:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
         }
     }
 }

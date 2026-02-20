@@ -16,8 +16,8 @@
                     <!-- LEFT COLUMN (Becomes RIGHT on Signup): Form -->
                     <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 overflow-auto auth-form-col bg-white text-start">
                         <div class="w-100" style="max-width: 480px;">
-                             <!-- Logo Only -->
-                             <div class="mb-5">
+                             <!-- Logo Only (hidden on reset password page, already in navbar) -->
+                             <div t-if="not is_reset" class="mb-5">
                                  <img src="/theme_guapante/static/src/img/logo_guapante.png" height="45" alt="Guapante"/>
                              </div>
 
