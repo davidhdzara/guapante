@@ -22,7 +22,7 @@
                         <div class="container-fluid p-0 d-flex bg-white guapante-reset-top">
                             <!-- LEFT COLUMN: Form -->
                             <div class="col-12 col-lg-6 d-flex flex-column align-items-center justify-content-center p-4 p-md-5 auth-form-col bg-white text-start">
-                                <div class="w-100" style="max-width: 560px;">
+                                <div class="w-100" style="max-width: 680px;">
                                     <t t-out="0"/>
                                 </div>
                             </div>
