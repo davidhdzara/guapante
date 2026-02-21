@@ -45,6 +45,11 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         // Apply white card styles to product detail
         $productDetail.addClass('guapante-card bg-white shadow-sm rounded-4 p-4');
 
+        // Remove Odoo's 'container' class from #product_detail to avoid
+        // nested .container > .container (double max-width / padding).
+        // The outer .guapante-product-container already provides the container.
+        $productDetail.removeClass('container');
+
         // Insert wrapper before product detail
         $productDetail.before($container);
 
@@ -56,15 +61,15 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         // Move product detail into the column
         $productColumn.append($productDetail);
 
-        // Strip Odoo's sticky positioning from the carousel to prevent
-        // the product card from jumping/moving on scroll
+        // Strip Odoo's sticky positioning from the carousel AND the section
+        // to prevent scroll conflicts with our sidebar sticky layout
         var $carousel = $productDetail.find('#o-carousel-product');
         if ($carousel.length) {
             $carousel.removeClass('position-sticky');
             $carousel.css({ 'position': 'relative', 'top': 'auto' });
         }
-
-
+        $productDetail.removeClass('position-sticky');
+        $productDetail.css({ 'position': '', 'top': '' });
 
         // Load categories from the hidden XML source
         this._loadCategoriesFromXML($sidebar);
