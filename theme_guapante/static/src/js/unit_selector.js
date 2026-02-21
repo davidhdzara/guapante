@@ -321,9 +321,19 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     },
 
     _fetchPackagings: async function (productId) {
-        const response = await fetch(`/shop/product/packagings/${productId}`);
-        if (!response.ok) throw new Error('Failed to fetch packagings');
-        return await response.json();
+        const data = await $.ajax({
+            url: `/shop/product/packagings/${productId}`,
+            method: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'call',
+                params: {},
+            }),
+        });
+        const result = (data && data.result) ? data.result : data;
+        return result || [];
     },
 
     _rebuildPackagingSelector: function (packagings, productId) {

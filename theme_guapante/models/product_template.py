@@ -14,6 +14,8 @@ class ProductTemplate(models.Model):
     def write(self, vals):
         res = super().write(vals)
         if 'is_seasonal' in vals:
-            self.env.registry.clear_cache()
-            self.env['website'].sudo().search([]).invalidate_recordset()
+            # Invalidate only the affected product records so the website
+            # picks up the new is_seasonal value without nuking the entire
+            # ORM registry cache (which would cause performance spikes).
+            self.invalidate_recordset(['is_seasonal'])
         return res

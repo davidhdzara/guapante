@@ -67,7 +67,7 @@ class SaleOrder(models.Model):
             desired_qty = float_set
         else:
             # Find existing line to add to its current qty
-            if line_id is not False:
+            if line_id:
                 order_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
             else:
                 order_line = self.env['sale.order.line']
