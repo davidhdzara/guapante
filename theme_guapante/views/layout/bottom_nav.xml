@@ -17,8 +17,8 @@
                         <span class="d-block small" style="font-size: 0.7rem;">Categorías</span>
                     </a>
 
-                    <!-- SEARCH (New) -->
-                    <a href="/shop" t-attf-class="nav-link text-center {{ 'active text-primary fw-bold' if request.params.get('search') else 'text-muted' }}">
+                    <!-- SEARCH (opens overlay) -->
+                    <a href="#" id="guapante_search_trigger" class="nav-link text-center text-muted">
                         <i class="fa fa-search fs-4 mb-1"></i>
                         <span class="d-block small" style="font-size: 0.7rem;">Buscar</span>
                     </a>

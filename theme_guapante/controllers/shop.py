@@ -424,3 +424,86 @@ class GuapanteWebsiteSale(WebsiteSale):
         
         return result
 
+    # ── Search API ──────────────────────────────────────────────
+
+    @http.route('/shop/search/products', type='json', auth='public', website=True, csrf=False)
+    def search_products(self, query='', limit=12, **kwargs):
+        """
+        Search products using Odoo's native fuzzy search engine.
+        Returns enriched product data for the mobile search overlay.
+        """
+        if not query or len(query.strip()) < 2:
+            return {'products': [], 'count': 0}
+
+        query = query.strip()
+        website = request.env['website'].get_current_website()
+        options = self._get_search_options()
+
+        # Use Odoo's native fuzzy search
+        fuzzy_search_term, product_count, search_result = self._shop_lookup_products(
+            set(), options, {}, query, website
+        )
+
+        # Limit results
+        templates = search_result[:limit]
+
+        # Reference for weight UoM detection
+        weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+
+        products = []
+        for tmpl in templates:
+            variant = tmpl.product_variant_id
+            if not variant:
+                continue
+
+            # Detect if this is a weight-based product
+            is_weight = bool(
+                weight_categ
+                and tmpl.uom_id.category_id.id == weight_categ.id
+            )
+
+            # Get sales-enabled packagings
+            packagings_data = []
+            sales_packagings = variant.sudo().packaging_ids.filtered(lambda p: p.sales)
+            has_packaging = bool(sales_packagings)
+            for pkg in sales_packagings:
+                packagings_data.append({
+                    'id': pkg.id,
+                    'name': pkg.name,
+                    'qty': pkg.qty,
+                })
+
+            products.append({
+                'id': variant.id,
+                'product_tmpl_id': tmpl.id,
+                'name': tmpl.name,
+                'image_url': '/web/image/product.product/%d/image_256' % variant.id,
+                'uom_name': tmpl.uom_id.name,
+                'is_weight_uom': is_weight,
+                'has_packaging': has_packaging,
+                'packagings': packagings_data,
+            })
+
+        return {
+            'products': products,
+            'count': product_count,
+            'search_term': fuzzy_search_term or query,
+        }
+
+    @http.route('/shop/search/categories', type='json', auth='public', website=True, csrf=False)
+    def search_categories(self, **kwargs):
+        """Return root-level published categories for the search overlay empty state."""
+        website = request.env['website'].get_current_website()
+        Category = request.env['product.public.category']
+        categs = Category.search(
+            [('parent_id', '=', False)] + website.website_domain(),
+            order='sequence, name',
+        )
+        return [{
+            'id': c.id,
+            'name': c.name,
+            'url': '/shop/category/%s' % request.env['ir.http']._slug(c),
+            'has_image': bool(c.image_128),
+            'image_url': '/web/image/product.public.category/%d/image_128' % c.id if c.image_128 else '',
+        } for c in categs]
+

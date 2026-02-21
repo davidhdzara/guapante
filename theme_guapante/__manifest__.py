@@ -3,7 +3,7 @@
     'description': 'Modern, fresh theme for Guapante based on Odoo 18 best practices.',
     'category': 'Theme/eCommerce',
     'summary': 'Fresh, Organic, Modern',
-    'version': '2.0.3',
+    'version': '2.0.4',
     'images': [
         'static/description/guapante_preview.png',
         'static/description/icon.png',
@@ -17,6 +17,7 @@
         'views/layout/header.xml',
         'views/layout/footer.xml',
         'views/layout/bottom_nav.xml',
+        'views/layout/search_modal.xml',
         'views/pages/home.xml',
         'views/shop/categories.xml',
         'views/shop/products_item.xml',
@@ -54,6 +55,7 @@
             'theme_guapante/static/src/scss/layout/_header.scss',
             'theme_guapante/static/src/scss/layout/_bottom_nav.scss',
             'theme_guapante/static/src/scss/layout/_footer.scss',
+            'theme_guapante/static/src/scss/layout/_search_modal.scss',
             # Page-specific styles
             'theme_guapante/static/src/scss/pages/_auth.scss',
             'theme_guapante/static/src/scss/pages/_shop.scss',
@@ -86,6 +88,7 @@
             'theme_guapante/static/src/js/address_error_fix.js',  # Fix address errors
             'theme_guapante/static/src/js/checkout.js',  # Checkout interaction
             'theme_guapante/static/src/js/seasonal_harvest.js',  # Seasonal products dynamic loader
+            'theme_guapante/static/src/js/search_modal.js',  # Full-screen search overlay
         ],
     },
     'application': False,

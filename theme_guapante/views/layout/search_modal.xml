@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="search_overlay" inherit_id="website.layout" name="Guapante Search Overlay">
+        <xpath expr="//header" position="after">
+            <!-- Full-screen search overlay (hidden by default) -->
+            <div id="guapante_search_overlay" class="guapante-search-overlay d-lg-none">
+                <!-- Top bar: search input + cancel -->
+                <div class="guapante-search-topbar">
+                    <div class="guapante-search-input-wrap">
+                        <i class="fa fa-search guapante-search-icon"/>
+                        <input type="text"
+                               id="guapante_search_input"
+                               class="guapante-search-field"
+                               placeholder="Buscar frutas, verduras..."
+                               autocomplete="off"
+                               autocorrect="off"
+                               spellcheck="false"/>
+                        <button type="button" id="guapante_search_clear" class="guapante-search-clear d-none">
+                            <i class="fa fa-times"/>
+                        </button>
+                    </div>
+                    <button type="button" id="guapante_search_cancel" class="guapante-search-cancel-btn">
+                        Cancelar
+                    </button>
+                </div>
+
+                <!-- Body: categories (empty state), recents, results -->
+                <div class="guapante-search-body">
+                    <!-- Empty state: categories + recents -->
+                    <div id="guapante_search_empty" class="guapante-search-section">
+                        <!-- Recent searches -->
+                        <div id="guapante_search_recents" class="d-none">
+                            <div class="guapante-search-section-header">
+                                <span>Recientes</span>
+                                <button type="button" id="guapante_clear_recents" class="guapante-clear-recents-btn">
+                                    Borrar
+                                </button>
+                            </div>
+                            <div id="guapante_recents_list" class="guapante-recents-list"/>
+                        </div>
+
+                        <!-- Category chips -->
+                        <div id="guapante_search_categories">
+                            <div class="guapante-search-section-header">
+                                <span>Categorías</span>
+                            </div>
+                            <div id="guapante_categories_grid" class="guapante-categories-grid"/>
+                        </div>
+                    </div>
+
+                    <!-- Loading state -->
+                    <div id="guapante_search_loading" class="guapante-search-loading d-none">
+                        <div class="guapante-search-spinner"/>
+                        <span>Buscando productos...</span>
+                    </div>
+
+                    <!-- No results state -->
+                    <div id="guapante_search_no_results" class="guapante-search-no-results d-none">
+                        <i class="fa fa-search fa-3x text-muted mb-3"/>
+                        <p class="fw-semibold">No encontramos resultados</p>
+                        <p class="text-muted small">Intenta con otro término de búsqueda</p>
+                    </div>
+
+                    <!-- Results grid -->
+                    <div id="guapante_search_results" class="guapante-search-results d-none"/>
+                </div>
+            </div>
+        </xpath>
+    </template>
+</odoo>

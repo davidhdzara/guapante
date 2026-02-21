@@ -1,0 +1,515 @@
+/* ═══════════════════════════════════════════════════════════════
+   Guapante Search Overlay – Rappi-style full-screen search
+   ═══════════════════════════════════════════════════════════════ */
+
+// ── Variables ──
+$search-bg: #FFFFFF;
+$search-input-bg: #F3F4F6;
+$search-accent: $primary; // Theme green
+$search-card-radius: 14px;
+$search-transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+
+// ── Overlay Container ──
+.guapante-search-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1050; // Above bottom nav (1040) and below Odoo modals (1055)
+    background: $search-bg;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    // Transitions
+    opacity: 0;
+    transform: translateY(100%);
+    pointer-events: none;
+    transition: transform $search-transition, opacity 0.2s ease;
+
+    &.active {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+}
+
+// ── Top Bar ──
+.guapante-search-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    padding-top: calc(env(safe-area-inset-top, 12px) + 12px);
+    background: $search-bg;
+    border-bottom: 1px solid #F3F4F6;
+    flex-shrink: 0;
+}
+
+.guapante-search-input-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.guapante-search-icon {
+    position: absolute;
+    left: 14px;
+    color: #9CA3AF;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.guapante-search-field {
+    width: 100%;
+    height: 44px;
+    padding: 0 40px 0 40px;
+    background: $search-input-bg;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    font-size: 15px;
+    color: #111827;
+    transition: border-color 0.2s, background 0.2s;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+
+    &::placeholder {
+        color: #9CA3AF;
+    }
+
+    &:focus {
+        border-color: $search-accent;
+        background: #fff;
+    }
+}
+
+.guapante-search-clear {
+    position: absolute;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #E5E7EB;
+    border: none;
+    border-radius: 50%;
+    color: #6B7280;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover,
+    &:active {
+        background: #D1D5DB;
+    }
+}
+
+.guapante-search-cancel-btn {
+    background: none;
+    border: none;
+    color: $search-accent;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 0;
+    cursor: pointer;
+}
+
+// ── Body ──
+.guapante-search-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px;
+    padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+}
+
+// ── Section Headers ──
+.guapante-search-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+
+    span {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #6B7280;
+    }
+}
+
+.guapante-clear-recents-btn {
+    background: none;
+    border: none;
+    color: $search-accent;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+}
+
+// ── Recent Searches ──
+.guapante-recents-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.guapante-recent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #F3F4F6;
+    border: 1px solid #E5E7EB;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    i {
+        font-size: 11px;
+        color: #9CA3AF;
+    }
+
+    &:hover,
+    &:active {
+        background: #E5E7EB;
+        border-color: #D1D5DB;
+    }
+}
+
+// ── Category Chips ──
+.guapante-categories-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.guapante-category-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    text-decoration: none !important;
+    color: #111827 !important;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.15s;
+
+    img {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        object-fit: cover;
+    }
+
+    .guapante-categ-icon-fallback {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, lighten($search-accent, 30%), lighten($search-accent, 20%));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: $search-accent;
+        font-size: 14px;
+    }
+
+    &:hover,
+    &:active {
+        background: #F3F4F6;
+        border-color: $search-accent;
+        transform: scale(0.98);
+    }
+}
+
+// ── Loading State ──
+.guapante-search-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 0;
+    color: #9CA3AF;
+    font-size: 14px;
+    gap: 16px;
+}
+
+.guapante-search-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #E5E7EB;
+    border-top-color: $search-accent;
+    border-radius: 50%;
+    animation: guapante-spin 0.7s linear infinite;
+}
+
+@keyframes guapante-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// ── No Results ──
+.guapante-search-no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 0;
+    text-align: center;
+}
+
+// ── Results Grid ──
+.guapante-search-results {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+// ── Product Result Card ──
+.guapante-result-card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: $search-card-radius;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    transition: transform 0.2s, box-shadow 0.2s;
+    animation: guapante-card-in 0.3s ease both;
+
+    &:active {
+        transform: scale(0.97);
+    }
+}
+
+@keyframes guapante-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.guapante-result-img-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #F9FAFB;
+    overflow: hidden;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    // Quick add button (top-right of image)
+    .guapante-quick-add-btn {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: $search-accent;
+        border: none;
+        color: white;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+        transition: transform 0.15s, background 0.15s;
+        z-index: 2;
+
+        &:hover,
+        &:active {
+            background: darken($search-accent, 8%);
+            transform: scale(1.1);
+        }
+
+        &.added {
+            background: #059669;
+        }
+    }
+}
+
+.guapante-result-info {
+    padding: 10px 12px 8px;
+}
+
+.guapante-result-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1.3;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+
+    a {
+        color: inherit;
+        text-decoration: none;
+
+        &:hover {
+            color: $search-accent;
+        }
+    }
+}
+
+.guapante-result-uom {
+    font-size: 11px;
+    color: #9CA3AF;
+    margin-bottom: 0;
+}
+
+// ── Inline Add-to-Cart Expansion ──
+.guapante-result-cart-expand {
+    padding: 0 12px 12px;
+    display: none;
+
+    &.active {
+        display: block;
+        animation: guapante-expand-in 0.25s ease;
+    }
+}
+
+@keyframes guapante-expand-in {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+
+    to {
+        opacity: 1;
+        max-height: 200px;
+    }
+}
+
+// Mini UoM toggle
+.guapante-mini-uom-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+
+    .guapante-mini-uom-btn {
+        flex: 1;
+        padding: 4px 0;
+        background: #F3F4F6;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #6B7280;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s;
+
+        &.active {
+            background: $search-accent;
+            border-color: $search-accent;
+            color: #fff;
+        }
+    }
+}
+
+// Mini quantity controls
+.guapante-mini-qty-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+
+    .guapante-mini-qty-btn {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: #F3F4F6;
+        border: 1px solid #E5E7EB;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: #374151;
+        cursor: pointer;
+        transition: background 0.1s;
+
+        &:active {
+            background: #E5E7EB;
+        }
+    }
+
+    .guapante-mini-qty-input {
+        flex: 1;
+        height: 30px;
+        text-align: center;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+
+        &:focus {
+            border-color: $search-accent;
+        }
+    }
+}
+
+// Confirm add button in expansion
+.guapante-mini-add-confirm {
+    width: 100%;
+    padding: 8px;
+    background: $search-accent;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+
+    &:hover,
+    &:active {
+        background: darken($search-accent, 8%);
+    }
+
+    &.loading {
+        opacity: 0.7;
+        pointer-events: none;
+    }
+
+    &.success {
+        background: #059669;
+    }
+}
+
+// ── Animation delays for staggered card entry ──
+@for $i from 1 through 12 {
+    .guapante-result-card:nth-child(#{$i}) {
+        animation-delay: #{$i * 0.04}s;
+    }
+}
