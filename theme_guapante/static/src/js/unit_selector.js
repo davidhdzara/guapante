@@ -307,9 +307,32 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _setupVariantListener: function () {
         const self = this;
-        $(document).on('change', 'input[name="product_id"]', function () {
-            self._onVariantChange();
-        });
+        const input = document.querySelector('input[name="product_id"]');
+        if (!input) {
+            console.warn('Guapante: input[name="product_id"] not found, variant listener not set up.');
+            return;
+        }
+
+        // Store last known value
+        this._lastProductId = input.value;
+
+        // Poll for value changes every 300ms
+        // (jQuery .val() doesn't fire 'change' events, so we need to poll)
+        this._variantInterval = setInterval(function () {
+            var currentVal = input.value;
+            if (currentVal && currentVal !== self._lastProductId) {
+                console.log('Guapante: Variant changed from', self._lastProductId, 'to', currentVal);
+                self._lastProductId = currentVal;
+                self._onVariantChange();
+            }
+        }, 300);
+    },
+
+    destroy: function () {
+        if (this._variantInterval) {
+            clearInterval(this._variantInterval);
+        }
+        return this._super.apply(this, arguments);
     },
 
     _onVariantChange: async function () {
