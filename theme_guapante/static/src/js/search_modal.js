@@ -199,9 +199,10 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
         products.forEach(function (p) {
             var uomLabel = p.is_weight_uom ? 'por Kg' : p.uom_name;
 
-            // Build mini UoM toggle (only for weight products)
+            // Build mini UoM toggle
             var uomToggle = '';
             if (p.is_weight_uom) {
+                // Weight products: show Kg / Gramos / Unidad toggle
                 uomToggle = '<div class="guapante-mini-uom-toggle">'
                     + '<button class="guapante-mini-uom-btn active" data-mode="kg">Kg</button>'
                     + '<button class="guapante-mini-uom-btn" data-mode="g">Gramos</button>';
@@ -209,6 +210,11 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
                     uomToggle += '<button class="guapante-mini-uom-btn" data-mode="unit">Unidad</button>';
                 }
                 uomToggle += '</div>';
+            } else {
+                // SEARCH-01 FIX: Non-weight products get a static "Unidades" label
+                uomToggle = '<div class="guapante-mini-uom-label">'
+                    + '<span class="guapante-mini-uom-badge">Unidades</span>'
+                    + '</div>';
             }
 
             // Build packaging selector (for unit mode)
@@ -227,7 +233,7 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             }
 
             // Default qty and step based on UoM
-            var defaultQty = p.is_weight_uom ? '1' : '1';
+            var defaultQty = '1';
             var step = p.is_weight_uom ? '0.5' : '1';
             var minVal = p.is_weight_uom ? '0.1' : '1';
 
@@ -351,6 +357,8 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             val = Math.max(min, val - step);
         }
 
+        // SEARCH-02 FIX: Round to avoid floating-point drift, display plain number
+        val = Math.round(val * 1000) / 1000;
         $input.val(this._formatNum(val));
     },
 
@@ -417,7 +425,8 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             });
 
             var result = (data && data.result) ? data.result : data;
-            var itemCount = result.cart_quantity || result.cart_lines_count || 0;
+            // SEARCH-03 FIX: Prefer cart_quantity (total items) over cart_lines_count (line count)
+            var itemCount = result.cart_quantity != null ? result.cart_quantity : (result.cart_lines_count || 0);
 
             // Update cart badges everywhere
             var $badges = $('.my_cart_quantity');
@@ -552,15 +561,18 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
 
     _parseNum: function (val) {
         if (typeof val === 'string') {
-            val = val.replace(',', '.');
+            // SEARCH-02 FIX: Accept both comma and period as decimal separator
+            val = val.replace(/\s/g, '').replace(',', '.');
         }
         return parseFloat(val) || 0;
     },
 
     _formatNum: function (val) {
+        // SEARCH-02 FIX: Use plain numbers (no locale formatting) to avoid
+        // parse confusion. The input is for machine processing, not display.
         if (typeof val === 'number') {
-            // Use comma as decimal separator (Colombian locale)
-            return val.toString().replace('.', ',');
+            // Remove trailing zeros for cleaner display (1.0 → 1, 0.500 → 0.5)
+            return parseFloat(val.toFixed(3)).toString();
         }
         return val;
     },

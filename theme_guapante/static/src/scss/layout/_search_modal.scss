@@ -431,6 +431,22 @@ $search-transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
 }
 
+// SEARCH-01 FIX: Static UoM label for non-weight products
+.guapante-mini-uom-label {
+    margin-bottom: 8px;
+}
+
+.guapante-mini-uom-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    background: $search-accent;
+    border: 1px solid $search-accent;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+}
+
 // Mini quantity controls
 .guapante-mini-qty-row {
     display: flex;

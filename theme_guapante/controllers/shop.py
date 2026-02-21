@@ -350,15 +350,20 @@ class GuapanteWebsiteSale(WebsiteSale):
         return response
 
     @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
-    def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, uom_mode=None, **kwargs):
+    def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, uom_mode=None, product_packaging_id=None, **kwargs):
         """
         Override to return cart_lines_count and store the user's chosen uom_mode
         in the HTTP session (no DB column needed).
+        SEARCH-07 FIX: product_packaging_id is now an explicit parameter.
         """
         if uom_mode:
             _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
 
-        # 1. Call super to perform standard logic (fractional qty handled by sale_order._cart_update override)
+        # SEARCH-07: Forward product_packaging_id explicitly to super()
+        if product_packaging_id:
+            kwargs['product_packaging_id'] = int(product_packaging_id)
+
+        # 1. Call super to perform standard logic
         response = super().cart_update_json(
             product_id=product_id, 
             line_id=line_id, 
@@ -389,12 +394,14 @@ class GuapanteWebsiteSale(WebsiteSale):
                 uom_modes[str(line_id_from_response)] = uom_mode
                 request.session['guapante_uom_modes'] = uom_modes
 
-        # 3. Add line count to response
+        # 3. Add line count + cart_quantity to response (SEARCH-03 FIX)
         order = request.website.sale_get_order()
         if order:
             response['cart_lines_count'] = len(order.order_line)
+            response['cart_quantity'] = order.cart_quantity
         else:
             response['cart_lines_count'] = 0
+            response['cart_quantity'] = 0
             
         return response
 
