@@ -584,9 +584,11 @@
     }
 }
 
-// FORCE HIDE ORIGINAL ODOO AD TO CART
+// FORCE HIDE ORIGINAL ODOO CONTROLS ON PRODUCT PAGE
 #add_to_cart,
 .css_quantity,
-#o_wsale_cta_wrapper #add_to_cart {
+#o_wsale_cta_wrapper #add_to_cart,
+#product_details .product_price,
+#product_details .o_base_unit_price_wrapper {
     display: none !important;
 }
