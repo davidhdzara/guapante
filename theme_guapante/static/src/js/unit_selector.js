@@ -31,7 +31,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         this._hideOriginalControls();
         this._setupVariantListener();
 
-        console.log('Guapante: Unit Selector initialized. WeightUom:', this.isWeightUom, 'HasPkg:', this.hasPackaging);
+
         return this._super.apply(this, arguments);
     },
 
@@ -68,7 +68,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     _onModeChange: function (ev) {
         var previousMode = this.currentMode;
         this.currentMode = $(ev.currentTarget).val();
-        console.log('Guapante: Switched from', previousMode, 'to:', this.currentMode);
+
 
         var $qtyInput = this.$('.guapante-qty-input');
         var currentVal = this._parseValue($qtyInput.val());
@@ -277,7 +277,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             });
 
             const result = (data && data.result) ? data.result : data;
-            var itemCount = result.cart_quantity || result.cart_lines_count || 0;
+            var itemCount = result.cart_quantity != null ? result.cart_quantity : (result.cart_lines_count || 0);
             var $badges = $('.my_cart_quantity');
             if (itemCount > 0) {
                 $badges.text(itemCount).removeClass('d-none').show();
@@ -349,14 +349,14 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _formatValue: function (val) {
         if (typeof val === 'number') {
-            return val.toString().replace('.', ',');
+            return parseFloat(val.toFixed(3)).toString();
         }
         return val;
     },
 
     _parseValue: function (val) {
         if (typeof val === 'string') {
-            val = val.replace(',', '.');
+            val = val.replace(/\s/g, '').replace(',', '.');
         }
         return parseFloat(val) || 0;
     },

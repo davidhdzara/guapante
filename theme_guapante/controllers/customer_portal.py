@@ -140,7 +140,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         Does NOT check for stock availability.
         """
         order = request.env['sale.order'].browse(order_id)
-        if not order.exists() or order.partner_id != request.env.user.partner_id:
+        if not order.exists() or order.partner_id.commercial_partner_id != request.env.user.partner_id.commercial_partner_id:
             return request.redirect('/my/orders')
 
         current_order = request.website.sale_get_order(force_create=True)
@@ -197,6 +197,7 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         except Exception as e:
             _logger.error("Guapante Cancel: Error cancelling order %s: %s", order.name, str(e))
+            return request.redirect('/my/orders?error=cancel_failed')
 
         return request.redirect('/my/orders')
 

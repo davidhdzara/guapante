@@ -29,7 +29,7 @@ publicWidget.registry.GuapanteReplaceWishlistIcon = publicWidget.Widget.extend({
             $button.addClass('guapante-cart-icon');
         });
 
-        console.log('Guapante: Wishlist icons replaced with cart icons.');
+
 
         return this._super.apply(this, arguments);
     },

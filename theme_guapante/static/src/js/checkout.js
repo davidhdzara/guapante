@@ -14,7 +14,7 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
      */
     start: function () {
         this._super.apply(this, arguments);
-        console.log("[GuapanteCheckout] Widget initialized.");
+
         return Promise.resolve();
     },
 
@@ -28,18 +28,21 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
         const partnerId = parseInt($(ev.currentTarget).val(), 10);
         if (!partnerId || partnerId <= 0) return;
 
-        console.log("[GuapanteCheckout] Updating shipping address to partner_id:", partnerId);
+
 
         // Call Odoo's native API to update the shipping address on the order
         jsonrpc('/shop/update_address', {
             partner_id: partnerId,
             address_type: 'delivery',
         }).then(function () {
-            console.log("[GuapanteCheckout] Address updated. Reloading page...");
             window.location.reload();
         }).catch(function (err) {
             console.error("[GuapanteCheckout] Error updating address:", err);
-            alert('Error al actualizar la dirección. Por favor intente de nuevo.');
+            // LOW-05 FIX: Show inline error instead of alert()
+            var $wrapper = $('.guapante-checkout-wrapper');
+            var $alert = $('<div class="alert alert-danger mt-2" role="alert">Error al actualizar la dirección. Por favor intente de nuevo.</div>');
+            $wrapper.prepend($alert);
+            setTimeout(function () { $alert.fadeOut(); }, 5000);
         });
     },
 });

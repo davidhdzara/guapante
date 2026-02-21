@@ -1,6 +1,5 @@
 /** @odoo-module **/
 
-// This file is currently empty to satisfy manifest import.
-// It was intended to fix address/checkout related JS errors.
-// TODO: Implement address error handling logic if needed.
-console.log('Guapante Address Error Fix loaded');
+// LOW-01 FIX: This file was an empty stub. It now serves as a
+// placeholder module that can be extended for address error handling.
+// No runtime cost — no DOM operations, no console.log.

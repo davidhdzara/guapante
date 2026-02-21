@@ -12,7 +12,7 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         if (window.location.href.indexOf('enable_editor') !== -1 ||
             $('body').hasClass('editor_enable') ||
             $('body').hasClass('o_web_studio_client_action')) {
-            console.log('Guapante: Editor mode detected, skipping sidebar layout.');
+
             return this._super.apply(this, arguments);
         }
 
@@ -20,7 +20,7 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
 
         // Check if sidebar layout already exists
         if ($productDetail.closest('.guapante-product-container').length) {
-            console.log('Guapante: Sidebar layout already applied.');
+
             return this._super.apply(this, arguments);
         }
 
@@ -64,7 +64,7 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
             $carousel.css({ 'position': 'relative', 'top': 'auto' });
         }
 
-        console.log('Guapante: Sidebar layout created via JavaScript.');
+
 
         // Load categories from the hidden XML source
         this._loadCategoriesFromXML($sidebar);
@@ -84,7 +84,7 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
             // Remove the hidden source
             $sidebarSource.remove();
 
-            console.log('Guapante: Categories loaded from XML template.');
+
         } else {
             // Fallback message
             $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
@@ -155,7 +155,7 @@ publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
                 }
             });
 
-            console.log('Guapante: Maturity color indicators injected.');
+
         }
 
         return this._super.apply(this, arguments);
@@ -190,9 +190,9 @@ $(document).ready(function () {
     setTimeout(function () {
         // Remove the stray "s" from body
         $('body').contents().filter(function () {
-            return this.nodeType === 3 && $.trim($(this).text()) === 's';
+            return this.nodeType === 3 && this.textContent.trim() === 's';
         }).remove();
 
-        console.log('Guapante: Stray text cleanup completed.');
+
     }, 500);
 });

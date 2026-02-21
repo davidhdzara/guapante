@@ -21,7 +21,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         this.$input = this.$('.guapante-cart-qty-input');
         this._isUpdating = false;
 
-        console.log('Guapante Cart: Qty controls init for line', this.lineId, 'mode:', this.uomMode);
+
         return this._super.apply(this, arguments);
     },
 

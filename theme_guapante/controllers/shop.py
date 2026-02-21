@@ -204,36 +204,36 @@ class GuapanteWebsiteSale(WebsiteSale):
             request.website.sale_reset()
             
             # 3. Redirect to Status Page
-            return request.redirect(f'/shop/order/status/{order.id}')
+            return request.redirect('/shop/order/status/%s?access_token=%s' % (order.id, order.access_token))
             
         except Exception as e:
-            _logger.error(f"Error confirming order: {str(e)}")
+            _logger.error("Error confirming order: %s", e)
             return request.redirect('/shop/checkout?error=confirm_failed')
 
     @http.route(['/shop/order/status/<int:order_id>'], type='http', auth="public", website=True, sitemap=False)
     def order_status(self, order_id, **post):
         """
         Render the custom order status page.
+        CRIT-01 FIX: Public users must supply a valid access_token.
         """
-        # Security Check: Ensure user can view this order
         Order = request.env['sale.order'].sudo().browse(order_id)
         if not Order.exists():
             return request.redirect('/shop')
-            
-        # Basic security: If public, we might need a token or just allow it if within session?
-        # For simplicity in this dev phase, allowing if it matches session or user, 
-        # but since we reset session, we rely on ID. 
-        # Ideally we validat access_token if user is not logged in.
-        
-        # If user is logged in, check ownership
-        if not request.env.user._is_public():
-             if Order.partner_id.commercial_partner_id != request.env.user.partner_id.commercial_partner_id:
-                 raise Forbidden()
-        
+
+        if request.env.user._is_public():
+            # Public users MUST provide valid access_token (prevents IDOR)
+            token = post.get('access_token', '')
+            if not token or token != Order.access_token:
+                raise Forbidden()
+        else:
+            # Logged-in users: verify ownership via commercial partner
+            if Order.partner_id.commercial_partner_id != request.env.user.partner_id.commercial_partner_id:
+                raise Forbidden()
+
         return request.render("theme_guapante.guapante_order_status", {
             'order': Order,
-            'warehouse_lat': '4.6486',   # Bodega Central latitude (Bogotá default)
-            'warehouse_lng': '-74.1003', # Bodega Central longitude (Bogotá default)
+            'warehouse_lat': '4.6486',
+            'warehouse_lng': '-74.1003',
         })
 
     def _build_uom_display(self, order):
@@ -299,15 +299,12 @@ class GuapanteWebsiteSale(WebsiteSale):
             response.qcontext['is_seasonal'] = True
         return response
 
-    def _shop_lookup_products(self, attrib_set, options, post, search, website):
-        """Filter search results to seasonal products when is_seasonal param is present."""
-        fuzzy_search_term, product_count, search_result = super()._shop_lookup_products(
-            attrib_set, options, post, search, website
-        )
+    def _get_search_domain(self, search, category, attrib_values, search_in_description=True):
+        """MED-05 FIX: Add is_seasonal to search domain BEFORE pagination."""
+        domain = super()._get_search_domain(search, category, attrib_values, search_in_description)
         if request.params.get('is_seasonal'):
-            search_result = search_result.filtered(lambda p: p.is_seasonal)
-            product_count = len(search_result)
-        return fuzzy_search_term, product_count, search_result
+            domain.append(('is_seasonal', '=', True))
+        return domain
 
     @http.route()
     def product(self, product, category='', search='', **kwargs):
@@ -357,7 +354,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         SEARCH-07 FIX: product_packaging_id is now an explicit parameter.
         """
         if uom_mode:
-            _logger.info(f"Cart update: product_id={product_id}, uom_mode={uom_mode}, add_qty={add_qty}")
+            _logger.info("Cart update: product_id=%s, uom_mode=%s, add_qty=%s", product_id, uom_mode, add_qty)
 
         # SEARCH-07: Forward product_packaging_id explicitly to super()
         if product_packaging_id:
@@ -382,9 +379,9 @@ class GuapanteWebsiteSale(WebsiteSale):
                     if line.exists():
                         # Use sudo() to ensure public/portal users can update this field
                         line.sudo().write({'uom_mode': uom_mode})
-                        _logger.info(f"DB: saved uom_mode='{uom_mode}' for line {line_id_from_response}")
+                        _logger.info("DB: saved uom_mode='%s' for line %s", uom_mode, line_id_from_response)
             except Exception as e:
-                _logger.error(f"Error saving uom_mode to DB: {e}")
+                _logger.error("Error saving uom_mode to DB: %s", e)
             
             # Keep session update for immediate consistency slightly, but DB is source of truth now
             # This can be removed later if fully robust
@@ -427,7 +424,7 @@ class GuapanteWebsiteSale(WebsiteSale):
                 'qty': pkg.qty,
             })
         
-        _logger.info(f"Packagings for product {product_id}: {result}")
+        _logger.info("Packagings for product %s: %s", product_id, result)
         
         return result
 
