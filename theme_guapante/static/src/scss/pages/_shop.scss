@@ -78,18 +78,10 @@
         font-size: 0.9rem;
         text-decoration: none;
 
-        // Replace emoji icons with simple bullet dots (#3)
+        // Hide emoji icons from categories
         i.fa,
         .oe_website_sale_icon {
             display: none !important;
-        }
-
-        &::before {
-            content: '•';
-            color: #9CA3AF;
-            font-size: 1.2rem;
-            margin-right: 0.5rem;
-            line-height: 1;
         }
 
         &:hover {
@@ -262,21 +254,23 @@
     }
 }
 
-// 4. Variant Selectors (Radio Buttons -> Cards) - REDUCED 50%
+// 4. Variant Selectors (Radio Buttons -> Cards)
 .js_product {
 
     ul.list-inline,
     ul.list-unstyled {
-        margin-bottom: 0.75rem; // Reducido de 1.5rem
+        margin-bottom: 1rem;
+        margin-top: 1.5rem; // Spacing from description
 
-        // Label styling (e.g. "TAMAÑO")
+        // Label styling (e.g. "TAMAÑO", "GRADO DE MADUREZ")
         strong {
             display: block;
             text-transform: uppercase;
-            font-size: 0.65rem; // Reducido de 0.75rem
-            color: #6B7280;
-            margin-bottom: 0.4rem; // Reducido de 0.5rem
+            font-size: 0.8rem; // Larger to match mockup
+            color: #374151; // Darker to match mockup
+            margin-bottom: 0.6rem;
             letter-spacing: 0.05em;
+            font-weight: 700;
         }
 
         // Radio List Item

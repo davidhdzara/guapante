@@ -149,21 +149,33 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
     },
 
     _refineSidebar: function ($sidebar) {
-        // (#1) Change header text to "Filtros" with "Refinar catálogo" subtitle
-        var $firstHeader = $sidebar.find('h5, h4, .guapante-sidebar-header h5').first();
-        if ($firstHeader.length) {
-            $firstHeader.text('Filtros');
-            // Add subtitle if not present
-            if (!$firstHeader.next('.text-muted').length) {
-                $firstHeader.after('<p class="text-muted small mb-3">Refinar catálogo</p>');
+        // First pass: Remove ALL 'Categorías'/'Categorias' headers
+        $sidebar.find('h5, h4, h3, b, strong').each(function () {
+            var text = $(this).text().trim().toLowerCase();
+            if (text === 'categorias' || text === 'categorías') {
+                $(this).remove();
             }
+        });
+
+        // Ensure 'Filtros' header exists at the top
+        var $header = $sidebar.find('.guapante-sidebar-header h5').first();
+        if ($header.length) {
+            $header.text('Filtros');
+        } else {
+            // Prepend header if missing
+            $sidebar.prepend(
+                '<div class="guapante-sidebar-header mb-2">' +
+                '<h5 class="fw-bold mb-0">Filtros</h5>' +
+                '<p class="text-muted small mb-3">Refinar catálogo</p>' +
+                '</div>'
+            );
         }
 
-        // Remove any duplicate "Categorias" header
-        $sidebar.find('h5, h4').each(function () {
-            if ($(this).text().trim().toLowerCase() === 'categorias' ||
-                $(this).text().trim().toLowerCase() === 'categorías') {
-                $(this).remove();
+        // Remove 'Todos los productos' link
+        $sidebar.find('a').each(function () {
+            var text = $(this).text().trim().toLowerCase();
+            if (text === 'todos los productos' || text === 'all products') {
+                $(this).closest('li').length ? $(this).closest('li').remove() : $(this).remove();
             }
         });
     }
