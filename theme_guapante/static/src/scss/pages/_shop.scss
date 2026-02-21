@@ -1,5 +1,15 @@
 // Shop Page Styles
 
+// Fix two-tone background (#1): Force white background on product page
+.guapante-product-container {
+    background-color: #FFFFFF;
+}
+
+#product_detail~.oe_structure,
+#wrapwrap:has(.guapante-product-container) #wrap {
+    background-color: #FFFFFF;
+}
+
 // 1. Sidebar Container (Sticky & Clean)
 #products_grid_before {
     // Make it sticky and stretch full height of the row
@@ -144,8 +154,7 @@
     border-radius: 24px; // Large rounded corners
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); // Very subtle shadow
     border: 1px solid #E5E7EB;
-    border-left: 4px solid #2DD4BF; // Teal accent border (#19)
-    margin-top: 1.5rem;
+    margin-top: 1rem;
 
     // Internal spacing fix for cols
     >.col-lg-6 {

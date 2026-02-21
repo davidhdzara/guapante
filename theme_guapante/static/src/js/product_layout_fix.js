@@ -26,7 +26,7 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
 
         // Create wrapper structure
         var $container = $('<div>', {
-            class: 'container guapante-product-container mt-4'
+            class: 'container guapante-product-container mt-2'
         });
 
         var $row = $('<div>', { class: 'row' });
