@@ -91,6 +91,8 @@
                             <input type="text" 
                                    class="guapante-cart-qty-input form-control text-center border-0 bg-transparent fw-bold mx-1 p-0" 
                                    t-att-value="line_display.get('qty', '1')"
+                                   inputmode="numeric"
+                                   autocomplete="off"
                                    style="width: 50px; font-size: 0.95rem;"/>
                             <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-plus px-2 py-1">
                                 <i class="fa fa-plus" style="font-size: 0.7rem;"/>

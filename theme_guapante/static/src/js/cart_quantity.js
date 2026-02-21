@@ -21,6 +21,20 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         this.$input = this.$('.guapante-cart-qty-input');
         this._isUpdating = false;
 
+        // ── FIX: Block Odoo's default website_sale quantity handler ──
+        // Odoo 18 mounts its own OWL component that intercepts input/change
+        // events on quantity fields inside the cart. That handler reads the
+        // DOM value as a *string* and concatenates it (e.g. "3" + "0" = "30"
+        // instead of 3 + 1 = 4). Stopping immediate propagation on the raw
+        // DOM node ensures our widget is the only one that processes these
+        // events.
+        this.$input[0].addEventListener('input', function (e) {
+            e.stopImmediatePropagation();
+        }, true);  // useCapture = true  →  fires before bubbling listeners
+
+        this.$input[0].addEventListener('change', function (e) {
+            e.stopImmediatePropagation();
+        }, true);
 
         return this._super.apply(this, arguments);
     },
@@ -31,6 +45,8 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
 
     _onPlus: function (ev) {
         ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
         if (this._isUpdating) return;
 
         let val = this._parseValue(this.$input.val());
@@ -44,6 +60,8 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
 
     _onMinus: function (ev) {
         ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
         if (this._isUpdating) return;
 
         let val = this._parseValue(this.$input.val());
@@ -60,6 +78,8 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
     },
 
     _onChange: function (ev) {
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
         let val = this._parseValue($(ev.currentTarget).val());
         let min = this._getMin();
 
