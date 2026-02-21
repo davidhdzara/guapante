@@ -299,9 +299,9 @@ class GuapanteWebsiteSale(WebsiteSale):
             response.qcontext['is_seasonal'] = True
         return response
 
-    def _get_search_domain(self, search, category, attrib_values, search_in_description=True):
+    def _get_shop_domain(self, search, category, attrib_values, search_in_description=True):
         """MED-05 FIX: Add is_seasonal to search domain BEFORE pagination."""
-        domain = super()._get_search_domain(search, category, attrib_values, search_in_description)
+        domain = super()._get_shop_domain(search, category, attrib_values, search_in_description)
         if request.params.get('is_seasonal'):
             domain.append(('is_seasonal', '=', True))
         return domain
@@ -440,59 +440,67 @@ class GuapanteWebsiteSale(WebsiteSale):
             return {'products': [], 'count': 0}
 
         query = query.strip()
-        website = request.env['website'].get_current_website()
-        options = self._get_search_options()
 
-        # Use Odoo's native fuzzy search
-        fuzzy_search_term, product_count, search_result = self._shop_lookup_products(
-            set(), options, {}, query, website
-        )
+        try:
+            website = request.env['website'].get_current_website()
+            options = self._get_search_options()
 
-        # Limit results
-        templates = search_result[:limit]
-
-        # Reference for weight UoM detection
-        weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
-
-        products = []
-        for tmpl in templates:
-            variant = tmpl.product_variant_id
-            if not variant:
-                continue
-
-            # Detect if this is a weight-based product
-            is_weight = bool(
-                weight_categ
-                and tmpl.uom_id.category_id.id == weight_categ.id
+            # Use Odoo's native fuzzy search
+            fuzzy_search_term, product_count, search_result = self._shop_lookup_products(
+                set(), options, {}, query, website
             )
 
-            # Get sales-enabled packagings
-            packagings_data = []
-            sales_packagings = variant.sudo().packaging_ids.filtered(lambda p: p.sales)
-            has_packaging = bool(sales_packagings)
-            for pkg in sales_packagings:
-                packagings_data.append({
-                    'id': pkg.id,
-                    'name': pkg.name,
-                    'qty': pkg.qty,
+            _logger.info("Search '%s': found %s templates", query, product_count)
+
+            # Limit results
+            templates = search_result[:limit]
+
+            # Reference for weight UoM detection
+            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+
+            products = []
+            for tmpl in templates:
+                variant = tmpl.product_variant_id
+                if not variant:
+                    continue
+
+                # Detect if this is a weight-based product
+                is_weight = bool(
+                    weight_categ
+                    and tmpl.uom_id.category_id.id == weight_categ.id
+                )
+
+                # Get sales-enabled packagings
+                packagings_data = []
+                sales_packagings = variant.sudo().packaging_ids.filtered(lambda p: p.sales)
+                has_packaging = bool(sales_packagings)
+                for pkg in sales_packagings:
+                    packagings_data.append({
+                        'id': pkg.id,
+                        'name': pkg.name,
+                        'qty': pkg.qty,
+                    })
+
+                products.append({
+                    'id': variant.id,
+                    'product_tmpl_id': tmpl.id,
+                    'name': tmpl.name,
+                    'image_url': '/web/image/product.product/%d/image_256' % variant.id,
+                    'uom_name': tmpl.uom_id.name,
+                    'is_weight_uom': is_weight,
+                    'has_packaging': has_packaging,
+                    'packagings': packagings_data,
                 })
 
-            products.append({
-                'id': variant.id,
-                'product_tmpl_id': tmpl.id,
-                'name': tmpl.name,
-                'image_url': '/web/image/product.product/%d/image_256' % variant.id,
-                'uom_name': tmpl.uom_id.name,
-                'is_weight_uom': is_weight,
-                'has_packaging': has_packaging,
-                'packagings': packagings_data,
-            })
+            return {
+                'products': products,
+                'count': product_count,
+                'search_term': fuzzy_search_term or query,
+            }
 
-        return {
-            'products': products,
-            'count': product_count,
-            'search_term': fuzzy_search_term or query,
-        }
+        except Exception as e:
+            _logger.error("Search products error for query '%s': %s", query, e, exc_info=True)
+            return {'products': [], 'count': 0, 'error': str(e)}
 
     @http.route('/shop/search/categories', type='json', auth='public', website=True, csrf=False)
     def search_categories(self, **kwargs):

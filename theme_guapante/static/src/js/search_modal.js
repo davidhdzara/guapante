@@ -174,7 +174,20 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             // Check if query changed while waiting
             if (query !== this._currentQuery) return;
 
+            // Handle JSON-RPC error responses
+            if (data && data.error) {
+                console.error('Guapante Search: server error', data.error);
+                this._showState('no-results');
+                return;
+            }
+
             var result = (data && data.result) ? data.result : data;
+
+            // Surface server-side errors returned in the result
+            if (result && result.error) {
+                console.error('Guapante Search: endpoint error', result.error);
+            }
+
             var products = result.products || [];
 
             if (products.length === 0) {
