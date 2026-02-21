@@ -94,6 +94,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         const $packagingInfo = this.$('.guapante-packaging-info');
         const $modeInfo = this.$('.guapante-mode-info');
 
+        // (#16) Ensure unit label exists next to qty input
+        var $unitLabel = this.$('.guapante-qty-unit-label');
+        if (!$unitLabel.length) {
+            $qtyInput.after('<span class="input-group-text guapante-qty-unit-label"></span>');
+            $unitLabel = this.$('.guapante-qty-unit-label');
+        }
         switch (this.currentMode) {
             case 'kg':
                 $qtyInput.attr('step', '0.01').attr('min', '0.1');
@@ -101,6 +107,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 $packagingSelector.addClass('d-none');
                 $packagingInfo.addClass('d-none');
                 $modeInfo.text('Precio por Kilogramo');
+                $unitLabel.text('Kg').removeClass('d-none');
                 break;
             case 'g':
                 $qtyInput.attr('step', '50').attr('min', '50');
@@ -110,6 +117,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 $packagingSelector.addClass('d-none');
                 $packagingInfo.addClass('d-none');
                 $modeInfo.text('Precio calculado por peso (aprox)');
+                $unitLabel.text('g').removeClass('d-none');
                 break;
             case 'unit':
                 $qtyInput.attr('step', '1').attr('min', '1');
@@ -132,6 +140,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                     $modeInfo.text('Venta por Unidad');
                 }
                 this._updatePackagingInfo();
+                $unitLabel.addClass('d-none');
                 break;
         }
     },

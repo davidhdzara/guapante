@@ -96,7 +96,35 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         // Load categories from the hidden XML source
         this._loadCategoriesFromXML($sidebar);
 
+        // ─── Fix breadcrumb separator (#7): / → > ───
+        this._fixBreadcrumbSeparator();
+
+        // ─── Add "Precio sujeto a cotización final" text below button (#18) ───
+        var $addBtn = $productDetail.find('.guapante-add-to-cart-btn');
+        if ($addBtn.length && !$addBtn.next('.guapante-disclaimer').length) {
+            $addBtn.after('<p class="guapante-disclaimer">Precio sujeto a cotización final</p>');
+        }
+
         return this._super.apply(this, arguments);
+    },
+
+    _fixBreadcrumbSeparator: function () {
+        // Replace "/" separators with ">" in the breadcrumb
+        var $breadcrumb = $('ol.breadcrumb, nav.breadcrumb, .breadcrumb');
+        if ($breadcrumb.length) {
+            // Odoo uses .breadcrumb-item with CSS ::before for separators
+            // Override via CSS is cleaner, but also handle text separators
+            $breadcrumb.find('.breadcrumb-item + .breadcrumb-item').each(function () {
+                // The ::before content is set by Bootstrap CSS, override it
+                $(this).css('--bs-breadcrumb-divider', '">"');
+            });
+        }
+        // Also handle plain text separators in non-bootstrap breadcrumbs
+        $('nav[aria-label="breadcrumb"]').contents().filter(function () {
+            return this.nodeType === 3 && this.textContent.includes('/');
+        }).each(function () {
+            this.textContent = this.textContent.replace(/\s*\/\s*/g, ' > ');
+        });
     },
 
     _loadCategoriesFromXML: function ($sidebar) {
@@ -111,12 +139,33 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
             // Remove the hidden source
             $sidebarSource.remove();
 
-
+            // ─── Post-process sidebar (#1): Change header to "Filtros" ───
+            this._refineSidebar($sidebar);
         } else {
             // Fallback message
             $sidebar.html('<p class="text-muted">No hay categorías disponibles</p>');
             console.warn('Guapante: Category source not found.');
         }
+    },
+
+    _refineSidebar: function ($sidebar) {
+        // (#1) Change header text to "Filtros" with "Refinar catálogo" subtitle
+        var $firstHeader = $sidebar.find('h5, h4, .guapante-sidebar-header h5').first();
+        if ($firstHeader.length) {
+            $firstHeader.text('Filtros');
+            // Add subtitle if not present
+            if (!$firstHeader.next('.text-muted').length) {
+                $firstHeader.after('<p class="text-muted small mb-3">Refinar catálogo</p>');
+            }
+        }
+
+        // Remove any duplicate "Categorias" header
+        $sidebar.find('h5, h4').each(function () {
+            if ($(this).text().trim().toLowerCase() === 'categorias' ||
+                $(this).text().trim().toLowerCase() === 'categorías') {
+                $(this).remove();
+            }
+        });
     }
 });
 
@@ -182,7 +231,20 @@ publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
                 }
             });
 
-
+            // (#12) Add "Guía de maduración" link after the maturity section
+            if (!$maturitySection.find('.guapante-maturity-guide').length) {
+                var $guideLink = $('<a>', {
+                    href: '#',
+                    class: 'guapante-maturity-guide text-muted small d-flex align-items-center mt-1',
+                    html: '<i class="fa fa-info-circle me-1"></i> Guía de maduración'
+                });
+                $guideLink.css({
+                    'font-size': '0.75rem',
+                    'text-decoration': 'none',
+                    'color': '#9CA3AF'
+                });
+                $maturitySection.append($guideLink);
+            }
         }
 
         return this._super.apply(this, arguments);

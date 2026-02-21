@@ -2,11 +2,11 @@
 
 // 1. Sidebar Container (Sticky & Clean)
 #products_grid_before {
-    // List Items (Categories)
-    // Make it sticky
+    // Make it sticky and stretch full height of the row
     position: sticky;
     top: 90px;
-    height: fit-content;
+    align-self: start; // Needed for sticky inside flex/grid row
+    min-height: 100%; // Stretch to match product card height
     max-height: 85vh; // Prevent it from being taller than viewport
     overflow-y: auto; // Enable internal scrolling
 
@@ -49,6 +49,11 @@
         margin-bottom: 0.75rem;
     }
 
+    // Hide "Todos los productos" link (#4)
+    .nav>li:first-child>a[href$="/shop"] {
+        display: none !important;
+    }
+
     // Category Links Styling
     .nav a {
         border-radius: 50px; // Pill shape fully rounded
@@ -62,6 +67,20 @@
         margin-bottom: 0.25rem;
         font-size: 0.9rem;
         text-decoration: none;
+
+        // Replace emoji icons with simple bullet dots (#3)
+        i.fa,
+        .oe_website_sale_icon {
+            display: none !important;
+        }
+
+        &::before {
+            content: '•';
+            color: #9CA3AF;
+            font-size: 1.2rem;
+            margin-right: 0.5rem;
+            line-height: 1;
+        }
 
         &:hover {
             background-color: #F9FAFB;
@@ -124,12 +143,24 @@
     background-color: #FFFFFF;
     border-radius: 24px; // Large rounded corners
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); // Very subtle shadow
-    border: 1px solid #F3F4F6;
+    border: 1px solid #E5E7EB;
+    border-left: 4px solid #2DD4BF; // Teal accent border (#19)
     margin-top: 1.5rem;
 
     // Internal spacing fix for cols
     >.col-lg-6 {
         padding: 2rem;
+    }
+}
+
+// Breadcrumb separator override (#7): / → >
+.breadcrumb {
+    --bs-breadcrumb-divider: '>';
+    font-size: 0.85rem;
+
+    .breadcrumb-item+.breadcrumb-item::before {
+        content: '>' !important;
+        color: #9CA3AF;
     }
 }
 
@@ -508,14 +539,34 @@
     }
 }
 
-// Unit Selector Container background
+// Unit Selector Container — clean white card with thin border (#14)
 .guapante-unit-selector-container {
     background-color: #FFFFFF !important;
-    border: 1px solid #eee;
+    border: 1px solid #E5E7EB;
     border-radius: 16px !important;
-    padding: 1.5rem !important;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-    transition: box-shadow 0.2s ease;
+    padding: 1.25rem !important;
+    box-shadow: none;
+    margin-top: 1.5rem;
+}
+
+// "Precio sujeto a cotización final" disclaimer (#18)
+.guapante-disclaimer {
+    color: #9CA3AF;
+    font-size: 0.75rem;
+    text-align: center;
+    margin-top: 0.5rem;
+}
+
+// Unit label next to qty input (#16)
+.guapante-qty-unit-label {
+    background: #f8f9fa;
+    border: none;
+    border-left: 1px solid #dee2e6;
+    color: #6B7280;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.65rem 0.75rem;
+    pointer-events: none;
 }
 
 // Quantity selector styling
