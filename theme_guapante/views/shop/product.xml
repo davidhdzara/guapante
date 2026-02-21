@@ -80,7 +80,7 @@
                 </div>
 
                 <!-- Info Display -->
-                <div class="guapante-mode-info text-center mb-2 text-primary fw-bold small">
+                <div class="guapante-mode-info text-center mb-2 text-muted fw-bold small">
                     <!-- JS updates this text -->
                 </div>
                 

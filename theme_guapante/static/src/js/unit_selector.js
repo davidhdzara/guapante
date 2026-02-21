@@ -224,7 +224,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             const totalKg = (qty * pkg.qty).toFixed(2);
             // Display formatted totalKg
             const formattedTotal = totalKg.toString().replace('.', ',');
-            $text.text(`${qty} ${pkg.name} x ${pkg.qty} kg = ${formattedTotal} kg Total`);
+            $text.text(`Peso aproximado de ${qty} ${pkg.name} x ${pkg.qty} kg = ${formattedTotal} kg Total`);
             $info.removeClass('d-none');
         } else {
             $info.addClass('d-none');
