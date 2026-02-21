@@ -245,11 +245,9 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             finalQty = qtyInput / 1000.0;
         } else if (this.currentMode === 'unit') {
             packagingId = this.currentPackaging.id;
-            if (this.isWeightUom) {
-                finalQty = qtyInput * this.currentPackaging.qty;
-            } else {
-                finalQty = qtyInput;
-            }
+            // La conversión unidades→kg se hace en el servidor (cart_update_json)
+            // para mantener consistencia con cart_quantity.js
+            finalQty = qtyInput;
         } else {
             finalQty = qtyInput;
         }
