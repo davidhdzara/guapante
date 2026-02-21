@@ -61,12 +61,34 @@ publicWidget.registry.GuapanteProductSidebarLayout = publicWidget.Widget.extend(
         // Move product detail into the column
         $productColumn.append($productDetail);
 
-        // Strip Odoo's sticky positioning from the carousel AND the section
-        // to prevent scroll conflicts with our sidebar sticky layout
+        // ─── Fix ancestor overflow that breaks position: sticky ───
+        // Odoo 18's #wrapwrap has overflow-x: hidden which creates a new
+        // scroll context and completely breaks position: sticky on descendants.
+        // Using overflow: clip preserves the clipping behavior without
+        // creating a scroll context.
+        $('#wrapwrap').css('overflow', 'clip');
+
+        // ─── Strip Odoo's sticky from carousel AND section ───
         var $carousel = $productDetail.find('#o-carousel-product');
         if ($carousel.length) {
             $carousel.removeClass('position-sticky');
             $carousel.css({ 'position': 'relative', 'top': 'auto' });
+
+            // Odoo's carousel JS re-applies position: sticky on EVERY scroll
+            // event via inline styles. A MutationObserver nukes them instantly.
+            var carouselEl = $carousel[0];
+            var observer = new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    if (m.attributeName === 'style') {
+                        var pos = carouselEl.style.position;
+                        if (pos === 'sticky' || pos === '-webkit-sticky') {
+                            carouselEl.style.position = 'relative';
+                            carouselEl.style.top = 'auto';
+                        }
+                    }
+                });
+            });
+            observer.observe(carouselEl, { attributes: true, attributeFilter: ['style'] });
         }
         $productDetail.removeClass('position-sticky');
         $productDetail.css({ 'position': '', 'top': '' });
