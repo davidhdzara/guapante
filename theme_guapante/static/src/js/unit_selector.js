@@ -307,36 +307,21 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _setupVariantListener: function () {
         const self = this;
-        const input = document.querySelector('input[name="product_id"]');
-        if (!input) {
-            console.warn('Guapante: input[name="product_id"] not found, variant listener not set up.');
-            return;
-        }
 
-        // Store last known value
-        this._lastProductId = input.value;
-
-        // Poll for value changes every 300ms
-        // (jQuery .val() doesn't fire 'change' events, so we need to poll)
-        this._variantInterval = setInterval(function () {
-            var currentVal = input.value;
-            if (currentVal && currentVal !== self._lastProductId) {
-                console.log('Guapante: Variant changed from', self._lastProductId, 'to', currentVal);
-                self._lastProductId = currentVal;
+        // Odoo 18's _onChangeCombination does:
+        //   $parent.find('.product_id').first().val(combination.product_id).trigger('change')
+        // So we listen for 'change' on '.product_id' (class, not name attribute)
+        $(document).on('change', '.product_id', function () {
+            var newId = $(this).val();
+            console.log('Guapante: variant changed, new product_id:', newId);
+            if (newId && newId !== '0') {
                 self._onVariantChange();
             }
-        }, 300);
-    },
-
-    destroy: function () {
-        if (this._variantInterval) {
-            clearInterval(this._variantInterval);
-        }
-        return this._super.apply(this, arguments);
+        });
     },
 
     _onVariantChange: async function () {
-        const productId = $('input[name="product_id"]').val();
+        const productId = $('.product_id').first().val();
         if (!productId) return;
         try {
             const packagings = await this._fetchPackagings(productId);
