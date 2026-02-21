@@ -354,11 +354,33 @@ class GuapanteWebsiteSale(WebsiteSale):
         SEARCH-07 FIX: product_packaging_id is now an explicit parameter.
         """
         if uom_mode:
-            _logger.info("Cart update: product_id=%s, uom_mode=%s, add_qty=%s", product_id, uom_mode, add_qty)
+            _logger.info("Cart update: product_id=%s, uom_mode=%s, add_qty=%s, set_qty=%s", product_id, uom_mode, add_qty, set_qty)
 
         # SEARCH-07: Forward product_packaging_id explicitly to super()
         if product_packaging_id:
             kwargs['product_packaging_id'] = int(product_packaging_id)
+
+        # ── FIX: Convertir unidades del usuario a kg para productos de peso ──
+        # Cuando uom_mode='unit' y el producto tiene UdM base de peso (kg),
+        # las "unidades" del usuario se definen por el embalaje (packaging.qty).
+        # El JS envía set_qty/add_qty en unidades del usuario, pero super()
+        # espera el valor en la UdM base (kg). Sin esta conversión, enviar
+        # set_qty=8 (unidades) se guarda como 8 kg en vez de 0.8 kg.
+        if uom_mode == 'unit':
+            product = request.env['product.product'].sudo().browse(int(product_id))
+            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+            if weight_categ and product.exists() and product.uom_id.category_id == weight_categ:
+                packaging = product.packaging_ids.filtered(
+                    lambda p: p.sales and p.qty > 0
+                )[:1]
+                if packaging:
+                    factor = packaging.qty  # ej: 0.1 kg/unidad
+                    if set_qty is not None:
+                        _logger.info("Unit→kg conversion: %s units × %s = %s kg", set_qty, factor, set_qty * factor)
+                        set_qty = set_qty * factor
+                    if add_qty is not None:
+                        _logger.info("Unit→kg conversion (add): %s units × %s = %s kg", add_qty, factor, add_qty * factor)
+                        add_qty = add_qty * factor
 
         # 1. Call super to perform standard logic
         response = super().cart_update_json(
