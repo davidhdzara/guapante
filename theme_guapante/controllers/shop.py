@@ -420,7 +420,7 @@ class GuapanteWebsiteSale(WebsiteSale):
             
         return response
 
-    @http.route(['/shop/product/packagings/<int:product_id>'], type='json', auth="public", methods=['GET'], website=True, csrf=False)
+    @http.route(['/shop/product/packagings/<int:product_id>'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def get_product_packagings(self, product_id, **kwargs):
         """
         Get packagings for a specific product variant
