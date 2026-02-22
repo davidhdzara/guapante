@@ -473,8 +473,9 @@ class GuapanteWebsiteSale(WebsiteSale):
             # Limit results
             templates = search_result[:limit]
 
-            # Reference for weight UoM detection
+            # Reference for weight UoM detection (sudo for public access)
             weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+            weight_categ_id = weight_categ.id if weight_categ else False
 
             products = []
             for tmpl in templates:
@@ -482,10 +483,11 @@ class GuapanteWebsiteSale(WebsiteSale):
                 if not variant:
                     continue
 
-                # Detect if this is a weight-based product
+                # Detect if this is a weight-based product (sudo for public access)
+                uom = tmpl.sudo().uom_id
                 is_weight = bool(
-                    weight_categ
-                    and tmpl.uom_id.category_id.id == weight_categ.id
+                    weight_categ_id
+                    and uom.category_id.id == weight_categ_id
                 )
 
                 # Get sales-enabled packagings
@@ -504,7 +506,7 @@ class GuapanteWebsiteSale(WebsiteSale):
                     'product_tmpl_id': tmpl.id,
                     'name': tmpl.name,
                     'image_url': '/web/image/product.product/%d/image_256' % variant.id,
-                    'uom_name': tmpl.uom_id.name,
+                    'uom_name': uom.name,
                     'is_weight_uom': is_weight,
                     'has_packaging': has_packaging,
                     'packagings': packagings_data,
