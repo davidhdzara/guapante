@@ -1,7 +1,6 @@
 /** @odoo-module **/
 
 import publicWidget from "@web/legacy/js/public/public_widget";
-import { jsonrpc } from "@web/core/network/rpc_service";
 
 publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
     selector: '.guapante-checkout-wrapper',
@@ -25,20 +24,27 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
      * updated address details.
      */
     _onShippingChange: function (ev) {
-        const partnerId = parseInt($(ev.currentTarget).val(), 10);
+        var partnerId = parseInt($(ev.currentTarget).val(), 10);
         if (!partnerId || partnerId <= 0) return;
 
-
-
-        // Call Odoo's native API to update the shipping address on the order
-        jsonrpc('/shop/update_address', {
-            partner_id: partnerId,
-            address_type: 'delivery',
+        // Use $.ajax (frontend-compatible) instead of jsonrpc (backend-only)
+        $.ajax({
+            url: '/shop/update_address',
+            method: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'call',
+                params: {
+                    partner_id: partnerId,
+                    address_type: 'delivery',
+                },
+            }),
         }).then(function () {
             window.location.reload();
         }).catch(function (err) {
             console.error("[GuapanteCheckout] Error updating address:", err);
-            // LOW-05 FIX: Show inline error instead of alert()
             var $wrapper = $('.guapante-checkout-wrapper');
             var $alert = $('<div class="alert alert-danger mt-2" role="alert">Error al actualizar la dirección. Por favor intente de nuevo.</div>');
             $wrapper.prepend($alert);
