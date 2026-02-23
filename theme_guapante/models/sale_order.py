@@ -83,19 +83,30 @@ class SaleOrder(models.Model):
 
         # Call super with ceiled integer so the line gets created/found
         ceil_qty = max(1, math.ceil(desired_qty))
+        _logger.info("Guapante _cart_update: desired=%.4f, ceil=%d, is_su=%s",
+                      desired_qty, ceil_qty, self.env.su)
         result = super()._cart_update(
             product_id, line_id=line_id,
             set_qty=ceil_qty, **kwargs
         )
 
         # Fix the actual quantity to the desired float value
+        # .sudo() is required for public/anonymous users who lack
+        # write access to sale.order.line
         if result.get('line_id'):
-            line = self.env['sale.order.line'].browse(result['line_id'])
+            line = self.env['sale.order.line'].sudo().browse(result['line_id'])
             if line.exists() and line.product_uom_qty != desired_qty:
                 line.product_uom_qty = desired_qty
                 result['quantity'] = desired_qty
                 _logger.info(
-                    f"Guapante: Set fractional qty={desired_qty} on line {line.id}"
+                    "Guapante _cart_update: fixed qty=%.4f on line %s (was %s)",
+                    desired_qty, line.id, ceil_qty
+                )
+            else:
+                _logger.info(
+                    "Guapante _cart_update: line %s exists=%s, qty already=%.4f",
+                    result.get('line_id'), line.exists(),
+                    line.product_uom_qty if line.exists() else 0
                 )
 
         return result
