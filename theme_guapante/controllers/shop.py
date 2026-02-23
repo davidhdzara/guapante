@@ -242,7 +242,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         Reads from DB field first, then session, then falls back to product UoM category.
         """
         uom_modes = request.session.get('guapante_uom_modes', {})
-        weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
         result = {}
 
         for line in order.order_line:
@@ -368,7 +368,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         # set_qty=8 (unidades) se guarda como 8 kg en vez de 0.8 kg.
         if uom_mode == 'unit':
             product = request.env['product.product'].sudo().browse(int(product_id))
-            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
             if weight_categ and product.exists() and product.uom_id.category_id == weight_categ:
                 packaging = product.packaging_ids.filtered(
                     lambda p: p.sales and p.qty > 0
@@ -397,7 +397,7 @@ class GuapanteWebsiteSale(WebsiteSale):
             line_id_from_response = response.get('line_id')
             if line_id_from_response:
                 try:
-                    line = request.env['sale.order.line'].browse(line_id_from_response)
+                    line = request.env['sale.order.line'].sudo().browse(line_id_from_response)
                     if line.exists():
                         line.sudo().write({'uom_mode': uom_mode})
                         _logger.info("DB: saved uom_mode='%s' for line %s", uom_mode, line_id_from_response)
@@ -474,7 +474,7 @@ class GuapanteWebsiteSale(WebsiteSale):
             templates = search_result[:limit]
 
             # Reference for weight UoM detection (sudo for public access)
-            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+            weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
             weight_categ_id = weight_categ.id if weight_categ else False
 
             products = []

@@ -405,11 +405,9 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             var $activePkg = $card.find('.guapante-mini-pkg-select .guapante-mini-uom-btn.active');
             if ($activePkg.length) {
                 packagingId = parseInt($activePkg.data('pkg-id')) || 0;
-                var pkgQty = parseFloat($activePkg.data('pkg-qty')) || 1;
-                if (isWeight) {
-                    finalQty = qtyInput * pkgQty;
-                }
             }
+            // Conversión unidades→kg se hace en el servidor (cart_update_json)
+            finalQty = qtyInput;
         }
 
         if (finalQty <= 0 || isNaN(finalQty)) return;
