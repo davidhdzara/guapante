@@ -233,26 +233,33 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _onAddToCart: async function (ev) {
         ev.preventDefault();
+        console.log("GUAPANTE-DEBUG: _onAddToCart FIRED");
         const $btn = $(ev.currentTarget);
         const productId = $('input[name="product_id"]').val() || this.$el.data('product-id');
+        console.log("GUAPANTE-DEBUG: productId=", productId, "currentMode=", this.currentMode);
 
         let qtyInput = this._parseValue(this.$('.guapante-qty-input').val());
         let finalQty = qtyInput;
         let uomMode = this.currentMode;
         let packagingId = 0;
+        console.log("GUAPANTE-DEBUG: qtyInput=", qtyInput, "type=", typeof qtyInput);
 
         if (this.currentMode === 'g') {
             finalQty = qtyInput / 1000.0;
+            console.log("GUAPANTE-DEBUG: g mode → finalQty=", finalQty);
         } else if (this.currentMode === 'unit') {
             packagingId = this.currentPackaging.id;
             // La conversión unidades→kg se hace en el servidor (cart_update_json)
             // para mantener consistencia con cart_quantity.js
             finalQty = qtyInput;
+            console.log("GUAPANTE-DEBUG: unit mode → finalQty=", finalQty, "packagingId=", packagingId);
         } else {
             finalQty = qtyInput;
+            console.log("GUAPANTE-DEBUG: kg mode → finalQty=", finalQty);
         }
 
         if (finalQty <= 0 || isNaN(finalQty)) {
+            console.log("GUAPANTE-DEBUG: ❌ REJECTED — finalQty invalid:", finalQty);
             $btn.addClass('disabled').html('<i class="fa fa-exclamation-triangle me-2"></i> Cantidad Inválida');
             setTimeout(() => {
                 $btn.removeClass('disabled').html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
@@ -261,6 +268,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         }
 
         finalQty = Math.round(finalQty * 1000) / 1000;
+        console.log("GUAPANTE-DEBUG: ✅ SENDING — product_id=", productId, "add_qty=", finalQty, "uom_mode=", uomMode, "packaging_id=", packagingId);
 
         $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Agregando...');
 
@@ -283,8 +291,15 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 })
             });
 
+            console.log("GUAPANTE-DEBUG: AJAX response:", JSON.stringify(data));
             const result = (data && data.result) ? data.result : data;
+
+            if (data.error) {
+                console.error("GUAPANTE-DEBUG: ❌ JSON-RPC ERROR:", JSON.stringify(data.error));
+            }
+
             var itemCount = result.cart_quantity != null ? result.cart_quantity : (result.cart_lines_count || 0);
+            console.log("GUAPANTE-DEBUG: itemCount=", itemCount, "cart_quantity=", result.cart_quantity, "cart_lines_count=", result.cart_lines_count);
             var $badges = $('.my_cart_quantity');
             if (itemCount > 0) {
                 $badges.text(itemCount).removeClass('d-none').show();
@@ -298,7 +313,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             }, 2000);
 
         } catch (error) {
-            console.error("Guapante: Error adding to cart", error);
+            console.error("GUAPANTE-DEBUG: ❌ AJAX CATCH error:", error);
             $btn.removeClass('disabled').html('<i class="fa fa-exclamation-triangle me-2"></i> Error');
         }
     },
