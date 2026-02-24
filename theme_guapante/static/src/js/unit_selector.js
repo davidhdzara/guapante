@@ -250,24 +250,31 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _onAddToCart: async function (ev) {
         ev.preventDefault();
+        console.log("GUAPANTE-DEBUG: _onAddToCart FIRED, domain:", window.location.hostname);
         const $btn = $(ev.currentTarget);
         const productId = $('input[name="product_id"]').val() || this.$el.data('product-id');
+        console.log("GUAPANTE-DEBUG: productId=", productId, "mode=", this.currentMode);
 
         let qtyInput = this._parseValue(this.$('.guapante-qty-input').val());
         let finalQty = qtyInput;
         let uomMode = this.currentMode;
         let packagingId = 0;
+        console.log("GUAPANTE-DEBUG: qtyInput=", qtyInput);
 
         if (this.currentMode === 'g') {
             finalQty = qtyInput / 1000.0;
+            console.log("GUAPANTE-DEBUG: g→kg:", qtyInput, "→", finalQty);
         } else if (this.currentMode === 'unit') {
             packagingId = this.currentPackaging.id;
             finalQty = qtyInput;
+            console.log("GUAPANTE-DEBUG: unit: qty=", finalQty, "pkgId=", packagingId);
         } else {
             finalQty = qtyInput;
+            console.log("GUAPANTE-DEBUG: kg: qty=", finalQty);
         }
 
         if (finalQty <= 0 || isNaN(finalQty)) {
+            console.error("GUAPANTE-DEBUG: ❌ REJECTED qty:", finalQty);
             $btn.addClass('disabled').html('<i class="fa fa-exclamation-triangle me-2"></i> Cantidad Inválida');
             setTimeout(() => {
                 $btn.removeClass('disabled').html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
@@ -276,6 +283,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         }
 
         finalQty = Math.round(finalQty * 1000) / 1000;
+        console.log("GUAPANTE-DEBUG: ✅ SENDING → product_id=", productId, "add_qty=", finalQty, "uom=", uomMode, "pkg=", packagingId);
 
         $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Agregando...');
 
@@ -298,8 +306,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 })
             });
 
+            console.log("GUAPANTE-DEBUG: RESPONSE:", JSON.stringify(data).substring(0, 500));
             const result = (data && data.result) ? data.result : data;
             var itemCount = result.cart_quantity != null ? result.cart_quantity : (result.cart_lines_count || 0);
+            console.log("GUAPANTE-DEBUG: itemCount=", itemCount, "line_id=", result.line_id, "qty=", result.quantity);
             var $badges = $('.my_cart_quantity');
             if (itemCount > 0) {
                 $badges.text(itemCount).removeClass('d-none').show();
@@ -313,7 +323,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             }, 2000);
 
         } catch (error) {
-            console.error("Guapante: Error adding to cart", error);
+            console.error("GUAPANTE-DEBUG: ❌ AJAX ERROR:", error);
             $btn.removeClass('disabled').html('<i class="fa fa-exclamation-triangle me-2"></i> Error');
         }
     },
