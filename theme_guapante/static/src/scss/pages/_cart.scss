@@ -150,6 +150,7 @@
 .guapante-order-summary {
     border-radius: 12px;
     background: #fff;
+    z-index: 990; // Below header (1000) so navbar dropdowns render on top
 
     .title {
         font-weight: 700;
