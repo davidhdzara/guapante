@@ -31,8 +31,25 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         this._hideOriginalControls();
         this._setupVariantListener();
 
+        // Bind add-to-cart using document-level delegation.
+        // product_layout_fix.js moves #product_detail in the DOM,
+        // which can break publicWidget's jQuery event bindings on $el.
+        // Document-level delegation survives DOM moves.
+        var self = this;
+        this._onAddToCartDelegate = function (ev) {
+            // Only handle clicks within OUR widget instance
+            if ($.contains(self.$el[0], ev.target) || self.$el[0] === ev.target) {
+                self._onAddToCart(ev);
+            }
+        };
+        $(document).on('click.guapante_cart', '.guapante-add-to-cart-btn', this._onAddToCartDelegate);
 
         return this._super.apply(this, arguments);
+    },
+
+    destroy: function () {
+        $(document).off('click.guapante_cart');
+        this._super.apply(this, arguments);
     },
 
     _initializeView: function () {
