@@ -7,6 +7,23 @@ _logger = logging.getLogger(__name__)
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
+    @api.depends('order_line.product_uom_qty', 'order_line.product_id')
+    def _compute_cart_info(self):
+        """Override to use ceil() instead of int().
+
+        Odoo 18 uses int(sum(qty)) for cart_quantity. For fractional
+        quantities like 0.2 kg, int(0.2) = 0 which triggers
+        cart_update_json → sale_reset() → deletes the entire order.
+        Using ceil() ensures any non-zero quantity counts as at least 1.
+        """
+        for order in self:
+            raw_qty = sum(order.mapped('website_order_line.product_uom_qty'))
+            order.cart_quantity = math.ceil(raw_qty) if raw_qty > 0 else 0
+            order.only_services = all(
+                sol.product_id.type == 'service'
+                for sol in order.website_order_line
+            )
+
     guapante_delivery_status = fields.Selection([
         ('received', 'Recibido'),
         ('preparing', 'Preparando'),
