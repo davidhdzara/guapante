@@ -57,10 +57,15 @@
                         <div invisible="selected_product_id != False">
                             <h5 class="text-muted mb-2">① Selecciona un producto para ver el detalle</h5>
                             <field name="summary_ids" nolabel="1">
-                                <list string="Productos del día" decoration-info="order_count > 1">
+                                <list string="Productos del día"
+                                    decoration-danger="not stock_ok"
+                                    decoration-success="stock_ok"
+                                >
+                                    <field name="stock_ok" column_invisible="1"/>
                                     <field name="product_id" string="Producto"/>
                                     <field name="order_count" string="Órdenes"/>
                                     <field name="total_estimated_kg" string="Total kg a preparar" digits="[10,3]"/>
+                                    <field name="available_qty" string="Disponible (kg)" digits="[10,3]"/>
                                     <button
                                         name="action_select_product"
                                         type="object"
@@ -85,6 +90,22 @@
                                     string="← Volver al resumen"
                                     class="btn btn-sm btn-outline-secondary"
                                 />
+                            </div>
+                            <!-- Indicador de stock -->
+                            <field name="selected_total_kg" invisible="1"/>
+                            <field name="selected_available_qty" invisible="1"/>
+                            <div class="d-flex gap-3 mb-3">
+                                <span class="rounded px-3 py-1 bg-secondary-subtle text-secondary border border-secondary-subtle fw-semibold">
+                                    📦 Total pedido: <field name="selected_total_kg" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
+                                </span>
+                                <span class="rounded px-3 py-1 bg-danger-subtle text-danger border border-danger-subtle fw-semibold"
+                                    invisible="selected_available_qty &gt;= selected_total_kg">
+                                    ⚠️ Stock insuficiente: <field name="selected_available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg disponibles
+                                </span>
+                                <span class="rounded px-3 py-1 bg-success-subtle text-success border border-success-subtle fw-semibold"
+                                    invisible="selected_available_qty &lt; selected_total_kg">
+                                    ✅ Stock OK: <field name="selected_available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg disponibles
+                                </span>
                             </div>
 
                             <field

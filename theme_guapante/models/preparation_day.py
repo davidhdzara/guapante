@@ -106,6 +106,16 @@ class PreparationDay(models.TransientModel):
         string='Producto seleccionado',
         readonly=True,
     )
+    selected_available_qty = fields.Float(
+        string='Disponible en stock',
+        digits=(10, 3),
+        readonly=True,
+    )
+    selected_total_kg = fields.Float(
+        string='Total kg pedido',
+        digits=(10, 3),
+        readonly=True,
+    )
     detail_line_ids = fields.Many2many(
         'guapante.preparation.day.line',
         'prep_day_detail_line_rel',
@@ -187,12 +197,14 @@ class PreparationDay(models.TransientModel):
                     'total_estimated_kg': 0.0,
                     'order_count': 0,
                     'wizard_id': self.id,
+                    'available_qty': line.product_product_id.qty_available,
                 }
             product_totals[pid]['total_estimated_kg'] += line.estimated_kg
             product_totals[pid]['order_count'] += 1
 
         for vals in product_totals.values():
             vals['total_estimated_kg'] = round(vals['total_estimated_kg'], 3)
+            vals['stock_ok'] = vals['available_qty'] >= vals['total_estimated_kg']
 
         self.env['guapante.preparation.day.summary'].create(list(product_totals.values()))
 
@@ -260,6 +272,8 @@ class PreparationDaySummary(models.TransientModel):
     product_id = fields.Many2one('product.product', string='Producto', readonly=True)
     total_estimated_kg = fields.Float(string='Total kg estimado', digits=(10, 3), readonly=True)
     order_count = fields.Integer(string='Órdenes', readonly=True)
+    available_qty = fields.Float(string='Disponible (kg)', digits=(10, 3), readonly=True)
+    stock_ok = fields.Boolean(string='Stock OK', readonly=True)
 
     def action_select_product(self):
         """Set this product variant as the active filter in the wizard detail tab."""
@@ -268,6 +282,8 @@ class PreparationDaySummary(models.TransientModel):
         )
         self.wizard_id.write({
             'selected_product_id': self.product_id.id,
+            'selected_available_qty': self.available_qty,
+            'selected_total_kg': self.total_estimated_kg,
             'detail_line_ids': [(6, 0, filtered.ids)],
         })
         return False
