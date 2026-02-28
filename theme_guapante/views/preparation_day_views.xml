@@ -88,9 +88,8 @@
                             </div>
 
                             <field
-                                name="line_ids"
+                                name="detail_line_ids"
                                 nolabel="1"
-                                domain="[('product_product_id', '=', selected_product_id)]"
                             >
                                 <list
                                     string="Órdenes"

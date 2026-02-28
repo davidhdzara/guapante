@@ -106,6 +106,13 @@ class PreparationDay(models.TransientModel):
         string='Producto seleccionado',
         readonly=True,
     )
+    detail_line_ids = fields.Many2many(
+        'guapante.preparation.day.line',
+        'prep_day_detail_line_rel',
+        'wizard_id',
+        'line_id',
+        string='Detalle',
+    )
 
     def action_load(self):
         """Load all confirmed sale order lines whose picking is scheduled on self.date."""
@@ -241,6 +248,7 @@ class PreparationDay(models.TransientModel):
     def action_clear_product_filter(self):
         """Clear the product filter — show all lines in the detail tab."""
         self.selected_product_id = False
+        self.detail_line_ids = [(5, 0, 0)]
         return False
 
 
@@ -257,5 +265,11 @@ class PreparationDaySummary(models.TransientModel):
 
     def action_select_product(self):
         """Set this product variant as the active filter in the wizard detail tab."""
-        self.wizard_id.write({'selected_product_id': self.product_id.id})
+        filtered = self.wizard_id.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_id
+        )
+        self.wizard_id.write({
+            'selected_product_id': self.product_id.id,
+            'detail_line_ids': [(6, 0, filtered.ids)],
+        })
         return False
