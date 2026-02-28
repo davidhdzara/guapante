@@ -10,7 +10,7 @@ class PreparationDayLine(models.TransientModel):
     """One row per sale.order.line that needs preparation on the selected date."""
     _name = 'guapante.preparation.day.line'
     _description = 'Línea de Preparación del Día'
-    _order = 'product_id, order_name'
+    _order = 'product_product_id, order_name'
 
     wizard_id = fields.Many2one(
         'guapante.preparation.day',
@@ -102,7 +102,7 @@ class PreparationDay(models.TransientModel):
     )
     save_note = fields.Char(string='Resultado', readonly=True)
     selected_product_id = fields.Many2one(
-        'product.template',
+        'product.product',
         string='Producto seleccionado',
         readonly=True,
     )
@@ -173,7 +173,7 @@ class PreparationDay(models.TransientModel):
         self.summary_ids.unlink()
         product_totals = {}
         for line in self.line_ids:
-            pid = line.product_id.id
+            pid = line.product_product_id.id
             if pid not in product_totals:
                 product_totals[pid] = {
                     'product_id': pid,
@@ -245,17 +245,17 @@ class PreparationDay(models.TransientModel):
 
 
 class PreparationDaySummary(models.TransientModel):
-    """Aggregated view: one row per product showing totals."""
+    """Aggregated view: one row per product variant showing totals."""
     _name = 'guapante.preparation.day.summary'
     _description = 'Resumen de Preparación por Producto'
     _order = 'product_id'
 
     wizard_id = fields.Many2one('guapante.preparation.day', required=True, ondelete='cascade')
-    product_id = fields.Many2one('product.template', string='Producto', readonly=True)
+    product_id = fields.Many2one('product.product', string='Producto', readonly=True)
     total_estimated_kg = fields.Float(string='Total kg estimado', digits=(10, 3), readonly=True)
     order_count = fields.Integer(string='Órdenes', readonly=True)
 
     def action_select_product(self):
-        """Set this product as the active filter in the wizard detail tab."""
+        """Set this product variant as the active filter in the wizard detail tab."""
         self.wizard_id.write({'selected_product_id': self.product_id.id})
         return False

@@ -90,7 +90,7 @@
                             <field
                                 name="line_ids"
                                 nolabel="1"
-                                domain="[('product_id', '=', selected_product_id)]"
+                                domain="[('product_product_id', '=', selected_product_id)]"
                             >
                                 <list
                                     string="Órdenes"
