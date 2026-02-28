@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_preparation_day_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.form</field>
+        <field name="model">guapante.preparation.day</field>
+        <field name="arch" type="xml">
+            <form string="Preparación del Día">
+                <header>
+                    <button
+                        name="action_load"
+                        type="object"
+                        string="Ver pedidos"
+                        class="btn-primary"
+                        invisible="state == 'loaded'"
+                    />
+                    <button
+                        name="action_save_weights"
+                        type="object"
+                        string="Guardar pesos reales"
+                        class="btn-success"
+                        invisible="state == 'draft' or not selected_product_id"
+                    />
+                    <button
+                        name="action_load"
+                        type="object"
+                        string="Recargar fecha"
+                        invisible="state == 'draft'"
+                    />
+                </header>
+
+                <sheet>
+                    <field name="state" invisible="1"/>
+                    <field name="selected_product_id" invisible="1"/>
+
+                    <!-- Date selector (draft state) -->
+                    <group invisible="state == 'loaded'">
+                        <group>
+                            <field name="date" widget="date"/>
+                        </group>
+                    </group>
+
+                    <!-- Loaded state -->
+                    <div invisible="state == 'draft'">
+                        <div class="mb-3">
+                            <h2 class="mb-0">
+                                📅 Pedidos del
+                                <field name="date" readonly="1" nolabel="1" class="d-inline"/>
+                            </h2>
+                        </div>
+
+                        <!-- Save result notification -->
+                        <div invisible="not save_note" class="alert alert-success py-2 mb-3">
+                            <field name="save_note" readonly="1" nolabel="1"/>
+                        </div>
+
+                        <!-- ── PASO 1: RESUMEN POR PRODUCTO ── -->
+                        <div invisible="selected_product_id != False">
+                            <h5 class="text-muted mb-2">① Selecciona un producto para ver el detalle</h5>
+                            <field name="summary_ids" nolabel="1">
+                                <list string="Productos del día" decoration-info="order_count > 1">
+                                    <field name="product_id" string="Producto"/>
+                                    <field name="order_count" string="Órdenes"/>
+                                    <field name="total_estimated_kg" string="Total kg a preparar" digits="[10,3]"/>
+                                    <button
+                                        name="action_select_product"
+                                        type="object"
+                                        string="Ver detalle →"
+                                        class="btn btn-sm btn-primary"
+                                    />
+                                </list>
+                            </field>
+                        </div>
+
+                        <!-- ── PASO 2: DETALLE POR ORDEN (visible cuando hay producto seleccionado) ── -->
+                        <div invisible="not selected_product_id">
+                            <!-- Header del detalle -->
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h5 class="mb-0">
+                                    ② Pesos reales —
+                                    <field name="selected_product_id" readonly="1" nolabel="1" class="d-inline text-primary"/>
+                                </h5>
+                                <button
+                                    name="action_clear_product_filter"
+                                    type="object"
+                                    string="← Volver al resumen"
+                                    class="btn btn-sm btn-outline-secondary"
+                                />
+                            </div>
+
+                            <field
+                                name="line_ids"
+                                nolabel="1"
+                                domain="[('product_id', '=', selected_product_id)]"
+                            >
+                                <list
+                                    string="Órdenes"
+                                    editable="bottom"
+                                    decoration-warning="needs_weighing and actual_kg == 0"
+                                    decoration-muted="not needs_weighing"
+                                >
+                                    <field name="order_name" string="Orden" readonly="1"/>
+                                    <field name="customer_name" string="Cliente" readonly="1"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                    <field name="customer_uom_label" string="En" readonly="1"/>
+                                    <field name="estimated_kg" string="Kg estimado" readonly="1" digits="[10,3]"/>
+                                    <field name="needs_weighing" column_invisible="1"/>
+                                    <field
+                                        name="actual_kg"
+                                        string="Peso real (kg)"
+                                        digits="[10,3]"
+                                        readonly="not needs_weighing"
+                                    />
+                                </list>
+                            </field>
+                        </div>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_preparation_day" model="ir.actions.act_window">
+        <field name="name">Preparación del Día</field>
+        <field name="res_model">guapante.preparation.day</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+        <field name="context">{'default_state': 'draft'}</field>
+    </record>
+
+    <menuitem
+        id="menu_preparation_day"
+        name="Preparación del Día"
+        parent="stock.menu_stock_warehouse_mgmt"
+        action="action_preparation_day"
+        sequence="25"
+    />
+</odoo>
