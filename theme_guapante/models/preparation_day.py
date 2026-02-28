@@ -214,8 +214,6 @@ class PreparationDay(models.TransientModel):
         updated_count = 0
 
         for line in lines:
-            if not line.needs_weighing:
-                continue
             actual = line.actual_kg
             if actual <= 0:
                 continue

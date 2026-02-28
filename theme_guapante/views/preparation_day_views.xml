@@ -94,8 +94,7 @@
                                 <list
                                     string="Órdenes"
                                     editable="bottom"
-                                    decoration-warning="needs_weighing and actual_kg == 0"
-                                    decoration-muted="not needs_weighing"
+                                    decoration-warning="actual_kg == 0"
                                 >
                                     <field name="order_name" string="Orden" readonly="1"/>
                                     <field name="customer_name" string="Cliente" readonly="1"/>
@@ -107,7 +106,6 @@
                                         name="actual_kg"
                                         string="Peso real (kg)"
                                         digits="[10,3]"
-                                        readonly="not needs_weighing"
                                     />
                                 </list>
                             </field>
