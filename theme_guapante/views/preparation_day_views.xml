@@ -117,6 +117,7 @@
                                     editable="bottom"
                                     decoration-warning="actual_kg == 0"
                                 >
+                                    <field name="daily_sequence" string="#" readonly="1" optional="show"/>
                                     <field name="order_name" string="Orden" readonly="1"/>
                                     <field name="customer_name" string="Cliente" readonly="1"/>
                                     <field name="customer_qty_display" string="Pidió" readonly="1"/>

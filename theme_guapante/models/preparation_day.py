@@ -20,6 +20,7 @@ class PreparationDayLine(models.TransientModel):
     )
     product_id = fields.Many2one('product.template', string='Producto', readonly=True)
     product_product_id = fields.Many2one('product.product', string='Variante', readonly=True)
+    daily_sequence = fields.Integer(string='# del día', readonly=True)
     order_name = fields.Char(string='Orden', readonly=True)
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
     sale_line_id = fields.Many2one('sale.order.line', string='Línea de pedido', readonly=True)
@@ -166,6 +167,7 @@ class PreparationDay(models.TransientModel):
                     'wizard_id': self.id,
                     'product_id': line.product_id.product_tmpl_id.id,
                     'product_product_id': line.product_id.id,
+                    'daily_sequence': order.daily_sequence,
                     'order_name': order.name,
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
