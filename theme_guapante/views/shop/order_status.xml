@@ -11,7 +11,7 @@
                             <small class="text-muted">Orden #<t t-esc="order.name"/></small>
                             <h2 class="fw-bold mb-0 mt-1">
                                 <t t-if="order.guapante_delivery_status == 'received'">Pedido Recibido</t>
-                                <t t-if="order.guapante_delivery_status == 'preparing'">En Preparación</t>
+                                <t t-if="order.guapante_delivery_status == 'preparing'">Validación y Pesaje</t>
                                 <t t-if="order.guapante_delivery_status == 'shipping'">En Camino</t>
                                 <t t-if="order.guapante_delivery_status == 'delivered'">Entregado</t>
                             </h2>
