@@ -81,11 +81,11 @@
                                                 <t t-foreach="shippings" t-as="ship">
                                                     <option t-att-value="ship.id" t-att-selected="ship.id == website_sale_order.partner_shipping_id.id">
                                                         <t t-esc="ship.name or ''"/> -
-                                                        <t t-if="ship.guapante_order_zone">
-                                                            <t t-if="ship.guapante_order_zone == 'cocina'">Cocina</t>
-                                                            <t t-elif="ship.guapante_order_zone == 'bar'">Bar</t>
-                                                            <t t-elif="ship.guapante_order_zone == 'personal'">Personal</t>
-                                                            <t t-elif="ship.guapante_order_zone == 'evento'">Evento</t>
+                                                        <t t-if="ship.ref">
+                                                            <t t-if="ship.ref == 'cocina'">Cocina</t>
+                                                            <t t-elif="ship.ref == 'bar'">Bar</t>
+                                                            <t t-elif="ship.ref == 'personal'">Personal</t>
+                                                            <t t-elif="ship.ref == 'evento'">Evento</t>
                                                             -
                                                         </t>
                                                         <t t-esc="ship.street or ''"/>

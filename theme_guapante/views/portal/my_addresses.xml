@@ -149,7 +149,7 @@
                                                     t-att-data-country_id="addr.country_id.id if addr.country_id else ''"
                                                     t-att-data-phone="addr.phone or ''"
                                                     t-att-data-comment="addr.comment or ''"
-                                                    t-att-data-order_zone="addr.guapante_order_zone or ''"
+                                                    t-att-data-order_zone="addr.ref or ''"
                                                     onclick="fillEditModal(this)">
                                                 <i class="fa fa-pencil"></i>
                                             </button>

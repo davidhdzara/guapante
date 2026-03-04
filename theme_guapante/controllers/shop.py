@@ -134,7 +134,7 @@ class GuapanteWebsiteSale(WebsiteSale):
             'street2': post.get('street2', '').strip() or False,
             'zip': post.get('zip', '').strip() or False,
             'comment': post.get('comment', '').strip() or False,
-            'guapante_order_zone': post.get('order_zone') or False,
+            'ref': post.get('order_zone') or False,
         }
 
         # City (from res.city dropdown)

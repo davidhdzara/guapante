@@ -4,5 +4,4 @@ from . import res_users
 from . import product_template
 from . import stock_picking
 from . import stock_move
-from . import res_partner
 from . import sale_order
