@@ -80,7 +80,16 @@
                                             <select class="form-select guapante-field" id="guapante_shipping_select">
                                                 <t t-foreach="shippings" t-as="ship">
                                                     <option t-att-value="ship.id" t-att-selected="ship.id == website_sale_order.partner_shipping_id.id">
-                                                        <t t-esc="ship.street or ''"/><t t-if="ship.city">, <t t-esc="ship.city"/></t>
+                                                        <t t-esc="ship.name or ''"/> -
+                                                        <t t-if="ship.guapante_order_zone">
+                                                            <t t-if="ship.guapante_order_zone == 'cocina'">Cocina</t>
+                                                            <t t-elif="ship.guapante_order_zone == 'bar'">Bar</t>
+                                                            <t t-elif="ship.guapante_order_zone == 'personal'">Personal</t>
+                                                            <t t-elif="ship.guapante_order_zone == 'evento'">Evento</t>
+                                                            -
+                                                        </t>
+                                                        <t t-esc="ship.street or ''"/>
+                                                        <t t-if="ship.street2">, <t t-esc="ship.street2"/></t>
                                                     </option>
                                                 </t>
                                             </select>
@@ -131,10 +140,22 @@
 
                                                 <div class="row g-3">
                                                     <!-- Name -->
-                                                    <div class="col-12">
+                                                    <div class="col-12 col-md-8">
                                                         <label for="chk_addr_name" class="form-label small fw-semibold text-muted">Nombre / Etiqueta</label>
                                                         <input type="text" id="chk_addr_name" name="name" class="form-control rounded-3"
                                                                placeholder="Ej: Casa, Oficina, Finca..." required="required"/>
+                                                    </div>
+
+                                                    <!-- Guapante Order Zone -->
+                                                    <div class="col-12 col-md-4">
+                                                        <label for="chk_order_zone" class="form-label small fw-semibold text-muted">Zona de la orden</label>
+                                                        <select id="chk_order_zone" name="order_zone" class="form-select rounded-3">
+                                                            <option value="">— Opcional —</option>
+                                                            <option value="cocina">Cocina</option>
+                                                            <option value="bar">Bar</option>
+                                                            <option value="personal">Personal</option>
+                                                            <option value="evento">Evento</option>
+                                                        </select>
                                                     </div>
 
                                                     <!-- Street -->

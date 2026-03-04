@@ -149,6 +149,7 @@
                                                     t-att-data-country_id="addr.country_id.id if addr.country_id else ''"
                                                     t-att-data-phone="addr.phone or ''"
                                                     t-att-data-comment="addr.comment or ''"
+                                                    t-att-data-order_zone="addr.guapante_order_zone or ''"
                                                     onclick="fillEditModal(this)">
                                                 <i class="fa fa-pencil"></i>
                                             </button>
@@ -266,10 +267,22 @@
 
                                     <div class="row g-3">
                                         <!-- Name -->
-                                        <div class="col-12 col-md-6">
+                                        <div class="col-12 col-md-8">
                                             <label for="addr_name" class="form-label small fw-semibold text-muted">Nombre / Etiqueta</label>
                                             <input type="text" id="addr_name" name="name" class="form-control guapante-profile-input rounded-3"
                                                    placeholder="Ej: Casa, Oficina, Finca..." required="required"/>
+                                        </div>
+
+                                        <!-- Guapante Order Zone -->
+                                        <div class="col-12 col-md-4">
+                                            <label for="addr_order_zone" class="form-label small fw-semibold text-muted">Zona de la orden</label>
+                                            <select id="addr_order_zone" name="order_zone" class="form-select guapante-profile-input rounded-3">
+                                                <option value="">— Opcional —</option>
+                                                <option value="cocina">Cocina</option>
+                                                <option value="bar">Bar</option>
+                                                <option value="personal">Personal</option>
+                                                <option value="evento">Evento</option>
+                                            </select>
                                         </div>
 
                                         <!-- Type (hidden — portal only creates delivery addresses) -->
@@ -419,6 +432,7 @@
                             document.getElementById('addr_street2').value = btn.getAttribute('data-street2') || '';
                             document.getElementById('addr_phone').value = btn.getAttribute('data-phone') || '';
                             document.getElementById('addr_comment').value = btn.getAttribute('data-comment') || '';
+                            document.getElementById('addr_order_zone').value = btn.getAttribute('data-order_zone') || '';
                             zipInput.value = btn.getAttribute('data-zip') || '';
 
                             var countryId = btn.getAttribute('data-country_id');
