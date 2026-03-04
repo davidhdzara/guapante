@@ -45,72 +45,71 @@
             </div>
         </xpath>
 
-        <!-- Add guapante class + data attributes to each line container -->
-        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="attributes">
-            <attribute name="class" add="guapante-cart-item" separator=" "/>
-            <attribute name="t-att-data-line-id">line.id</attribute>
-            <attribute name="t-att-data-product-id">line.product_id.id</attribute>
-        </xpath>
+        <!-- Replace the entire product loop container to remove Odoo default borders/padding -->
+        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']" position="replace">
+            <div t-foreach="website_sale_order.website_order_line" t-as="line" 
+                 class="guapante-cart-item" 
+                 t-att-data-line-id="line.id" 
+                 t-att-data-product-id="line.product_id.id">
+                 
+                <t t-if="line.product_id">
+                    <t t-set="line_display" t-value="uom_display.get(line.id, {})"/>
 
-        <!-- Replace the inner content of the product loop -->
-        <xpath expr="//div[@t-foreach='website_sale_order.website_order_line']//t[@t-if='line.product_id']" position="replace">
-            <t t-if="line.product_id">
-                <t t-set="line_display" t-value="uom_display.get(line.id, {})"/>
-
-                <!-- Product Image -->
-                <div class="guapante-cart-img me-3">
-                    <span t-if="line._is_not_sellable_line() and line.product_id.image_128">
-                        <img t-att-src="image_data_uri(line.product_id.image_128)" class="rounded" t-att-alt="line.name_short"/>
-                    </span>
-                    <span t-else="" t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded'}"/>
-                </div>
-                
-                <div class="d-flex flex-grow-1 align-items-center justify-content-between">
-                    <!-- Product Info -->
-                    <div class="guapante-cart-info flex-grow-1">
-                        <h6 t-field="line.name_short" class="mb-0 fw-bold"/>
-                        <small class="text-muted">
-                            Variante: <span t-field="line.product_id.name"/>
-                        </small>
+                    <!-- Product Image -->
+                    <div class="guapante-cart-img me-3">
+                        <span t-if="line._is_not_sellable_line() and line.product_id.image_128">
+                            <img t-att-src="image_data_uri(line.product_id.image_128)" class="rounded" t-att-alt="line.name_short"/>
+                        </span>
+                        <span t-else="" t-field="line.product_id.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'rounded'}"/>
                     </div>
-
-                    <!-- Quantity Section -->
-                    <div class="guapante-cart-qty-section text-center">
-                        <div class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">
-                            <t t-esc="line_display.get('header', 'CANTIDAD')"/>
+                    
+                    <div class="d-flex flex-grow-1 align-items-center justify-content-between">
+                        <!-- Product Info -->
+                        <div class="guapante-cart-info flex-grow-1">
+                            <h6 t-field="line.name_short" class="mb-0 fw-bold"/>
+                            <small class="text-muted">
+                                Variante: <span t-field="line.product_id.name"/>
+                            </small>
                         </div>
-                        
-                        <div class="guapante-cart-qty-controls d-inline-flex align-items-center"
-                             t-att-data-line-id="line.id"
-                             t-att-data-product-id="line.product_id.id"
-                             t-att-data-uom-mode="line_display.get('mode', 'unit')">
-                             
-                            <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-minus px-2 py-1">
-                                <i class="fa fa-minus" style="font-size: 0.7rem;"/>
-                            </button>
-                            <input type="text" 
-                                   class="guapante-cart-qty-input form-control text-center border-0 bg-transparent fw-bold mx-1 p-0" 
-                                   t-att-value="line_display.get('qty', '1')"
-                                   inputmode="numeric"
-                                   autocomplete="off"
-                                   style="width: 50px; font-size: 0.95rem;"/>
-                            <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-plus px-2 py-1">
-                                <i class="fa fa-plus" style="font-size: 0.7rem;"/>
-                            </button>
+
+                        <!-- Quantity Section -->
+                        <div class="guapante-cart-qty-section text-center">
+                            <div class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                                <t t-esc="line_display.get('header', 'CANTIDAD')"/>
+                            </div>
+                            
+                            <div class="guapante-cart-qty-controls d-inline-flex align-items-center"
+                                 t-att-data-line-id="line.id"
+                                 t-att-data-product-id="line.product_id.id"
+                                 t-att-data-uom-mode="line_display.get('mode', 'unit')">
+                                 
+                                <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-minus px-2 py-1">
+                                    <i class="fa fa-minus" style="font-size: 0.7rem;"/>
+                                </button>
+                                <input type="text" 
+                                       class="guapante-cart-qty-input form-control text-center border-0 bg-transparent fw-bold mx-1 p-0" 
+                                       t-att-value="line_display.get('qty', '1')"
+                                       inputmode="numeric"
+                                       autocomplete="off"
+                                       style="width: 50px; font-size: 0.95rem;"/>
+                                <button type="button" class="btn btn-outline-secondary btn-sm guapante-cart-qty-plus px-2 py-1">
+                                    <i class="fa fa-plus" style="font-size: 0.7rem;"/>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Delete Button -->
+                        <div class="guapante-cart-delete ms-3">
+                            <a href="#" class="guapante-delete-line text-success" 
+                               t-att-data-line-id="line.id"
+                               t-att-data-product-id="line.product_id.id"
+                               aria-label="Eliminar" title="Eliminar">
+                                <i class="fa fa-trash" style="font-size: 1.1rem;"/>
+                            </a>
                         </div>
                     </div>
-
-                    <!-- Delete Button -->
-                    <div class="guapante-cart-delete ms-3">
-                        <a href="#" class="guapante-delete-line text-success" 
-                           t-att-data-line-id="line.id"
-                           t-att-data-product-id="line.product_id.id"
-                           aria-label="Eliminar" title="Eliminar">
-                            <i class="fa fa-trash" style="font-size: 1.1rem;"/>
-                        </a>
-                    </div>
-                </div>
-            </t>
+                </t>
+            </div>
         </xpath>
 
     </template>
