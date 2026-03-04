@@ -8,7 +8,7 @@
         'static/description/guapante_preview.png',
         'static/description/icon.png',
     ],
-    'depends': ['website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet'],
+    'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet'],
     'data': [
         'security/ir.model.access.csv',
         'views/stock_picking_views.xml',
