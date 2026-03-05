@@ -6,7 +6,6 @@ from odoo.addons.portal.controllers.portal import CustomerPortal, pager as porta
 from odoo.exceptions import UserError
 from datetime import datetime, timedelta
 import logging
-import locale
 
 _logger = logging.getLogger(__name__)
 
@@ -117,21 +116,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         page_start_num = pager['offset'] + 1 if order_count else 0
         page_end_num = min(pager['offset'] + self._items_per_page, order_count)
 
-        
-        # Pager offsets
-        current_page = page
-        items_per_page = self._items_per_page
-        page_start_num = (current_page - 1) * items_per_page + 1 if invoice_count > 0 else 0
-        page_end_num = min(current_page * items_per_page, invoice_count)
-        
-        mes_actual_es = month_names_es[today.month - 1]
-        facturas_mes_str = f"Emisiones de {mes_actual_es} {today.year}"
-
         values.update({
-            'page_start_num': page_start_num,
-            'page_end_num': page_end_num,
-            'invoice_count': invoice_count,
-            'facturas_mes_str': facturas_mes_str,
             'orders': orders,
             'page_name': 'order',
             'pager': pager,
@@ -237,21 +222,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         id_type_domain = [('country_id', '=', country_co.id)] if country_co else []
         identification_types = request.env['l10n_latam.identification.type'].sudo().search(id_type_domain)
 
-        
-        # Pager offsets
-        current_page = page
-        items_per_page = self._items_per_page
-        page_start_num = (current_page - 1) * items_per_page + 1 if invoice_count > 0 else 0
-        page_end_num = min(current_page * items_per_page, invoice_count)
-        
-        mes_actual_es = month_names_es[today.month - 1]
-        facturas_mes_str = f"Emisiones de {mes_actual_es} {today.year}"
-
         values.update({
-            'page_start_num': page_start_num,
-            'page_end_num': page_end_num,
-            'invoice_count': invoice_count,
-            'facturas_mes_str': facturas_mes_str,
             'partner': partner,
             'identification_types': identification_types,
             'page_name': 'home',  # Highlights "Mi Perfil" in sidebar
@@ -289,21 +260,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             id_type_domain = [('country_id', '=', country_co.id)] if country_co else []
             identification_types = request.env['l10n_latam.identification.type'].sudo().search(id_type_domain)
 
-            
-        # Pager offsets
-        current_page = page
-        items_per_page = self._items_per_page
-        page_start_num = (current_page - 1) * items_per_page + 1 if invoice_count > 0 else 0
-        page_end_num = min(current_page * items_per_page, invoice_count)
-        
-        mes_actual_es = month_names_es[today.month - 1]
-        facturas_mes_str = f"Emisiones de {mes_actual_es} {today.year}"
-
-        values.update({
-            'page_start_num': page_start_num,
-            'page_end_num': page_end_num,
-            'invoice_count': invoice_count,
-            'facturas_mes_str': facturas_mes_str,
+            values.update({
                 'partner': partner,
                 'identification_types': identification_types,
                 'page_name': 'home',
@@ -377,21 +334,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         else:
             states = request.env['res.country.state'].sudo().search([])
 
-        
-        # Pager offsets
-        current_page = page
-        items_per_page = self._items_per_page
-        page_start_num = (current_page - 1) * items_per_page + 1 if invoice_count > 0 else 0
-        page_end_num = min(current_page * items_per_page, invoice_count)
-        
-        mes_actual_es = month_names_es[today.month - 1]
-        facturas_mes_str = f"Emisiones de {mes_actual_es} {today.year}"
-
         values.update({
-            'page_start_num': page_start_num,
-            'page_end_num': page_end_num,
-            'invoice_count': invoice_count,
-            'facturas_mes_str': facturas_mes_str,
             'partner': partner,
             'company_partner': company_partner,
             'addresses': addresses,
@@ -636,13 +579,13 @@ class GuapanteCustomerPortal(CustomerPortal):
         invoices = AccountInvoice.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
         request.session['my_invoices_history'] = invoices.ids[:100]
 
-        
         # Pager offsets
         current_page = page
         items_per_page = self._items_per_page
         page_start_num = (current_page - 1) * items_per_page + 1 if invoice_count > 0 else 0
         page_end_num = min(current_page * items_per_page, invoice_count)
         
+        month_names_es = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
         mes_actual_es = month_names_es[today.month - 1]
         facturas_mes_str = f"Emisiones de {mes_actual_es} {today.year}"
 
