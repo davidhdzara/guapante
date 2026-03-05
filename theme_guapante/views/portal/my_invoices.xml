@@ -17,22 +17,22 @@
                     </div>
 
                     <!-- KPI Cards (Based on Mockup) -->
-                    <div class="row g-3 mb-4">
+                    <div class="row g-4 mb-4">
                         <!-- Card 1: Total por Pagar -->
                         <div class="col-12 col-md-4">
-                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
                                 <div class="card-body p-4 d-flex flex-column justify-content-between">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <small class="text-muted fw-bold">Total por Pagar</small>
-                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(25,135,84,0.1);">
-                                            <i class="fa fa-money text-success"></i>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <small class="text-muted" style="font-size: 0.85rem; color: #6c757d !important;">Total por Pagar</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 38px; height: 38px; background-color: #eaf7ec;">
+                                            <i class="fa fa-money" style="color: #4caf50; font-size: 1.1rem;"></i>
                                         </div>
                                     </div>
                                     <div>
-                                        <h3 class="fw-bold text-success mb-1">
+                                        <h3 class="fw-bold mb-1" style="color: #4caf50; font-size: 1.8rem;">
                                             <span t-esc="total_por_pagar" t-options='{"widget": "monetary", "display_currency": request.env.company.currency_id}'/>
                                         </h3>
-                                        <small class="text-muted"><t t-esc="unpaid_count or 0"/> facturas pendientes de pago</small>
+                                        <small class="text-muted" style="font-size: 0.8rem; color: #adb5bd !important;"><t t-esc="unpaid_count or 0"/> facturas pendientes de pago</small>
                                     </div>
                                 </div>
                             </div>
@@ -40,19 +40,19 @@
 
                         <!-- Card 2: Facturas del Mes -->
                         <div class="col-12 col-md-4">
-                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
                                 <div class="card-body p-4 d-flex flex-column justify-content-between">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <small class="text-muted fw-bold">Facturas del Mes</small>
-                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(13,110,253,0.1);">
-                                            <i class="fa fa-calendar-o text-primary"></i>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <small class="text-muted" style="font-size: 0.85rem; color: #6c757d !important;">Facturas del Mes</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 38px; height: 38px; background-color: #e9f2ff;">
+                                            <i class="fa fa-calendar-o" style="color: #3b82f6; font-size: 1.1rem;"></i>
                                         </div>
                                     </div>
                                     <div>
-                                        <h3 class="fw-bold text-dark mb-1">
+                                        <h3 class="fw-bold text-dark mb-1" style="font-size: 1.8rem; color: #1e293b !important;">
                                             <t t-esc="facturas_mes"/>
                                         </h3>
-                                        <small class="text-muted">Emisiones de <t t-esc="datetime.datetime.now().strftime('%B %Y').capitalize()"/></small>
+                                        <small class="text-muted" style="font-size: 0.8rem; color: #adb5bd !important;"><t t-esc="facturas_mes_str or 'Emisiones de este mes'"/></small>
                                     </div>
                                 </div>
                             </div>
@@ -60,16 +60,16 @@
 
                         <!-- Card 3: Último Pago -->
                         <div class="col-12 col-md-4">
-                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
                                 <div class="card-body p-4 d-flex flex-column justify-content-between">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <small class="text-muted fw-bold">Último Pago</small>
-                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(111,66,193,0.1);">
-                                            <i class="fa fa-check-circle-o" style="color: #6f42c1;"></i>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <small class="text-muted" style="font-size: 0.85rem; color: #6c757d !important;">Último Pago</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 38px; height: 38px; background-color: #f5eaff;">
+                                            <i class="fa fa-check-circle-o" style="color: #a855f7; font-size: 1.1rem;"></i>
                                         </div>
                                     </div>
                                     <div>
-                                        <h3 class="fw-bold text-dark mb-1">
+                                        <h3 class="fw-bold text-dark mb-1" style="font-size: 1.8rem; color: #1e293b !important;">
                                             <t t-if="last_payment_amount">
                                                 <span t-esc="last_payment_amount" t-options='{"widget": "monetary", "display_currency": request.env.company.currency_id}'/>
                                             </t>
@@ -77,7 +77,7 @@
                                                 --
                                             </t>
                                         </h3>
-                                        <small class="text-muted">
+                                        <small class="text-muted" style="font-size: 0.8rem; color: #adb5bd !important;">
                                             <t t-if="last_payment_date">Realizado el <span t-esc="last_payment_date" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/></t>
                                             <t t-else="">Sin pagos registrados</t>
                                         </small>
@@ -87,133 +87,142 @@
                         </div>
                     </div>
 
-                    <!-- FILTERS TOOLBAR -->
-                    <div class="d-flex flex-column flex-md-row align-items-center mb-4 gap-3 bg-white p-2 rounded-4 border shadow-sm">
-                        <!-- Search Form (Reusing Odoo standard but restyled) -->
-                        <div class="flex-grow-1 position-relative w-100">
+                    <!-- FILTERS TOOLBAR (Unified block) -->
+                    <div class="d-flex flex-column flex-xl-row align-items-xl-center bg-white p-2 mb-4 shadow-sm" style="border-radius: 12px; border: 1px solid #f1f3f5;">
+                        <!-- Search Form -->
+                        <div class="position-relative flex-grow-1" style="min-width: 200px;">
                             <i class="fa fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
-                            <input type="text" class="form-control border-0 bg-light rounded-pill ps-5" placeholder="Buscar por factura #" style="height: 48px;"/>
+                            <input type="text" class="form-control border-0 bg-light rounded-pill ps-5 w-100" placeholder="Buscar por factura #" style="height: 40px; font-size: 0.9rem;"/>
                         </div>
 
-                        <!-- Status Filter -->
-                        <div class="dropdown" t-if="searchbar_filters">
-                            <button class="btn btn-light dropdown-toggle bg-white border-0 text-dark fw-semibold d-flex align-items-center justify-content-between px-3 h-100" type="button" data-bs-toggle="dropdown" style="min-width: 180px; height: 48px !important; border-radius: 8px;">
-                                <span t-esc="searchbar_filters.get(filterby, {}).get('label', 'Todos los estados')"/>
-                            </button>
-                            <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
-                                <t t-foreach="searchbar_filters" t-as="option">
-                                    <li>
-                                        <a t-attf-href="/my/invoices?filterby=#{option}&amp;sortby=#{sortby}"
-                                           t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if filterby == option else '')">
-                                            <span t-esc="searchbar_filters[option].get('label')"/>
-                                        </a>
-                                    </li>
-                                </t>
-                            </ul>
-                        </div>
-                        
-                        <!-- Sort Filter -->
-                        <div class="dropdown" t-if="searchbar_sortings">
-                            <button class="btn btn-light dropdown-toggle bg-white border-0 text-dark fw-semibold d-flex align-items-center justify-content-between px-3 h-100" type="button" data-bs-toggle="dropdown" style="min-width: 180px; height: 48px !important; border-radius: 8px;">
-                                <i class="fa fa-sort me-2"></i> <span t-esc="searchbar_sortings.get(sortby, {}).get('label', 'Ordenar')"/>
-                            </button>
-                            <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
-                                <t t-foreach="searchbar_sortings" t-as="option">
-                                    <li>
-                                        <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}"
-                                           t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
-                                            <span t-esc="searchbar_sortings[option].get('label')"/>
-                                        </a>
-                                    </li>
-                                </t>
-                            </ul>
-                        </div>
+                        <div class="d-flex flex-wrap align-items-center flex-grow-1 justify-content-xl-end mt-3 mt-xl-0 ms-xl-2 gap-2">
+                            <!-- Status Filter -->
+                            <div class="dropdown border-end pe-2" t-if="searchbar_filters">
+                                <button class="btn btn-white dropdown-toggle border-0 text-dark d-flex align-items-center justify-content-between h-100 w-100" type="button" data-bs-toggle="dropdown" style="height: 40px !important; font-size: 0.9rem;">
+                                    <span t-esc="searchbar_filters.get(filterby, {}).get('label', 'Todos los estados')"/>
+                                </button>
+                                <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
+                                    <t t-foreach="searchbar_filters" t-as="option">
+                                        <li>
+                                            <a t-attf-href="/my/invoices?filterby=#{option}&amp;sortby=#{sortby}"
+                                               t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if filterby == option else '')">
+                                                <span t-esc="searchbar_filters[option].get('label')"/>
+                                            </a>
+                                        </li>
+                                    </t>
+                                </ul>
+                            </div>
+                            
+                            <!-- Dummy Date Range Filter (To Match Mockup Visuals) -->
+                            <div class="border-end px-2 d-none d-lg-flex align-items-center text-muted gap-2" style="font-size: 0.9rem; height: 40px;">
+                                <span><i class="fa fa-calendar-o"></i> dd/mm/aaaa</span>
+                                <span>a</span>
+                                <span><i class="fa fa-calendar-o"></i> dd/mm/aaaa</span>
+                            </div>
 
-                        <!-- Filter Button -->
-                        <button class="btn btn-success fw-bold px-4 rounded-pill flex-shrink-0" style="height: 48px;">
-                            Filtrar
-                        </button>
+                            <!-- Sort Filter (Mockup had none explicitly named Sort but had multiple filters, mapped to sort here) -->
+                            <div class="dropdown px-2" t-if="searchbar_sortings">
+                                <button class="btn btn-white dropdown-toggle border-0 text-dark d-flex align-items-center justify-content-between h-100 w-100" type="button" data-bs-toggle="dropdown" style="height: 40px !important; font-size: 0.9rem;">
+                                    <i class="fa fa-sort me-1 text-muted"></i> <span t-esc="searchbar_sortings.get(sortby, {}).get('label', 'Ordenar')"/>
+                                </button>
+                                <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
+                                    <t t-foreach="searchbar_sortings" t-as="option">
+                                        <li>
+                                            <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}"
+                                               t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
+                                                <span t-esc="searchbar_sortings[option].get('label')"/>
+                                            </a>
+                                        </li>
+                                    </t>
+                                </ul>
+                            </div>
+
+                            <!-- Filter Button -->
+                            <button class="btn text-white px-4 fw-bold" style="background-color: #4caf50; height: 40px; border-radius: 8px; font-size: 0.9rem;">
+                                Filtrar
+                            </button>
+                        </div>
                     </div>
 
                     <!-- INVOICES TABLE -->
                     <t t-if="invoices">
-                        <div class="card border border-light shadow-sm overflow-hidden rounded-4">
+                        <div class="card border-0 shadow-sm overflow-hidden bg-white mb-4" style="border-radius: 12px; border: 1px solid #f1f3f5 !important;">
                             <div class="table-responsive">
                                 <table class="table align-middle mb-0" style="min-width: 800px;">
-                                    <thead class="bg-light text-muted small text-uppercase fw-bold" style="border-bottom: 2px solid #eef2f5;">
-                                        <tr>
-                                            <th class="py-3 ps-4 border-0">Factura #</th>
-                                            <th class="py-3 border-0">Emisión</th>
-                                            <th class="py-3 border-0">Vencimiento</th>
-                                            <th class="py-3 border-0">Monto</th>
-                                            <th class="py-3 border-0 text-center">Estado</th>
-                                            <th class="py-3 pe-4 border-0 text-end">Acciones</th>
+                                    <thead class="bg-white">
+                                        <tr style="border-bottom: 2px solid #f1f3f5;">
+                                            <th class="py-3 ps-4 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">FACTURA #</th>
+                                            <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">EMISIÓN</th>
+                                            <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">VENCIMIENTO</th>
+                                            <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">MONTO</th>
+                                            <th class="py-3 border-0 text-center text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">ESTADO</th>
+                                            <th class="py-3 pe-4 border-0 text-end text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">ACCIONES</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <t t-foreach="invoices" t-as="invoice">
                                             <tr style="border-bottom: 1px solid #f8f9fa;">
                                                 <!-- Factura # -->
-                                                <td class="ps-4 fw-bold text-dark py-3">
+                                                <td class="ps-4 fw-bold text-dark py-4" style="font-size: 0.9rem;">
                                                     <a t-attf-href="/my/invoices/#{invoice.id}" class="text-decoration-none text-dark">
                                                         <t t-esc="invoice.name if invoice.name != '/' else 'Borrador'"/>
                                                     </a>
                                                 </td>
                                                 
                                                 <!-- Emisión -->
-                                                <td class="text-muted py-3">
-                                                    <span t-field="invoice.invoice_date" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/>
+                                                <td class="text-muted py-4" style="font-size: 0.9rem;">
+                                                    <span t-field="invoice.invoice_date" t-options='{"widget": "date", "format": "dd MMM, yyyy"}'/>
                                                 </td>
                                                 
                                                 <!-- Vencimiento -->
-                                                <td class="text-muted py-3">
-                                                    <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/>
+                                                <td class="text-muted py-4" style="font-size: 0.9rem;">
+                                                    <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, yyyy"}'/>
                                                 </td>
                                                 
                                                 <!-- Monto -->
-                                                <td class="fw-bold text-dark py-3">
+                                                <td class="fw-bold text-dark py-4" style="font-size: 0.9rem;">
                                                     <span t-field="invoice.amount_total" t-options='{"widget": "monetary", "display_currency": invoice.currency_id}'/>
                                                 </td>
                                                 
                                                 <!-- Estado -->
-                                                <td class="text-center py-3">
+                                                <td class="text-center py-4">
                                                     <t t-if="invoice.state == 'cancel'">
-                                                        <span class="badge rounded-pill bg-light text-muted border px-3 py-2 fw-semibold" style="font-size: 0.75rem;">Cancelada</span>
+                                                        <span class="badge" style="background-color: #f1f3f5; color: #6c757d; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Cancelada</span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state in ('paid', 'in_payment')">
-                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #d1e7dd; color: #0f5132; font-size: 0.75rem; border: 1px solid #badbcc;">Pagada</span>
+                                                        <span class="badge" style="background-color: #e6f4ea; color: #1e8e3e; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Pagada</span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'not_paid' and invoice.invoice_date_due and invoice.invoice_date_due &lt; datetime.datetime.now().date()">
-                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #f8d7da; color: #842029; font-size: 0.75rem; border: 1px solid #f5c2c7;">Vencida</span>
+                                                        <span class="badge" style="background-color: #fce8e6; color: #d93025; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Vencida</span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'not_paid'">
-                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; border: 1px solid #ffecb5;">Pendiente</span>
+                                                        <span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Pendiente</span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'partial'">
-                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #ffe69c; color: #664d03; font-size: 0.75rem; border: 1px solid #ffda6a;">Abonada</span>
+                                                        <span class="badge" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Abonada</span>
                                                     </t>
                                                     <t t-else="">
-                                                        <span class="badge rounded-pill bg-light text-dark border px-3 py-2 fw-semibold" style="font-size: 0.75rem;">
+                                                        <span class="badge" style="background-color: #f1f3f5; color: #495057; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
                                                             <t t-esc="invoice.payment_state"/>
                                                         </span>
                                                     </t>
                                                 </td>
                                                 
                                                 <!-- Acciones -->
-                                                <td class="pe-4 py-3 text-end d-flex justify-content-end align-items-center gap-2">
-                                                    <a t-attf-href="/my/invoices/#{invoice.id}?report_type=pdf&amp;download=true" class="btn btn-light btn-sm rounded-3 px-2 py-1 text-muted border" title="Descargar PDF">
-                                                        <i class="fa fa-file-pdf-o"></i>
+                                                <td class="pe-4 py-4 text-end d-flex justify-content-end align-items-center gap-3 border-0">
+                                                    <a t-attf-href="/my/invoices/#{invoice.id}?report_type=pdf&amp;download=true" class="text-secondary text-decoration-none" title="Descargar PDF">
+                                                        <i class="fa fa-file-pdf-o" style="font-size: 1.1rem; opacity: 0.6;"></i>
                                                     </a>
-                                                    <a t-attf-href="/my/invoices/#{invoice.id}" class="btn btn-light btn-sm rounded-3 px-2 py-1 text-muted border" title="Ver Detalles">
-                                                        <i class="fa fa-eye"></i>
+                                                    <a t-attf-href="/my/invoices/#{invoice.id}" class="text-secondary text-decoration-none" title="Código XML / Ver Detalles">
+                                                        <span style="font-family: monospace; font-weight: bold; opacity: 0.6;">{}</span>
                                                     </a>
-                                                    <!-- Pago Oculto Temporalmente -->
+                                                    <!-- Pago / Saldado Oculto Temporalmente -->
                                                     <t t-if="False">
                                                         <t t-if="invoice.payment_state in ('paid', 'in_payment')">
-                                                            <button disabled="1" class="btn btn-light btn-sm rounded-pill fw-bold px-3 text-muted" style="min-width: 80px;">Saldada</button>
+                                                            <button disabled="1" class="btn btn-light btn-sm fw-bold px-3 text-muted" style="border-radius: 6px; font-size: 0.8rem;">Saldada</button>
                                                         </t>
                                                         <t t-else="">
-                                                            <a t-attf-href="/my/invoices/#{invoice.id}" class="btn btn-success btn-sm rounded-pill fw-bold px-3 shadow-sm" style="min-width: 80px;">Pagar</a>
+                                                            <a t-attf-href="/my/invoices/#{invoice.id}" class="btn text-white btn-sm fw-bold px-3 shadow-sm" style="background-color: #4caf50; border-radius: 6px; font-size: 0.8rem;">Pagar</a>
                                                         </t>
                                                     </t>
                                                 </td>
@@ -223,9 +232,9 @@
                                 </table>
                             </div>
                             <!-- Pager Footer -->
-                            <div t-if="pager" class="bg-light py-3 d-flex justify-content-between align-items-center px-4" style="border-top: 1px solid #eef2f5;">
-                                <span class="text-muted small">
-                                    Mostrando facturas <t t-esc="pager['page_start']"/> a <t t-esc="pager['page_end']"/>
+                            <div t-if="pager" class="bg-white py-3 d-flex justify-content-between align-items-center px-4" style="border-top: 1px solid #f1f3f5;">
+                                <span class="text-muted" style="font-size: 0.85rem;">
+                                    Mostrando <t t-esc="page_start_num"/>-<t t-esc="page_end_num"/> de <t t-esc="invoice_count"/> facturas
                                 </span>
                                 <t t-call="portal.pager"/>
                             </div>
