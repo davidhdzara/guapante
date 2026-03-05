@@ -1,3 +1,4 @@
 from . import auth_signup
 from . import shop
 from . import customer_portal
+from . import main
