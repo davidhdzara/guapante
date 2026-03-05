@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import http, _
 from odoo.http import request
+from collections import OrderedDict
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 from odoo.exceptions import UserError
 from datetime import datetime, timedelta
@@ -497,3 +498,105 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         return request.redirect('/my/addresses?success=deleted')
 
+
+    @http.route(['/my/invoices', '/my/invoices/page/<int:page>'], type='http', auth="user", website=True)
+    def portal_my_invoices(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, **kw):
+        """
+        Override the default invoices portal to add KPI logic and use Guapante layout.
+        """
+        values = self._prepare_portal_layout_values()
+        partner = request.env.user.partner_id
+        AccountInvoice = request.env['account.move']
+
+        domain = [
+            ('move_type', 'in', ('out_invoice', 'out_refund', 'in_invoice', 'in_refund', 'out_receipt', 'in_receipt')),
+            ('state', 'not in', ('draft', 'cancel'))
+        ]
+        
+        # Determine strict or allowed partners based on portal configuration if needed
+        # We simplify here to just use the user's commercial partner for standard portal behavior
+        domain += [('partner_id', 'child_of', [partner.commercial_partner_id.id])]
+
+        # --- KPI Calculations ---
+        
+        # 1. Total por Pagar (Amount Due)
+        # We only sum the residual amount of unpaid invoices
+        unpaid_domain = domain + [('payment_state', 'in', ('not_paid', 'partial'))]
+        unpaid_invoices = AccountInvoice.search(unpaid_domain)
+        total_por_pagar = sum(unpaid_invoices.mapped('amount_residual'))
+        unpaid_count = len(unpaid_invoices)
+        
+        # 2. Facturas del Mes (Invoices this month)
+        today = datetime.today()
+        first_day_month = today.replace(day=1).strftime('%Y-%m-%d')
+        month_domain = domain + [('invoice_date', '>=', first_day_month)]
+        facturas_mes = AccountInvoice.search_count(month_domain)
+        
+        # 3. Último Pago (Last Payment)
+        AccountPayment = request.env['account.payment']
+        payment_domain = [
+            ('partner_id', 'child_of', [partner.commercial_partner_id.id]),
+            ('state', '=', 'posted')
+        ]
+        last_payment = AccountPayment.search(payment_domain, order='date desc', limit=1)
+
+        # --- Base Portal Logic (Pagination, Filters) ---
+        
+        searchbar_sortings = {
+            'date': {'label': _('Fecha de Factura'), 'order': 'invoice_date desc, id desc'},
+            'duedate': {'label': _('Fecha de Vencimiento'), 'order': 'invoice_date_due desc, id desc'},
+            'name': {'label': _('Referencia'), 'order': 'name desc, id desc'},
+            'state': {'label': _('Estado'), 'order': 'state desc, id desc'},
+        }
+        
+        if not sortby:
+            sortby = 'date'
+        order = searchbar_sortings[sortby]['order']
+
+        searchbar_filters = {
+            'all': {'label': _('Todas'), 'domain': []},
+            'invoices': {'label': _('Facturas'), 'domain': [('move_type', 'in', ('out_invoice', 'out_refund'))]},
+            'bills': {'label': _('Recibos'), 'domain': [('move_type', 'in', ('in_invoice', 'in_refund'))]},
+        }
+        
+        if not filterby:
+            filterby = 'all'
+        domain += searchbar_filters[filterby]['domain']
+
+        # count for pager
+        invoice_count = AccountInvoice.search_count(domain)
+        
+        # make pager
+        pager = portal_pager(
+            url="/my/invoices",
+            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby, 'filterby': filterby},
+            total=invoice_count,
+            page=page,
+            step=self._items_per_page
+        )
+        
+        # search the count to display, according to the pager data
+        invoices = AccountInvoice.search(domain, order=order, limit=self._items_per_page, offset=pager['offset'])
+        request.session['my_invoices_history'] = invoices.ids[:100]
+
+        values.update({
+            'date': date_begin,
+            'invoices': invoices,
+            'page_name': 'invoice',
+            'pager': pager,
+            'default_url': '/my/invoices',
+            'searchbar_sortings': searchbar_sortings,
+            'sortby': sortby,
+            'searchbar_filters': OrderedDict(sorted(searchbar_filters.items())),
+            'filterby': filterby,
+            
+            # --- Custom Guapante Values ---
+            'total_por_pagar': total_por_pagar,
+            'unpaid_count': unpaid_count,
+            'facturas_mes': facturas_mes,
+            'last_payment_amount': last_payment.amount if last_payment else 0,
+            'last_payment_date': last_payment.date if last_payment else None,
+            'currency_id': request.env.company.currency_id,
+        })
+        
+        return request.render("theme_guapante.portal_my_invoices_guapante", values)

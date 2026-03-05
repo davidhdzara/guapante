@@ -8,7 +8,7 @@
         'static/description/guapante_preview.png',
         'static/description/icon.png',
     ],
-    'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet'],
+    'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet', 'account'],
     'data': [
         'security/ir.model.access.csv',
         'views/stock_picking_views.xml',
@@ -27,6 +27,7 @@
         'views/shop/checkout.xml',
         'views/portal/portal_layout.xml', # Custom Portal Layout
         'views/portal/my_orders.xml', # Custom My Orders View
+        'views/portal/my_invoices.xml', # Custom My Invoices View
         'views/portal/my_profile.xml', # Custom Mi Perfil View
         'views/portal/my_addresses.xml', # Custom Mis Direcciones View
         'views/auth/login.xml',

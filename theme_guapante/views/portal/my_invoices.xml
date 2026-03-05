@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="portal_my_invoices_guapante" inherit_id="account.portal_my_invoices" name="Guapante: My Invoices" priority="99">
+        <xpath expr="//t[@t-call='portal.portal_layout']" position="replace">
+            <t t-call="portal.portal_layout">
+                <t t-set="breadcrumbs_searchbar" t-value="True"/>
+
+                <!-- Guapante Custom Layout with Sidebar -->
+                <t t-call="theme_guapante.guapante_portal_layout">
+
+                    <!-- HEADER -->
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+                        <div>
+                            <h2 class="fw-bold text-dark mb-1">Mis Facturas</h2>
+                            <p class="text-muted mb-0">Administra tus pagos y descarga tus documentos tributarios.</p>
+                        </div>
+                    </div>
+
+                    <!-- KPI Cards (Based on Mockup) -->
+                    <div class="row g-3 mb-4">
+                        <!-- Card 1: Total por Pagar -->
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <small class="text-muted fw-bold">Total por Pagar</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(25,135,84,0.1);">
+                                            <i class="fa fa-money text-success"></i>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 class="fw-bold text-success mb-1">
+                                            <span t-esc="total_por_pagar" t-options='{"widget": "monetary", "display_currency": request.env.company.currency_id}'/>
+                                        </h3>
+                                        <small class="text-muted"><t t-esc="unpaid_count or 0"/> facturas pendientes de pago</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: Facturas del Mes -->
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <small class="text-muted fw-bold">Facturas del Mes</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(13,110,253,0.1);">
+                                            <i class="fa fa-calendar-o text-primary"></i>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 class="fw-bold text-dark mb-1">
+                                            <t t-esc="facturas_mes"/>
+                                        </h3>
+                                        <small class="text-muted">Emisiones de <t t-esc="datetime.datetime.now().strftime('%B %Y').capitalize()"/></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Último Pago -->
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 rounded-4">
+                                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <small class="text-muted fw-bold">Último Pago</small>
+                                        <div class="rounded d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(111,66,193,0.1);">
+                                            <i class="fa fa-check-circle-o" style="color: #6f42c1;"></i>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 class="fw-bold text-dark mb-1">
+                                            <t t-if="last_payment_amount">
+                                                <span t-esc="last_payment_amount" t-options='{"widget": "monetary", "display_currency": request.env.company.currency_id}'/>
+                                            </t>
+                                            <t t-else="">
+                                                --
+                                            </t>
+                                        </h3>
+                                        <small class="text-muted">
+                                            <t t-if="last_payment_date">Realizado el <span t-esc="last_payment_date" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/></t>
+                                            <t t-else="">Sin pagos registrados</t>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FILTERS TOOLBAR -->
+                    <div class="d-flex flex-column flex-md-row align-items-center mb-4 gap-3 bg-white p-2 rounded-4 border shadow-sm">
+                        <!-- Search Form (Reusing Odoo standard but restyled) -->
+                        <div class="flex-grow-1 position-relative w-100">
+                            <i class="fa fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+                            <input type="text" class="form-control border-0 bg-light rounded-pill ps-5" placeholder="Buscar por factura #" style="height: 48px;"/>
+                        </div>
+
+                        <!-- Status Filter -->
+                        <div class="dropdown" t-if="searchbar_filters">
+                            <button class="btn btn-light dropdown-toggle bg-white border-0 text-dark fw-semibold d-flex align-items-center justify-content-between px-3 h-100" type="button" data-bs-toggle="dropdown" style="min-width: 180px; height: 48px !important; border-radius: 8px;">
+                                <span t-esc="searchbar_filters.get(filterby, {}).get('label', 'Todos los estados')"/>
+                            </button>
+                            <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
+                                <t t-foreach="searchbar_filters" t-as="option">
+                                    <li>
+                                        <a t-attf-href="/my/invoices?filterby=#{option}&amp;sortby=#{sortby}"
+                                           t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if filterby == option else '')">
+                                            <span t-esc="searchbar_filters[option].get('label')"/>
+                                        </a>
+                                    </li>
+                                </t>
+                            </ul>
+                        </div>
+                        
+                        <!-- Sort Filter -->
+                        <div class="dropdown" t-if="searchbar_sortings">
+                            <button class="btn btn-light dropdown-toggle bg-white border-0 text-dark fw-semibold d-flex align-items-center justify-content-between px-3 h-100" type="button" data-bs-toggle="dropdown" style="min-width: 180px; height: 48px !important; border-radius: 8px;">
+                                <i class="fa fa-sort me-2"></i> <span t-esc="searchbar_sortings.get(sortby, {}).get('label', 'Ordenar')"/>
+                            </button>
+                            <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
+                                <t t-foreach="searchbar_sortings" t-as="option">
+                                    <li>
+                                        <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}"
+                                           t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
+                                            <span t-esc="searchbar_sortings[option].get('label')"/>
+                                        </a>
+                                    </li>
+                                </t>
+                            </ul>
+                        </div>
+
+                        <!-- Filter Button -->
+                        <button class="btn btn-success fw-bold px-4 rounded-pill flex-shrink-0" style="height: 48px;">
+                            Filtrar
+                        </button>
+                    </div>
+
+                    <!-- INVOICES TABLE -->
+                    <t t-if="invoices">
+                        <div class="card border border-light shadow-sm overflow-hidden rounded-4">
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-0" style="min-width: 800px;">
+                                    <thead class="bg-light text-muted small text-uppercase fw-bold" style="border-bottom: 2px solid #eef2f5;">
+                                        <tr>
+                                            <th class="py-3 ps-4 border-0">Factura #</th>
+                                            <th class="py-3 border-0">Emisión</th>
+                                            <th class="py-3 border-0">Vencimiento</th>
+                                            <th class="py-3 border-0">Monto</th>
+                                            <th class="py-3 border-0 text-center">Estado</th>
+                                            <th class="py-3 pe-4 border-0 text-end">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="invoices" t-as="invoice">
+                                            <tr style="border-bottom: 1px solid #f8f9fa;">
+                                                <!-- Factura # -->
+                                                <td class="ps-4 fw-bold text-dark py-3">
+                                                    <a t-attf-href="/my/invoices/#{invoice.id}" class="text-decoration-none text-dark">
+                                                        <t t-esc="invoice.name if invoice.name != '/' else 'Borrador'"/>
+                                                    </a>
+                                                </td>
+                                                
+                                                <!-- Emisión -->
+                                                <td class="text-muted py-3">
+                                                    <span t-field="invoice.invoice_date" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/>
+                                                </td>
+                                                
+                                                <!-- Vencimiento -->
+                                                <td class="text-muted py-3">
+                                                    <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, YYYY"}'/>
+                                                </td>
+                                                
+                                                <!-- Monto -->
+                                                <td class="fw-bold text-dark py-3">
+                                                    <span t-field="invoice.amount_total" t-options='{"widget": "monetary", "display_currency": invoice.currency_id}'/>
+                                                </td>
+                                                
+                                                <!-- Estado -->
+                                                <td class="text-center py-3">
+                                                    <t t-if="invoice.state == 'cancel'">
+                                                        <span class="badge rounded-pill bg-light text-muted border px-3 py-2 fw-semibold" style="font-size: 0.75rem;">Cancelada</span>
+                                                    </t>
+                                                    <t t-elif="invoice.payment_state in ('paid', 'in_payment')">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #d1e7dd; color: #0f5132; font-size: 0.75rem; border: 1px solid #badbcc;">Pagada</span>
+                                                    </t>
+                                                    <t t-elif="invoice.payment_state == 'not_paid' and invoice.invoice_date_due and invoice.invoice_date_due &lt; datetime.datetime.now().date()">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #f8d7da; color: #842029; font-size: 0.75rem; border: 1px solid #f5c2c7;">Vencida</span>
+                                                    </t>
+                                                    <t t-elif="invoice.payment_state == 'not_paid'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; border: 1px solid #ffecb5;">Pendiente</span>
+                                                    </t>
+                                                    <t t-elif="invoice.payment_state == 'partial'">
+                                                        <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background-color: #ffe69c; color: #664d03; font-size: 0.75rem; border: 1px solid #ffda6a;">Abonada</span>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span class="badge rounded-pill bg-light text-dark border px-3 py-2 fw-semibold" style="font-size: 0.75rem;">
+                                                            <t t-esc="invoice.payment_state"/>
+                                                        </span>
+                                                    </t>
+                                                </td>
+                                                
+                                                <!-- Acciones -->
+                                                <td class="pe-4 py-3 text-end d-flex justify-content-end align-items-center gap-2">
+                                                    <a t-attf-href="/my/invoices/#{invoice.id}?report_type=pdf&amp;download=true" class="btn btn-light btn-sm rounded-3 px-2 py-1 text-muted border" title="Descargar PDF">
+                                                        <i class="fa fa-file-pdf-o"></i>
+                                                    </a>
+                                                    <a t-attf-href="/my/invoices/#{invoice.id}" class="btn btn-light btn-sm rounded-3 px-2 py-1 text-muted border" title="Ver Detalles">
+                                                        <i class="fa fa-eye"></i>
+                                                    </a>
+                                                    <!-- Pago Oculto Temporalmente -->
+                                                    <t t-if="False">
+                                                        <t t-if="invoice.payment_state in ('paid', 'in_payment')">
+                                                            <button disabled="1" class="btn btn-light btn-sm rounded-pill fw-bold px-3 text-muted" style="min-width: 80px;">Saldada</button>
+                                                        </t>
+                                                        <t t-else="">
+                                                            <a t-attf-href="/my/invoices/#{invoice.id}" class="btn btn-success btn-sm rounded-pill fw-bold px-3 shadow-sm" style="min-width: 80px;">Pagar</a>
+                                                        </t>
+                                                    </t>
+                                                </td>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Pager Footer -->
+                            <div t-if="pager" class="bg-light py-3 d-flex justify-content-between align-items-center px-4" style="border-top: 1px solid #eef2f5;">
+                                <span class="text-muted small">
+                                    Mostrando facturas <t t-esc="pager['page_start']"/> a <t t-esc="pager['page_end']"/>
+                                </span>
+                                <t t-call="portal.pager"/>
+                            </div>
+                        </div>
+                    </t>
+
+                    <!-- Empty State -->
+                    <t t-else="">
+                        <div class="card border-0 shadow-sm text-center p-5 rounded-4">
+                            <div class="mb-3">
+                                <i class="fa fa-file-text-o fa-3x text-muted opacity-50"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark">No tienes facturas de venta registradas</h5>
+                            <p class="text-muted mb-4">Cuando realices compras e introduzcamos tus facturas al sistema, aparecerán aquí.</p>
+                            <a href="/shop" class="btn btn-success rounded-pill px-4 fw-bold">Ir a la tienda</a>
+                        </div>
+                    </t>
+
+                </t>
+            </t>
+        </xpath>
+    </template>
+</odoo>
