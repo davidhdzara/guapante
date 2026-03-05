@@ -147,15 +147,30 @@
                                                     </t>
                                                 </td>
                                                 <td class="fw-bold">
-                                                    <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                                    <t t-if="order.guapante_delivery_status in ['shipping', 'delivered']">
+                                                        <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span class="text-muted small fst-italic" title="El total se calculará una vez finalizado el pesaje">
+                                                            <i class="fa fa-calculator me-1"></i> Calculando...
+                                                        </span>
+                                                    </t>
                                                 </td>
                                                 <td>
                                                     <div class="d-flex align-items-center">
                                                         <t t-foreach="order.order_line[:3]" t-as="line">
-                                                            <img t-att-src="image_data_uri(line.product_id.image_128)"
-                                                                 class="rounded-circle border border-2 border-white shadow-sm"
-                                                                 t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
-                                                                 t-att-alt="line.product_id.name"/>
+                                                            <t t-if="line.product_id.image_128">
+                                                                <img t-att-src="image_data_uri(line.product_id.image_128)"
+                                                                     class="rounded-circle border border-2 border-white shadow-sm"
+                                                                     t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
+                                                                     t-att-alt="line.product_id.name"/>
+                                                            </t>
+                                                            <t t-else="">
+                                                                <img src="/web/static/img/placeholder.png"
+                                                                     class="rounded-circle border border-2 border-white shadow-sm bg-light"
+                                                                     t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
+                                                                     t-att-alt="line.product_id.name"/>
+                                                            </t>
                                                         </t>
                                                         <t t-if="len(order.order_line) > 3">
                                                             <span class="rounded-circle bg-light border border-2 border-white shadow-sm d-flex align-items-center justify-content-center fw-bold text-muted"
