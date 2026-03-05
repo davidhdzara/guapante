@@ -27,6 +27,7 @@
         'views/shop/checkout.xml',
         'views/portal/portal_layout.xml', # Custom Portal Layout
         'views/portal/my_orders.xml', # Custom My Orders View
+        'views/portal/sale_portal_templates.xml', # Custom Sale Details Template
         'views/portal/my_profile.xml', # Custom Mi Perfil View
         'views/portal/my_addresses.xml', # Custom Mis Direcciones View
         'views/auth/login.xml',

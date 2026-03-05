@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="sale_order_portal_content_guapante" inherit_id="sale.sale_order_portal_content" priority="99">
+        
+        <!-- Reemplazar el subtotal de la línea -->
+        <xpath expr="//td[@id='td_subtotal']" position="replace">
+            <td class="text-end" id="td_subtotal">
+                <t t-if="sale_order.guapante_delivery_status in ['shipping', 'delivered']">
+                    <span t-field="line.price_subtotal" t-options='{"widget": "monetary", "display_currency": sale_order.pricelist_id.currency_id}'/>
+                </t>
+                <t t-else="">
+                    <span class="text-muted small fw-bold fst-italic">Calculando...</span>
+                </t>
+            </td>
+        </xpath>
+
+        <!-- Reemplazar el precio unitario -->
+        <xpath expr="//*[@t-field='line.price_unit']" position="replace">
+            <t t-if="sale_order.guapante_delivery_status in ['shipping', 'delivered']">
+                <span t-field="line.price_unit" t-options='{"widget": "monetary", "display_currency": sale_order.pricelist_id.currency_id}'/>
+            </t>
+            <t t-else="">
+                 <span class="text-muted small fst-italic" title="Pendiente de pesaje">-</span>
+            </t>
+        </xpath>
+
+        <!-- Ocultar el bloque de totales completo y mostrar el mensaje -->
+        <xpath expr="//div[@id='total']" position="attributes">
+            <attribute name="t-if">sale_order.guapante_delivery_status in ['shipping', 'delivered']</attribute>
+        </xpath>
+
+        <xpath expr="//div[@id='total']" position="after">
+            <t t-if="sale_order.guapante_delivery_status not in ['shipping', 'delivered']">
+                <div id="guapante_total_placeholder" class="row mt-4 mb-4">
+                    <div class="col-12 text-end">
+                        <div class="alert alert-warning d-inline-block text-start mb-0 rounded-4 shadow-sm" style="border: 1px solid #ffeeba; background-color: #fffaf0; color: #856404; font-size: 0.95rem;">
+                            <i class="fa fa-info-circle me-2 text-warning fs-5 align-middle"></i>
+                            <span class="align-middle"><strong>Información importante:</strong> Los precios y el total se calcularán de forma exacta una vez finalizado el pesaje de su orden.</span>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </xpath>
+
+    </template>
+</odoo>
