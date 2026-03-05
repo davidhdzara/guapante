@@ -112,9 +112,7 @@
                                         <t t-foreach="orders" t-as="order">
                                             <tr>
                                                 <td class="ps-4 fw-bold text-dark">
-                                                    <a t-att-href="order.get_portal_url()" class="text-decoration-none text-dark">
-                                                        <t t-esc="order.name"/>
-                                                    </a>
+                                                    <t t-esc="order.name"/>
                                                 </td>
                                                 <td class="text-muted">
                                                     <span t-field="order.date_order" t-options='{"widget": "date"}'/>
@@ -213,9 +211,9 @@
 
                                                         <!-- Cancelled: Details link -->
                                                         <t t-else="">
-                                                            <a t-att-href="order.get_portal_url()" class="btn btn-link btn-sm text-muted text-decoration-none">
-                                                                Ver detalles
-                                                            </a>
+                                                            <span class="text-muted small">
+                                                                Orden Cancelada
+                                                            </span>
                                                         </t>
                                                     </div>
                                                 </td>
