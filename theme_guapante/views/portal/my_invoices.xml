@@ -87,8 +87,21 @@
                         </div>
                     </div>
 
+                    <!-- QUICK TABS (Filters) -->
+                    <div class="d-flex overflow-auto mb-3 gap-2" t-if="tab_counts">
+                        <a t-attf-href="/my/invoices?filterby=all&amp;sortby=#{sortby}&amp;date_filter=#{date_filter}&amp;search=#{search or ''}" 
+                           t-att-class="'btn rounded-pill px-4 ' + ('btn-success fw-bold text-white' if filterby == 'all' else 'btn-white border text-muted')">
+                            Todas <span class="badge bg-light text-dark ms-2 rounded-pill"><t t-esc="tab_counts.get('all', 0)"/></span>
+                        </a>
+                        <a t-attf-href="/my/invoices?filterby=invoices&amp;sortby=#{sortby}&amp;date_filter=#{date_filter}&amp;search=#{search or ''}" 
+                           t-att-class="'btn rounded-pill px-4 ' + ('btn-success fw-bold text-white' if filterby == 'invoices' else 'btn-white border text-muted')">
+                            Pendientes <span class="badge bg-light text-dark ms-2 rounded-pill"><t t-esc="tab_counts.get('unpaid', 0)"/></span>
+                        </a>
+                        <!-- Add additional tabs if needed mapping to your desired filters -->
+                    </div>
+
                     <!-- FILTERS TOOLBAR (Unified block) -->
-                    <form action="/my/invoices" method="get" class="d-flex flex-column flex-xl-row align-items-xl-center bg-white p-2 mb-4 shadow-sm" style="border-radius: 12px; border: 1px solid #f1f3f5;">
+                    <form action="/my/invoices" method="get" id="guapante_invoices_form" class="d-flex flex-column flex-xl-row align-items-xl-center bg-white p-2 mb-4 shadow-sm" style="border-radius: 12px; border: 1px solid #f1f3f5;">
                         <!-- Hidden fields to preserve other filters when submitting -->
                         <input type="hidden" name="sortby" t-att-value="sortby"/>
                         <input type="hidden" name="filterby" t-att-value="filterby"/>
@@ -136,29 +149,60 @@
                                 </ul>
                             </div>
 
-                            <!-- Sort Filter -->
-                            <div class="dropdown px-2" t-if="searchbar_sortings">
-                                <button class="btn btn-white dropdown-toggle border-0 text-dark d-flex align-items-center justify-content-between h-100 w-100" type="button" data-bs-toggle="dropdown" style="height: 40px !important; font-size: 0.9rem;">
-                                    <i class="fa fa-sort me-1 text-muted"></i> <span t-esc="searchbar_sortings.get(sortby, {}).get('label', 'Ordenar')"/>
+                            <!-- Button Container for Search and Bulk Download -->
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="submit" class="btn text-white px-4 fw-bold" style="background-color: #4caf50; height: 40px; border-radius: 8px; font-size: 0.9rem;">
+                                    Buscar
                                 </button>
-                                <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
-                                    <t t-foreach="searchbar_sortings" t-as="option">
-                                        <li>
-                                            <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}&amp;date_filter=#{date_filter}&amp;search=#{search or ''}"
-                                                t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
-                                                <span t-esc="searchbar_sortings[option].get('label')"/>
-                                            </a>
-                                        </li>
-                                    </t>
-                                </ul>
+                                <button type="button" id="btn-bulk-download" class="btn btn-outline-secondary px-3 d-none align-items-center gap-2" style="height: 40px; border-radius: 8px; font-size: 0.9rem;">
+                                    <i class="fa fa-download"></i> <span class="d-none d-md-inline">Descargar Seleccionadas</span>
+                                </button>
                             </div>
-
-                            <!-- Filter Button -->
-                            <button type="submit" class="btn text-white px-4 fw-bold" style="background-color: #4caf50; height: 40px; border-radius: 8px; font-size: 0.9rem;">
-                                Buscar
-                            </button>
                         </div>
                     </form>
+
+                    <script type="text/javascript">
+                        document.addEventListener("DOMContentLoaded", function() {
+                            const masterCheckbox = document.getElementById('chk-master');
+                            const rowCheckboxes = document.querySelectorAll('.chk-invoice-row');
+                            const btnBulkDownload = document.getElementById('btn-bulk-download');
+                            
+                            function updateBulkButton() {
+                                const selected = Array.from(rowCheckboxes).filter(chk => chk.checked);
+                                if (selected.length > 0) {
+                                    btnBulkDownload.classList.remove('d-none');
+                                    btnBulkDownload.classList.add('d-flex');
+                                } else {
+                                    btnBulkDownload.classList.remove('d-flex');
+                                    btnBulkDownload.classList.add('d-none');
+                                }
+                            }
+
+                            if(masterCheckbox) {
+                                masterCheckbox.addEventListener('change', function() {
+                                    rowCheckboxes.forEach(chk => chk.checked = this.checked);
+                                    updateBulkButton();
+                                });
+                            }
+
+                            rowCheckboxes.forEach(chk => {
+                                chk.addEventListener('change', function() {
+                                    const allChecked = Array.from(rowCheckboxes).every(c => c.checked);
+                                    if(masterCheckbox) masterCheckbox.checked = allChecked;
+                                    updateBulkButton();
+                                });
+                            });
+
+                            if(btnBulkDownload) {
+                                btnBulkDownload.addEventListener('click', function() {
+                                    const selectedIds = Array.from(rowCheckboxes).filter(chk => chk.checked).map(chk => chk.value);
+                                    if (selectedIds.length > 0) {
+                                        window.location.href = '/my/invoices/download_zip?invoice_ids=' + selectedIds.join(',');
+                                    }
+                                });
+                            }
+                        });
+                    </script>
 
                     <!-- INVOICES TABLE -->
                     <t t-if="invoices">
@@ -167,10 +211,16 @@
                                 <table class="table align-middle mb-0" style="min-width: 800px;">
                                     <thead class="bg-white">
                                         <tr style="border-bottom: 2px solid #f1f3f5;">
-                                            <th class="py-3 ps-4 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">FACTURA #</th>
+                                            <th class="py-3 ps-4 border-0" style="width: 40px;">
+                                                <input class="form-check-input" type="checkbox" id="chk-master" style="width: 1.2rem; height: 1.2rem;"/>
+                                            </th>
+                                            <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">FACTURA #</th>
                                             <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">EMISIÓN</th>
                                             <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">VENCIMIENTO</th>
-                                            <th class="py-3 border-0 text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">MONTO</th>
+                                            <th class="py-3 border-0 text-center text-muted" style="font-size: 0.75rem; border-right: 1px dashed #f1f3f5;">
+                                                <i class="fa fa-clock-o fs-6"></i>
+                                            </th>
+                                            <th class="py-3 border-0 text-muted ps-3" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">MONTO</th>
                                             <th class="py-3 border-0 text-center text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">ESTADO</th>
                                             <th class="py-3 pe-4 border-0 text-end text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 600;">ACCIONES</th>
                                         </tr>
@@ -178,11 +228,19 @@
                                     <tbody>
                                         <t t-foreach="invoices" t-as="invoice">
                                             <tr style="border-bottom: 1px solid #f8f9fa;">
+                                                <!-- Checkbox -->
+                                                <td class="ps-4 py-4">
+                                                    <input class="form-check-input chk-invoice-row" type="checkbox" t-att-value="invoice.id" style="width: 1.2rem; height: 1.2rem;"/>
+                                                </td>
+
                                                 <!-- Factura # -->
-                                                <td class="ps-4 fw-bold text-dark py-4" style="font-size: 0.9rem;">
+                                                <td class="fw-bold text-dark py-4" style="font-size: 0.9rem;">
                                                     <a t-attf-href="/my/invoices/#{invoice.id}" class="text-decoration-none text-dark">
                                                         <t t-esc="invoice.name if invoice.name != '/' else 'Borrador'"/>
                                                     </a>
+                                                    <t t-if="invoice.invoice_origin">
+                                                        <div class="small fw-normal text-muted"><t t-esc="invoice.invoice_origin"/></div>
+                                                    </t>
                                                 </td>
                                                 
                                                 <!-- Emisión -->
@@ -195,55 +253,65 @@
                                                     <div class="text-dark fw-medium">
                                                         <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, yyyy"}'/>
                                                     </div>
+                                                </td>
+
+                                                <!-- Tiempo Restante (Reloj) -->
+                                                <td class="py-4 text-center" style="border-right: 1px dashed #f1f3f5;">
                                                     <t t-if="invoice.payment_state not in ('paid', 'in_payment') and invoice.state != 'cancel' and invoice.invoice_date_due">
                                                         <t t-set="days_due" t-value="(invoice.invoice_date_due - today_date).days"/>
                                                         <t t-if="days_due &lt; 0">
-                                                            <div class="mt-1"><span class="badge" style="background-color: #fce8e6; color: #d93025; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vencida hace <t t-esc="abs(days_due)"/> días</span></div>
+                                                            <span class="badge" style="background-color: #fce8e6; color: #d93025; font-size: 0.7rem; border-radius: 4px; padding: 0.35rem 0.5rem; border: 1px solid #f2b3b0;"><t t-esc="abs(days_due)"/> d atrás</span>
                                                         </t>
                                                         <t t-elif="days_due == 0">
-                                                            <div class="mt-1"><span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vence hoy</span></div>
+                                                            <span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.7rem; border-radius: 4px; padding: 0.35rem 0.5rem; border: 1px solid #f6d173;">Hoy</span>
                                                         </t>
                                                         <t t-elif="days_due &lt;= 5">
-                                                            <div class="mt-1"><span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vence en <t t-esc="days_due"/> días</span></div>
+                                                            <span class="badge" style="background-color: #fff3cd; color: #664d03; font-size: 0.7rem; border-radius: 4px; padding: 0.35rem 0.5rem; border: 1px solid #ffda6a;">En <t t-esc="days_due"/> d</span>
                                                         </t>
+                                                        <t t-else="">
+                                                            <span class="text-muted small"><t t-esc="days_due"/> d</span>
+                                                        </t>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span class="text-muted opacity-50"><i class="fa fa-minus"></i></span>
                                                     </t>
                                                 </td>
                                                 
                                                 <!-- Monto -->
-                                                <td class="fw-bold text-dark py-4" style="font-size: 0.9rem;">
+                                                <td class="fw-bold text-dark py-4 ps-3" style="font-size: 0.9rem;">
                                                     <span t-field="invoice.amount_total" t-options='{"widget": "monetary", "display_currency": invoice.currency_id}'/>
                                                 </td>
                                                 
-                                                <!-- Estado -->
+                                                <!-- Estado (Full Badge Style) -->
                                                 <td class="text-center py-4">
                                                     <t t-if="invoice.state == 'cancel'">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #f1f3f5; color: #6c757d; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #adb5bd;"></span>Cancelada
+                                                        <span class="guapante-badge guapante-badge-cancelled">
+                                                            <i class="fa fa-times me-1"></i>Cancelada
                                                         </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state in ('paid', 'in_payment')">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #e6f4ea; color: #1e8e3e; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #34a853; box-shadow: 0 0 4px #34a853;"></span>Pagada
+                                                        <span class="guapante-badge guapante-badge-delivered">
+                                                            <i class="fa fa-check me-1"></i>Pagada
                                                         </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'not_paid' and invoice.invoice_date_due and invoice.invoice_date_due &lt; today_date">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fce8e6; color: #d93025; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #ea4335; box-shadow: 0 0 4px #ea4335;"></span>Vencida
+                                                        <span class="guapante-badge guapante-badge-cancelled" style="background-color: #fce8e6; color: #d93025;">
+                                                            <i class="fa fa-exclamation-triangle me-1"></i>Vencida
                                                         </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'not_paid'">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fef7e0; color: #b06000; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #fbbc04; box-shadow: 0 0 4px #fbbc04;"></span>Pendiente
+                                                        <span class="guapante-badge guapante-badge-shipping" style="background-color: #fff3cd; color: #856404;">
+                                                            <i class="fa fa-clock-o me-1"></i>Pendiente
                                                         </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'partial'">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #ffc107; box-shadow: 0 0 4px #ffc107;"></span>Abonada
+                                                        <span class="guapante-badge guapante-badge-preparing">
+                                                            <i class="fa fa-pie-chart me-1"></i>Abonada
                                                         </span>
                                                     </t>
                                                     <t t-else="">
-                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #f1f3f5; color: #495057; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #6c757d;"></span><t t-esc="invoice.payment_state"/>
+                                                        <span class="guapante-badge" style="background-color: #e9ecef; color: #495057;">
+                                                            <t t-esc="invoice.payment_state"/>
                                                         </span>
                                                     </t>
                                                 </td>

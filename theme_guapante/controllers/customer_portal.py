@@ -542,14 +542,40 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         # --- Base Portal Logic (Pagination, Filters) ---
         
-        # 1. Search
+        # 0. Quick Tab Counts (All, Unpaid, Paid)
+        all_domain = list(base_domain) if 'base_domain' in locals() else domain.copy()
+        
+        unpaid_domain = all_domain + [('payment_state', 'in', ('not_paid', 'partial'))]
+        paid_domain = all_domain + [('payment_state', 'in', ('paid', 'in_payment'))]
+        
+        tab_counts = {
+            'all': AccountInvoice.search_count(all_domain),
+            'unpaid': AccountInvoice.search_count(unpaid_domain),
+            'paid': AccountInvoice.search_count(paid_domain),
+        }
+
+        # 1. Search (Omnibox)
         searchbar_inputs = {
             'name': {'input': 'name', 'label': _('Referencia')},
         }
         if not search_in:
             search_in = 'name'
         if search:
-            domain += [('name', 'ilike', search)]
+            search_domain = []
+            # Check if search is a pure number indicating an exact amount
+            try:
+                search_amount = float(search.replace(',', ''))
+                search_domain.append(('amount_total', '=', search_amount))
+            except ValueError:
+                pass
+            
+            # Text based logic: ref, name, invoice_origin
+            search_domain.append(('name', 'ilike', search))
+            search_domain.append(('invoice_origin', 'ilike', search))
+            search_domain.append(('ref', 'ilike', search))
+            
+            # Apply with OR logic
+            domain += ['|', '|', '|'] + search_domain[:3] + search_domain[3:] if len(search_domain) > 3 else ['|', '|'] + search_domain
 
         # 2. Date Range Filters
         date_range_filters = {
@@ -641,6 +667,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             'sortby': sortby,
             'searchbar_filters': OrderedDict(sorted(searchbar_filters.items())),
             'filterby': filterby,
+            'tab_counts': tab_counts,
             
             'searchbar_inputs': searchbar_inputs,
             'search': search,
@@ -659,3 +686,55 @@ class GuapanteCustomerPortal(CustomerPortal):
         })
         
         return request.render("theme_guapante.portal_my_invoices_guapante", values)
+
+    @http.route(['/my/invoices/download_zip'], type='http', auth="user", website=True)
+    def portal_my_invoices_download_zip(self, invoice_ids=None, **kw):
+        """
+        Download multiple invoices as a single ZIP file containing the PDFs.
+        """
+        if not invoice_ids:
+            return request.redirect('/my/invoices')
+            
+        partner = request.env.user.partner_id
+        
+        # Parse invoice IDs safely
+        try:
+            ids = [int(i) for i in invoice_ids.split(',')]
+        except ValueError:
+            return request.redirect('/my/invoices')
+
+        invoices = request.env['account.move'].sudo().search([
+            ('id', 'in', ids),
+            ('partner_id', 'child_of', [partner.commercial_partner_id.id]),
+            ('move_type', 'in', ('out_invoice', 'out_refund', 'in_invoice', 'in_refund', 'out_receipt', 'in_receipt'))
+        ])
+
+        if not invoices:
+            return request.redirect('/my/invoices')
+
+        import zipfile
+        import io
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for invoice in invoices:
+                # Get the PDF content using the standard report action
+                pdf_content, _ = request.env['ir.actions.report'].sudo()._render_qweb_pdf('account.account_invoices', [invoice.id])
+                
+                # Sanitize filename
+                safe_name = invoice.name.replace('/', '_') if invoice.name != '/' else f'Factura_Borrador_{invoice.id}'
+                filename = f"{safe_name}.pdf"
+                
+                # Write to ZIP
+                zip_file.writestr(filename, pdf_content)
+
+        zip_buffer.seek(0)
+        zip_content = zip_buffer.read()
+
+        headers = [
+            ('Content-Type', 'application/zip'),
+            ('Content-Disposition', 'attachment; filename="Facturas_Guapante.zip"'),
+            ('Content-Length', len(zip_content))
+        ]
+
+        return request.make_response(zip_content, headers=headers)
