@@ -500,7 +500,7 @@ class GuapanteCustomerPortal(CustomerPortal):
 
 
     @http.route(['/my/invoices', '/my/invoices/page/<int:page>'], type='http', auth="user", website=True)
-    def portal_my_invoices(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, **kw):
+    def portal_my_invoices(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, search=None, search_in='name', **kw):
         """
         Override the default invoices portal to add KPI logic and use Guapante layout.
         """
@@ -542,6 +542,35 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         # --- Base Portal Logic (Pagination, Filters) ---
         
+        # 1. Search
+        searchbar_inputs = {
+            'name': {'input': 'name', 'label': _('Referencia')},
+        }
+        if not search_in:
+            search_in = 'name'
+        if search:
+            domain += [('name', 'ilike', search)]
+
+        # 2. Date Range Filters
+        date_range_filters = {
+            'all':        {'label': 'Todo el tiempo'},
+            'last_7':     {'label': 'Últimos 7 días',   'days': 7},
+            'last_15':    {'label': 'Últimos 15 días',  'days': 15},
+            'last_30':    {'label': 'Últimos 30 días',  'days': 30},
+            'last_90':    {'label': 'Últimos 3 meses',  'days': 90},
+            'last_180':   {'label': 'Últimos 6 meses',  'days': 180},
+            'last_365':   {'label': 'Último año',       'days': 365},
+        }
+        date_filter = kw.get('date_filter', 'all')
+        if date_filter not in date_range_filters:
+            date_filter = 'all'
+
+        if date_filter != 'all':
+            days = date_range_filters[date_filter]['days']
+            date_limit = datetime.now() - timedelta(days=days)
+            domain.append(('invoice_date', '>=', date_limit.date()))
+
+        # 3. Sortings
         searchbar_sortings = {
             'date': {'label': _('Fecha de Factura'), 'order': 'invoice_date desc, id desc'},
             'duedate': {'label': _('Fecha de Vencimiento'), 'order': 'invoice_date_due desc, id desc'},
@@ -553,6 +582,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             sortby = 'date'
         order = searchbar_sortings[sortby]['order']
 
+        # 4. Status Filters
         searchbar_filters = {
             'all': {'label': _('Todas'), 'domain': []},
             'invoices': {'label': _('Facturas'), 'domain': [('move_type', 'in', ('out_invoice', 'out_refund'))]},
@@ -569,7 +599,15 @@ class GuapanteCustomerPortal(CustomerPortal):
         # make pager
         pager = portal_pager(
             url="/my/invoices",
-            url_args={'date_begin': date_begin, 'date_end': date_end, 'sortby': sortby, 'filterby': filterby},
+            url_args={
+                'date_begin': date_begin,
+                'date_end': date_end,
+                'sortby': sortby,
+                'filterby': filterby,
+                'search': search,
+                'search_in': search_in,
+                'date_filter': date_filter,
+            },
             total=invoice_count,
             page=page,
             step=self._items_per_page
@@ -603,6 +641,13 @@ class GuapanteCustomerPortal(CustomerPortal):
             'sortby': sortby,
             'searchbar_filters': OrderedDict(sorted(searchbar_filters.items())),
             'filterby': filterby,
+            
+            'searchbar_inputs': searchbar_inputs,
+            'search': search,
+            'search_in': search_in,
+            'date_filter': date_filter,
+            'date_range_filters': date_range_filters,
+            'today_date': datetime.now().date(),
             
             # --- Custom Guapante Values ---
             'total_por_pagar': total_por_pagar,

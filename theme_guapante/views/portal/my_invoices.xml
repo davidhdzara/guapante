@@ -88,11 +88,16 @@
                     </div>
 
                     <!-- FILTERS TOOLBAR (Unified block) -->
-                    <div class="d-flex flex-column flex-xl-row align-items-xl-center bg-white p-2 mb-4 shadow-sm" style="border-radius: 12px; border: 1px solid #f1f3f5;">
+                    <form action="/my/invoices" method="get" class="d-flex flex-column flex-xl-row align-items-xl-center bg-white p-2 mb-4 shadow-sm" style="border-radius: 12px; border: 1px solid #f1f3f5;">
+                        <!-- Hidden fields to preserve other filters when submitting -->
+                        <input type="hidden" name="sortby" t-att-value="sortby"/>
+                        <input type="hidden" name="filterby" t-att-value="filterby"/>
+                        <input type="hidden" name="date_filter" t-att-value="date_filter"/>
+                        
                         <!-- Search Form -->
                         <div class="position-relative flex-grow-1" style="min-width: 200px;">
                             <i class="fa fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
-                            <input type="text" class="form-control border-0 bg-light rounded-pill ps-5 w-100" placeholder="Buscar por factura #" style="height: 40px; font-size: 0.9rem;"/>
+                            <input type="text" name="search" t-att-value="search" class="form-control border-0 bg-light rounded-pill ps-5 w-100" placeholder="Buscar por factura #" style="height: 40px; font-size: 0.9rem;"/>
                         </div>
 
                         <div class="d-flex flex-wrap align-items-center flex-grow-1 justify-content-xl-end mt-3 mt-xl-0 ms-xl-2 gap-2">
@@ -104,7 +109,7 @@
                                 <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
                                     <t t-foreach="searchbar_filters" t-as="option">
                                         <li>
-                                            <a t-attf-href="/my/invoices?filterby=#{option}&amp;sortby=#{sortby}"
+                                            <a t-attf-href="/my/invoices?filterby=#{option}&amp;sortby=#{sortby}&amp;date_filter=#{date_filter}&amp;search=#{search or ''}"
                                                t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if filterby == option else '')">
                                                 <span t-esc="searchbar_filters[option].get('label')"/>
                                             </a>
@@ -113,14 +118,25 @@
                                 </ul>
                             </div>
                             
-                            <!-- Dummy Date Range Filter (To Match Mockup Visuals) -->
-                            <div class="border-end px-2 d-none d-lg-flex align-items-center text-muted gap-2" style="font-size: 0.9rem; height: 40px;">
-                                <span><i class="fa fa-calendar-o"></i> dd/mm/aaaa</span>
-                                <span>a</span>
-                                <span><i class="fa fa-calendar-o"></i> dd/mm/aaaa</span>
+                            <!-- Date Range Filter -->
+                            <div class="dropdown border-end px-2" t-if="date_range_filters">
+                                <button class="btn btn-white dropdown-toggle border-0 text-dark d-flex align-items-center justify-content-between h-100 w-100" type="button" data-bs-toggle="dropdown" style="height: 40px !important; font-size: 0.9rem;">
+                                    <i class="fa fa-calendar-o me-1 text-muted"></i> 
+                                    <span t-esc="date_range_filters.get(date_filter, {}).get('label', 'Todo el tiempo')"/>
+                                </button>
+                                <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
+                                    <t t-foreach="date_range_filters" t-as="option">
+                                        <li>
+                                            <a t-attf-href="/my/invoices?filterby=#{filterby}&amp;sortby=#{sortby}&amp;date_filter=#{option}&amp;search=#{search or ''}"
+                                               t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if date_filter == option else '')">
+                                                <span t-esc="date_range_filters[option].get('label')"/>
+                                            </a>
+                                        </li>
+                                    </t>
+                                </ul>
                             </div>
 
-                            <!-- Sort Filter (Mockup had none explicitly named Sort but had multiple filters, mapped to sort here) -->
+                            <!-- Sort Filter -->
                             <div class="dropdown px-2" t-if="searchbar_sortings">
                                 <button class="btn btn-white dropdown-toggle border-0 text-dark d-flex align-items-center justify-content-between h-100 w-100" type="button" data-bs-toggle="dropdown" style="height: 40px !important; font-size: 0.9rem;">
                                     <i class="fa fa-sort me-1 text-muted"></i> <span t-esc="searchbar_sortings.get(sortby, {}).get('label', 'Ordenar')"/>
@@ -128,8 +144,8 @@
                                 <ul class="dropdown-menu border-0 shadow rounded-3 mt-1">
                                     <t t-foreach="searchbar_sortings" t-as="option">
                                         <li>
-                                            <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}"
-                                               t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
+                                            <a t-attf-href="/my/invoices?sortby=#{option}&amp;filterby=#{filterby}&amp;date_filter=#{date_filter}&amp;search=#{search or ''}"
+                                                t-att-class="'dropdown-item py-2 px-3' + (' active bg-success text-white' if sortby == option else '')">
                                                 <span t-esc="searchbar_sortings[option].get('label')"/>
                                             </a>
                                         </li>
@@ -138,11 +154,11 @@
                             </div>
 
                             <!-- Filter Button -->
-                            <button class="btn text-white px-4 fw-bold" style="background-color: #4caf50; height: 40px; border-radius: 8px; font-size: 0.9rem;">
-                                Filtrar
+                            <button type="submit" class="btn text-white px-4 fw-bold" style="background-color: #4caf50; height: 40px; border-radius: 8px; font-size: 0.9rem;">
+                                Buscar
                             </button>
                         </div>
-                    </div>
+                    </form>
 
                     <!-- INVOICES TABLE -->
                     <t t-if="invoices">
@@ -175,8 +191,22 @@
                                                 </td>
                                                 
                                                 <!-- Vencimiento -->
-                                                <td class="text-muted py-4" style="font-size: 0.9rem;">
-                                                    <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, yyyy"}'/>
+                                                <td class="py-4" style="font-size: 0.9rem;">
+                                                    <div class="text-dark fw-medium">
+                                                        <span t-field="invoice.invoice_date_due" t-options='{"widget": "date", "format": "dd MMM, yyyy"}'/>
+                                                    </div>
+                                                    <t t-if="invoice.payment_state not in ('paid', 'in_payment') and invoice.state != 'cancel' and invoice.invoice_date_due">
+                                                        <t t-set="days_due" t-value="(invoice.invoice_date_due - today_date).days"/>
+                                                        <t t-if="days_due &lt; 0">
+                                                            <div class="mt-1"><span class="badge" style="background-color: #fce8e6; color: #d93025; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vencida hace <t t-esc="abs(days_due)"/> días</span></div>
+                                                        </t>
+                                                        <t t-elif="days_due == 0">
+                                                            <div class="mt-1"><span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vence hoy</span></div>
+                                                        </t>
+                                                        <t t-elif="days_due &lt;= 5">
+                                                            <div class="mt-1"><span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.7rem; border-radius: 4px; padding: 0.2rem 0.4rem;">Vence en <t t-esc="days_due"/> días</span></div>
+                                                        </t>
+                                                    </t>
                                                 </td>
                                                 
                                                 <!-- Monto -->
@@ -187,23 +217,33 @@
                                                 <!-- Estado -->
                                                 <td class="text-center py-4">
                                                     <t t-if="invoice.state == 'cancel'">
-                                                        <span class="badge" style="background-color: #f1f3f5; color: #6c757d; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Cancelada</span>
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #f1f3f5; color: #6c757d; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #adb5bd;"></span>Cancelada
+                                                        </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state in ('paid', 'in_payment')">
-                                                        <span class="badge" style="background-color: #e6f4ea; color: #1e8e3e; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Pagada</span>
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #e6f4ea; color: #1e8e3e; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #34a853; box-shadow: 0 0 4px #34a853;"></span>Pagada
+                                                        </span>
                                                     </t>
-                                                    <t t-elif="invoice.payment_state == 'not_paid' and invoice.invoice_date_due and invoice.invoice_date_due &lt; datetime.datetime.now().date()">
-                                                        <span class="badge" style="background-color: #fce8e6; color: #d93025; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Vencida</span>
+                                                    <t t-elif="invoice.payment_state == 'not_paid' and invoice.invoice_date_due and invoice.invoice_date_due &lt; today_date">
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fce8e6; color: #d93025; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #ea4335; box-shadow: 0 0 4px #ea4335;"></span>Vencida
+                                                        </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'not_paid'">
-                                                        <span class="badge" style="background-color: #fef7e0; color: #b06000; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Pendiente</span>
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fef7e0; color: #b06000; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #fbbc04; box-shadow: 0 0 4px #fbbc04;"></span>Pendiente
+                                                        </span>
                                                     </t>
                                                     <t t-elif="invoice.payment_state == 'partial'">
-                                                        <span class="badge" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">Abonada</span>
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #fff3cd; color: #664d03; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #ffc107; box-shadow: 0 0 4px #ffc107;"></span>Abonada
+                                                        </span>
                                                     </t>
                                                     <t t-else="">
-                                                        <span class="badge" style="background-color: #f1f3f5; color: #495057; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
-                                                            <t t-esc="invoice.payment_state"/>
+                                                        <span class="badge d-inline-flex align-items-center gap-1" style="background-color: #f1f3f5; color: #495057; font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #6c757d;"></span><t t-esc="invoice.payment_state"/>
                                                         </span>
                                                     </t>
                                                 </td>
