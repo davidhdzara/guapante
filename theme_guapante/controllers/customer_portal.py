@@ -27,7 +27,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         return values
 
     @http.route(['/my/orders', '/my/orders/page/<int:page>'], type='http', auth="user", website=True)
-    def portal_my_orders(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, **kw):
+    def portal_my_orders(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, search=None, search_in='name', **kw):
         values = self._prepare_portal_layout_values()
         partner = request.env.user.partner_id
         SaleOrder = request.env['sale.order']
@@ -53,10 +53,37 @@ class GuapanteCustomerPortal(CustomerPortal):
         # Build filtered domain from base
         domain = list(base_domain)
 
+        # 0. Quick Tab Counts
+        tab_counts = {
+            'all': total_orders_count,
+            'received': SaleOrder.search_count(base_domain + [('guapante_delivery_status', '=', 'received')]),
+            'preparing': SaleOrder.search_count(base_domain + [('guapante_delivery_status', '=', 'preparing')]),
+            'shipping': SaleOrder.search_count(base_domain + [('guapante_delivery_status', '=', 'shipping')]),
+        }
+
+        # 0.5 Search (Omnibox)
+        searchbar_inputs = {
+            'name': {'input': 'name', 'label': _('Referencia')},
+        }
+        if not search_in:
+            search_in = 'name'
+        if search:
+            search_domain = []
+            try:
+                search_amount = float(search.replace(',', ''))
+                search_domain.append(('amount_total', '=', search_amount))
+            except ValueError:
+                pass
+            
+            search_domain.append(('name', 'ilike', search))
+            search_domain.append(('client_order_ref', 'ilike', search)) # Referencia de cliente
+            
+            domain += ['|', '|'] + search_domain[:2] + search_domain[2:] if len(search_domain) > 2 else ['|'] + search_domain
+
         # 1. Sortings
         searchbar_sortings = {
-            'date': {'label': 'Más reciente', 'order': 'date_order desc'},
-            'name': {'label': 'Nombre', 'order': 'name desc'},
+            'date': {'label': 'Más reciente', 'order': 'date_order desc, id desc'},
+            'name': {'label': 'Nombre', 'order': 'name desc, id desc'},
         }
         if not sortby:
             sortby = 'date'
@@ -102,6 +129,8 @@ class GuapanteCustomerPortal(CustomerPortal):
                 'sortby': sortby,
                 'filterby': filterby,
                 'date_filter': date_filter,
+                'search': search,
+                'search_in': search_in,
             },
             total=order_count,
             page=page,
@@ -123,10 +152,14 @@ class GuapanteCustomerPortal(CustomerPortal):
             'default_url': '/my/orders',
             'searchbar_sortings': searchbar_sortings,
             'sortby': sortby,
-            'searchbar_filters': searchbar_filters,
+            'searchbar_filters': OrderedDict(sorted(searchbar_filters.items())),
             'filterby': filterby,
             'date_filter': date_filter,
             'date_range_filters': date_range_filters,
+            'searchbar_inputs': searchbar_inputs,
+            'search': search,
+            'search_in': search_in,
+            'tab_counts': tab_counts,
             'total_orders_count': total_orders_count,
             'active_shipments_count': active_shipments_count,
             'page_start_num': page_start_num,

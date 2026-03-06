@@ -46,8 +46,40 @@
                         </div>
                     </div>
 
+                    <!-- QUICK TABS -->
+                    <t t-if="tab_counts">
+                        <div class="d-flex flex-wrap gap-2 mb-4">
+                            <a t-attf-href="/my/orders?filterby=all&amp;date_filter=#{date_filter}&amp;search=#{search}" 
+                               t-att-class="'btn btn-sm rounded-pill px-3 fw-bold ' + ('btn-dark' if filterby == 'all' or not filterby else 'bg-white border text-muted')">
+                                Todos <span class="badge bg-secondary rounded-pill ms-1"><t t-esc="tab_counts.get('all', 0)"/></span>
+                            </a>
+                            <a t-attf-href="/my/orders?filterby=received&amp;date_filter=#{date_filter}&amp;search=#{search}" 
+                               t-att-class="'btn btn-sm rounded-pill px-3 fw-bold ' + ('btn-dark' if filterby == 'received' else 'bg-white border text-muted')">
+                                Recibidos <span class="badge bg-secondary rounded-pill ms-1"><t t-esc="tab_counts.get('received', 0)"/></span>
+                            </a>
+                            <a t-attf-href="/my/orders?filterby=preparing&amp;date_filter=#{date_filter}&amp;search=#{search}" 
+                               t-att-class="'btn btn-sm rounded-pill px-3 fw-bold ' + ('btn-dark' if filterby == 'preparing' else 'bg-white border text-muted')">
+                                Preparando <span class="badge bg-secondary rounded-pill ms-1"><t t-esc="tab_counts.get('preparing', 0)"/></span>
+                            </a>
+                            <a t-attf-href="/my/orders?filterby=shipping&amp;date_filter=#{date_filter}&amp;search=#{search}" 
+                               t-att-class="'btn btn-sm rounded-pill px-3 fw-bold ' + ('btn-dark' if filterby == 'shipping' else 'bg-white border text-muted')">
+                                En Camino <span class="badge bg-secondary rounded-pill ms-1"><t t-esc="tab_counts.get('shipping', 0)"/></span>
+                            </a>
+                        </div>
+                    </t>
+
                     <!-- FILTERS TOOLBAR -->
-                    <div class="d-flex flex-column flex-md-row align-items-center mb-4 gap-3">
+                    <form action="/my/orders" method="get" class="d-flex flex-column flex-md-row align-items-center mb-4 gap-3">
+                        <input type="hidden" name="date_filter" t-att-value="date_filter"/>
+                        <input type="hidden" name="filterby" t-att-value="filterby"/>
+
+                        <!-- Search -->
+                        <div class="input-group shadow-sm" style="max-width: 300px; border-radius: 50rem; overflow: hidden; border: 1px solid #dee2e6;">
+                            <span class="input-group-text bg-white border-0 pe-1">
+                                <i class="fa fa-search text-muted"></i>
+                            </span>
+                            <input type="text" name="search" t-att-value="search" class="form-control border-0 shadow-none" placeholder="Num de pedido..." aria-label="Buscar..."/>
+                        </div>
 
                         <!-- Filter 1: Date Range -->
                         <div class="dropdown" t-if="date_range_filters">
@@ -58,7 +90,7 @@
                             <ul class="dropdown-menu border-0 shadow">
                                 <t t-foreach="date_range_filters" t-as="df">
                                     <li>
-                                        <a t-attf-href="/my/orders?filterby=#{filterby}&amp;date_filter=#{df}"
+                                        <a t-attf-href="/my/orders?filterby=#{filterby}&amp;date_filter=#{df}&amp;search=#{search}"
                                            t-att-class="'dropdown-item' + (' active' if date_filter == df else '')">
                                             <span t-esc="date_range_filters[df].get('label')"/>
                                         </a>
@@ -76,7 +108,7 @@
                             <ul class="dropdown-menu border-0 shadow">
                                 <t t-foreach="searchbar_filters" t-as="option">
                                     <li>
-                                        <a t-attf-href="/my/orders?filterby=#{option}&amp;date_filter=#{date_filter}"
+                                        <a t-attf-href="/my/orders?filterby=#{option}&amp;date_filter=#{date_filter}&amp;search=#{search}"
                                            t-att-class="'dropdown-item' + (' active' if filterby == option else '')">
                                             <span t-esc="searchbar_filters[option].get('label')"/>
                                         </a>
@@ -86,12 +118,13 @@
                         </div>
 
                         <!-- Clear Filters -->
-                        <div class="ms-md-auto">
-                            <a href="/my/orders" class="text-decoration-none text-success small fw-bold">
-                                <i class="fa fa-times-circle me-1"></i> Limpiar filtros
+                        <div class="ms-md-auto d-flex align-items-center gap-3 pe-2">
+                            <a href="/my/orders" class="text-decoration-none text-success small fw-bold mt-2 mt-md-0 d-flex align-items-center gap-1" title="Limpiar filtros">
+                                <i class="fa fa-times-circle"></i> Limpiar filtros
                             </a>
+                            <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold shadow-sm d-none d-md-block">Buscar</button>
                         </div>
-                    </div>
+                    </form>
 
                     <!-- ORDERS TABLE -->
                     <t t-if="orders">
@@ -103,7 +136,7 @@
                                             <th class="py-3 ps-4 border-0">ID Pedido</th>
                                             <th class="py-3 border-0">Fecha</th>
                                             <th class="py-3 border-0">Estado</th>
-                                            <th class="py-3 border-0">Total</th>
+                                            <th class="py-3 border-0 text-end">Total</th>
                                             <th class="py-3 border-0">Productos</th>
                                             <th class="py-3 pe-4 border-0 text-end">Acciones</th>
                                         </tr>
@@ -144,13 +177,13 @@
                                                         </span>
                                                     </t>
                                                 </td>
-                                                <td class="fw-bold">
+                                                <td class="fw-bold text-end">
                                                     <t t-if="order.guapante_delivery_status in ['shipping', 'delivered']">
                                                         <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
                                                     </t>
                                                     <t t-else="">
                                                         <span class="text-muted small fst-italic" title="El total se calculará una vez finalizado el pesaje">
-                                                            <i class="fa fa-calculator me-1"></i> Calculando...
+                                                            Calculando... <i class="fa fa-calculator ms-1"></i>
                                                         </span>
                                                     </t>
                                                 </td>
@@ -161,18 +194,21 @@
                                                                 <img t-att-src="image_data_uri(line.product_id.image_128)"
                                                                      class="rounded-circle border border-2 border-white shadow-sm"
                                                                      t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
-                                                                     t-att-alt="line.product_id.name"/>
+                                                                     t-att-alt="line.product_id.name"
+                                                                     t-att-title="line.product_id.name"/>
                                                             </t>
                                                             <t t-else="">
                                                                 <img src="/web/static/img/placeholder.png"
                                                                      class="rounded-circle border border-2 border-white shadow-sm bg-light"
                                                                      t-attf-style="width: 32px; height: 32px; object-fit: cover; margin-right: -8px; position: relative; z-index: #{10 - line_index};"
-                                                                     t-att-alt="line.product_id.name"/>
+                                                                     t-att-alt="line.product_id.name"
+                                                                     t-att-title="line.product_id.name"/>
                                                             </t>
                                                         </t>
                                                         <t t-if="len(order.order_line) > 3">
                                                             <span class="rounded-circle bg-light border border-2 border-white shadow-sm d-flex align-items-center justify-content-center fw-bold text-muted"
-                                                                  style="width: 32px; height: 32px; font-size: 0.65rem; position: relative; z-index: 0;">
+                                                                  style="width: 32px; height: 32px; font-size: 0.65rem; position: relative; z-index: 0;"
+                                                                  t-att-title="'Y ' + str(len(order.order_line) - 3) + ' productos adicionales'">
                                                                 +<t t-esc="len(order.order_line) - 3"/>
                                                             </span>
                                                         </t>
