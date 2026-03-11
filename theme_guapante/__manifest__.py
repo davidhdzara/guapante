@@ -26,10 +26,6 @@
         'views/shop/layout.xml',
         'views/shop/cart.xml',
         'views/shop/checkout.xml',
-        'views/portal_my_home_layout.xml',
-        'views/portal/my_addresses.xml',
-        'views/portal/my_profile.xml',
-        'views/store_views.xml',
         'views/portal/portal_layout.xml', # Custom Portal Layout
         'views/portal/my_orders.xml', # Custom My Orders View
         'views/portal/my_invoices.xml', # Custom My Invoices View
