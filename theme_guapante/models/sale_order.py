@@ -82,16 +82,20 @@ class SaleOrder(models.Model):
                  (pick_pickings and all(p.state == 'done' for p in pick_pickings) and out_pickings):
                 status = 'shipping'
 
-            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0)
+            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0 / picked = True)
             elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
                 active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
                 has_qty = False
                 for p in active_picks:
-                    # In Odoo 18, p.move_ids.quantity is populated with reserved quantities automatically on assignment.
-                    # We must ONLY look at move_line_ids (which only get quantity > 0 when user actually inputs a measured amount via UI/scanner)
-                    if p.move_line_ids and any(ml.quantity > 0 for ml in p.move_line_ids):
-                        has_qty = True
-                        break
+                    if p.move_line_ids:
+                        # In Odoo 18, `picked` indicates user action. If `picked` is not available, we assume true if quantity > 0 and state is in_progress
+                        if any(getattr(ml, 'picked', False) for ml in p.move_line_ids):
+                            has_qty = True
+                            break
+                        # Fallback for Odoo 17 or environments where picked isn't set but quantity is modified
+                        elif not hasattr(p.move_line_ids, 'picked') and any(ml.quantity > 0 for ml in p.move_line_ids):
+                            has_qty = True
+                            break
                 if has_qty:
                     status = 'preparing'
             
