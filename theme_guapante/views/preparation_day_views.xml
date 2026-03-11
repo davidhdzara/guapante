@@ -59,7 +59,7 @@
                     <div invisible="state == 'draft'">
 
                         <!-- Notificación de Guardado -->
-                        <div invisible="not save_note" class="alert alert-success py-2 mb-3">
+                        <div invisible="not save_note" class="alert alert-success py-2 mb-3" role="status">
                             <field name="save_note" readonly="1" nolabel="1"/>
                         </div>
 

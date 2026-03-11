@@ -51,8 +51,18 @@ class TestSaleOrderDeliveryStatus(TransactionCase):
             # Force assignment and simulate weighing
             for picking in pickings:
                 picking.action_assign()
+                # In Odoo 18, we must explicitly set 'picked': True to indicate the worker actually processed it
                 for move in picking.move_ids:
-                    move.quantity = 1
+                    self.env['stock.move.line'].create({
+                        'move_id': move.id,
+                        'picking_id': picking.id,
+                        'product_id': move.product_id.id,
+                        'product_uom_id': move.product_uom.id,
+                        'quantity': 1,
+                        'picked': True,
+                        'location_id': move.location_id.id,
+                        'location_dest_id': move.location_dest_id.id,
+                    })
             order.invalidate_recordset(['guapante_delivery_status'])
             self.assertEqual(
                 order.guapante_delivery_status,
