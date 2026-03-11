@@ -11,6 +11,7 @@
     'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'fleet', 'account'],
     'data': [
         'security/ir.model.access.csv',
+        'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
         'views/shop/order_status.xml',
         'views/product_template_view.xml',

@@ -146,11 +146,19 @@
         <field name="context">{'default_state': 'draft'}</field>
     </record>
 
+    <!-- Encabezado en el megamenú de Operaciones para Odoo 18 -->
+    <menuitem
+        id="menu_guapante_operations_header"
+        name="Preparación Guapante"
+        parent="stock.menu_stock_warehouse_mgmt"
+        sequence="5"
+    />
+
     <menuitem
         id="menu_preparation_day"
         name="Preparación del Día"
-        parent="stock.menu_stock_warehouse_mgmt"
+        parent="menu_guapante_operations_header"
         action="action_preparation_day"
-        sequence="25"
+        sequence="10"
     />
 </odoo>
