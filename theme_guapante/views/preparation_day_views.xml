@@ -147,11 +147,11 @@
     </record>
 
     <!-- Odoo 18 se rompe si ponemos una acción suelta en un megamenú. 
-         Lo anidaremos dentro de la columna nativa "Traslados" (menu_stock_transfers) -->
+         Lo anidaremos dentro de la columna nativa "Empleos" (stock_picking_batch.menu_stock_jobs) -->
     <menuitem
         id="menu_preparation_day"
         name="Preparación del Día"
-        parent="stock.menu_stock_transfers"
+        parent="stock_picking_batch.menu_stock_jobs"
         action="action_preparation_day"
         sequence="50"
     />
