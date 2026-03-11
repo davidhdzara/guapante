@@ -34,6 +34,7 @@ class PreparationDayLine(models.Model):
     )
     product_id = fields.Many2one('product.template', string='Producto', readonly=True)
     product_product_id = fields.Many2one('product.product', string='Variante', readonly=True)
+    product_description = fields.Char(string='Descripción del Producto', readonly=True)
     daily_sequence = fields.Integer(string='# del día', readonly=True)
     order_name = fields.Char(string='Orden', readonly=True)
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
@@ -97,11 +98,10 @@ class PreparationDayLine(models.Model):
                 units = int(qty) if qty == int(qty) else qty
             return str(units), 'unidades'
 
-    def action_auto_fill_weight(self):
-        """Action for the 1-Click UI button to copy estimated to actual."""
+    def action_save_line_weight_from_ui(self):
+        """Boton manual en caso de no usar Enter."""
         for line in self:
             if not line.is_done:
-                line.actual_kg = line.estimated_kg
                 line.wizard_id.action_save_line_weight(line.id)
         return False
 
@@ -236,6 +236,7 @@ class PreparationDay(models.Model):
                     'wizard_id': self.id,
                     'product_id': line.product_id.product_tmpl_id.id,
                     'product_product_id': line.product_id.id,
+                    'product_description': line.name,
                     'daily_sequence': order.daily_sequence if hasattr(order, 'daily_sequence') else 0,
                     'order_name': order.name,
                     'sale_order_id': order.id,
@@ -246,7 +247,7 @@ class PreparationDay(models.Model):
                     'customer_qty_display': qty_str,
                     'customer_uom_label': uom_label,
                     'estimated_kg': round(line.product_uom_qty, 3),
-                    'actual_kg': round(line.product_uom_qty, 3) if not needs_weighing else 0.0,
+                    'actual_kg': 0.0,
                     'needs_weighing': needs_weighing,
                     'is_done': False,
                 })
@@ -331,6 +332,16 @@ class PreparationDay(models.Model):
         line.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
         )
+        
+        # Auto-finish si ya no quedan lineas pendientes de ninguno de los productos
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.id),
+            ('is_done', '=', False)
+        ])
+        if pending_total == 0:
+            self.action_mark_done()
+            self.save_note = '🎉 ¡Todos los productos han sido empaquetados exitosamente! Sesión Finalizada.'
+            
         return True
 
     def action_save_all_dirty_weights(self):

@@ -68,8 +68,8 @@
                             <h5 class="text-muted mb-2">① Selecciona un producto para empezar o continuar el empaque</h5>
                             <field name="summary_ids" nolabel="1">
                                 <list string="Productos del día"
-                                    decoration-danger="not stock_ok"
                                     decoration-success="stock_ok"
+                                    create="0" edit="0" open="0"
                                 >
                                     <field name="stock_ok" column_invisible="1"/>
                                     <field name="product_id" string="Producto"/>
@@ -93,7 +93,7 @@
                             <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
                                 <h3 class="mb-0 text-primary fw-bold">
                                     ② Empacando: 
-                                    <field name="selected_product_id" readonly="1" nolabel="1" class="d-inline text-dark"/>
+                                    <field name="selected_product_id" readonly="1" nolabel="1" class="d-inline text-dark" options="{'no_open': True}"/>
                                 </h3>
                                 <button
                                     name="action_clear_product_filter"
@@ -141,11 +141,12 @@
                                         <list
                                             string="Por Hacer"
                                             editable="bottom"
+                                            create="0" delete="0"
                                             decoration-warning="actual_kg == 0"
                                             class="guapante-list-touch"
                                         >
                                             <field name="daily_sequence" string="Caja #" readonly="1" optional="show" decoration-bf="1"/>
-                                            <field name="order_name" string="Orden" readonly="1"/>
+                                            <field name="product_description" string="Producto exacto" readonly="1" decoration-bf="1"/>
                                             <field name="customer_name" string="Cliente" readonly="1"/>
                                             <field name="customer_qty_display" string="Pidió" readonly="1"/>
                                             <field name="customer_uom_label" string="En" readonly="1"/>
@@ -157,7 +158,7 @@
                                                 string="Peso real (kg)"
                                                 digits="[10,3]"
                                             />
-                                            <button name="action_auto_fill_weight" type="object" icon="fa-check-circle" string="Usar Estimado (1-Click)" title="Rellenar rápido con estimado de kg" class="btn btn-sm btn-link text-success fw-bold"/>
+                                            <button name="action_save_line_weight_from_ui" type="object" icon="fa-check" title="Confirmar peso" class="btn btn-sm btn-success fw-bold"/>
                                         </list>
                                     </field>
                                 </div>
@@ -168,9 +169,9 @@
                                         nolabel="1"
                                         readonly="1"
                                     >
-                                        <list string="Hechos" decoration-muted="1">
+                                        <list string="Hechos" decoration-muted="1" create="0" delete="0" open="0">
                                             <field name="daily_sequence" string="Caja #" readonly="1"/>
-                                            <field name="order_name" string="Orden" readonly="1"/>
+                                            <field name="product_description" string="Producto exacto" readonly="1"/>
                                             <field name="customer_name" string="Cliente" readonly="1"/>
                                             <field name="customer_qty_display" string="Pidió" readonly="1"/>
                                             <field name="customer_uom_label" string="En" readonly="1"/>
