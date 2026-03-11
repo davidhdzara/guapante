@@ -9,6 +9,10 @@ class TestSaleOrderDeliveryStatus(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.warehouse = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
+        if cls.warehouse:
+            cls.warehouse.delivery_steps = 'pick_ship'
+        
         cls.partner = cls.env['res.partner'].create({
             'name': 'Test Partner Guapante',
         })
@@ -40,26 +44,26 @@ class TestSaleOrderDeliveryStatus(TransactionCase):
         )
 
     def test_status_preparing_when_assigned(self):
-        """When pickings are assigned (reserved), status should be 'preparing'."""
+        """When validation & weighing starts (quantity > 0), status should be 'preparing'."""
         order = self._create_confirmed_order()
-        pickings = order.picking_ids.filtered(lambda p: p.state != 'cancel')
+        pickings = order.picking_ids.filtered(lambda p: p.picking_type_id.code == 'internal')
         if pickings:
-            # Force assignment
+            # Force assignment and simulate weighing
             for picking in pickings:
                 picking.action_assign()
-            assigned = pickings.filtered(lambda p: p.state == 'assigned')
-            if assigned:
-                order.invalidate_recordset(['guapante_delivery_status'])
-                self.assertEqual(
-                    order.guapante_delivery_status,
-                    'preparing',
-                    "Status should be 'preparing' when pickings are assigned",
-                )
+                for move in picking.move_ids:
+                    move.quantity = 1
+            order.invalidate_recordset(['guapante_delivery_status'])
+            self.assertEqual(
+                order.guapante_delivery_status,
+                'preparing',
+                "Status should be 'preparing' when internal picking has quantities done (weighing starts)",
+            )
 
     def test_status_shipping_when_done(self):
-        """When pickings are done (transferred), status should be 'shipping'."""
+        """When pickings are done (internal transferred), ship is assigned, status should be 'shipping'."""
         order = self._create_confirmed_order()
-        pickings = order.picking_ids.filtered(lambda p: p.state != 'cancel')
+        pickings = order.picking_ids.filtered(lambda p: p.picking_type_id.code == 'internal')
         if pickings:
             for picking in pickings:
                 picking.action_assign()
@@ -71,7 +75,7 @@ class TestSaleOrderDeliveryStatus(TransactionCase):
             self.assertEqual(
                 order.guapante_delivery_status,
                 'shipping',
-                "Status should be 'shipping' when pickings are done (transferred)",
+                "Status should be 'shipping' when internal picking is done and outgoing is assigned",
             )
 
 

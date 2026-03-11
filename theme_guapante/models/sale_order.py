@@ -64,21 +64,42 @@ class SaleOrder(models.Model):
             # Assuming this logic runs for confirmed orders primarily.
             
             pickings = order.picking_ids.filtered(lambda p: p.state != 'cancel')
-            if pickings:
-                # Logic:
-                # If any picking is done -> En Camino (or delivered? User said stock output = En camino)
-                # If any picking is assigned (Ready) -> Preparado
-                # Else -> Recibido
-                
-                # Check for 'done' (Transferido)
-                if any(p.state == 'done' for p in pickings):
-                    status = 'shipping' 
-                    # Note: 'Entregado' might need a manual trigger or a specific "delivered" date/pod.
-                    # For now, let's stick to 'shipping' as per user requirement "En camino = salida de inventario"
-                    # We can add logic for 'delivered' if proof of delivery is set, but user didn't specify.
-                
-                # Check for 'assigned' (Listo/Reservado)
-                elif any(p.state == 'assigned' for p in pickings):
+            if not pickings:
+                order.guapante_delivery_status = status
+                continue
+
+            # Identify "Recolectar" (Internal/Pick) vs "Órdenes de entrega" (Outgoing/Out)
+            pick_pickings = pickings.filtered(lambda p: p.picking_type_id.code == 'internal')
+            out_pickings = pickings.filtered(lambda p: p.picking_type_id.code == 'outgoing')
+
+            # Fallback for 1-step delivery: treat the outgoing as the primary picking step
+            if not pick_pickings and out_pickings:
+                pick_pickings = out_pickings
+
+            # 4. Entregado: All outgoing deliveries are done
+            if out_pickings and all(p.state == 'done' for p in out_pickings):
+                status = 'delivered'
+
+            # 3. En Camino: Delivery is assigned/in_progress OR picking is done (it entered the Delivery section)
+            elif (out_pickings and any(p.state in ['assigned', 'in_progress'] for p in out_pickings)) or \
+                 (pick_pickings and all(p.state == 'done' for p in pick_pickings) and out_pickings):
+                status = 'shipping'
+
+            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0)
+            elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
+                active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
+                # Check if any quantity has been inputted (Odoo 18 uses quantity instead of quantity_done)
+                has_qty = False
+                for p in active_picks:
+                    if p.move_line_ids:
+                        if any(ml.quantity > 0 for ml in p.move_line_ids):
+                            has_qty = True
+                            break
+                    elif p.move_ids:
+                        if any(m.quantity > 0 for m in p.move_ids):
+                            has_qty = True
+                            break
+                if has_qty:
                     status = 'preparing'
             
             order.guapante_delivery_status = status

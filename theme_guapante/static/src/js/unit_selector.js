@@ -237,15 +237,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         const $info = this.$('.guapante-packaging-info');
         const $text = this.$('.packaging-info-text');
 
-        if (this.isWeightUom) {
-            const totalKg = (qty * pkg.qty).toFixed(2);
-            // Display formatted totalKg
-            const formattedTotal = totalKg.toString().replace('.', ',');
-            $text.text(`Peso aproximado de ${qty} ${pkg.name} x ${pkg.qty} kg = ${formattedTotal} kg Total`);
-            $info.removeClass('d-none');
-        } else {
-            $info.addClass('d-none');
-        }
+        $info.addClass('d-none');
     },
 
     _onAddToCart: async function (ev) {
