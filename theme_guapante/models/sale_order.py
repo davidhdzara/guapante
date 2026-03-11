@@ -85,9 +85,17 @@ class SaleOrder(models.Model):
             # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0)
             elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
                 active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
-                # Check if any quantity has been inputted
-                has_qty = any(m.quantity > 0 for p in active_picks for m in p.move_ids) or \
-                          any(ml.quantity > 0 for p in active_picks for ml in p.move_line_ids)
+                # Check if any quantity has been inputted (Odoo 18 uses quantity instead of quantity_done)
+                has_qty = False
+                for p in active_picks:
+                    if p.move_line_ids:
+                        if any(ml.quantity > 0 for ml in p.move_line_ids):
+                            has_qty = True
+                            break
+                    elif p.move_ids:
+                        if any(m.quantity > 0 for m in p.move_ids):
+                            has_qty = True
+                            break
                 if has_qty:
                     status = 'preparing'
             
