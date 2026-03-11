@@ -7,6 +7,9 @@
 !theme_guapante/**
 !.gitignore
 !README.md
+!.agent/
+!.agent/**
+!.cursorrules
 
 # Always ignore compiled Python files
 __pycache__/

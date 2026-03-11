@@ -1,11 +1,35 @@
 import math
 import logging
+from datetime import timedelta
 from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+
+    daily_sequence = fields.Integer(
+        string='# del día',
+        default=0,
+        copy=False,
+        help='Consecutivo diario de la orden según la fecha de creación.',
+    )
+
+    def action_confirm(self):
+        res = super().action_confirm()
+        for order in self:
+            if order.daily_sequence:
+                continue
+            order_date = order.date_order.date()
+            count = self.env['sale.order'].search_count([
+                ('state', 'in', ('sale', 'done')),
+                ('date_order', '>=', fields.Datetime.to_datetime(order_date)),
+                ('date_order', '<', fields.Datetime.to_datetime(order_date + timedelta(days=1))),
+                ('id', '!=', order.id),
+                ('daily_sequence', '>', 0),
+            ])
+            order.daily_sequence = count + 1
+        return res
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
     def _compute_cart_info(self):
@@ -58,12 +82,20 @@ class SaleOrder(models.Model):
                  (pick_pickings and all(p.state == 'done' for p in pick_pickings) and out_pickings):
                 status = 'shipping'
 
-            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0)
+            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0 / picked = True)
             elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
                 active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
-                # Check if any quantity has been inputted
-                has_qty = any(m.quantity > 0 for p in active_picks for m in p.move_ids) or \
-                          any(ml.quantity > 0 for p in active_picks for ml in p.move_line_ids)
+                has_qty = False
+                for p in active_picks:
+                    if p.move_line_ids:
+                        # In Odoo 18, `picked` indicates user action. If `picked` is not available, we assume true if quantity > 0 and state is in_progress
+                        if any(getattr(ml, 'picked', False) for ml in p.move_line_ids):
+                            has_qty = True
+                            break
+                        # Fallback for Odoo 17 or environments where picked isn't set but quantity is modified
+                        elif not hasattr(p.move_line_ids, 'picked') and any(ml.quantity > 0 for ml in p.move_line_ids):
+                            has_qty = True
+                            break
                 if has_qty:
                     status = 'preparing'
             
