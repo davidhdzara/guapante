@@ -1,11 +1,35 @@
 import math
 import logging
+from datetime import timedelta
 from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+
+    daily_sequence = fields.Integer(
+        string='# del día',
+        default=0,
+        copy=False,
+        help='Consecutivo diario de la orden según la fecha de creación.',
+    )
+
+    def action_confirm(self):
+        res = super().action_confirm()
+        for order in self:
+            if order.daily_sequence:
+                continue
+            order_date = order.date_order.date()
+            count = self.env['sale.order'].search_count([
+                ('state', 'in', ('sale', 'done')),
+                ('date_order', '>=', fields.Datetime.to_datetime(order_date)),
+                ('date_order', '<', fields.Datetime.to_datetime(order_date + timedelta(days=1))),
+                ('id', '!=', order.id),
+                ('daily_sequence', '>', 0),
+            ])
+            order.daily_sequence = count + 1
+        return res
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
     def _compute_cart_info(self):
