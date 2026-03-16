@@ -430,6 +430,8 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
                         add_qty: finalQty,
                         product_packaging_id: packagingId,
                         uom_mode: mode,
+                        no_variant_attribute_values: [],
+                        product_custom_attribute_values: [],
                         display: false,
                     },
                 }),

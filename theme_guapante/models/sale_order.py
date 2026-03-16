@@ -132,7 +132,8 @@ class SaleOrder(models.Model):
             if line_id:
                 order_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
             else:
-                order_line = self.env['sale.order.line']
+                # Guapante: search for the existing line using attributes native logic if line_id=None
+                order_line = self._cart_find_product_line(product_id, None, **kwargs)[:1]
             current_qty = order_line.product_uom_qty if order_line else 0
             desired_qty = current_qty + float_add
 
