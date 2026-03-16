@@ -540,3 +540,38 @@ class GuapanteWebsiteSale(WebsiteSale):
             'image_url': '/web/image/product.public.category/%d/image_128' % c.id if c.image_128 else '',
         } for c in categs]
 
+    @http.route(['/shop/debug_cart'], type='http', auth="public", website=True, sitemap=False)
+    def debug_cart(self, **kwargs):
+        """
+        Diagnostic endpoint for Guapante developers to inspect cart line attributes and duplication causes.
+        Returns a plain text or JSON detailing the exact lines in the current user's cart.
+        """
+        order = request.website.sale_get_order()
+        if not order:
+            return request.make_response("No tienes ningún carrito activo en esta sesión.", headers=[('Content-Type', 'text/plain')])
+
+        output = [f"🛒 CARRITO: {order.name} (ID: {order.id})"]
+        output.append(f"   Cliente: {order.partner_id.name}\n")
+        
+        for line in order.order_line:
+            output.append(f"--- LÍNEA {line.id} ---")
+            output.append(f"Producto     : {line.product_id.display_name} (ID: {line.product_id.id})")
+            output.append(f"Cantidad     : {line.product_uom_qty} {line.product_uom.name}")
+            output.append(f"Modo UoM     : {getattr(line, 'uom_mode', 'N/A')}")
+            pkg = getattr(line, 'product_packaging_id', False)
+            output.append(f"Empaque ID   : {pkg.id if pkg else 'Ninguno'} ({pkg.name if pkg else ''})")
+            
+            # Atributos nativos
+            if hasattr(line, 'product_no_variant_attribute_value_ids'):
+                no_vars = line.product_no_variant_attribute_value_ids
+                output.append(f"Atrib(NoVar) : IDs: {no_vars.ids} -> {[a.display_name for a in no_vars]}")
+            
+            if hasattr(line, 'product_custom_attribute_value_ids'):
+                cus_vars = line.product_custom_attribute_value_ids
+                output.append(f"Atrib(Custom): IDs: {cus_vars.ids}")
+                
+            output.append(f"Desc interna : {line.name[:60]}")
+            output.append("")
+
+        return request.make_response("\n".join(output), headers=[('Content-Type', 'text/plain; charset=utf-8')])
+
