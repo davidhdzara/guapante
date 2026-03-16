@@ -167,31 +167,10 @@ class SaleOrder(models.Model):
             set_qty=ceil_qty, **kwargs
         )
 
-    def _cart_find_product_line(self, product_id, line_id, **kwargs):
-        """
-        Override to strengthen the standard Odoo product line matching.
-        Standard Odoo checks:
-            `sol.product_no_variant_attribute_value_ids.ids == kwargs['no_variant_attribute_value_ids']`
-        Which fails if the lists are the exact same items but in different order (e.g. from JS JSON payloads).
-        We make it set-based to ensure identical configurations are merged flawlessly.
-        """
-        lines = super()._cart_find_product_line(product_id, line_id, **kwargs)
-        if not lines and not line_id:
-            # Re-evaluate manually just in case standard Odoo failed due to list ordering
-            domain = [('product_id', '=', product_id)]
-            sol_domain = self.order_line.filtered_domain(domain)
-            target_no_var_ids = set(kwargs.get('no_variant_attribute_value_ids') or [])
-            
-            for sol_cand in sol_domain:
-                cand_no_var_ids = set(sol_cand.product_no_variant_attribute_value_ids.ids)
-                if cand_no_var_ids == target_no_var_ids:
-                    return sol_cand
-        return lines
-
         # Fix the actual quantity to the desired float value
         # .sudo() is required for public/anonymous users who lack
         # write access to sale.order.line
-        if result.get('line_id'):
+        if result and result.get('line_id'):
             line = self.env['sale.order.line'].sudo().browse(result['line_id'])
             if line.exists() and line.product_uom_qty != desired_qty:
                 line.product_uom_qty = desired_qty
