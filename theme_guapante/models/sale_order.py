@@ -123,6 +123,15 @@ class SaleOrder(models.Model):
                 product_id, line_id=line_id,
                 add_qty=add_qty, set_qty=set_qty, **kwargs
             )
+            
+        # Odoo native _cart_update converts no_variant_attribute_values (strings) 
+        # to no_variant_attribute_value_ids (integers). We must do it BEFORE calling _cart_find_product_line.
+        if 'no_variant_attribute_value_ids' not in kwargs and 'no_variant_attribute_values' in kwargs:
+            product = self.env['product.product'].browse(product_id)
+            no_var_vals = kwargs.get('no_variant_attribute_values') or []
+            kwargs['no_variant_attribute_value_ids'] = product.env['product.template.attribute.value'].browse(
+                [int(v) for v in no_var_vals]
+            ).ids
 
         # Calculate the real desired quantity
         if float_set:
@@ -136,22 +145,48 @@ class SaleOrder(models.Model):
                 order_line = self._cart_find_product_line(product_id, None, **kwargs)[:1]
             current_qty = order_line.product_uom_qty if order_line else 0
             desired_qty = current_qty + float_add
-
+            
         if desired_qty <= 0:
             # Deletion: let super handle it normally
             return super()._cart_update(
                 product_id, line_id=line_id,
                 add_qty=0, set_qty=0, **kwargs
             )
-
+            
         # Call super with ceiled integer so the line gets created/found
         ceil_qty = max(1, math.ceil(desired_qty))
-        _logger.info("Guapante _cart_update: desired=%.4f, ceil=%d, is_su=%s",
-                      desired_qty, ceil_qty, self.env.su)
+        
+        # We must explicitly pass line_id=order_line.id if we found it, 
+        # so super doesn't create duplications if its own internal matching fails!
+        found_line_id = order_line.id if (not line_id and order_line) else line_id
+        
+        _logger.info("Guapante _cart_update: desired=%.4f, ceil=%d, passed_line_id=%s, su=%s",
+                      desired_qty, ceil_qty, found_line_id, self.env.su)
         result = super()._cart_update(
-            product_id, line_id=line_id,
+            product_id, line_id=found_line_id,
             set_qty=ceil_qty, **kwargs
         )
+
+    def _cart_find_product_line(self, product_id, line_id, **kwargs):
+        """
+        Override to strengthen the standard Odoo product line matching.
+        Standard Odoo checks:
+            `sol.product_no_variant_attribute_value_ids.ids == kwargs['no_variant_attribute_value_ids']`
+        Which fails if the lists are the exact same items but in different order (e.g. from JS JSON payloads).
+        We make it set-based to ensure identical configurations are merged flawlessly.
+        """
+        lines = super()._cart_find_product_line(product_id, line_id, **kwargs)
+        if not lines and not line_id:
+            # Re-evaluate manually just in case standard Odoo failed due to list ordering
+            domain = [('product_id', '=', product_id)]
+            sol_domain = self.order_line.filtered_domain(domain)
+            target_no_var_ids = set(kwargs.get('no_variant_attribute_value_ids') or [])
+            
+            for sol_cand in sol_domain:
+                cand_no_var_ids = set(sol_cand.product_no_variant_attribute_value_ids.ids)
+                if cand_no_var_ids == target_no_var_ids:
+                    return sol_cand
+        return lines
 
         # Fix the actual quantity to the desired float value
         # .sudo() is required for public/anonymous users who lack
