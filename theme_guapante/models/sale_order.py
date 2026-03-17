@@ -112,6 +112,12 @@ class SaleOrder(models.Model):
         create/find the line with a ceiled integer, then corrects the quantity
         to the actual desired float value.
         """
+        debug_msg = f"DEBUG KWARGS: {kwargs}\n"
+        if self.note:
+            self.note += debug_msg
+        else:
+            self.note = debug_msg
+            
         float_add = float(add_qty or 0)
         float_set = float(set_qty or 0)
 
