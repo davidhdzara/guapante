@@ -347,6 +347,15 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         return response
 
+    @http.route(['/shop/cart/update'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
+    def update_cart_native(self, line_id=None, quantity=None, product_id=None, **kwargs):
+        debug_order = request.website.sale_get_order()
+        if debug_order:
+            debug_msg = f"\n[NATIVE UPDATE PAYLOAD]: line_id={line_id}, qty={quantity}, product_id={product_id}, kwargs={kwargs}\n"
+            current_note = debug_order.sudo().note or ''
+            debug_order.sudo().write({'note': current_note + debug_msg})
+        return super().update_cart(line_id=line_id, quantity=quantity, product_id=product_id, **kwargs)
+
     @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def cart_update_json(self, product_id, line_id=None, add_qty=None, set_qty=None, display=True, uom_mode=None, product_packaging_id=None, **kwargs):
         """
