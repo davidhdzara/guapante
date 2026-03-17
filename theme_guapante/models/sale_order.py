@@ -104,154 +104,55 @@ class SaleOrder(models.Model):
             
             order.guapante_delivery_status = status
 
-    def _cart_update(self, product_id, line_id=None, add_qty=0, set_qty=0, **kwargs):
-        """Override to support fractional quantities and fix duplicate cart lines.
-
-        Two problems in Odoo 18:
-        1. _cart_update uses int() which truncates fractional quantities.
-        2. When no line_id is provided, Odoo 18's native _cart_find_product_line
-           fails to find matching lines when attribute IDs are in a different order
-           or descriptions differ slightly, creating a new duplicate line.
-
-        Fix: Always search for the matching existing line using our set-based
-        attribute matcher. If found, pass its ID to super() so it updates instead
-        of creating a new line. Also fix the quantity after super() if fractional.
+    def _cart_find_product_line(
+        self, product_id, uom_id=None, linked_line_id=False, no_variant_attribute_value_ids=None, **kwargs
+    ):
         """
-        # Remove debug note writing since we have confirmed the issue
-        float_add = float(add_qty or 0)
-        float_set = float(set_qty or 0)
-        is_fractional = (float_add and float_add != int(float_add)) or \
-                        (float_set and float_set != int(float_set))
+        Override to fix attribute ID order sensitivity in Odoo 18.
 
-        # ALWAYS try to find existing matching line, even for integer quantities.
-        # This prevents Odoo from creating a duplicate line when we add the same
-        # product with the same attributes a second time.
-        if not line_id:
-            # Convert no_variant_attribute_values to IDs before searching
-            if 'no_variant_attribute_value_ids' not in kwargs and 'no_variant_attribute_values' in kwargs:
-                no_var_vals = kwargs.get('no_variant_attribute_values') or []
-                kwargs['no_variant_attribute_value_ids'] = self.env['product.template.attribute.value'].browse(
-                    [int(v) for v in no_var_vals]
-                ).ids
-
-            existing_line = self._cart_find_product_line(product_id, **kwargs)[:1]
-            if existing_line:
-                line_id = existing_line.id
-                _logger.info(
-                    "Guapante _cart_update: found existing line %s for product %s",
-                    line_id, product_id
-                )
-
-        if not is_fractional:
-            # For integer quantities, super() handles everything correctly.
-            return super()._cart_update(
-                product_id, line_id=line_id,
-                add_qty=add_qty, set_qty=set_qty, **kwargs
-            )
-
-        # ── Fractional quantity handling ──────────────────────────────────────
-        # Odoo 18 uses int() on qty which truncates 0.5 kg to 0 and deletes the line.
-        # We use ceil() to preserve the line, then write the exact float qty afterwards.
-        if float_set:
-            desired_qty = float_set
-        else:
-            current_qty = existing_line.product_uom_qty if (existing_line and line_id) else 0
-            desired_qty = current_qty + float_add
-
-        if desired_qty <= 0:
-            return super()._cart_update(
-                product_id, line_id=line_id,
-                add_qty=0, set_qty=0, **kwargs
-            )
-
-        ceil_qty = max(1, math.ceil(desired_qty))
-        _logger.info(
-            "Guapante _cart_update: fractional desired=%.4f, ceil=%d, line_id=%s",
-            desired_qty, ceil_qty, line_id
-        )
-        result = super()._cart_update(
-            product_id, line_id=line_id,
-            set_qty=ceil_qty, **kwargs
-        )
-
-        # Write the real float quantity after super() has created/found the line
-        if result and result.get('line_id'):
-            line = self.env['sale.order.line'].sudo().browse(result['line_id'])
-            if line.exists() and line.product_uom_qty != desired_qty:
-                line.product_uom_qty = desired_qty
-                result['quantity'] = desired_qty
-                _logger.info(
-                    "Guapante _cart_update: wrote exact qty=%.4f on line %s",
-                    desired_qty, line.id
-                )
-
-        return result
-
-    def _cart_find_product_line(self, *args, **kwargs):
-        """
-        Override to strengthen product line matching.
-        Odoo 18 natively matches by exact list-order of attribute IDs.
-        This leads to duplicate cart lines if attributes are received in a different order.
-        Here we enforce matching primarily by product_id and exact set of attribute IDs.
+        Odoo's native implementation compares:
+          sol.product_no_variant_attribute_value_ids.ids == no_variant_attribute_value_ids
+        This is a list equality check which FAILS if the JS sends the IDs in a different
+        order than they were stored. We fix this by comparing as sets.
         """
         self.ensure_one()
-        
-        # 1. First, let Odoo 18 native logic try to find a match
-        lines = super()._cart_find_product_line(*args, **kwargs)
-        if lines:
-            return lines
-            
-        # 2. If Odoo failed, maybe it was due to attribute array order or description text.
-        # Safely extract parameters from Odoo 18 signature: 
-        # _cart_find_product_line(self, product_id, uom_id, linked_line_id=False, no_variant_attribute_value_ids=None, **kwargs)
-        product_id = kwargs.get('product_id')
-        if not product_id and len(args) > 0:
-            product_id = args[0]
-            
-        if not product_id:
+
+        if not self.order_line:
             return self.env['sale.order.line']
-            
-        uom_id = kwargs.get('uom_id')
-        if not uom_id and len(args) > 1:
-            uom_id = args[1]
-            
-        no_variant_attribute_value_ids = kwargs.get('no_variant_attribute_value_ids')
-        if len(args) > 3 and not no_variant_attribute_value_ids:
-            no_variant_attribute_value_ids = args[3]
-            
-        # Fallbacks to old kwargs for older implementations
-        if not no_variant_attribute_value_ids and 'no_variant_attribute_values' in kwargs:
-            no_var_vals = kwargs.get('no_variant_attribute_values') or []
-            no_variant_attribute_value_ids = self.env['product.template.attribute.value'].browse([int(v) for v in no_var_vals]).ids
-            
-        target_no_var_ids = set(no_variant_attribute_value_ids or [])
-        target_custom_vals = kwargs.get('product_custom_attribute_values') or []
-        
-        # 3. Iterate through existing cart lines and match based on strict rules (ignoring description text)
-        matched_lines = self.env['sale.order.line']
-        for line in self.order_line:
-            # Must be the same product variant
-            if line.product_id.id != product_id:
-                continue
-                
-            # If uom_id is specified natively, enforce it
-            if uom_id and line.product_uom.id != uom_id:
-                continue
-                
-            # Must match No-Variant Attributes exactly (ignoring list order by using sets)
-            if hasattr(line, 'product_no_variant_attribute_value_ids'):
-                line_no_var_ids = set(line.product_no_variant_attribute_value_ids.ids)
-                if line_no_var_ids != target_no_var_ids:
-                    continue
-                
-            # Must match Custom Attributes exactly (basic length validation)
-            if hasattr(line, 'product_custom_attribute_value_ids'):
-                line_custom_vals = line.product_custom_attribute_value_ids
-                if len(target_custom_vals) != len(line_custom_vals):
-                    continue
-                
-            # Found a match ignoring array order!
-            matched_lines |= line
-            
-        return matched_lines
+
+        product = self.env['product.product'].browse(product_id)
+        if product.type == 'combo':
+            return self.env['sale.order.line']
+
+        # Resolve uom_id the same way Odoo does
+        if not uom_id:
+            uom_id = product.uom_id.id
+
+        domain = [
+            ('order_id', '=', self.id),
+            ('product_id', '=', product_id),
+            ('product_uom_id', '=', uom_id),
+            ('product_custom_attribute_value_ids', '=', False),
+            ('linked_line_id', '=', linked_line_id),
+        ]
+
+        filtered_sol = self.order_line.filtered_domain(domain)
+        if not filtered_sol:
+            return self.env['sale.order.line']
+
+        has_configurable_no_variant_attributes = any(
+            len(line.value_ids) > 1 or line.attribute_id.display_type == 'multi'
+            for line in product.attribute_line_ids
+            if line.attribute_id.create_variant == 'no_variant'
+        )
+        if has_configurable_no_variant_attributes and no_variant_attribute_value_ids is not None:
+            # FIX: compare as sets to ignore order differences
+            target_set = set(no_variant_attribute_value_ids)
+            filtered_sol = filtered_sol.filtered(
+                lambda sol:
+                    set(sol.product_no_variant_attribute_value_ids.ids) == target_set
+            )
+
+        return filtered_sol
+
 
