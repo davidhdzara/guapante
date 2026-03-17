@@ -104,55 +104,39 @@ class SaleOrder(models.Model):
             
             order.guapante_delivery_status = status
 
-    def _cart_find_product_line(
-        self, product_id, uom_id=None, linked_line_id=False, no_variant_attribute_value_ids=None, **kwargs
-    ):
+    def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
         """
         Override to fix attribute ID order sensitivity in Odoo 18.
 
-        Odoo's native implementation compares:
+        Odoo's native implementation compares attribute IDs as a LIST:
           sol.product_no_variant_attribute_value_ids.ids == no_variant_attribute_value_ids
-        This is a list equality check which FAILS if the JS sends the IDs in a different
-        order than they were stored. We fix this by comparing as sets.
+        This fails if the JS sends IDs in a different order than stored.
+        We fix this by using set comparison as a fallback.
         """
         self.ensure_one()
 
-        if not self.order_line:
-            return self.env['sale.order.line']
+        # 1. Let Odoo's native logic run first
+        result = super()._cart_find_product_line(product_id, line_id, **kwargs)
+        if result:
+            return result
 
-        product = self.env['product.product'].browse(product_id)
-        if product.type == 'combo':
-            return self.env['sale.order.line']
+        # 2. Fallback: retry with set-based attribute comparison
+        # This catches cases where the list order of attribute IDs differs
+        no_var_ids = kwargs.get('no_variant_attribute_value_ids') or []
+        if not no_var_ids:
+            return result  # Empty, nothing else we can try
 
-        # Resolve uom_id the same way Odoo does
-        if not uom_id:
-            uom_id = product.uom_id.id
+        target_set = set(no_var_ids)
+        matched = self.env['sale.order.line']
+        for line in self.order_line:
+            if line.product_id.id != product_id:
+                continue
+            if line_id and line.id != line_id:
+                continue
+            if hasattr(line, 'product_no_variant_attribute_value_ids'):
+                if set(line.product_no_variant_attribute_value_ids.ids) == target_set:
+                    matched |= line
 
-        domain = [
-            ('order_id', '=', self.id),
-            ('product_id', '=', product_id),
-            ('product_uom_id', '=', uom_id),
-            ('product_custom_attribute_value_ids', '=', False),
-            ('linked_line_id', '=', linked_line_id),
-        ]
-
-        filtered_sol = self.order_line.filtered_domain(domain)
-        if not filtered_sol:
-            return self.env['sale.order.line']
-
-        has_configurable_no_variant_attributes = any(
-            len(line.value_ids) > 1 or line.attribute_id.display_type == 'multi'
-            for line in product.attribute_line_ids
-            if line.attribute_id.create_variant == 'no_variant'
-        )
-        if has_configurable_no_variant_attributes and no_variant_attribute_value_ids is not None:
-            # FIX: compare as sets to ignore order differences
-            target_set = set(no_variant_attribute_value_ids)
-            filtered_sol = filtered_sol.filtered(
-                lambda sol:
-                    set(sol.product_no_variant_attribute_value_ids.ids) == target_set
-            )
-
-        return filtered_sol
+        return matched
 
 
