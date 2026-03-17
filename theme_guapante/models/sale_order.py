@@ -194,3 +194,52 @@ class SaleOrder(models.Model):
 
         return result
 
+    def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
+        """
+        Override to strengthen product line matching.
+        Odoo 18 natively matches by exact order line name/description and exact list-order of attribute IDs.
+        This leads to duplicate cart lines if the description slightly changed or attributes are received in a different order.
+        Here we enforce matching primarily by product_id and exact set of attribute IDs, ignoring name differences.
+        """
+        self.ensure_one()
+        
+        # 1. Gather target attribute IDs that the user wants to add
+        target_no_var_ids = set()
+        if 'no_variant_attribute_value_ids' in kwargs:
+            target_no_var_ids = set(kwargs['no_variant_attribute_value_ids'])
+        elif 'no_variant_attribute_values' in kwargs:
+            no_var_vals = kwargs.get('no_variant_attribute_values') or []
+            target_no_var_ids = set(
+                self.env['product.template.attribute.value'].browse([int(v) for v in no_var_vals]).ids
+            )
+            
+        target_custom_vals = kwargs.get('product_custom_attribute_values') or []
+        
+        # 2. Iterate through existing cart lines and match based on strict rules (ignoring description text)
+        lines = self.env['sale.order.line']
+        for line in self.order_line:
+            # Must be the same product variant
+            if line.product_id.id != product_id:
+                continue
+                
+            # If a specific line_id is requested, it must match
+            if line_id and line.id != line_id:
+                continue
+                
+            # Must match No-Variant Attributes exactly (ignoring list order by using sets)
+            if hasattr(line, 'product_no_variant_attribute_value_ids'):
+                line_no_var_ids = set(line.product_no_variant_attribute_value_ids.ids)
+                if line_no_var_ids != target_no_var_ids:
+                    continue
+                
+            # Must match Custom Attributes exactly (basic length validation)
+            if hasattr(line, 'product_custom_attribute_value_ids'):
+                line_custom_vals = line.product_custom_attribute_value_ids
+                if len(target_custom_vals) != len(line_custom_vals):
+                    continue
+                
+            # If we reach here, we found a perfect match based on product & attributes!
+            lines |= line
+            
+        return lines
+
