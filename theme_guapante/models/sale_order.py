@@ -105,91 +105,84 @@ class SaleOrder(models.Model):
             order.guapante_delivery_status = status
 
     def _cart_update(self, product_id, line_id=None, add_qty=0, set_qty=0, **kwargs):
-        """Override to support fractional quantities (grams, packaging units).
+        """Override to support fractional quantities and fix duplicate cart lines.
 
-        Odoo 18 truncates both add_qty and set_qty with int() in the standard
-        _cart_update. This override detects fractional values, lets super()
-        create/find the line with a ceiled integer, then corrects the quantity
-        to the actual desired float value.
+        Two problems in Odoo 18:
+        1. _cart_update uses int() which truncates fractional quantities.
+        2. When no line_id is provided, Odoo 18's native _cart_find_product_line
+           fails to find matching lines when attribute IDs are in a different order
+           or descriptions differ slightly, creating a new duplicate line.
+
+        Fix: Always search for the matching existing line using our set-based
+        attribute matcher. If found, pass its ID to super() so it updates instead
+        of creating a new line. Also fix the quantity after super() if fractional.
         """
-        debug_msg = f"DEBUG KWARGS: {kwargs}\n"
-        if self.note:
-            self.note += debug_msg
-        else:
-            self.note = debug_msg
-            
+        # Remove debug note writing since we have confirmed the issue
         float_add = float(add_qty or 0)
         float_set = float(set_qty or 0)
-
         is_fractional = (float_add and float_add != int(float_add)) or \
                         (float_set and float_set != int(float_set))
 
+        # ALWAYS try to find existing matching line, even for integer quantities.
+        # This prevents Odoo from creating a duplicate line when we add the same
+        # product with the same attributes a second time.
+        if not line_id:
+            # Convert no_variant_attribute_values to IDs before searching
+            if 'no_variant_attribute_value_ids' not in kwargs and 'no_variant_attribute_values' in kwargs:
+                no_var_vals = kwargs.get('no_variant_attribute_values') or []
+                kwargs['no_variant_attribute_value_ids'] = self.env['product.template.attribute.value'].browse(
+                    [int(v) for v in no_var_vals]
+                ).ids
+
+            existing_line = self._cart_find_product_line(product_id, **kwargs)[:1]
+            if existing_line:
+                line_id = existing_line.id
+                _logger.info(
+                    "Guapante _cart_update: found existing line %s for product %s",
+                    line_id, product_id
+                )
+
         if not is_fractional:
+            # For integer quantities, super() handles everything correctly.
             return super()._cart_update(
                 product_id, line_id=line_id,
                 add_qty=add_qty, set_qty=set_qty, **kwargs
             )
-            
-        # Odoo native _cart_update converts no_variant_attribute_values (strings) 
-        # to no_variant_attribute_value_ids (integers). We must do it BEFORE calling _cart_find_product_line.
-        if 'no_variant_attribute_value_ids' not in kwargs and 'no_variant_attribute_values' in kwargs:
-            product = self.env['product.product'].browse(product_id)
-            no_var_vals = kwargs.get('no_variant_attribute_values') or []
-            kwargs['no_variant_attribute_value_ids'] = product.env['product.template.attribute.value'].browse(
-                [int(v) for v in no_var_vals]
-            ).ids
 
-        # Calculate the real desired quantity
+        # ── Fractional quantity handling ──────────────────────────────────────
+        # Odoo 18 uses int() on qty which truncates 0.5 kg to 0 and deletes the line.
+        # We use ceil() to preserve the line, then write the exact float qty afterwards.
         if float_set:
             desired_qty = float_set
         else:
-            # Find existing line to add to its current qty
-            if line_id:
-                order_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
-            else:
-                # Guapante: search for the existing line using attributes native logic if line_id=None
-                order_line = self._cart_find_product_line(product_id, None, **kwargs)[:1]
-            current_qty = order_line.product_uom_qty if order_line else 0
+            current_qty = existing_line.product_uom_qty if (existing_line and line_id) else 0
             desired_qty = current_qty + float_add
-            
+
         if desired_qty <= 0:
-            # Deletion: let super handle it normally
             return super()._cart_update(
                 product_id, line_id=line_id,
                 add_qty=0, set_qty=0, **kwargs
             )
-            
-        # Call super with ceiled integer so the line gets created/found
+
         ceil_qty = max(1, math.ceil(desired_qty))
-        
-        # We must explicitly pass line_id=order_line.id if we found it, 
-        # so super doesn't create duplications if its own internal matching fails!
-        found_line_id = order_line.id if (not line_id and order_line) else line_id
-        
-        _logger.info("Guapante _cart_update: desired=%.4f, ceil=%d, passed_line_id=%s, su=%s",
-                      desired_qty, ceil_qty, found_line_id, self.env.su)
+        _logger.info(
+            "Guapante _cart_update: fractional desired=%.4f, ceil=%d, line_id=%s",
+            desired_qty, ceil_qty, line_id
+        )
         result = super()._cart_update(
-            product_id, line_id=found_line_id,
+            product_id, line_id=line_id,
             set_qty=ceil_qty, **kwargs
         )
 
-        # Fix the actual quantity to the desired float value
-        # .sudo() is required for public/anonymous users who lack
-        # write access to sale.order.line
+        # Write the real float quantity after super() has created/found the line
         if result and result.get('line_id'):
             line = self.env['sale.order.line'].sudo().browse(result['line_id'])
             if line.exists() and line.product_uom_qty != desired_qty:
                 line.product_uom_qty = desired_qty
                 result['quantity'] = desired_qty
                 _logger.info(
-                    "Guapante _cart_update: fixed qty=%.4f on line %s (was %s)",
-                    desired_qty, line.id, ceil_qty
-                )
-            else:
-                _logger.info(
-                    "Guapante _cart_update: line %s exists=%s, qty already=%.4f",
-                    result.get('line_id'), line.exists(),
-                    line.product_uom_qty if line.exists() else 0
+                    "Guapante _cart_update: wrote exact qty=%.4f on line %s",
+                    desired_qty, line.id
                 )
 
         return result
