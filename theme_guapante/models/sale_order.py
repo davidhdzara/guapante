@@ -104,6 +104,56 @@ class SaleOrder(models.Model):
             
             order.guapante_delivery_status = status
 
+    def _cart_update(self, product_id, line_id=None, add_qty=0, set_qty=0, **kwargs):
+        """Override to support fractional quantities (e.g. 500g = 0.5 kg).
+
+        Odoo 18's native _cart_update truncates quantities with int(),
+        so 0.5 kg becomes 0 and the line gets deleted. We ceil() to keep
+        the line alive, then write the exact float value afterwards.
+        """
+        float_add = float(add_qty or 0)
+        float_set = float(set_qty or 0)
+        is_fractional = (float_add and float_add != int(float_add)) or \
+                        (float_set and float_set != int(float_set))
+
+        if not is_fractional:
+            return super()._cart_update(
+                product_id, line_id=line_id,
+                add_qty=add_qty, set_qty=set_qty, **kwargs
+            )
+
+        # For fractional, find the existing line first
+        existing_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
+
+        if float_set:
+            desired_qty = float_set
+        else:
+            current_qty = existing_line.product_uom_qty if existing_line else 0
+            desired_qty = current_qty + float_add
+
+        if desired_qty <= 0:
+            return super()._cart_update(
+                product_id, line_id=line_id, add_qty=0, set_qty=0, **kwargs
+            )
+
+        ceil_qty = max(1, math.ceil(desired_qty))
+        found_line_id = existing_line.id if existing_line else line_id
+        result = super()._cart_update(
+            product_id, line_id=found_line_id, set_qty=ceil_qty, **kwargs
+        )
+
+        if result and result.get('line_id'):
+            line = self.env['sale.order.line'].sudo().browse(result['line_id'])
+            if line.exists() and line.product_uom_qty != desired_qty:
+                line.product_uom_qty = desired_qty
+                result['quantity'] = desired_qty
+                _logger.info(
+                    "Guapante _cart_update: wrote exact fractional qty=%.4f on line %s",
+                    desired_qty, line.id
+                )
+
+        return result
+
     def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
         """
         Override to fix attribute ID order sensitivity in Odoo 18.

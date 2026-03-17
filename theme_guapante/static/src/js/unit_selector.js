@@ -12,7 +12,8 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         'change .guapante-qty-input': '_onQtyChange',
         'click .guapante-qty-plus': '_onQuantityPlus',
         'click .guapante-qty-minus': '_onQuantityMinus',
-        'click .guapante-add-to-cart-btn': '_onAddToCart',
+        // NOTE: .guapante-add-to-cart-btn is handled via $(document).on in start()
+        // to survive DOM moves from product_layout_fix.js. Do NOT add it back here.
     },
 
     start: function () {
