@@ -194,36 +194,55 @@ class SaleOrder(models.Model):
 
         return result
 
-    def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
+    def _cart_find_product_line(self, *args, **kwargs):
         """
         Override to strengthen product line matching.
-        Odoo 18 natively matches by exact order line name/description and exact list-order of attribute IDs.
-        This leads to duplicate cart lines if the description slightly changed or attributes are received in a different order.
-        Here we enforce matching primarily by product_id and exact set of attribute IDs, ignoring name differences.
+        Odoo 18 natively matches by exact list-order of attribute IDs.
+        This leads to duplicate cart lines if attributes are received in a different order.
+        Here we enforce matching primarily by product_id and exact set of attribute IDs.
         """
         self.ensure_one()
         
-        # 1. Gather target attribute IDs that the user wants to add
-        target_no_var_ids = set()
-        if 'no_variant_attribute_value_ids' in kwargs:
-            target_no_var_ids = set(kwargs['no_variant_attribute_value_ids'])
-        elif 'no_variant_attribute_values' in kwargs:
-            no_var_vals = kwargs.get('no_variant_attribute_values') or []
-            target_no_var_ids = set(
-                self.env['product.template.attribute.value'].browse([int(v) for v in no_var_vals]).ids
-            )
+        # 1. First, let Odoo 18 native logic try to find a match
+        lines = super()._cart_find_product_line(*args, **kwargs)
+        if lines:
+            return lines
             
+        # 2. If Odoo failed, maybe it was due to attribute array order or description text.
+        # Safely extract parameters from Odoo 18 signature: 
+        # _cart_find_product_line(self, product_id, uom_id, linked_line_id=False, no_variant_attribute_value_ids=None, **kwargs)
+        product_id = kwargs.get('product_id')
+        if not product_id and len(args) > 0:
+            product_id = args[0]
+            
+        if not product_id:
+            return self.env['sale.order.line']
+            
+        uom_id = kwargs.get('uom_id')
+        if not uom_id and len(args) > 1:
+            uom_id = args[1]
+            
+        no_variant_attribute_value_ids = kwargs.get('no_variant_attribute_value_ids')
+        if len(args) > 3 and not no_variant_attribute_value_ids:
+            no_variant_attribute_value_ids = args[3]
+            
+        # Fallbacks to old kwargs for older implementations
+        if not no_variant_attribute_value_ids and 'no_variant_attribute_values' in kwargs:
+            no_var_vals = kwargs.get('no_variant_attribute_values') or []
+            no_variant_attribute_value_ids = self.env['product.template.attribute.value'].browse([int(v) for v in no_var_vals]).ids
+            
+        target_no_var_ids = set(no_variant_attribute_value_ids or [])
         target_custom_vals = kwargs.get('product_custom_attribute_values') or []
         
-        # 2. Iterate through existing cart lines and match based on strict rules (ignoring description text)
-        lines = self.env['sale.order.line']
+        # 3. Iterate through existing cart lines and match based on strict rules (ignoring description text)
+        matched_lines = self.env['sale.order.line']
         for line in self.order_line:
             # Must be the same product variant
             if line.product_id.id != product_id:
                 continue
                 
-            # If a specific line_id is requested, it must match
-            if line_id and line.id != line_id:
+            # If uom_id is specified natively, enforce it
+            if uom_id and line.product_uom.id != uom_id:
                 continue
                 
             # Must match No-Variant Attributes exactly (ignoring list order by using sets)
@@ -238,8 +257,8 @@ class SaleOrder(models.Model):
                 if len(target_custom_vals) != len(line_custom_vals):
                     continue
                 
-            # If we reach here, we found a perfect match based on product & attributes!
-            lines |= line
+            # Found a match ignoring array order!
+            matched_lines |= line
             
-        return lines
+        return matched_lines
 
