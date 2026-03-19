@@ -88,15 +88,16 @@ class SaleOrder(models.Model):
             # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0 / picked = True)
             elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
                 active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
+                has_picked_field = 'picked' in self.env['stock.move.line']._fields
                 has_qty = False
                 for p in active_picks:
                     if p.move_line_ids:
-                        # In Odoo 18, `picked` indicates user action. If `picked` is not available, we assume true if quantity > 0 and state is in_progress
-                        if any(getattr(ml, 'picked', False) for ml in p.move_line_ids):
+                        # In Odoo 18, `picked` indicates user action.
+                        if has_picked_field and any(ml.picked for ml in p.move_line_ids):
                             has_qty = True
                             break
                         # Fallback for Odoo 17 or environments where picked isn't set but quantity is modified
-                        elif not hasattr(p.move_line_ids, 'picked') and any(ml.quantity > 0 for ml in p.move_line_ids):
+                        elif not has_picked_field and any(ml.quantity > 0 for ml in p.move_line_ids):
                             has_qty = True
                             break
                 if has_qty:
