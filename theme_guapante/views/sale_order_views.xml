@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_order_form_inherit_guapante_ux" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.guapante.ux</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <!-- Ocultar columnas nativas -->
+            <xpath expr="//field[@name='order_line']//tree//field[@name='product_uom_qty']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']//tree//field[@name='product_uom']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']//tree//field[@name='product_packaging_qty']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']//tree//field[@name='product_packaging_id']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+            
+            <!-- Inyectar Vistas Visuales -->
+            <xpath expr="//field[@name='order_line']//tree//field[@name='price_unit']" position="before">
+                <field name="visual_qty" string="Cantidad" />
+                <field name="uom_mode" string="Unidad" />
+            </xpath>
+        </field>
+    </record>
+</odoo>

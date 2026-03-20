@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="guapante_report_saleorder_document" inherit_id="sale.report_saleorder_document">
+        <xpath expr="//span[@t-field='line.product_uom_qty']" position="replace">
+            <span t-esc="line.visual_qty"/>
+        </xpath>
+        <xpath expr="//span[@t-field='line.product_uom']" position="replace">
+            <span t-esc="dict(line._fields['uom_mode'].selection).get(line.uom_mode) if line.uom_mode else line.product_uom.name"/>
+        </xpath>
+    </template>
+</odoo>
