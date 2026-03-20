@@ -23,6 +23,36 @@ class PurchaseOrderLine(models.Model):
         store=True,
     )
 
+    @api.onchange('product_id')
+    def _onchange_product_id_uom_mode(self):
+        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        for line in self:
+            if not line.product_id:
+                continue
+            is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+            if is_weight:
+                has_packaging = bool(line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0))
+                if not has_packaging:
+                    line.uom_mode = 'kg'
+            else:
+                line.uom_mode = 'unit'
+
+    @api.onchange('uom_mode')
+    def _onchange_uom_mode_warning(self):
+        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        for line in self:
+            if not line.product_id or not line.uom_mode:
+                continue
+            is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+            has_packaging = bool(line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0))
+            
+            if is_weight and line.uom_mode == 'unit' and not has_packaging:
+                line.uom_mode = 'kg'
+                return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" no tiene embalaje de compra configurado. Solo se puede pedir por Kilogramos o Gramos a los proveedores.'}}
+            elif not is_weight and line.uom_mode in ['kg', 'g']:
+                line.uom_mode = 'unit'
+                return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" es un producto unitario, no se puede pesar.'}}
+
     @api.depends('product_qty', 'uom_mode', 'product_id')
     def _compute_visual_qty(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)

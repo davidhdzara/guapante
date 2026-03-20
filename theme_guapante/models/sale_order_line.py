@@ -25,6 +25,36 @@ class SaleOrderLine(models.Model):
         help='Cantidad digitada por el usuario en base a la Unidad Visual seleccionada.',
     )
 
+    @api.onchange('product_id')
+    def _onchange_product_id_uom_mode(self):
+        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        for line in self:
+            if not line.product_id:
+                continue
+            is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+            if is_weight:
+                has_packaging = bool(line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0))
+                if not has_packaging:
+                    line.uom_mode = 'kg'
+            else:
+                line.uom_mode = 'unit'
+
+    @api.onchange('uom_mode')
+    def _onchange_uom_mode_warning(self):
+        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        for line in self:
+            if not line.product_id or not line.uom_mode:
+                continue
+            is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
+            has_packaging = bool(line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0))
+            
+            if is_weight and line.uom_mode == 'unit' and not has_packaging:
+                line.uom_mode = 'kg'
+                return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" no tiene un embalaje (Ej. Caja) configurado. Solo se puede pedir por Kilogramos o Gramos.'}}
+            elif not is_weight and line.uom_mode in ['kg', 'g']:
+                line.uom_mode = 'unit'
+                return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" es un producto medido por unidades. No se puede pesar.'}}
+
     @api.depends('product_uom_qty', 'uom_mode', 'product_id')
     def _compute_visual_qty(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
