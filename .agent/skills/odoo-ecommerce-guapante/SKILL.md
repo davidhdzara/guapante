@@ -174,6 +174,7 @@ La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-
 - `duplicacion-carrito-doble-evento-js.md` — El bug de doble binding completo
 - `odoo18-cart-find-product-line-list-vs-set.md` — Bug de comparación de lista vs set en Odoo 18
 - `diagnostico-sin-acceso-logs-odoo-sh.md` — Técnicas de diagnóstico en Odoo.sh
+- `portal-403-sudo-y-visibilidad-jerarquica.md` — Solución a Error 403 en Portal con sudo() seguro y filtrado child_of padre vs direcciones.
 
 ---
 
