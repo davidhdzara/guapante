@@ -546,9 +546,9 @@ class GuapanteCustomerPortal(CustomerPortal):
             ('state', 'not in', ('draft', 'cancel'))
         ]
         
-        # Determine strict or allowed partners based on portal configuration if needed
-        # We simplify here to just use the user's commercial partner for standard portal behavior
-        domain += [('partner_id', 'child_of', [partner.commercial_partner_id.id])]
+        # Si es el contacto padre (empresa o persona principal), ve todo
+        # Si es una dirección de entrega (hijo), solo ve sus propias facturas
+        domain += [('partner_id', 'child_of', [partner.id])]
 
         # --- KPI Calculations ---
         
@@ -566,9 +566,11 @@ class GuapanteCustomerPortal(CustomerPortal):
         facturas_mes = AccountInvoice.search_count(month_domain)
         
         # 3. Último Pago (Last Payment)
-        AccountPayment = request.env['account.payment']
+        # Usamos sudo() porque el usuario del portal no tiene acceso a account.payment,
+        # pero el dominio restringe estrictamente a que solo sea su info.
+        AccountPayment = request.env['account.payment'].sudo()
         payment_domain = [
-            ('partner_id', 'child_of', [partner.commercial_partner_id.id]),
+            ('partner_id', 'child_of', [partner.id]),
             ('state', '=', 'posted')
         ]
         last_payment = AccountPayment.search(payment_domain, order='date desc', limit=1)
@@ -738,7 +740,7 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         invoices = request.env['account.move'].sudo().search([
             ('id', 'in', ids),
-            ('partner_id', 'child_of', [partner.commercial_partner_id.id]),
+            ('partner_id', 'child_of', [partner.id]),
             ('move_type', 'in', ('out_invoice', 'out_refund', 'in_invoice', 'in_refund', 'out_receipt', 'in_receipt'))
         ])
 
