@@ -268,10 +268,12 @@ class GuapanteWebsiteSale(WebsiteSale):
                 qty_val = line.product_uom_qty
                 is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
                 if is_weight:
-                    # Find the sales packaging to get the conversion factor
-                    packaging = line.product_id.packaging_ids.filtered(
-                        lambda p: p.sales and p.qty > 0
-                    )[:1]
+                    # FIX: Use the line's actual packaging (the one the user chose), not the first one.
+                    packaging = line.product_packaging_id
+                    if not packaging:
+                        packaging = line.product_id.packaging_ids.filtered(
+                            lambda p: p.sales and p.qty > 0
+                        )[:1]
                     if packaging:
                         qty_val = round(line.product_uom_qty / packaging.qty)
                     else:

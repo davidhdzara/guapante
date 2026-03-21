@@ -70,7 +70,7 @@
                             <small class="text-muted">
                                 Variante: <span t-field="line.product_id.name"/>
                             </small>
-                            <t t-if="line.product_packaging_id">
+                            <t t-if="line.product_packaging_id and line_display.get('mode') == 'unit'">
                                 <br/>
                                 <small class="text-success fw-semibold">
                                     <i class="fa fa-cube me-1"/>
