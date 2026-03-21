@@ -147,6 +147,9 @@
                                         >
                                             <field name="daily_sequence" string="Caja #" readonly="1" optional="show" decoration-bf="1"/>
                                             <field name="product_description" string="Producto exacto" readonly="1" decoration-bf="1"/>
+                                            <field name="packaging_name" string="Embalaje" readonly="1" optional="show"
+                                                decoration-info="packaging_name != False"
+                                            />
                                             <field name="customer_name" string="Cliente" readonly="1"/>
                                             <field name="customer_qty_display" string="Pidió" readonly="1"/>
                                             <field name="customer_uom_label" string="En" readonly="1"/>
@@ -172,6 +175,9 @@
                                         <list string="Hechos" decoration-muted="1" create="0" delete="0" open="0">
                                             <field name="daily_sequence" string="Caja #" readonly="1"/>
                                             <field name="product_description" string="Producto exacto" readonly="1"/>
+                                            <field name="packaging_name" string="Embalaje" readonly="1" optional="show"
+                                                decoration-info="packaging_name != False"
+                                            />
                                             <field name="customer_name" string="Cliente" readonly="1"/>
                                             <field name="customer_qty_display" string="Pidió" readonly="1"/>
                                             <field name="customer_uom_label" string="En" readonly="1"/>

@@ -35,6 +35,11 @@ class PreparationDayLine(models.Model):
     product_id = fields.Many2one('product.template', string='Producto', readonly=True)
     product_product_id = fields.Many2one('product.product', string='Variante', readonly=True)
     product_description = fields.Char(string='Descripción del Producto', readonly=True)
+    packaging_name = fields.Char(
+        string='Embalaje del cliente',
+        readonly=True,
+        help='Nombre del embalaje B2B que eligió el cliente en la tienda online (ej. Paquete 200g).'
+    )
     daily_sequence = fields.Integer(string='# del día', readonly=True)
     order_name = fields.Char(string='Orden', readonly=True)
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
@@ -87,9 +92,12 @@ class PreparationDayLine(models.Model):
             return (str(int(val)) if val == int(val) else str(val)), 'kg'
         else:
             if is_weight:
-                packaging = line.product_id.packaging_ids.filtered(
-                    lambda p: p.sales and p.qty > 0
-                )[:1]
+                # FIX: Use the packaging the customer chose, not always the first one
+                packaging = line.product_packaging_id
+                if not packaging:
+                    packaging = line.product_id.packaging_ids.filtered(
+                        lambda p: p.sales and p.qty > 0
+                    )[:1]
                 if packaging:
                     units = int(round(qty / packaging.qty))
                 else:
@@ -237,6 +245,7 @@ class PreparationDay(models.Model):
                     'product_id': line.product_id.product_tmpl_id.id,
                     'product_product_id': line.product_id.id,
                     'product_description': line.name,
+                    'packaging_name': line.product_packaging_id.name if line.product_packaging_id else False,
                     'daily_sequence': order.daily_sequence if hasattr(order, 'daily_sequence') else 0,
                     'order_name': order.name,
                     'sale_order_id': order.id,
