@@ -19,6 +19,7 @@
         'views/stock_picking_views.xml',
         'views/shop/order_status.xml',
         'views/product_template_view.xml',
+        'views/product_packaging_views.xml',
         'views/layout/header.xml',
         'views/layout/footer.xml',
         'views/layout/bottom_nav.xml',

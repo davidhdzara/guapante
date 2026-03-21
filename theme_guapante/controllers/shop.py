@@ -380,9 +380,13 @@ class GuapanteWebsiteSale(WebsiteSale):
             product = request.env['product.product'].sudo().browse(int(product_id))
             weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
             if weight_categ and product.exists() and product.uom_id.category_id == weight_categ:
-                packaging = product.packaging_ids.filtered(
-                    lambda p: p.sales and p.qty > 0
-                )[:1]
+                packaging = False
+                if product_packaging_id:
+                    packaging = request.env['product.packaging'].sudo().browse(int(product_packaging_id))
+                if not packaging or not packaging.exists():
+                    # Fallback to the first available if not provided or invalid
+                    packaging = product.packaging_ids.filtered(lambda p: p.sales and p.qty > 0)[:1]
+                
                 if packaging:
                     factor = packaging.qty  # ej: 0.1 kg/unidad
                     if set_qty is not None:
@@ -451,6 +455,16 @@ class GuapanteWebsiteSale(WebsiteSale):
         # Get packagings that are enabled for sales
         packagings = product.packaging_ids.filtered(lambda p: p.sales)
         
+        # Filter out B2B exclusive packagings based on user
+        user = request.env.user
+        if user._is_public():
+            packagings = packagings.filtered(lambda p: not p.is_b2b_exclusive)
+        else:
+            partner_id = user.partner_id.commercial_partner_id.id
+            packagings = packagings.filtered(
+                lambda p: not p.is_b2b_exclusive or partner_id in p.b2b_exclusive_customer_ids.ids
+            )
+        
         result = []
         for pkg in packagings:
             result.append({
@@ -510,6 +524,17 @@ class GuapanteWebsiteSale(WebsiteSale):
                 # Get sales-enabled packagings
                 packagings_data = []
                 sales_packagings = variant.sudo().packaging_ids.filtered(lambda p: p.sales)
+                
+                # Filter out B2B exclusive packagings based on user
+                user = request.env.user
+                if user._is_public():
+                    sales_packagings = sales_packagings.filtered(lambda p: not p.is_b2b_exclusive)
+                else:
+                    partner_id = user.partner_id.commercial_partner_id.id
+                    sales_packagings = sales_packagings.filtered(
+                        lambda p: not p.is_b2b_exclusive or partner_id in p.b2b_exclusive_customer_ids.ids
+                    )
+                    
                 has_packaging = bool(sales_packagings)
                 for pkg in sales_packagings:
                     packagings_data.append({
