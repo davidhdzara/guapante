@@ -413,19 +413,28 @@ class GuapanteWebsiteSale(WebsiteSale):
             **kwargs
         )
         
-        # 2. Save the user's chosen uom_mode to the line (Persistent) and session (Legacy/Fallback)
-        if uom_mode and uom_mode in ('g', 'kg', 'unit'):
-            line_id_from_response = response.get('line_id')
-            if line_id_from_response:
-                try:
-                    line = request.env['sale.order.line'].sudo().browse(line_id_from_response)
-                    if line.exists():
-                        line.sudo().write({'uom_mode': uom_mode})
-                        _logger.info("DB: saved uom_mode='%s' for line %s", uom_mode, line_id_from_response)
-                except Exception as e:
-                    _logger.error("Error saving uom_mode to DB: %s", e)
+        # 2. Persist uom_mode AND product_packaging_id on the line in the DB.
+        # Odoo's native flow does not always save the packaging_id selected by the user.
+        # We write it explicitly so _cart_find_product_line can later match correctly.
+        line_id_from_response = response.get('line_id') if response else None
+        if line_id_from_response:
+            try:
+                line = request.env['sale.order.line'].sudo().browse(line_id_from_response)
+                if line.exists():
+                    update_vals = {}
+                    if uom_mode and uom_mode in ('g', 'kg', 'unit'):
+                        update_vals['uom_mode'] = uom_mode
+                    if product_packaging_id and int(product_packaging_id) > 0:
+                        pkg = request.env['product.packaging'].sudo().browse(int(product_packaging_id))
+                        if pkg.exists():
+                            update_vals['product_packaging_id'] = pkg.id
+                    if update_vals:
+                        line.sudo().write(update_vals)
+                        _logger.info("DB: persisted %s for line %s", update_vals, line_id_from_response)
+            except Exception as e:
+                _logger.error("Error persisting uom_mode/packaging on line: %s", e)
 
-                # Session fallback (always update for immediate consistency)
+            if uom_mode:
                 uom_modes = request.session.get('guapante_uom_modes', {})
                 uom_modes[str(line_id_from_response)] = uom_mode
                 request.session['guapante_uom_modes'] = uom_modes

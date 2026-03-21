@@ -157,25 +157,37 @@ class SaleOrder(models.Model):
 
     def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
         """
-        Override to fix attribute ID order sensitivity in Odoo 18.
+        Override to:
+        1. Fix attribute ID order sensitivity in Odoo 18 (set comparison fallback).
+        2. Ensure different packagings of the same product get SEPARATE cart lines.
 
-        Odoo's native implementation compares attribute IDs as a LIST:
-          sol.product_no_variant_attribute_value_ids.ids == no_variant_attribute_value_ids
-        This fails if the JS sends IDs in a different order than stored.
-        We fix this by using set comparison as a fallback.
+        Rule: Only separate by packaging when a specific non-zero packaging_id is
+        explicitly requested. Cart +/- updates (which send no packaging_id) and
+        products without packagings are NOT affected.
         """
         self.ensure_one()
 
         # 1. Let Odoo's native logic run first
-        result = super()._cart_find_product_line(product_id, line_id, **kwargs)
-        if result:
-            return result
+        lines = super()._cart_find_product_line(product_id, line_id, **kwargs)
 
-        # 2. Fallback: retry with set-based attribute comparison
-        # This catches cases where the list order of attribute IDs differs
+        # 2. GUAPANTE: Separate cart lines by packaging when an explicit packaging is requested.
+        # The JS sends a real (non-zero) packaging ID only when the user selected a specific
+        # packaging button (e.g. 'Paquete 200g'). If it's 0 or absent, behave normally.
+        target_pkg_id = kwargs.get('product_packaging_id')
+        if target_pkg_id and int(target_pkg_id) > 0:
+            # Only match lines that have this EXACT packaging — prevents merging
+            # a '200g' line with a '500g' line.
+            lines = lines.filtered(
+                lambda l: l.product_packaging_id.id == int(target_pkg_id)
+            )
+
+        if lines:
+            return lines
+
+        # 3. Fallback: retry with set-based attribute comparison
         no_var_ids = kwargs.get('no_variant_attribute_value_ids') or []
         if not no_var_ids:
-            return result  # Empty, nothing else we can try
+            return lines  # Empty, nothing else we can try
 
         target_set = set(no_var_ids)
         matched = self.env['sale.order.line']
