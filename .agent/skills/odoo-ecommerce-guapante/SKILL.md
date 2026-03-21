@@ -186,6 +186,9 @@ Los embalajes pueden marcarse como exclusivos B2B. El filtrado ocurre en:
 **Regla del label en el carrito:**
 > La etiqueta del embalaje en `cart.xml` debe condicionarse con `line_display.get('mode') == 'unit'`. Si el usuario pidió por kg/g, Odoo internamente puede asignar un packaging pero no debe mostrarse al usuario.
 
+**⚠️ Esta regla aplica a TODA la cadena del pedido:**
+> No solo al carrito (`cart.xml`). También aplica a cualquier módulo backend que muestre información de embalaje (ej. `preparation_day.py`). Ver documento de aprendizaje completo abajo.
+
 ---
 
 ## 6. Referencias de Aprendizajes Documentados
@@ -197,6 +200,7 @@ La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-
 - `diagnostico-sin-acceso-logs-odoo-sh.md` — Técnicas de diagnóstico en Odoo.sh
 - `portal-403-sudo-y-visibilidad-jerarquica.md` — Solución a Error 403 en Portal con sudo() seguro y filtrado child_of padre vs direcciones.
 - `b2b-embalajes-exclusivos-cart-separation.md` — Separación de líneas de carrito por embalaje B2B y patrones seguros de persistencia del packaging_id.
+- `regla-oro-embalaje-uom-mode-visibilidad.md` — **Regla sistémica:** solo mostrar nombre de embalaje cuando `uom_mode == 'unit'`, y siempre usar `line.product_packaging_id` antes que `packaging_ids[:1]`. Aplica en carrito, Preparación del Día, reportes y emails.
 
 ---
 
