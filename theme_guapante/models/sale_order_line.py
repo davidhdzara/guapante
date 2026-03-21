@@ -55,7 +55,7 @@ class SaleOrderLine(models.Model):
                 line.uom_mode = 'unit'
                 return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" es un producto medido por unidades. No se puede pesar.'}}
 
-    @api.depends('product_uom_qty', 'uom_mode', 'product_id', 'product_packaging_id')
+    @api.depends('product_uom_qty', 'uom_mode', 'product_id')
     def _compute_visual_qty(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
         for line in self:
@@ -72,11 +72,7 @@ class SaleOrderLine(models.Model):
                 line.visual_qty = line.product_uom_qty
             else: # unit
                 if is_weight:
-                    # FIX: Use existing product_packaging_id instead of forcing the first one blindly
-                    packaging = line.product_packaging_id
-                    if not packaging:
-                        packaging = line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0)[:1]
-                    
+                    packaging = line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0)[:1]
                     if packaging:
                         line.visual_qty = line.product_uom_qty / packaging.qty
                     else:
@@ -99,11 +95,7 @@ class SaleOrderLine(models.Model):
                 line.product_packaging_id = False
             else: # unit
                 if is_weight:
-                    # FIX: Use existing product_packaging_id instead of forcing the first one blindly
-                    packaging = line.product_packaging_id
-                    if not packaging:
-                        packaging = line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0)[:1]
-                        
+                    packaging = line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0)[:1]
                     if packaging:
                         line.product_uom_qty = qty * packaging.qty
                         line.product_packaging_id = packaging.id

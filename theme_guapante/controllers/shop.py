@@ -263,39 +263,23 @@ class GuapanteWebsiteSale(WebsiteSale):
                 val = round(line.product_uom_qty, 2)
                 qty_str = str(int(val)) if val == int(val) else str(val)
                 result[line.id] = {'qty': qty_str, 'label': 'kg', 'header': 'PESO (KG)', 'mode': 'kg'}
+            else:
                 # Unit mode: for weight products, convert kg back to units via packaging
                 qty_val = line.product_uom_qty
                 is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
-                label = 'Unidades'
-                header = 'CANTIDAD (UNIDADES)'
-
                 if is_weight:
                     # Find the sales packaging to get the conversion factor
-                    # FIX: ALWAYS use the line's packaging ID if it exists, otherwise fallback
-                    if line.product_packaging_id:
-                        packaging = line.product_packaging_id
-                    else:
-                        packaging = line.product_id.packaging_ids.filtered(
-                            lambda p: p.sales and p.qty > 0
-                        )[:1]
-                        
+                    packaging = line.product_id.packaging_ids.filtered(
+                        lambda p: p.sales and p.qty > 0
+                    )[:1]
                     if packaging:
                         qty_val = round(line.product_uom_qty / packaging.qty)
-                        label = 'Paquetes' if 'Paquete' in packaging.name else packaging.name
-                        header = f'CANTIDAD ({label.upper()})'
                     else:
                         qty_val = int(line.product_uom_qty) if line.product_uom_qty == int(line.product_uom_qty) else line.product_uom_qty
                 else:
-                    if line.product_packaging_id:
-                        # Non-weight product but sold in packagings
-                        packaging = line.product_packaging_id
-                        qty_val = round(line.product_uom_qty / packaging.qty) if packaging.qty else line.product_uom_qty
-                        label = 'Paquetes' if 'Paquete' in packaging.name else packaging.name
-                        header = f'CANTIDAD ({label.upper()})'
-                    else:
-                        qty_val = int(line.product_uom_qty) if line.product_uom_qty == int(line.product_uom_qty) else line.product_uom_qty
+                    qty_val = int(line.product_uom_qty) if line.product_uom_qty == int(line.product_uom_qty) else line.product_uom_qty
                 
-                result[line.id] = {'qty': str(int(qty_val)), 'label': label, 'header': header, 'mode': 'unit'}
+                result[line.id] = {'qty': str(int(qty_val)), 'label': 'Unidades', 'header': 'CANTIDAD (UNIDADES)', 'mode': 'unit'}
 
         return result
 
@@ -429,40 +413,22 @@ class GuapanteWebsiteSale(WebsiteSale):
             **kwargs
         )
         
-        # 1.5 FIX: Force line deletion if set_qty is exactly 0 and it survived Odoo's native update
-        if set_qty == 0 and line_id:
-            try:
-                line_to_del = request.env['sale.order.line'].sudo().browse(int(line_id))
-                if line_to_del.exists() and line_to_del.order_id == request.website.sale_get_order():
-                    line_to_del.unlink()
-                    _logger.info("Forcefully deleted line %s from cart because set_qty=0", line_id)
-            except Exception as e:
-                _logger.error("Error forcefully deleting line %s: %s", line_id, e)
-
         # 2. Save the user's chosen uom_mode to the line (Persistent) and session (Legacy/Fallback)
-        if (uom_mode and uom_mode in ('g', 'kg', 'unit') and set_qty != 0) or product_packaging_id:
+        if uom_mode and uom_mode in ('g', 'kg', 'unit'):
             line_id_from_response = response.get('line_id')
             if line_id_from_response:
                 try:
                     line = request.env['sale.order.line'].sudo().browse(line_id_from_response)
                     if line.exists():
-                        update_vals = {}
-                        if uom_mode:
-                            update_vals['uom_mode'] = uom_mode
-                        if product_packaging_id:
-                            update_vals['product_packaging_id'] = int(product_packaging_id)
-                            
-                        if update_vals:
-                            line.sudo().write(update_vals)
-                            _logger.info("DB: saved %s for line %s", update_vals, line_id_from_response)
+                        line.sudo().write({'uom_mode': uom_mode})
+                        _logger.info("DB: saved uom_mode='%s' for line %s", uom_mode, line_id_from_response)
                 except Exception as e:
-                    _logger.error("Error saving uom_mode/packaging to DB: %s", e)
+                    _logger.error("Error saving uom_mode to DB: %s", e)
 
-                if uom_mode:
-                    # Session fallback (always update for immediate consistency)
-                    uom_modes = request.session.get('guapante_uom_modes', {})
-                    uom_modes[str(line_id_from_response)] = uom_mode
-                    request.session['guapante_uom_modes'] = uom_modes
+                # Session fallback (always update for immediate consistency)
+                uom_modes = request.session.get('guapante_uom_modes', {})
+                uom_modes[str(line_id_from_response)] = uom_mode
+                request.session['guapante_uom_modes'] = uom_modes
 
         # 3. Add line count + cart_quantity to response (SEARCH-03 FIX)
         order = request.website.sale_get_order()
