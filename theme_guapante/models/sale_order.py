@@ -157,25 +157,31 @@ class SaleOrder(models.Model):
 
     def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
         """
-        Override to fix attribute ID order sensitivity in Odoo 18.
-
-        Odoo's native implementation compares attribute IDs as a LIST:
-          sol.product_no_variant_attribute_value_ids.ids == no_variant_attribute_value_ids
-        This fails if the JS sends IDs in a different order than stored.
-        We fix this by using set comparison as a fallback.
+        Override to fix attribute ID order sensitivity in Odoo 18 and
+        ensure different packagings (Embalajes) of the same product do not merge.
         """
         self.ensure_one()
 
         # 1. Let Odoo's native logic run first
-        result = super()._cart_find_product_line(product_id, line_id, **kwargs)
-        if result:
-            return result
+        lines = super()._cart_find_product_line(product_id, line_id, **kwargs)
+        
+        # 1.5. Guapante specific: DO NOT merge lines if they have different packagings.
+        # This is critical for selling "Cilantro" in both 'g', 'kg', 'Paquete 200g', and 'Paquete 500g'
+        # in the same cart as distinct lines.
+        target_pkg_id = kwargs.get('product_packaging_id')
+        if target_pkg_id:
+            lines = lines.filtered(lambda l: l.product_packaging_id.id == int(target_pkg_id))
+        else:
+            # If no packaging requested, ONLY match lines that also have no packaging
+            lines = lines.filtered(lambda l: not l.product_packaging_id)
+            
+        if lines:
+            return lines
 
         # 2. Fallback: retry with set-based attribute comparison
-        # This catches cases where the list order of attribute IDs differs
         no_var_ids = kwargs.get('no_variant_attribute_value_ids') or []
         if not no_var_ids:
-            return result  # Empty, nothing else we can try
+            return lines
 
         target_set = set(no_var_ids)
         matched = self.env['sale.order.line']
@@ -184,6 +190,13 @@ class SaleOrder(models.Model):
                 continue
             if line_id and line.id != line_id:
                 continue
+                
+            # Enforce packaging separation on the fallback too
+            line_pkg_id = line.product_packaging_id.id if line.product_packaging_id else None
+            req_pkg_id = int(target_pkg_id) if target_pkg_id else None
+            if line_pkg_id != req_pkg_id:
+                continue
+
             if hasattr(line, 'product_no_variant_attribute_value_ids'):
                 if set(line.product_no_variant_attribute_value_ids.ids) == target_set:
                     matched |= line
