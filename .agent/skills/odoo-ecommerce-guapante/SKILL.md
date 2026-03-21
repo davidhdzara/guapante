@@ -15,10 +15,12 @@ Esta skill es **OBLIGATORIA** antes de modificar cualquier archivo relacionado c
 |---------|-----------|
 | `theme_guapante/static/src/js/unit_selector.js` | Widget principal de la página de producto: selector de UoM (kg/g/unidad), embalaje, cantidad y botón "Agregar al Pedido" |
 | `theme_guapante/static/src/js/search_modal.js` | Buscador rápido de productos con modal. También puede añadir al carrito. |
-| `theme_guapante/controllers/shop.py` | Override del controlador `WebsiteSale`. Intercepta `/shop/cart/update_json` para conversión de unidades y persistencia de `uom_mode`. |
-| `theme_guapante/models/sale_order.py` | Override de `sale.order`: soporte de cantidades fraccionarias (`_cart_update`), matcher de líneas por atributos (`_cart_find_product_line`), y `cart_quantity` con `ceil()`. |
+| `theme_guapante/controllers/shop.py` | Override del controlador `WebsiteSale`. Intercepta `/shop/cart/update_json` para conversión de unidades y persistencia de `uom_mode` y `product_packaging_id`. |
+| `theme_guapante/models/sale_order.py` | Override de `sale.order`: soporte de cantidades fraccionarias (`_cart_update`), matcher de líneas con separación por embalaje (`_cart_find_product_line`), y `cart_quantity` con `ceil()`. |
 | `theme_guapante/models/sale_order_line.py` | Campo custom `uom_mode` (`g`, `kg`, `unit`) en la línea de venta. |
-| `theme_guapante/views/shop_templates.xml` | Templates Qweb del carrito y página de producto. |
+| `theme_guapante/models/product_packaging.py` | Extiende `product.packaging` con `is_b2b_exclusive` y `b2b_exclusive_customer_ids` para embalajes VIP. |
+| `theme_guapante/views/shop/cart.xml` | Template del carrito personalizado. Muestra packaging name solo cuando `uom_mode == 'unit'`. |
+| `theme_guapante/views/product_packaging_views.xml` | Inyecta columnas B2B en la tabla de embalaje del producto (toggle VIP + clientes permitidos). |
 
 ---
 
@@ -153,6 +155,7 @@ Luego ejecuta `analyze_cart.py` (script de diagnóstico en la raíz del proyecto
 2. ¿Las líneas tienen atributos diferentes a las esperadas? → Bug lista vs set (ver Antipatrón 2)
 3. ¿La cantidad es incorrecta (ej. 0 o 1 en lugar de 0.5)? → Truncamiento fraccionario (ver Antipatrón 3)
 4. ¿Hay un error 500 en el servidor? → **Lee el traceback del navegador completo antes de hacer nada más.**
+5. ¿Diferentes embalajes del mismo producto se fusionan en una línea? → Ver Antipatrón 5 (Separación de líneas por packaging).
 
 ---
 
@@ -167,6 +170,24 @@ Luego ejecuta `analyze_cart.py` (script de diagnóstico en la raíz del proyecto
 
 ---
 
+## 5.5 Arquitectura B2B Exclusive Packagings
+
+Los embalajes pueden marcarse como exclusivos B2B. El filtrado ocurre en:
+- `get_product_packagings()` → selector de embalaje en página de producto
+- `search_products()` → resultados del buscador rápido
+- `_cart_find_product_line()` → separación de líneas en el carrito
+
+**Regla de oro de separación de líneas:**
+> Solo separar líneas por `product_packaging_id` cuando el valor recibido en `kwargs` sea un entero **mayor que cero**. Si es `None` o `0`, dejar que Odoo fusione normalmente.
+
+**Regla de persistencia del packaging_id:**
+> Odoo NO garantiza guardar un `product_packaging_id` de eCommerce en la línea del pedido. Siempre escribirlo explícitamente después de que `super()` retorne la respuesta.
+
+**Regla del label en el carrito:**
+> La etiqueta del embalaje en `cart.xml` debe condicionarse con `line_display.get('mode') == 'unit'`. Si el usuario pidió por kg/g, Odoo internamente puede asignar un packaging pero no debe mostrarse al usuario.
+
+---
+
 ## 6. Referencias de Aprendizajes Documentados
 
 La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-conocimiento/aprendizajes/ecommerce/`:
@@ -175,6 +196,7 @@ La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-
 - `odoo18-cart-find-product-line-list-vs-set.md` — Bug de comparación de lista vs set en Odoo 18
 - `diagnostico-sin-acceso-logs-odoo-sh.md` — Técnicas de diagnóstico en Odoo.sh
 - `portal-403-sudo-y-visibilidad-jerarquica.md` — Solución a Error 403 en Portal con sudo() seguro y filtrado child_of padre vs direcciones.
+- `b2b-embalajes-exclusivos-cart-separation.md` — Separación de líneas de carrito por embalaje B2B y patrones seguros de persistencia del packaging_id.
 
 ---
 
