@@ -18,4 +18,16 @@
             </xpath>
         </field>
     </record>
+
+    <record id="product_packaging_tree_view_b2b" model="ir.ui.view">
+        <field name="name">product.packaging.tree.b2b</field>
+        <field name="model">product.packaging</field>
+        <field name="inherit_id" ref="product.product_packaging_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='sales']" position="after">
+                <field name="is_b2b_exclusive" string="VIP B2B" widget="boolean_toggle" optional="show"/>
+                <field name="b2b_exclusive_customer_ids" string="Clientes Permitidos" widget="many2many_tags" optional="show" invisible="not is_b2b_exclusive"/>
+            </xpath>
+        </field>
+    </record>
 </odoo>
