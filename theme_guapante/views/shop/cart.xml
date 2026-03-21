@@ -70,6 +70,13 @@
                             <small class="text-muted">
                                 Variante: <span t-field="line.product_id.name"/>
                             </small>
+                            <t t-if="line.product_packaging_id">
+                                <br/>
+                                <small class="text-success fw-semibold">
+                                    <i class="fa fa-cube me-1"/>
+                                    <span t-esc="line.product_packaging_id.name"/>
+                                </small>
+                            </t>
                         </div>
 
                         <!-- Quantity Section -->
