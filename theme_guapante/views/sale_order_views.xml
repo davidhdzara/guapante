@@ -6,17 +6,17 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <!-- Ocultar columnas nativas -->
-            <xpath expr="//field[@name='order_line']/list/field[@name='product_uom_qty']" position="attributes">
-                <attribute name="column_invisible">True</attribute>
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_uom_qty']" position="replace">
+                <field name="product_uom_qty" column_invisible="True" invisible="True"/>
             </xpath>
-            <xpath expr="//field[@name='order_line']/list/field[@name='product_uom']" position="attributes">
-                <attribute name="column_invisible">True</attribute>
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_uom']" position="replace">
+                <field name="product_uom" column_invisible="True" invisible="True"/>
             </xpath>
-            <xpath expr="//field[@name='order_line']/list/field[@name='product_packaging_qty']" position="attributes">
-                <attribute name="column_invisible">True</attribute>
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_packaging_qty']" position="replace">
+                <field name="product_packaging_qty" column_invisible="True" invisible="True"/>
             </xpath>
-            <xpath expr="//field[@name='order_line']/list/field[@name='product_packaging_id']" position="attributes">
-                <attribute name="column_invisible">True</attribute>
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_packaging_id']" position="replace">
+                <field name="product_packaging_id" column_invisible="True" invisible="True"/>
             </xpath>
             
             <!-- Inyectar Vistas Visuales -->
