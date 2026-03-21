@@ -245,7 +245,13 @@ class PreparationDay(models.Model):
                     'product_id': line.product_id.product_tmpl_id.id,
                     'product_product_id': line.product_id.id,
                     'product_description': line.name,
-                    'packaging_name': line.product_packaging_id.name if line.product_packaging_id else False,
+                    # Solo mostrar el embalaje B2B si el cliente pidió por "unidad de embalaje".
+                    # Si pidió por kg o g, no mostrar aunque Odoo asigne un packaging internamente.
+                    'packaging_name': (
+                        line.product_packaging_id.name
+                        if line.product_packaging_id and (line.uom_mode or 'unit') == 'unit'
+                        else False
+                    ),
                     'daily_sequence': order.daily_sequence if hasattr(order, 'daily_sequence') else 0,
                     'order_name': order.name,
                     'sale_order_id': order.id,
