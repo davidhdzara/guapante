@@ -33,11 +33,15 @@ class SaleOrderLine(models.Model):
                 continue
             is_weight = weight_categ and line.product_id.uom_id.category_id == weight_categ
             if is_weight:
-                has_packaging = bool(line.product_id.packaging_ids.filtered(lambda p: p.sales and p.qty > 0))
-                if not has_packaging:
-                    line.uom_mode = 'kg'
+                line.uom_mode = 'kg'
             else:
                 line.uom_mode = 'unit'
+
+    @api.onchange('visual_qty', 'uom_mode')
+    def _onchange_visual_qty_uom_mode_sync(self):
+        # Garantiza el comportamiento 'Opción B' (Preservación visual absoluta)
+        # Fuerza la actualización de product_uom_qty antes de que Odoo limpie la máscara por dependencias.
+        self._inverse_visual_qty()
 
     @api.onchange('uom_mode')
     def _onchange_uom_mode_warning(self):
