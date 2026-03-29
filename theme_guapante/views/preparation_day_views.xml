@@ -24,7 +24,7 @@
                     <button
                         name="action_load"
                         type="object"
-                        string="Recargar fecha"
+                        string="Actualizar pedidos"
                         invisible="state == 'draft' or state == 'done'"
                     />
                     <button

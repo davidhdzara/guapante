@@ -201,11 +201,19 @@ class PreparationDay(models.Model):
         if self.state == 'done':
             raise UserError('La sesión ya fue marcada como finalizada.')
             
-        self.line_ids.unlink()
+        # Clean up existing pending lines if their associated order or move got cancelled
+        lines_to_unlink = self.line_ids.filtered(
+            lambda l: not l.is_done and (
+                l.sale_order_id.state in ('cancel', 'draft') or 
+                (l.stock_move_id and l.stock_move_id.state in ('done', 'cancel'))
+            )
+        )
+        if lines_to_unlink:
+            lines_to_unlink.unlink()
+
+        # We will NOT unlink self.line_ids entirely to preserve is_done = True and in-progress tasks.
+        # But we MUST recreate summaries from scratch based on the updated lines.
         self.summary_ids.unlink()
-        self.detail_line_pending_ids = [(5, 0, 0)]
-        self.detail_line_done_ids = [(5, 0, 0)]
-        self.selected_product_id = False
 
         domain = [
             ('state', 'in', ('sale', 'done')),
@@ -216,15 +224,19 @@ class PreparationDay(models.Model):
             ('picking_ids.state', 'not in', ('done', 'cancel')),
         ]
         orders = self.env['sale.order'].search(domain)
-        if not orders:
+        if not orders and not self.line_ids:
             raise UserError('No hay pedidos pendientes para la fecha seleccionada.')
 
+        existing_sale_line_ids = self.line_ids.mapped('sale_line_id').ids
         line_vals = []
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
 
         for order in orders:
             # We assume order has daily_sequence field from staging_dev
             for line in order.order_line.filtered(lambda l: l.product_id and not l.display_type):
+                if line.id in existing_sale_line_ids:
+                    continue  # We already loaded this line in the session.
+                    
                 # Find the related stock.move
                 move = self.env['stock.move'].search([
                     ('sale_line_id', '=', line.id),
@@ -267,10 +279,27 @@ class PreparationDay(models.Model):
                     'is_done': False,
                 })
 
-        self.env['guapante.preparation.day.line'].create(line_vals)
+        added_count = len(line_vals)
+        if added_count > 0:
+            self.env['guapante.preparation.day.line'].create(line_vals)
+
         self._compute_summary()
         self.state = 'loaded'
-        self.save_note = '✅ Órdenes cargadas exitosamente.'
+        
+        # If the user was inside a product sub-view (detail_line_pending), refresh their view via select!
+        if self.selected_product_id:
+            summary = self.summary_ids.filtered(lambda s: s.product_id == self.selected_product_id)
+            if summary:
+                # Trigger action_select_product again dynamically to refresh the pending/done filters
+                summary.action_select_product()
+            else:
+                self.action_clear_product_filter()
+        
+        if added_count == 0:
+            self.save_note = '✅ Listado actualizado. No se detectaron productos nuevos.'
+        else:
+            self.save_note = f'✅ {added_count} líneas nuevas cargadas a la preparación.'
+            
         return False
 
     def _compute_summary(self):
