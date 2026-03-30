@@ -6,6 +6,7 @@
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='origin']" position="after">
+                <field name="is_recolectar_operation" invisible="1"/>
                 <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
                 <field name="driver_id" placeholder="Conductor Asignado"/>
             </xpath>
@@ -14,6 +15,14 @@
             <xpath expr="//field[@name='move_ids_without_package']//field[@name='product_uom_qty']" position="after">
                 <field name="customer_qty_display" string="Cant. Cliente" optional="show" readonly="1" class="text-end"/>
                 <field name="customer_uom_display" string="UdM Cliente" optional="show" readonly="1"/>
+            </xpath>
+
+            <!-- Checkbox de peso al final de la linea despues de cantidad -->
+            <xpath expr="//field[@name='move_ids_without_package']//field[@name='quantity']" position="after">
+                <field name="is_weight_confirmed" 
+                       widget="boolean_toggle"
+                       column_invisible="parent.is_recolectar_operation == False"
+                       readonly="parent.state in ('done', 'cancel')"/>
             </xpath>
         </field>
     </record>
