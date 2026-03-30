@@ -1,0 +1,3 @@
+id,name,model_id/id,group_id/id,perm_read,perm_write,perm_create,perm_unlink
+access_insotech_dian_setup_wizard_manager,insotech.dian.setup.wizard.manager,model_insotech_dian_setup_wizard,account.group_account_manager,1,1,1,1
+access_insotech_dian_setup_wizard_user,insotech.dian.setup.wizard.user,model_insotech_dian_setup_wizard,account.group_account_invoice,1,0,0,0

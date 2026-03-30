@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================ -->
+    <!-- Wizard Form View                                             -->
+    <!-- ============================================================ -->
+    <record id="insotech_dian_setup_wizard_view_form" model="ir.ui.view">
+        <field name="name">insotech.dian.setup.wizard.form</field>
+        <field name="model">insotech.dian.setup.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Habilitación DIAN">
+                <!-- Banner: Habilitado -->
+                <div class="alert alert-success text-center mb-3"
+                     role="alert"
+                     invisible="config_state != 'enabled'">
+                    <strong>✅ Configuración DIAN habilitada correctamente</strong>
+                </div>
+
+                <!-- Banner: En proceso -->
+                <div class="alert alert-warning text-center mb-3"
+                     role="alert"
+                     invisible="config_state != 'in_progress'">
+                    <strong>⏳ Configuración en proceso — pendiente de habilitación</strong>
+                </div>
+
+                <!-- Banner: Habilitación enviada -->
+                <div class="alert alert-info text-center mb-3"
+                     role="alert"
+                     invisible="habilitacion_state != 'waiting'">
+                    <strong>📡 Documentos enviados a la DIAN — esperando respuesta</strong>
+                </div>
+
+                <group>
+                    <group string="Credenciales DIAN">
+                        <field name="company_id" invisible="1"/>
+                        <field name="config_state" invisible="1"/>
+                        <field name="habilitacion_state" invisible="1"/>
+                        <field name="software_id"
+                               placeholder="Ej: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                               readonly="config_state == 'enabled'"/>
+                        <field name="software_pin"
+                               placeholder="Ej: 12345"
+                               password="True"
+                               readonly="config_state == 'enabled'"/>
+                        <field name="test_set_id"
+                               placeholder="Ej: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                               readonly="config_state == 'enabled'"/>
+                        <field name="technical_key"
+                               placeholder="Hash de la clave técnica de pruebas"
+                               readonly="config_state == 'enabled'"/>
+                    </group>
+                    <group string="Estado">
+                        <field name="config_state"
+                               widget="statusbar"
+                               statusbar_visible="not_configured,in_progress,enabled"/>
+                    </group>
+                </group>
+
+                <separator string="Habilitación Directa DIAN"
+                           invisible="config_state == 'enabled'"/>
+
+                <group invisible="config_state == 'enabled'">
+                    <group string="Certificado Digital (.p12)">
+                        <field name="cert_file"
+                               filename="cert_filename"
+                               widget="binary"/>
+                        <field name="cert_filename" invisible="1"/>
+                        <field name="cert_password"
+                               password="True"
+                               placeholder="Contraseña del .p12"/>
+                    </group>
+                    <group string="Set de Pruebas">
+                        <field name="num_invoices"/>
+                        <field name="num_credit_notes"/>
+                        <field name="num_debit_notes"/>
+                    </group>
+                </group>
+
+                <!-- Resultado / Log -->
+                <group invisible="not result_log">
+                    <field name="result_log" nolabel="1" colspan="2"/>
+                    <field name="track_id"
+                           readonly="1"
+                           invisible="not track_id"/>
+                </group>
+
+                <footer>
+                    <!-- Guardar solo credenciales -->
+                    <button name="action_save_config"
+                            string="💾 Guardar Credenciales"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="config_state == 'enabled'"/>
+                    <!-- Iniciar habilitación -->
+                    <button name="action_start_habilitacion"
+                            string="🚀 Iniciar Habilitación DIAN"
+                            type="object"
+                            class="btn-primary"
+                            invisible="config_state == 'enabled'"
+                            confirm="¿Iniciar el proceso de habilitación DIAN? Se generarán y enviarán los documentos de prueba directamente a la DIAN."/>
+                    <!-- Probar 1 factura individual (SendBillSync) -->
+                    <button name="action_test_single"
+                            string="🔍 Probar 1 Factura"
+                            type="object"
+                            class="btn-warning"
+                            invisible="config_state == 'enabled'"/>
+                    <!-- Consultar estado -->
+                    <button name="action_check_status"
+                            string="🔄 Consultar Estado"
+                            type="object"
+                            class="btn-info"
+                            invisible="habilitacion_state != 'waiting'"/>
+                    <!-- Marcar habilitado manualmente -->
+                    <button name="action_mark_enabled"
+                            string="✅ Marcar Habilitado"
+                            type="object"
+                            class="btn-success"
+                            invisible="config_state != 'in_progress'"
+                            groups="account.group_account_manager"/>
+                    <!-- Desbloquear -->
+                    <button name="action_unlock"
+                            string="🔓 Desbloquear"
+                            type="object"
+                            class="btn-warning"
+                            invisible="config_state != 'enabled'"
+                            groups="account.group_account_manager"/>
+                    <button string="Cerrar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Action to open the wizard                                    -->
+    <!-- ============================================================ -->
+    <record id="insotech_dian_setup_wizard_action" model="ir.actions.act_window">
+        <field name="name">Habilitación DIAN</field>
+        <field name="res_model">insotech.dian.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu: Contabilidad → Configuración → Habilitación DIAN       -->
+    <!-- ============================================================ -->
+    <menuitem id="insotech_dian_menu_setup"
+              name="Habilitación DIAN"
+              parent="account.account_account_menu"
+              action="insotech_dian_setup_wizard_action"
+              sequence="20"
+              groups="account.group_account_manager"/>
+
+</odoo>

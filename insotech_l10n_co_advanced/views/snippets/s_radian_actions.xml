@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_radian_actions" name="Acciones RADIAN">
+        <t t-if="invoice.insotech_dian_status == 'accepted'">
+            <t t-set="events" t-value="invoice.env['insotech.radian.event'].sudo().search([('move_id', '=', invoice.id), ('state', '!=', 'error')]).mapped('event_code')"/>
+            <div class="o_portal_radian_actions mt-3">
+                
+                <!-- Custom RADIAN Alerts bypassing Odoo default broken renderer -->
+                <t t-set="radian_error" t-value="request.params.get('radian_error')"/>
+                <t t-set="radian_success" t-value="request.params.get('radian_success')"/>
+                <t t-set="radian_warning" t-value="request.params.get('radian_warning')"/>
+                
+                <div t-if="radian_error" class="alert alert-danger alert-dismissible fade show p-2 small mb-3" role="alert">
+                    <i class="fa fa-exclamation-circle me-1"/> <strong t-esc="radian_error"/>
+                    <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close" style="padding: 0.5rem;"></button>
+                </div>
+                <div t-if="radian_warning" class="alert alert-warning alert-dismissible fade show p-2 small mb-3" role="alert">
+                    <i class="fa fa-exclamation-triangle me-1"/> <strong t-esc="radian_warning"/>
+                    <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close" style="padding: 0.5rem;"></button>
+                </div>
+                <div t-if="radian_success" class="alert alert-success alert-dismissible fade show p-2 small mb-3" role="alert">
+                    <i class="fa fa-check-circle me-1"/> <strong t-esc="radian_success"/>
+                    <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close" style="padding: 0.5rem;"></button>
+                </div>
+                
+                <h5 class="mb-3 d-none d-md-block">Título Valor (RADIAN)</h5>
+                
+                <t t-set="access_token_val" t-value="request.params.get('access_token', invoice.access_token or '')"/>
+                <form method="post" class="w-100 form-radian-actions">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <input type="hidden" name="invoice_id" t-att-value="invoice.id"/>
+                    <input type="hidden" name="access_token" t-att-value="access_token_val"/>
+
+                    <!-- Mandato Legal Checkbox -->
+                    <t t-if="not ('033' in events or '035' in events or '031' in events)">
+                        <div class="form-check mb-3 p-3 bg-light rounded text-start">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="mandate_accepted" required="required" value="1"/>
+                            <label class="form-check-label small" style="margin-left: 0.5rem;">
+                                Autorizo a <strong><t t-esc="invoice.company_id.name"/></strong> a firmar electrónicamente los eventos RADIAN en mi representación.
+                            </label>
+                        </div>
+                    </t>
+
+                    <script type="text/javascript">
+                        document.querySelectorAll('.form-radian-actions').forEach(function(form) {
+                            form.addEventListener('submit', function(e) {
+                                var checkbox = form.querySelector('input[name="mandate_accepted"]');
+                                if (checkbox &amp;&amp; !checkbox.checked) {
+                                    e.preventDefault();
+                                    alert("Debe autorizar la firma a ruego marcando la casilla antes de continuar.");
+                                }
+                            });
+                        });
+                    </script>
+
+                    <!-- Botón 030 (Acuse) -->
+                    <t t-if="'030' not in events">
+                        <button type="submit" t-attf-formaction="/my/invoices/{{ invoice.id }}/radian/030?access_token={{ access_token_val }}" class="btn btn-primary btn-block w-100 mb-2 py-2">
+                            <i class="fa fa-envelope"/> Acuse de Recibo (030)
+                        </button>
+                    </t>
+
+                    <!-- Botón 032 (Recibo del bien) -->
+                    <t t-if="'030' in events and '032' not in events and '031' not in events">
+                        <div class="alert alert-info py-2 px-3 mb-2 small text-center"><i class="fa fa-info-circle"/> Acuse 030 registrado.</div>
+                        <button type="submit" t-attf-formaction="/my/invoices/{{ invoice.id }}/radian/032?access_token={{ access_token_val }}" class="btn btn-primary btn-block w-100 mb-2 py-2">
+                            <i class="fa fa-truck"/> Recibo de Mercancía/Servicio (032)
+                        </button>
+                    </t>
+
+                    <!-- Botones 033 / 034 / 031 -->
+                    <t t-if="'032' in events and '033' not in events and '034' not in events and '031' not in events">
+                        <div class="alert alert-info py-2 px-3 mb-2 small text-center"><i class="fa fa-check"/> Mercancía recibida.</div>
+                        
+                        <button type="submit" t-attf-formaction="/my/invoices/{{ invoice.id }}/radian/033?access_token={{ access_token_val }}" class="btn btn-primary btn-block w-100 mb-2 py-2">
+                            <i class="fa fa-thumbs-up"/> Aceptación Expresa (033)
+                        </button>
+                        
+                        <div class="row gx-1 mb-2 mt-3">
+                            <div class="col-8">
+                                <select name="claim_code" class="form-select bg-light">
+                                    <option value="01">Doc. con inconsistencias</option>
+                                    <option value="02">Mercancía no entregada total</option>
+                                    <option value="03">Mercancía no entregada parcial</option>
+                                    <option value="04">Servicio no prestado</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <button type="submit" t-attf-formaction="/my/invoices/{{ invoice.id }}/radian/034?access_token={{ access_token_val }}" class="btn btn-warning w-100 h-100">
+                                    Reclamo
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" t-attf-formaction="/my/invoices/{{ invoice.id }}/radian/031?access_token={{ access_token_val }}" class="btn btn-secondary btn-block w-100 mt-2 py-2">
+                            <i class="fa fa-times"/> Rechazo Total (031)
+                        </button>
+                    </t>
+                    
+                    <!-- Estados Finales -->
+                    <t t-if="'033' in events or '035' in events">
+                        <div class="alert alert-success text-center mb-0 mt-3 p-2">
+                            <strong><i class="fa fa-certificate"/> Constituida como Título Valor</strong>
+                        </div>
+                    </t>
+                    <t t-if="'031' in events">
+                        <div class="alert alert-secondary text-center mb-0 mt-3 p-2">
+                            <strong><i class="fa fa-ban"/> Documento Rechazado (031)</strong>
+                        </div>
+                    </t>
+                    <t t-if="'034' in events">
+                        <div class="alert alert-warning text-center text-dark mb-0 mt-3 p-2">
+                            <strong><i class="fa fa-exclamation-triangle"/> En Reclamo (034)</strong>
+                        </div>
+                    </t>
+                </form>
+            </div>
+            
+            <!-- Hide native payment if Endosada (Event 037/038 logic) -->
+            <t t-if="'037' in events or '038' in events">
+                <style>#o_portal_pay_now { display: none !important; }</style>
+                <div class="alert alert-warning mt-2 small text-center">
+                    Pago suspendido en portal nativo (Factura Endosada).
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

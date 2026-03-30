@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        RADIAN PDF Complement — Título Valor (Resolución DIAN 000165)
+        Filosofía: Solo COMPLEMENTAR lo que Odoo + l10n_co_dian NO proveen.
+    -->
+    <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
+
+        <!-- ============================================================
+             A. INFORMACIÓN DEL EMISOR + COMPLEMENTO CLIENTE
+             Se inyecta ANTES de #informations (ancla confiable y probada).
+             ============================================================ -->
+        <xpath expr="//div[@id='informations']" position="before">
+            <t t-set="company_partner" t-value="o.company_id.partner_id"/>
+            <t t-set="obligations" t-value="company_partner.l10n_co_edi_obligation_type_ids if company_partner and 'l10n_co_edi_obligation_type_ids' in company_partner._fields else False"/>
+            <t t-set="obligation_codes" t-value="obligations.mapped('name') if obligations else []"/>
+            <t t-set="obligation_descriptions" t-value="obligations.mapped('description') if obligations else []"/>
+            <div class="mb-3" style="font-size: 0.85em; line-height: 1.6;">
+                <div>
+                    <strong>NIT:</strong>
+                    <span t-esc="o.company_id.vat or ''"/>
+                    <t t-if="company_partner and 'l10n_co_verification_digit' in company_partner._fields">
+                        -<span t-esc="company_partner.l10n_co_verification_digit or ''"/>
+                    </t>
+                </div>
+                <t t-set="id_type" t-value="company_partner.l10n_latam_identification_type_id if company_partner and 'l10n_latam_identification_type_id' in company_partner._fields else False"/>
+                <t t-set="doc_code" t-value="id_type.l10n_co_document_code if id_type and 'l10n_co_document_code' in id_type._fields else ''"/>
+                <div>
+                    <strong>Tipo de organización:</strong>
+                    <t t-if="doc_code == '31'">Persona Jurídica</t>
+                    <t t-elif="doc_code == '13'">Persona Natural</t>
+                    <t t-else="">Persona Jurídica</t>
+                </div>
+                <div>
+                    <strong>Tipo de régimen:</strong>
+                    <t t-if="'O-47' in obligation_codes">Régimen Simple de Tributación - SIMPLE</t>
+                    <t t-elif="'O-48' in obligation_codes">Impuesto sobre las ventas – IVA</t>
+                    <t t-elif="'O-15' in obligation_codes">Gran contribuyente</t>
+                    <t t-else="">Impuesto sobre las ventas – IVA</t>
+                </div>
+                <div>
+                    <strong>Tipo de responsabilidad:</strong>
+                    <t t-if="obligation_descriptions">
+                        <span t-esc="', '.join(obligation_descriptions)"/>
+                    </t>
+                    <t t-else="">No definida</t>
+                </div>
+                <div>
+                    <strong>Tipo de operación:</strong>
+                    <t t-if="o.l10n_co_edi_operation_type">
+                        <span t-field="o.l10n_co_edi_operation_type"/>
+                    </t>
+                    <t t-else="">Estándar</t>
+                </div>
+            </div>
+
+            <!-- Complemento Cliente: Teléfono + Email -->
+            <div class="mb-2" style="font-size: 0.9em;">
+                <div class="text-uppercase fw-bold text-muted mb-1" style="font-size: 0.8em; letter-spacing: 0.05em;">Adquiriente / Deudor</div>
+                <div t-if="o.partner_id.phone">
+                    <strong>Teléfono:</strong> <span t-field="o.partner_id.phone"/>
+                </div>
+                <div t-if="o.partner_id.email">
+                    <strong>Correo:</strong> <span t-field="o.partner_id.email"/>
+                </div>
+            </div>
+        </xpath>
+
+        <!-- ============================================================
+             C. COMPLEMENTO AL BLOQUE DE INFORMACIÓN
+             Añadimos: Método de pago y Forma de pago.
+             ============================================================ -->
+        <xpath expr="//div[@id='informations']" position="inside">
+            <div class="col-auto" t-if="o.l10n_co_edi_payment_option_id" name="payment_method">
+                <strong>Método de pago:</strong>
+                <p class="m-0" t-field="o.l10n_co_edi_payment_option_id"/>
+            </div>
+            <div class="col-auto" name="payment_form">
+                <strong>Forma de pago:</strong>
+                <p class="m-0">
+                    <t t-if="o.l10n_co_edi_is_direct_payment">Contado</t>
+                    <t t-else="">Crédito</t>
+                </p>
+            </div>
+        </xpath>
+
+        <!-- ============================================================
+             D. IMPORTE TOTAL CON LETRA (después de los totales)
+             ============================================================ -->
+        <xpath expr="//div[@id='total']" position="after">
+            <div class="row mt-2 mb-2">
+                <div class="col-12 text-end" style="font-size: 9pt;">
+                    <span class="text-muted">Importe total con letra:</span><br/>
+                    <span class="text-muted" t-esc="o.amount_to_words or ''"/>
+                </div>
+            </div>
+        </xpath>
+
+        <!-- ============================================================
+             E. REFERENCIA DE PAGO + CUENTA BANCARIA
+             ============================================================ -->
+        <xpath expr="//p[@name='payment_communication']" position="replace">
+            <p name="payment_communication">
+                <strong>Referencia de pago:</strong> <span t-field="o.payment_reference"/>
+                <!-- Preservar este elemento exacto — l10n_co_dian lo busca por xpath -->
+                <t t-if="o.partner_bank_id">
+                    <br/>
+                    <span class="text-muted" style="font-size: 0.9em;">
+                        en esta cuenta: <span t-field="o.partner_bank_id" class="fw-bold"/>
+                    </span>
+                </t>
+                <!-- Fallback: journal bank -->
+                <t t-if="not o.partner_bank_id and o.journal_id.bank_account_id">
+                    <br/>
+                    <span class="text-muted" style="font-size: 0.9em;">
+                        en esta cuenta: <span t-esc="o.journal_id.bank_account_id.display_name" class="fw-bold"/>
+                    </span>
+                </t>
+                <!-- Fallback: company bank -->
+                <t t-if="not o.partner_bank_id and not o.journal_id.bank_account_id and o.company_id.partner_id.bank_ids">
+                    <br/>
+                    <span class="text-muted" style="font-size: 0.9em;">
+                        en esta cuenta: <span t-esc="o.company_id.partner_id.bank_ids[:1].display_name" class="fw-bold"/>
+                    </span>
+                </t>
+            </p>
+        </xpath>
+
+        <!-- ============================================================
+             F. CONTENIDO LEGAL TÍTULO VALOR (FOOTER debajo de payment_term)
+             Método pago, retenciones, valor letras, representación gráfica.
+             CUFE, Firma, Resolución ya están en s_radian_traceability.
+             ============================================================ -->
+        <xpath expr="//div[@id='payment_term']" position="after">
+            <div class="mt-3 pt-2 text-center" style="font-size: 0.85em; line-height: 1.6;" id="titulo_valor_footer">
+                <p class="mb-1" t-if="o.l10n_co_edi_payment_option_id">
+                    <strong>Método de pago:</strong> <span t-field="o.l10n_co_edi_payment_option_id"/>
+                </p>
+                <p class="mb-1 text-muted" style="font-size: 0.9em;">
+                    Las retenciones son solo a nivel informativo.
+                </p>
+                <p class="mb-1">
+                    <strong>Valor en letras:</strong> <span t-esc="o.amount_to_words or ''"/>
+                </p>
+            </div>
+        </xpath>
+
+        <!-- Firma vive en s_radian_traceability.xml junto al CUFE y NIT -->
+
+    </template>
+</odoo>

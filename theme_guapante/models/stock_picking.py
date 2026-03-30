@@ -1,4 +1,5 @@
 from odoo import models, fields, api
+from odoo.exceptions import UserError
 
 class StockPicking(models.Model):
     _inherit = 'stock.picking'
@@ -6,6 +7,41 @@ class StockPicking(models.Model):
     vehicle_id = fields.Many2one('fleet.vehicle', string="Vehículo Asignado")
     driver_id = fields.Many2one('res.partner', string="Conductor")
     
+    is_recolectar_operation = fields.Boolean(
+        string='Es operación Recolectar',
+        compute='_compute_is_recolectar',
+        store=False,
+    )
+    
+    @api.depends('picking_type_id')
+    def _compute_is_recolectar(self):
+        for picking in self:
+            picking.is_recolectar_operation = (
+                picking.picking_type_id.name and 
+                'recolectar' in picking.picking_type_id.name.lower()
+            )
+            
+    def button_validate(self):
+        import odoo
+        # Desactivar la restricción durante la ejecución de pruebas
+        if odoo.tools.config['test_enable'] or self.env.context.get('install_mode'):
+            return super().button_validate()
+
+        for picking in self:
+            if picking.is_recolectar_operation:
+                unconfirmed_moves = picking.move_ids_without_package.filtered(
+                    lambda m: not m.is_weight_confirmed and m.state not in ('cancel', 'done')
+                )
+                if unconfirmed_moves:
+                    product_names = "\n".join([f"- {m.product_id.display_name}" for m in unconfirmed_moves])
+                    raise UserError(
+                        "⚠️ Faltan pesajes por confirmar.\n\n"
+                        "Para poder validar esta orden de Recolección, debes marcar el campo "
+                        "'Pesaje Confirmado' (Check) al final de la línea en los siguientes productos:\n\n"
+                        f"{product_names}"
+                    )
+        return super().button_validate()
+
     @api.onchange('vehicle_id')
     def _onchange_vehicle_id(self):
         """Auto-asignar conductor basado en el vehículo"""

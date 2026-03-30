@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Journal form: DIAN Resolution Counter + Consecutive Tracking  -->
+    <!-- Visible only on journals with DIAN config enabled.           -->
+    <!-- Works for ANY journal name — reads fields dynamically.       -->
+    <!-- ============================================================ -->
+    <record id="insotech_account_journal_form_dian_counter"
+            model="ir.ui.view">
+        <field name="name">account.journal.form.inherit.insotech.dian.counter</field>
+        <field name="model">account.journal</field>
+        <field name="inherit_id" ref="account.view_account_journal_form"/>
+        <field name="priority">200</field>
+        <field name="arch" type="xml">
+            <!-- Add counter after the Advanced Settings tab content -->
+            <xpath expr="//page[@name='advanced_settings']" position="after">
+                <page string="Resolución DIAN (InSoTech)"
+                      name="insotech_dian_resolution"
+                      invisible="not l10n_co_edi_dian_authorization_number">
+                    <group string="Contador de Resolución DIAN">
+                        <group>
+                            <field name="insotech_resolution_display"
+                                   string="Estado de uso"
+                                   readonly="1"
+                                   widget="char"/>
+                            <field name="insotech_resolution_used"
+                                   string="Consecutivos usados"
+                                   readonly="1"/>
+                            <field name="insotech_resolution_total"
+                                   string="Total autorizados"
+                                   readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="insotech_resolution_available"
+                                   string="Disponibles"
+                                   readonly="1"/>
+                            <field name="insotech_resolution_percent"
+                                   string="% Disponible"
+                                   readonly="1"
+                                   widget="float"
+                                   digits="[5,1]"/>
+                        </group>
+                    </group>
+                    <group string="Tracking de Consecutivos">
+                        <group>
+                            <field name="insotech_last_dian_consecutive"
+                                   string="Último consecutivo DIAN"/>
+                        </group>
+                        <group>
+                            <button name="action_insotech_detect_last_consecutive"
+                                    string="Detectar último consecutivo"
+                                    type="object"
+                                    class="btn-secondary"
+                                    icon="fa-search"
+                                    help="Busca en facturas enviadas y registros DIAN para detectar automáticamente el último consecutivo utilizado."/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

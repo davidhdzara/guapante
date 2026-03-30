@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================
+         CRON: Certificate Expiry Check — InSoTech DIAN
+         Runs daily. Alerts when certificate is within 90/30/7 days
+         of expiry. Posts to company chatter.
+         ============================================================ -->
+    <record id="ir_cron_insotech_check_cert_expiry" model="ir.cron">
+        <field name="name">InSoTech: Verificar Vencimiento Certificado DIAN</field>
+        <field name="model_id" ref="base.model_res_company"/>
+        <field name="code">model._cron_check_certificate_expiry()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

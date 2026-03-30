@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_insotech_core" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.insotech.core</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Insotech" name="insotech_core">
+                    <block title="Licenciamiento Insotech" name="insotech_licensing_setting_container">
+                        <setting help="Ingrese el token de licencia SaaS provisto por Insotech." id="insotech_license_setting">
+                            <label for="insotech_license_token"/>
+                            <div class="text-muted">Token de acceso provisto por Insotech</div>
+                            <field name="insotech_license_token" placeholder="XXXX-XXXX-XXXX"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -15,6 +15,11 @@ class StockMove(models.Model):
         compute='_compute_customer_uom_display',
         store=False,
     )
+    is_weight_confirmed = fields.Boolean(
+        string='Pesaje Confirmado',
+        default=False,
+        help='Marca para confirmar que el producto ha sido re-pesado en bodega y corroborado.',
+    )
 
     @api.depends('sale_line_id', 'purchase_line_id')
     def _compute_customer_uom_display(self):

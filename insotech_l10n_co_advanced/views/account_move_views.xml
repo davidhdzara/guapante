@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ================================================================== -->
+    <!-- Inherit account.move form view: add DIAN status banners and buttons -->
+    <!-- ================================================================== -->
+    <record id="insotech_l10n_co_advanced_account_move_form" model="ir.ui.view">
+        <field name="name">account.move.form.inherit.insotech.l10n_co_advanced</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+
+            <!-- Declare fields first so they are available for domain eval -->
+            <xpath expr="//header" position="before">
+                <field name="insotech_dian_status" invisible="1"/>
+                <field name="insotech_is_co_edi" invisible="1"/>
+                <field name="insotech_reserved_dian_name" invisible="1"/>
+                <field name="insotech_resolution_used" invisible="1"/>
+                <field name="insotech_resolution_max" invisible="1"/>
+                <field name="insotech_resolution_percent" invisible="1"/>
+                <field name="insotech_resolution_color" invisible="1"/>
+                <field name="insotech_resolution_progress_width" invisible="1"/>
+            </xpath>
+
+            <!-- Banner: Pending DIAN validation -->
+            <xpath expr="//header" position="after">
+                <div class="alert alert-warning text-center mb-0"
+                     role="alert"
+                     invisible="insotech_dian_status != 'pending'">
+                    <strong>
+                        <i class="fa fa-clock-o"/> Pendiente de validación DIAN
+                    </strong>
+                    <br/>
+                    Esta factura tiene un número temporal
+                    (<field name="insotech_pre_inv_name" readonly="1" nolabel="1"/>).
+                    El número definitivo de la resolución DIAN se asignará
+                    automáticamente tras la aceptación electrónica.
+                </div>
+            </xpath>
+
+            <!-- Banner: DIAN rejection -->
+            <xpath expr="//header" position="after">
+                <div class="alert alert-danger text-center mb-0"
+                     role="alert"
+                     invisible="insotech_dian_status != 'rejected'">
+                    <strong>
+                        <i class="fa fa-exclamation-triangle"/>
+                        Factura rechazada por la DIAN
+                    </strong>
+                    <br/>
+                    Corrija el error indicado en el historial (chatter)
+                    y use el botón <b>"Reintentar Envío DIAN"</b>.
+                    No se ha perdido ningún consecutivo de la resolución.
+                </div>
+            </xpath>
+
+            <!-- ============================================================ -->
+            <!-- Resolution Counter — Plain text informative line             -->
+            <!-- ============================================================ -->
+            <xpath expr="//header" position="after">
+                <div class="d-flex align-items-center gap-2 px-3 py-2
+                            border-bottom bg-view"
+                     invisible="not insotech_is_co_edi or insotech_resolution_max == 0">
+
+                    <span class="text-muted small">
+                        Resolución DIAN:
+                        <field name="insotech_resolution_used"
+                               nolabel="1" readonly="1"/>
+                        /
+                        <field name="insotech_resolution_max"
+                               nolabel="1" readonly="1"/>
+                        usados
+                    </span>
+
+                    <!-- Warning only when critically low (<20%) -->
+                    <span class="text-danger small fw-bold ms-2"
+                          invisible="insotech_resolution_color != 'danger'">
+                        <i class="fa fa-exclamation-triangle"/>
+                        ¡Solicite nueva resolución!
+                    </span>
+                </div>
+            </xpath>
+
+            <!-- Buttons in the header area -->
+            <xpath expr="//header" position="inside">
+                <!-- Retry DIAN send button (visible only on rejection) -->
+                <button name="action_insotech_retry_dian"
+                        string="Reintentar Envío DIAN"
+                        type="object"
+                        class="btn-primary"
+                        icon="fa-refresh"
+                        invisible="insotech_dian_status != 'rejected'"
+                        data-hotkey="shift+d"
+                        confirm="¿Desea reintentar el envío de esta factura a la DIAN?"/>
+
+                <!-- Force DIAN accept button (admin only, pending/rejected) -->
+                <button name="action_insotech_force_dian_accept"
+                        string="Forzar Aceptación DIAN"
+                        type="object"
+                        class="btn-secondary"
+                        icon="fa-check-circle"
+                        invisible="insotech_dian_status not in ('pending', 'rejected')"
+                        groups="account.group_account_manager"
+                        confirm="¿Está seguro? Esta acción asignará el siguiente consecutivo DIAN disponible a esta factura. Solo use esto si la DIAN aceptó la factura pero el sistema no lo registró automáticamente."/>
+
+                <!-- Verify CUFE on DIAN portal (no icon, clean UI) -->
+                <button name="action_insotech_verify_cufe"
+                        string="Verificar en DIAN"
+                        type="object"
+                        class="btn-secondary"
+                        invisible="insotech_dian_status != 'accepted'"/>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>
