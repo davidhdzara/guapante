@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================
+         CRON: RADIAN Aceptación Tácita
+         Runs daily. Checks invoices with event 030 (Acuse) where
+         3 business days have passed without event 033 (Aceptación)
+         or 031 (Reclamo). Generates event 034 (Aceptación Tácita).
+         V19 compatible: no numbercall, no state, no doall.
+         ============================================================ -->
+    <record id="ir_cron_insotech_radian_tacit" model="ir.cron">
+        <field name="name">InSoTech: RADIAN Aceptación Tácita</field>
+        <field name="model_id" ref="model_insotech_radian_event"/>
+        <field name="code">model._cron_tacit_acceptance()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

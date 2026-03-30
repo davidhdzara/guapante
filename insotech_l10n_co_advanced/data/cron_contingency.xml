@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- CRON: Retry failed DIAN submissions (Contingencia Tipo 04) -->
+    <record id="cron_contingency_retry" model="ir.cron">
+        <field name="name">InSoTech: Reintento envío DIAN (Contingencia)</field>
+        <field name="model_id" search="[('model', '=', 'l10n_co_dian.document')]"/>
+        <field name="code">model._cron_contingency_retry()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+
+    <!-- CRON: Retransmit contingency invoices when DIAN recovers -->
+    <record id="cron_contingency_recovery" model="ir.cron">
+        <field name="name">InSoTech: Retransmisión post-contingencia DIAN</field>
+        <field name="model_id" search="[('model', '=', 'l10n_co_dian.document')]"/>
+        <field name="code">model._cron_contingency_recovery()</field>
+        <field name="interval_number">30</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+</odoo>
