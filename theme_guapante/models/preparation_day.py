@@ -135,6 +135,10 @@ class PreparationDay(models.Model):
         'wizard_id',
         string='Resumen por producto',
     )
+    summary_count = fields.Integer(
+        string='Cantidad de Productos',
+        compute='_compute_summary_count',
+    )
     state = fields.Selection(
         [('draft', 'Nueva Sesión'), ('loaded', 'En Progreso'), ('done', 'Finalizada')],
         default='draft',
@@ -195,6 +199,23 @@ class PreparationDay(models.Model):
                 session.progress_percentage = (len(session.detail_line_done_ids) / total_lines) * 100.0
             else:
                 session.progress_percentage = 0.0
+
+    @api.depends('summary_ids')
+    def _compute_summary_count(self):
+        for session in self:
+            session.summary_count = len(session.summary_ids)
+
+    def action_view_summaries(self):
+        self.ensure_one()
+        return {
+            'name': 'Productos a preparar',
+            'type': 'ir.actions.act_window',
+            'res_model': 'guapante.preparation.day.summary',
+            'view_mode': 'list',
+            'domain': [('wizard_id', '=', self.id)],
+            'context': {'default_wizard_id': self.id},
+            'target': 'current',
+        }
 
     def action_load(self):
         """Load all confirmed sale order lines whose picking is scheduled on self.date."""
@@ -445,4 +466,10 @@ class PreparationDaySummary(models.Model):
             'detail_line_pending_ids': [(6, 0, pending.ids)],
             'detail_line_done_ids': [(6, 0, done.ids)],
         })
-        return False
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'guapante.preparation.day',
+            'res_id': self.wizard_id.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }

@@ -13,13 +13,13 @@ export class GuapantePreparationListController extends ListController {
         this.orm = useService("orm");
 
         onMounted(() => {
-            // Escuchar el evento keydown de la tabla para capturar el Enter
+            // Escuchar el evento keydown de la tabla para capturar el Enter o Tab
             this.env.bus.addEventListener("keydown", this.onKeydown.bind(this));
         });
     }
 
     async onKeydown(ev) {
-        if (ev.key === "Enter") {
+        if (ev.key === "Enter" || ev.key === "Tab") {
             const activeElement = document.activeElement;
             // Verificar si el Enter se presionó dentro de un input de "actual_kg"
             if (activeElement && activeElement.tagName === "INPUT" && activeElement.name === "actual_kg") {
