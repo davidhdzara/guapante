@@ -91,6 +91,10 @@ class AccountMove(models.Model):
             ('03', 'Contingencia Proveedor Tecnológico'),
             ('04', 'Contingencia DIAN'),
         ],
+        ondelete={
+            '03': lambda recs: recs.write({'l10n_co_edi_operation_type': '10'}),
+            '04': lambda recs: recs.write({'l10n_co_edi_operation_type': '10'}),
+        }
     )
 
     insotech_pre_inv_name = fields.Char(
