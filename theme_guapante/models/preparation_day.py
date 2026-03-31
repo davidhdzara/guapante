@@ -290,7 +290,7 @@ class PreparationDay(models.Model):
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
                     'stock_move_id': move.id if move else False,
-                    'customer_name': order.partner_id.name,
+                    'customer_name': order.partner_id.display_name,
                     'uom_mode': mode,
                     'customer_qty_display': qty_str,
                     'customer_uom_label': uom_label,
