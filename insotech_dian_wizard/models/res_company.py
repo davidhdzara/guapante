@@ -33,22 +33,6 @@ class ResCompany(models.Model):
     insotech_dian_test_set_id = fields.Char(
         string="Test Set ID (DIAN)",
     )
-    insotech_dian_emitter_name = fields.Char(
-        string="Razón Social (Pruebas DIAN)",
-        help="Nombre exacto registrado en el RUT para pruebas.",
-    )
-    insotech_dian_emitter_nit = fields.Char(
-        string="NIT (Pruebas DIAN)",
-        help="NIT sin dígito de verificación.",
-    )
-    insotech_dian_emitter_city_code = fields.Char(
-        string="Cód. Ciudad DANE",
-        help="Código de ciudad DANE (5 dígitos) para pruebas.",
-    )
-    insotech_dian_emitter_dept_code = fields.Char(
-        string="Cód. Dpto DANE",
-        help="Código de departamento DANE (2 dígitos) para pruebas.",
-    )
     insotech_dian_config_state = fields.Selection(
         selection=[
             ('not_configured', 'Sin Configurar'),

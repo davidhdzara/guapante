@@ -38,18 +38,22 @@ class InsotechDianSetupWizard(models.TransientModel):
     test_set_id = fields.Char(string="Test Set ID")
     emitter_name = fields.Char(
         string="Razón Social (Pruebas DIAN)",
+        default='COMERCIALIZADORA Y PRODUCTORA GUAPANTE S.A.S',
         help="Nombre exacto registrado en el RUT para pruebas.",
     )
     emitter_nit = fields.Char(
         string="NIT (Pruebas DIAN)",
+        default='901975355',
         help="NIT sin dígito de verificación.",
     )
     emitter_city_code = fields.Char(
         string="Cód. Ciudad DANE",
+        default='05360',
         help="Código de ciudad DANE (5 dígitos) para pruebas.",
     )
     emitter_dept_code = fields.Char(
         string="Cód. Dpto DANE",
+        default='05',
         help="Código de departamento DANE (2 dígitos) para pruebas.",
     )
     technical_key = fields.Char(
@@ -130,10 +134,7 @@ class InsotechDianSetupWizard(models.TransientModel):
             'software_id': company.insotech_dian_software_id or '',
             'software_pin': company.insotech_dian_software_pin or '',
             'test_set_id': company.insotech_dian_test_set_id or '',
-            'emitter_name': company.insotech_dian_emitter_name or 'COMERCIALIZADORA Y PRODUCTORA GUAPANTE S.A.S',
-            'emitter_nit': company.insotech_dian_emitter_nit or '901975355',
-            'emitter_city_code': company.insotech_dian_emitter_city_code or '05360',
-            'emitter_dept_code': company.insotech_dian_emitter_dept_code or '05',
+
             'cert_file': company.insotech_dian_cert_file,
             'cert_filename': company.insotech_dian_cert_filename or '',
             'cert_password': company.insotech_dian_cert_password or '',
@@ -150,10 +151,6 @@ class InsotechDianSetupWizard(models.TransientModel):
             'insotech_dian_software_id': self.software_id,
             'insotech_dian_software_pin': self.software_pin,
             'insotech_dian_test_set_id': self.test_set_id,
-            'insotech_dian_emitter_name': self.emitter_name,
-            'insotech_dian_emitter_nit': self.emitter_nit,
-            'insotech_dian_emitter_city_code': self.emitter_city_code,
-            'insotech_dian_emitter_dept_code': self.emitter_dept_code,
             'insotech_dian_config_state': 'in_progress',
         }
         if self.cert_file:
@@ -320,10 +317,6 @@ class InsotechDianSetupWizard(models.TransientModel):
             'insotech_dian_software_id': self.software_id,
             'insotech_dian_software_pin': self.software_pin,
             'insotech_dian_test_set_id': self.test_set_id,
-            'insotech_dian_emitter_name': self.emitter_name,
-            'insotech_dian_emitter_nit': self.emitter_nit,
-            'insotech_dian_emitter_city_code': self.emitter_city_code,
-            'insotech_dian_emitter_dept_code': self.emitter_dept_code,
             'insotech_dian_config_state': 'in_progress',
         }
         if self.cert_file:
