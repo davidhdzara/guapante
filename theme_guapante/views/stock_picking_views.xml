@@ -7,8 +7,8 @@
         <field name="arch" type="xml">
             <!-- Cliente Principal antes de la dirección -->
             <xpath expr="//field[@name='partner_id']" position="before">
-                <field name="commercial_partner_id" 
-                       invisible="not partner_id or partner_id == commercial_partner_id" />
+                <field name="sale_parent_id" 
+                       invisible="not partner_id or partner_id == sale_parent_id" />
             </xpath>
 
             <xpath expr="//field[@name='origin']" position="after">
