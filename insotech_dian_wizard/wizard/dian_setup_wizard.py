@@ -895,8 +895,29 @@ class InsotechDianSetupWizard(models.TransientModel):
             num = td.DIAN_HAB_RANGE_FROM + (
                 int(time.time()) % 4000000)
             doc_number = '%s%s' % (td.DIAN_HAB_PREFIX, num)
-            emitter = ubl_generator.partner_to_party_dict(
-                self.company_id.partner_id)
+            # Construir dict EMISOR con los valores exactos del wizard
+            from ..services.test_data import _compute_dv
+            emitter = {
+                'company_name': self.emitter_name,
+                'nit': self.emitter_nit,
+                'dv': str(_compute_dv(self.emitter_nit)),
+                'document_type': '31',
+                'additional_account_id': '1',
+                'tax_scheme_id': '01',
+                'tax_scheme_name': 'IVA',
+                'tax_level_code': 'O-48',
+                'address_line': 'CL 85 48 01',
+                'city_name': 'Itagui',
+                'city_code': self.emitter_city_code,
+                'department': 'Antioquia',
+                'department_code': self.emitter_dept_code,
+                'country_code': 'CO',
+                'country_name': 'Colombia',
+                'postal_zone': '055412',
+                'phone': '3045236498',
+                'email': 'COMERCIALIZADORAGUAPANTE@GMAIL.COM',
+                'registration_name': self.emitter_name,
+            }
             xml_bytes = ubl_generator.generate_invoice(
                 number=num,
                 software_id=self.software_id,

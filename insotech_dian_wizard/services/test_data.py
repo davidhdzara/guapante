@@ -94,14 +94,14 @@ EMITTER = {
 # =====================================================================
 
 RECEIVER = {
-    'company_name': 'CONSUMIDOR FINAL',
-    'nit': '222222222222',
-    'dv': '2',
-    'document_type': '13',  # 13 = Cédula ciudadanía
-    'additional_account_id': '2',  # 2 = Persona natural
-    'tax_scheme_id': 'ZZ',  # No aplica IVA (consumidor final)
-    'tax_scheme_name': 'No aplica',
-    'tax_level_code': 'R-99-PN',  # No responsable universal
+    'company_name': 'ADQUIRIENTE DE PRUEBAS DIAN',
+    'nit': '800199436',
+    'dv': _compute_dv('800199436'),
+    'document_type': '31',  # 31 = NIT
+    'additional_account_id': '1',  # 1 = Persona jurídica
+    'tax_scheme_id': '01',  # IVA
+    'tax_scheme_name': 'IVA',
+    'tax_level_code': 'O-48',  # Responsable de IVA
 
     # Dirección (Bogotá — datos de prueba)
     'address_line': 'Cra 7 # 1-1',
@@ -111,11 +111,11 @@ RECEIVER = {
     'department_code': '11',
     'country_code': 'CO',
     'country_name': 'Colombia',
-    'postal_zone': '110001',
+    'postal_zone': '110111',
 
     'phone': '6011234567',
     'email': 'pruebas@dian.gov.co',
-    'registration_name': 'CONSUMIDOR FINAL',
+    'registration_name': 'ADQUIRIENTE DE PRUEBAS DIAN',
 }
 
 # =====================================================================
