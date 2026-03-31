@@ -5,6 +5,12 @@
         <field name="model">stock.picking</field>
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
+            <!-- Cliente Principal antes de la dirección -->
+            <xpath expr="//field[@name='partner_id']" position="before">
+                <field name="commercial_partner_id" 
+                       invisible="not partner_id or partner_id == commercial_partner_id" />
+            </xpath>
+
             <xpath expr="//field[@name='origin']" position="after">
                 <field name="is_recolectar_operation" invisible="1"/>
                 <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
