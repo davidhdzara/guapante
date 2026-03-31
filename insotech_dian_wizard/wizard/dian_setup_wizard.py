@@ -36,6 +36,22 @@ class InsotechDianSetupWizard(models.TransientModel):
     software_id = fields.Char(string="Software ID")
     software_pin = fields.Char(string="Software PIN")
     test_set_id = fields.Char(string="Test Set ID")
+    emitter_name = fields.Char(
+        string="Razón Social (Pruebas DIAN)",
+        help="Nombre exacto registrado en el RUT para pruebas.",
+    )
+    emitter_nit = fields.Char(
+        string="NIT (Pruebas DIAN)",
+        help="NIT sin dígito de verificación.",
+    )
+    emitter_city_code = fields.Char(
+        string="Cód. Ciudad DANE",
+        help="Código de ciudad DANE (5 dígitos) para pruebas.",
+    )
+    emitter_dept_code = fields.Char(
+        string="Cód. Dpto DANE",
+        help="Código de departamento DANE (2 dígitos) para pruebas.",
+    )
     technical_key = fields.Char(
         string="Clave Técnica (Pruebas)",
         default='fc8eac422eba16e22ffd8c6f94b3f40a6e38162c',
@@ -114,6 +130,10 @@ class InsotechDianSetupWizard(models.TransientModel):
             'software_id': company.insotech_dian_software_id or '',
             'software_pin': company.insotech_dian_software_pin or '',
             'test_set_id': company.insotech_dian_test_set_id or '',
+            'emitter_name': company.insotech_dian_emitter_name or 'COMERCIALIZADORA Y PRODUCTORA GUAPANTE S.A.S',
+            'emitter_nit': company.insotech_dian_emitter_nit or '901975355',
+            'emitter_city_code': company.insotech_dian_emitter_city_code or '05360',
+            'emitter_dept_code': company.insotech_dian_emitter_dept_code or '05',
             'cert_file': company.insotech_dian_cert_file,
             'cert_filename': company.insotech_dian_cert_filename or '',
             'cert_password': company.insotech_dian_cert_password or '',
@@ -130,6 +150,10 @@ class InsotechDianSetupWizard(models.TransientModel):
             'insotech_dian_software_id': self.software_id,
             'insotech_dian_software_pin': self.software_pin,
             'insotech_dian_test_set_id': self.test_set_id,
+            'insotech_dian_emitter_name': self.emitter_name,
+            'insotech_dian_emitter_nit': self.emitter_nit,
+            'insotech_dian_emitter_city_code': self.emitter_city_code,
+            'insotech_dian_emitter_dept_code': self.emitter_dept_code,
             'insotech_dian_config_state': 'in_progress',
         }
         if self.cert_file:
@@ -288,12 +312,18 @@ class InsotechDianSetupWizard(models.TransientModel):
                 "Ingrese la Clave Técnica de pruebas. "
                 "Se obtiene del portal de habilitación DIAN."
             )
+        if not self.emitter_name or not self.emitter_nit or not self.emitter_city_code or not self.emitter_dept_code:
+            raise UserError("Debe llenar todos los datos exactos del Emisor dictados por el RUT.")
 
         # Guardar credenciales en la empresa
         save_vals = {
             'insotech_dian_software_id': self.software_id,
             'insotech_dian_software_pin': self.software_pin,
             'insotech_dian_test_set_id': self.test_set_id,
+            'insotech_dian_emitter_name': self.emitter_name,
+            'insotech_dian_emitter_nit': self.emitter_nit,
+            'insotech_dian_emitter_city_code': self.emitter_city_code,
+            'insotech_dian_emitter_dept_code': self.emitter_dept_code,
             'insotech_dian_config_state': 'in_progress',
         }
         if self.cert_file:
@@ -338,10 +368,29 @@ class InsotechDianSetupWizard(models.TransientModel):
             offset = int(time.time()) % 4000000  # max ~4M
             start_number = td.DIAN_HAB_RANGE_FROM + offset
 
-            # NIT a 10 dígitos para nomenclatura DIAN
-            # Lee de la empresa real, no de test_data
-            emitter = ubl_generator.partner_to_party_dict(
-                self.company_id.partner_id)
+            # Construir dict EMISOR con los valores exactos definidos en DIAN Wizard
+            from ..services.test_data import _compute_dv
+            emitter = {
+                'company_name': self.emitter_name,
+                'nit': self.emitter_nit,
+                'dv': str(_compute_dv(self.emitter_nit)), 
+                'document_type': '31', # NIT
+                'additional_account_id': '1', 
+                'tax_scheme_id': '01',
+                'tax_scheme_name': 'IVA',
+                'tax_level_code': 'O-48', # Estándar genérico responsable IVA
+                'address_line': 'CALLE 1 # 1 - 1', # Dummy
+                'city_name': 'Ciudad Oculta', 
+                'city_code': self.emitter_city_code, # DIAN sólo valida con código, no string
+                'department': 'Departamento Oculto', 
+                'department_code': self.emitter_dept_code, # Clave para evitar CDG01
+                'country_code': 'CO',
+                'country_name': 'Colombia',
+                'postal_zone': '000000',
+                'phone': '3000000000',
+                'email': 'habilitacion@insotech.it',
+                'registration_name': self.emitter_name, 
+            }
             nit10 = emitter['nit'].rjust(10, '0')
 
             # Facturas

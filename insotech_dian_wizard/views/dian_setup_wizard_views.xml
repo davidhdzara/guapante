@@ -59,6 +59,12 @@
                            invisible="config_state == 'enabled'"/>
 
                 <group invisible="config_state == 'enabled'">
+                    <group string="Datos Emisor (Exactos RUT)">
+                        <field name="emitter_name"/>
+                        <field name="emitter_nit"/>
+                        <field name="emitter_city_code" placeholder="Ej: 05360"/>
+                        <field name="emitter_dept_code" placeholder="Ej: 05"/>
+                    </group>
                     <group string="Certificado Digital (.p12)">
                         <field name="cert_file"
                                filename="cert_filename"

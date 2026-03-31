@@ -94,28 +94,28 @@ EMITTER = {
 # =====================================================================
 
 RECEIVER = {
-    'company_name': 'EMPRESA DE PRUEBAS DIAN S.A.S',
-    'nit': '800199436',
-    'dv': _compute_dv('800199436'),  # Cálculo automático
-    'document_type': '31',  # 31 = NIT
-    'additional_account_id': '1',  # 1 = Persona jurídica
-    'tax_scheme_id': '01',  # IVA
-    'tax_scheme_name': 'IVA',
-    'tax_level_code': 'O-48',  # Responsable de IVA
+    'company_name': 'CONSUMIDOR FINAL',
+    'nit': '222222222222',
+    'dv': '2',
+    'document_type': '13',  # 13 = Cédula ciudadanía
+    'additional_account_id': '2',  # 2 = Persona natural
+    'tax_scheme_id': 'ZZ',  # No aplica IVA (consumidor final)
+    'tax_scheme_name': 'No aplica',
+    'tax_level_code': 'R-99-PN',  # No responsable universal
 
     # Dirección (Bogotá — datos de prueba)
-    'address_line': 'Cra 7 # 45-12',
+    'address_line': 'Cra 7 # 1-1',
     'city_name': 'Bogotá, D.C.',
     'city_code': '11001',
     'department': 'Bogotá',
     'department_code': '11',
     'country_code': 'CO',
     'country_name': 'Colombia',
-    'postal_zone': '110111',
+    'postal_zone': '110001',
 
-    'phone': '6019876543',
-    'email': 'adquiriente.prueba@example.com',
-    'registration_name': 'EMPRESA DE PRUEBAS DIAN S.A.S',
+    'phone': '6011234567',
+    'email': 'pruebas@dian.gov.co',
+    'registration_name': 'CONSUMIDOR FINAL',
 }
 
 # =====================================================================
