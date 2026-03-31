@@ -25,9 +25,12 @@
                 <field name="uom_mode" string="Unidad" />
             </xpath>
 
-            <!-- Inyectar Contador de Productos -->
+            <!-- Inyectar Contador de Productos (Inline style) -->
             <xpath expr="//field[@name='tax_totals']" position="before">
-                <field name="guapante_product_line_count" string="Ctdad. Productos:" readonly="1" decoration-muted="1"/>
+                <div colspan="2" class="d-flex justify-content-between text-muted pb-1">
+                    <span class="o_form_label o_td_label" style="font-weight: normal;">Productos incluídos</span>
+                    <field name="guapante_product_line_count" nolabel="1" readonly="1" class="text-end fw-medium"/>
+                </div>
             </xpath>
         </field>
     </record>
