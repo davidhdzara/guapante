@@ -253,9 +253,20 @@ class PreparationDay(models.Model):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
 
         for order in orders:
+            # Construir el nombre completo del cliente manualmente para asegurar que siempre traiga al padre
+            parent_name = order.partner_id.commercial_partner_id.name
+            if parent_name and parent_name != order.partner_id.name:
+                cust_str = f"{parent_name} - {order.partner_id.name}"
+            else:
+                cust_str = order.partner_id.display_name or order.partner_id.name
+                
             # We assume order has daily_sequence field from staging_dev
             for line in order.order_line.filtered(lambda l: l.product_id and not l.display_type):
                 if line.id in existing_sale_line_ids:
+                    # Actualizar retroactivamente el nombre en las sesiones ya cargadas
+                    existing_prep_line = self.line_ids.filtered(lambda x: x.sale_line_id.id == line.id)
+                    if existing_prep_line and existing_prep_line.customer_name != cust_str:
+                        existing_prep_line.write({'customer_name': cust_str})
                     continue  # We already loaded this line in the session.
                     
                 # Find the related stock.move
@@ -290,7 +301,7 @@ class PreparationDay(models.Model):
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
                     'stock_move_id': move.id if move else False,
-                    'customer_name': order.partner_id.display_name,
+                    'customer_name': cust_str,
                     'uom_mode': mode,
                     'customer_qty_display': qty_str,
                     'customer_uom_label': uom_label,
