@@ -8,3 +8,9 @@ Antes de iniciar cualquier tarea, proponer soluciones, revisar código o escribi
 4. Especialmente, leer siempre la skill de **"Base de Conocimiento y Aprendizajes"** antes y después de cualquier tarea que involucre alta complejidad o resolución de bugs.
 
 El incumplimiento de esta regla va en contra de las directrices principales de este proyecto. No asumas que conoces el contenido de las skills por tus conocimientos pre-entrenados; **siempre lee la fuente de verdad en `.agent/skills/`**.
+
+## 2. Entorno y Ejecución de Scripts (Python)
+Para cualquier ejecución de scripts, comandos de Python, debuggeo, instalación de dependencias, o análisis que requiera Python, estás **OBLIGADO** a utilizar el entorno virtual principal del proyecto.
+1. La ruta oficial del ejecutable de Python para este proyecto, y la única que debes utilizar, es: `./.venv/bin/python`.
+2. Si debes ejecutar comandos por bash, previamente debes activar el entorno con: `source ./.venv/bin/activate` o utilizar directamente `./.venv/bin/python [script.py]`.
+3. Nunca ejecutes el intérprete global de sistema ni otros entornos (`venv`, `.venv_excel`).

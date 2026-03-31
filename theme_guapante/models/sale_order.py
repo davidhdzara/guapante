@@ -15,6 +15,18 @@ class SaleOrder(models.Model):
         help='Consecutivo diario de la orden según la fecha de creación.',
     )
 
+    guapante_product_line_count = fields.Integer(
+        string='Cantidad de Productos',
+        compute='_compute_guapante_product_line_count',
+    )
+
+    @api.depends('order_line', 'order_line.display_type')
+    def _compute_guapante_product_line_count(self):
+        for order in self:
+            order.guapante_product_line_count = len(
+                order.order_line.filtered(lambda l: not l.display_type)
+            )
+
     def action_confirm(self):
         res = super().action_confirm()
         for order in self:
