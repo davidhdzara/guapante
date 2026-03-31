@@ -24,6 +24,11 @@
                 <field name="visual_qty" string="Cantidad" />
                 <field name="uom_mode" string="Unidad" />
             </xpath>
+
+            <!-- Inyectar Contador de Productos -->
+            <xpath expr="//field[@name='tax_totals']" position="before">
+                <field name="guapante_product_line_count" string="Ctdad. Productos:" readonly="1" decoration-muted="1"/>
+            </xpath>
         </field>
     </record>
 </odoo>

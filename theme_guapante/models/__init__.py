@@ -8,3 +8,4 @@ from . import sale_order
 from . import preparation_day
 from . import purchase_order_line
 from . import product_packaging
+from . import purchase_order
