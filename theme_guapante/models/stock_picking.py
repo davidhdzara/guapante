@@ -14,8 +14,8 @@ class StockPicking(models.Model):
     )
     commercial_partner_id = fields.Many2one(
         'res.partner',
-        related='partner_id.commercial_partner_id',
-        string="Cliente Principal",
+        related='sale_id.partner_id',
+        string="Cliente (Facturación)",
         readonly=True,
     )
     

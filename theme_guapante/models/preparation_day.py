@@ -253,12 +253,14 @@ class PreparationDay(models.Model):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
 
         for order in orders:
-            # Construir el nombre completo del cliente manualmente para asegurar que siempre traiga al padre
-            parent_name = order.partner_id.commercial_partner_id.name
-            if parent_name and parent_name != order.partner_id.name:
-                cust_str = f"{parent_name} - {order.partner_id.name}"
+            # Construir el nombre combinando Cliente Facturación y Dirección de Entrega
+            client_name = order.partner_id.name
+            shipping_name = order.partner_shipping_id.name
+            
+            if shipping_name and shipping_name != client_name:
+                cust_str = f"{client_name} (Zona: {shipping_name})"
             else:
-                cust_str = order.partner_id.display_name or order.partner_id.name
+                cust_str = order.partner_id.display_name or client_name
                 
             # We assume order has daily_sequence field from staging_dev
             for line in order.order_line.filtered(lambda l: l.product_id and not l.display_type):
