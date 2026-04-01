@@ -66,6 +66,10 @@ class AccountJournal(models.Model):
             if not max_r:
                 continue
 
+            # Un record nuevo (NewId) en el frontend no tiene ID numérico y no tiene histórico
+            if isinstance(journal.id, models.NewId) or not journal.id:
+                continue
+
             total = max_r - min_r + 1
 
             # Primary: read from ir.config_parameter
