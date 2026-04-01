@@ -248,6 +248,7 @@
                                     <field name="customer_uom_label" string="En" readonly="1"/>
                                     <field name="estimated_kg" column_invisible="1"/>
                                     <field name="actual_kg" string="Peso Registrado (kg)" digits="[10,3]" decoration-bf="1" decoration-success="1"/>
+                                    <button name="action_undo_line" type="object" icon="fa-undo" title="Corregir (Devolver a Pendientes)" class="btn btn-sm btn-warning fw-bold"/>
                                 </list>
                             </field>
                         </div>

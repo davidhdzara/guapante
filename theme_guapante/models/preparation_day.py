@@ -122,6 +122,13 @@ class PreparationDayLine(models.Model):
                     line.wizard_id.action_save_line_weight(line.id)
         return res
 
+    def action_undo_line(self):
+        """Devuelve una línea de los Hechos a los Pendientes para ser corregida."""
+        for line in self:
+            if line.is_done:
+                line.write({'is_done': False})
+        return True
+
 
 class PreparationDay(models.Model):
     """Session Model: select a date → see all products to prepare → enter real weights."""
