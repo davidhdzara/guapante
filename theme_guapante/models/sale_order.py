@@ -33,14 +33,21 @@ class SaleOrder(models.Model):
             if order.daily_sequence:
                 continue
             order_date = order.date_order.date()
-            count = self.env['sale.order'].search_count([
-                ('state', 'in', ('sale', 'done')),
-                ('date_order', '>=', fields.Datetime.to_datetime(order_date)),
-                ('date_order', '<', fields.Datetime.to_datetime(order_date + timedelta(days=1))),
-                ('id', '!=', order.id),
-                ('daily_sequence', '>', 0),
-            ])
-            order.daily_sequence = count + 1
+            # Buscar el MAX de daily_sequence del día para evitar duplicados
+            # cuando se cancelan órdenes intermedias.
+            max_result = self.env['sale.order'].sudo().read_group(
+                domain=[
+                    ('date_order', '>=', fields.Datetime.to_datetime(order_date)),
+                    ('date_order', '<', fields.Datetime.to_datetime(order_date + timedelta(days=1))),
+                    ('daily_sequence', '>', 0),
+                ],
+                fields=['daily_sequence:max'],
+                groupby=[],
+            )
+            max_seq = (max_result[0].get('daily_sequence') or 0) if max_result else 0
+            order.daily_sequence = max_seq + 1
+            # Flush para que transacciones concurrentes vean este valor inmediatamente
+            order.flush_recordset(['daily_sequence'])
         return res
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
