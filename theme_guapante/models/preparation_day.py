@@ -427,8 +427,8 @@ class PreparationDayProductWizard(models.TransientModel):
     progress_percentage = fields.Float(string='Progreso de Empaque', compute='_compute_lists')
     
     # Pendientes y Hechos (separados lógicamente para las vistas XML)
-    detail_line_pending_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists')
-    detail_line_done_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists')
+    detail_line_pending_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists', readonly=False)
+    detail_line_done_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists', readonly=False)
 
     @api.depends('session_id.line_ids.is_done', 'session_id.line_ids.actual_kg')
     def _compute_lists(self):
