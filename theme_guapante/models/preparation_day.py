@@ -223,7 +223,10 @@ class PreparationDay(models.Model):
 
         for order in orders:
             # Desglose de Cliente Principal y Zona (Dirección de Entrega)
-            main_cust_name = order.partner_id.commercial_partner_id.name or order.partner_id.name
+            # Usamos parent_id en vez de commercial_partner_id porque este último
+            # está corrupto/desactualizado para muchos contactos tipo "Cocina"/"Bar".
+            partner = order.partner_id
+            main_cust_name = partner.parent_id.name if partner.parent_id else partner.name
             shipping_name = order.partner_shipping_id.name or ''
             
             # We assume order has daily_sequence field from staging_dev
