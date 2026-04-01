@@ -45,7 +45,8 @@ class PreparationDayLine(models.Model):
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
     sale_line_id = fields.Many2one('sale.order.line', string='Línea de pedido', readonly=True)
     stock_move_id = fields.Many2one('stock.move', string='Movimiento', readonly=True)
-    customer_name = fields.Char(string='Cliente', readonly=True)
+    main_customer_name = fields.Char(string='Cliente Principal', readonly=True)
+    zone_name = fields.Char(string='Zona', readonly=True)
 
     uom_mode = fields.Selection(
         selection=[('unit', 'Unidades'), ('kg', 'Kilogramos'), ('g', 'Gramos')],
@@ -113,6 +114,21 @@ class PreparationDayLine(models.Model):
                 line.wizard_id.action_save_line_weight(line.id)
         return False
 
+    def write(self, vals):
+        res = super().write(vals)
+        if 'actual_kg' in vals:
+            for line in self:
+                if line.actual_kg > 0 and not line.is_done:
+                    line.wizard_id.action_save_line_weight(line.id)
+        return res
+
+    def action_undo_line(self):
+        """Devuelve una línea de los Hechos a los Pendientes para ser corregida."""
+        for line in self:
+            if line.is_done:
+                line.write({'is_done': False})
+        return True
+
 
 class PreparationDay(models.Model):
     """Session Model: select a date → see all products to prepare → enter real weights."""
@@ -144,44 +160,6 @@ class PreparationDay(models.Model):
         default='draft',
     )
     save_note = fields.Char(string='Resultado', readonly=True)
-    selected_product_id = fields.Many2one(
-        'product.product',
-        string='Producto seleccionado',
-        readonly=True,
-    )
-    selected_available_qty = fields.Float(
-        string='Disponible en stock',
-        digits=(10, 3),
-        readonly=True,
-    )
-    selected_total_kg = fields.Float(
-        string='Total kg pedido',
-        digits=(10, 3),
-        readonly=True,
-    )
-    
-    # Pendientes y Hechos (separados lógicamente para las vistas XML)
-    detail_line_pending_ids = fields.Many2many(
-        'guapante.preparation.day.line',
-        'prep_day_pending_rel',
-        'wizard_id',
-        'line_id',
-        string='Cajas por Hacer',
-    )
-    detail_line_done_ids = fields.Many2many(
-        'guapante.preparation.day.line',
-        'prep_day_done_rel',
-        'wizard_id',
-        'line_id',
-        string='Cajas Hechas',
-    )
-    
-    # Progreso de línea seleccionada
-    progress_percentage = fields.Float(
-        string='Progreso de Empaque',
-        compute='_compute_progress',
-        store=False,
-    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -190,15 +168,6 @@ class PreparationDay(models.Model):
                 date_str = vals.get('date', fields.Date.context_today(self))
                 vals['name'] = f'Preparación: {date_str}'
         return super().create(vals_list)
-
-    @api.depends('detail_line_pending_ids', 'detail_line_done_ids')
-    def _compute_progress(self):
-        for session in self:
-            total_lines = len(session.detail_line_pending_ids) + len(session.detail_line_done_ids)
-            if total_lines > 0:
-                session.progress_percentage = (len(session.detail_line_done_ids) / total_lines) * 100.0
-            else:
-                session.progress_percentage = 0.0
 
     @api.depends('summary_ids')
     def _compute_summary_count(self):
@@ -253,22 +222,20 @@ class PreparationDay(models.Model):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
 
         for order in orders:
-            # Construir el nombre combinando Cliente Facturación y Dirección de Entrega
-            client_name = order.partner_id.name
-            shipping_name = order.partner_shipping_id.name
+            # Desglose de Cliente Principal y Zona (Dirección de Entrega)
+            main_cust_name = order.partner_id.commercial_partner_id.name or order.partner_id.name
+            shipping_name = order.partner_shipping_id.name or ''
             
-            if shipping_name and shipping_name != client_name:
-                cust_str = f"{client_name} (Zona: {shipping_name})"
-            else:
-                cust_str = order.partner_id.display_name or client_name
-                
             # We assume order has daily_sequence field from staging_dev
             for line in order.order_line.filtered(lambda l: l.product_id and not l.display_type):
                 if line.id in existing_sale_line_ids:
                     # Actualizar retroactivamente el nombre en las sesiones ya cargadas
                     existing_prep_line = self.line_ids.filtered(lambda x: x.sale_line_id.id == line.id)
-                    if existing_prep_line and existing_prep_line.customer_name != cust_str:
-                        existing_prep_line.write({'customer_name': cust_str})
+                    if existing_prep_line and (existing_prep_line.main_customer_name != main_cust_name or existing_prep_line.zone_name != shipping_name):
+                        existing_prep_line.write({
+                            'main_customer_name': main_cust_name,
+                            'zone_name': shipping_name,
+                        })
                     continue  # We already loaded this line in the session.
                     
                 # Find the related stock.move
@@ -303,7 +270,8 @@ class PreparationDay(models.Model):
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
                     'stock_move_id': move.id if move else False,
-                    'customer_name': cust_str,
+                    'main_customer_name': main_cust_name,
+                    'zone_name': shipping_name,
                     'uom_mode': mode,
                     'customer_qty_display': qty_str,
                     'customer_uom_label': uom_label,
@@ -319,15 +287,6 @@ class PreparationDay(models.Model):
 
         self._compute_summary()
         self.state = 'loaded'
-        
-        # If the user was inside a product sub-view (detail_line_pending), refresh their view via select!
-        if self.selected_product_id:
-            summary = self.summary_ids.filtered(lambda s: s.product_id == self.selected_product_id)
-            if summary:
-                # Trigger action_select_product again dynamically to refresh the pending/done filters
-                summary.action_select_product()
-            else:
-                self.action_clear_product_filter()
         
         if added_count == 0:
             self.save_note = '✅ Listado actualizado. No se detectaron productos nuevos.'
@@ -379,12 +338,6 @@ class PreparationDay(models.Model):
         # Marcar como hecho en esta sesión persistente
         line.is_done = True
         
-        # Mover la línea de la tabla pendiente a la tabla de hechos
-        self.write({
-            'detail_line_pending_ids': [(3, line.id)],
-            'detail_line_done_ids': [(4, line.id)]
-        })
-        
         # Calcular tiempo para el Log de rendimiento
         last_log = self.env['guapante.picking.log'].search([
             ('user_id', '=', self.env.user.id),
@@ -422,28 +375,6 @@ class PreparationDay(models.Model):
             
         return True
 
-    def action_save_all_dirty_weights(self):
-        """Fallback action for manual clicking 'Save' on multiple pending lines."""
-        lines = self.detail_line_pending_ids.filtered(lambda l: l.actual_kg > 0 and not l.is_done)
-        count = len(lines)
-        if not count:
-            self.save_note = '⚠️ No hay pesos nuevos que guardar pendientes.'
-            return False
-            
-        for line in lines:
-            self.action_save_line_weight(line.id)
-            
-        self.save_note = f'✅ {count} registro(s) guardado(s) exitosamente.'
-        return False
-
-    def action_clear_product_filter(self):
-        """Clear the product filter — show all lines in the detail tab."""
-        self.selected_product_id = False
-        self.detail_line_pending_ids = [(5, 0, 0)]
-        self.detail_line_done_ids = [(5, 0, 0)]
-        self._compute_summary()
-        return False
-
     def action_mark_done(self):
         """Mark session as done."""
         self.state = 'done'
@@ -465,24 +396,55 @@ class PreparationDaySummary(models.Model):
     stock_ok = fields.Boolean(string='Stock OK', readonly=True)
 
     def action_select_product(self):
-        """Set this product variant as the active filter in the wizard detail tab."""
-        pending = self.wizard_id.line_ids.filtered(
-            lambda l: l.product_product_id == self.product_id and not l.is_done
-        )
-        done = self.wizard_id.line_ids.filtered(
-            lambda l: l.product_product_id == self.product_id and l.is_done
-        )
-        self.wizard_id.write({
-            'selected_product_id': self.product_id.id,
-            'selected_available_qty': self.available_qty,
-            'selected_total_kg': self.total_estimated_kg,
-            'detail_line_pending_ids': [(6, 0, pending.ids)],
-            'detail_line_done_ids': [(6, 0, done.ids)],
+        """Abre un wizard Transitorio para empacar este producto, sin interferir con otros usuarios."""
+        wizard = self.env['guapante.preparation.day.product.wizard'].create({
+            'session_id': self.wizard_id.id,
+            'product_id': self.product_id.id,
+            'available_qty': self.available_qty,
+            'total_estimated_kg': self.total_estimated_kg,
         })
         return {
             'type': 'ir.actions.act_window',
+            'res_model': 'guapante.preparation.day.product.wizard',
+            'res_id': wizard.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
+class PreparationDayProductWizard(models.TransientModel):
+    _name = 'guapante.preparation.day.product.wizard'
+    _description = 'Wizard de Empaque por Producto (Aislado por Usuario)'
+
+    session_id = fields.Many2one('guapante.preparation.day', string='Sesión', required=True, ondelete='cascade')
+    product_id = fields.Many2one('product.product', string='Producto', required=True)
+    
+    available_qty = fields.Float(string='Disponible en stock', digits=(10, 3), readonly=True)
+    total_estimated_kg = fields.Float(string='Total kg pedido', digits=(10, 3), readonly=True)
+    
+    progress_percentage = fields.Float(string='Progreso de Empaque', compute='_compute_lists')
+    
+    # Pendientes y Hechos (separados lógicamente para las vistas XML)
+    detail_line_pending_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists')
+    detail_line_done_ids = fields.Many2many('guapante.preparation.day.line', compute='_compute_lists')
+
+    @api.depends('session_id.line_ids.is_done', 'session_id.line_ids.actual_kg')
+    def _compute_lists(self):
+        for wiz in self:
+            all_lines = wiz.session_id.line_ids.filtered(lambda l: l.product_product_id == wiz.product_id)
+            done = all_lines.filtered(lambda l: l.is_done)
+            pending = all_lines - done
+            wiz.detail_line_done_ids = done.ids
+            wiz.detail_line_pending_ids = pending.ids
+            if all_lines:
+                wiz.progress_percentage = (len(done) / len(all_lines)) * 100.0
+            else:
+                wiz.progress_percentage = 0.0
+
+    def action_back_to_session(self):
+        return {
+            'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day',
-            'res_id': self.wizard_id.id,
+            'res_id': self.session_id.id,
             'view_mode': 'form',
             'target': 'current',
         }

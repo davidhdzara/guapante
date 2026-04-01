@@ -14,14 +14,6 @@
                         invisible="state != 'draft'"
                     />
                     <button
-                        name="action_save_all_dirty_weights"
-                        type="object"
-                        string="Guardar pesos manual"
-                        class="btn-secondary"
-                        invisible="state == 'draft' or not selected_product_id"
-                        help="Usa esto si desactivaste el guardado automático"
-                    />
-                    <button
                         name="action_load"
                         type="object"
                         string="Actualizar pedidos"
@@ -44,7 +36,6 @@
                             <field name="summary_count" widget="statinfo" string="Productos"/>
                         </button>
                     </div>
-                    <field name="selected_product_id" invisible="1"/>
 
                     <!-- Encabezado Base -->
                     <div class="oe_title mb-3">
@@ -69,7 +60,7 @@
                         </div>
 
                         <!-- ── PASO 1: RESUMEN POR PRODUCTO ── -->
-                        <div invisible="selected_product_id != False">
+                        <div>
                             <h5 class="text-muted mb-2"><i class="fa fa-list"></i> Selecciona un producto para empezar o continuar el empaque</h5>
                             <field name="summary_ids" nolabel="1">
                                 <list string="Productos del día"
@@ -91,110 +82,6 @@
                                     />
                                 </list>
                             </field>
-                        </div>
-
-                        <!-- ── PASO 2: DETALLE POR ORDEN (visible cuando hay producto seleccionado) ── -->
-                        <div invisible="not selected_product_id">
-                            <!-- Header del detalle -->
-                            <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
-                                <h3 class="mb-0 text-primary fw-bold">
-                                    <i class="fa fa-pencil-square-o"></i> Empacando: 
-                                    <field name="selected_product_id" readonly="1" nolabel="1" class="d-inline text-dark" options="{'no_open': True}"/>
-                                </h3>
-                                <button
-                                    name="action_clear_product_filter"
-                                    type="object"
-                                    string="← Volver a todos los productos"
-                                    class="btn btn-sm btn-outline-secondary"
-                                />
-                            </div>
-                            
-                            <!-- Indicador de stock y progreso -->
-                            <field name="selected_total_kg" invisible="1"/>
-                            <field name="selected_available_qty" invisible="1"/>
-                            <div class="row align-items-center mb-4 bg-light p-3 rounded-3">
-                                <div class="col-12 col-md-6 mb-2 mb-md-0 d-flex gap-2">
-                                    <span class="badge text-bg-light border border-secondary text-dark px-3 py-2" style="font-size: 0.9rem;">
-                                        <i class="fa fa-shopping-cart"></i> Pedido: <field name="selected_total_kg" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
-                                    </span>
-                                    <span class="badge bg-danger px-3 py-2" style="font-size: 0.9rem;"
-                                        invisible="selected_available_qty &gt;= selected_total_kg">
-                                        <i class="fa fa-exclamation-triangle"></i> Stock Insuficiente: <field name="selected_available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
-                                    </span>
-                                    <span class="badge bg-success px-3 py-2" style="font-size: 0.9rem;"
-                                        invisible="selected_available_qty &lt; selected_total_kg">
-                                        <i class="fa fa-check"></i> Hay Stock: <field name="selected_available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
-                                    </span>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="fw-bold text-muted small text-uppercase">Avance:</span>
-                                        <field name="progress_percentage" widget="progressbar" class="w-100 flex-grow-1" nolabel="1"/>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Listas Dinámicas (Pendiente / Hecho) -->
-                            <div class="row">
-                                <div class="col-12">
-                                    <h4 class="mb-2 text-warning fw-bold"><i class="fa fa-clock-o"></i> Por Hacer </h4>
-                                    <p class="text-muted small">Escribe el peso real y presiona la tecla <b>Enter</b> para guardar automáticamente.</p>
-                                    <field
-                                        name="detail_line_pending_ids"
-                                        nolabel="1"
-                                    >
-                                        <!-- Editable bottom for auto-save UI -->
-                                        <list
-                                            string="Por Hacer"
-                                            editable="bottom"
-                                            create="0" delete="0"
-                                            decoration-warning="actual_kg == 0"
-                                            class="guapante-list-touch"
-                                        >
-                                            <field name="daily_sequence" string="Caja #" readonly="1" optional="show" decoration-bf="1"/>
-                                            <field name="product_description" string="Producto exacto" readonly="1" decoration-bf="1"/>
-                                            <field name="packaging_name" column_invisible="1"/>
-                                            <field name="customer_name" string="Cliente" readonly="1"/>
-                                            <field name="customer_qty_display" string="Pidió" readonly="1"/>
-                                            <field name="customer_uom_label" string="En" readonly="1"/>
-                                            <field name="estimated_kg" column_invisible="1"/>
-                                            <field name="needs_weighing" column_invisible="1"/>
-                                            <field name="is_done" column_invisible="1"/>
-                                            <field
-                                                name="actual_kg"
-                                                string="Peso real (kg)"
-                                                digits="[10,3]"
-                                            />
-                                            <button name="action_save_line_weight_from_ui" type="object" icon="fa-check" title="Confirmar peso" class="btn btn-sm btn-success fw-bold"/>
-                                        </list>
-                                    </field>
-                                </div>
-                                <div class="col-12 mt-4" invisible="not detail_line_done_ids">
-                                    <h4 class="mb-2 text-success fw-bold"><i class="fa fa-check-circle"></i> Hechos en esta sesión</h4>
-                                    <field
-                                        name="detail_line_done_ids"
-                                        nolabel="1"
-                                        readonly="1"
-                                    >
-                                        <list string="Hechos" decoration-muted="1" create="0" delete="0" open="0">
-                                            <field name="daily_sequence" string="Caja #" readonly="1"/>
-                                            <field name="product_description" string="Producto exacto" readonly="1"/>
-                                            <field name="packaging_name" column_invisible="1"/>
-                                            <field name="customer_name" string="Cliente" readonly="1"/>
-                                            <field name="customer_qty_display" string="Pidió" readonly="1"/>
-                                            <field name="customer_uom_label" string="En" readonly="1"/>
-                                            <field name="estimated_kg" column_invisible="1"/>
-                                            <field
-                                                name="actual_kg"
-                                                string="Peso Registrado (kg)"
-                                                digits="[10,3]"
-                                                decoration-bf="1"
-                                                decoration-success="1"
-                                            />
-                                        </list>
-                                    </field>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </sheet>
@@ -277,4 +164,98 @@
         action="action_preparation_day"
         sequence="50"
     />
+
+    <!-- Wizard Transitorio: Aislamiento visual por usuario -->
+    <record id="view_preparation_day_product_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.wizard.form</field>
+        <field name="model">guapante.preparation.day.product.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Empaque de Producto">
+                <header>
+                    <button
+                        name="action_back_to_session"
+                        type="object"
+                        string="← Volver a todos los productos"
+                        class="btn-secondary"
+                    />
+                </header>
+                <sheet>
+                    <!-- Header del detalle -->
+                    <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                        <h3 class="mb-0 text-primary fw-bold">
+                            <i class="fa fa-pencil-square-o"></i> Empacando: 
+                            <field name="product_id" readonly="1" nolabel="1" class="d-inline text-dark" options="{'no_open': True}"/>
+                        </h3>
+                    </div>
+                    
+                    <!-- Indicador de stock y progreso -->
+                    <field name="total_estimated_kg" invisible="1"/>
+                    <field name="available_qty" invisible="1"/>
+                    <div class="row align-items-center mb-4 bg-light p-3 rounded-3">
+                        <div class="col-12 col-md-6 mb-2 mb-md-0 d-flex gap-2">
+                            <span class="badge text-bg-light border border-secondary text-dark px-3 py-2" style="font-size: 0.9rem;">
+                                <i class="fa fa-shopping-cart"></i> Pedido: <field name="total_estimated_kg" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
+                            </span>
+                            <span class="badge bg-danger px-3 py-2" style="font-size: 0.9rem;"
+                                invisible="available_qty &gt;= total_estimated_kg">
+                                <i class="fa fa-exclamation-triangle"></i> Stock Insuficiente: <field name="available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
+                            </span>
+                            <span class="badge bg-success px-3 py-2" style="font-size: 0.9rem;"
+                                invisible="available_qty &lt; total_estimated_kg">
+                                <i class="fa fa-check"></i> Hay Stock: <field name="available_qty" readonly="1" nolabel="1" class="d-inline" digits="[10,3]"/> kg
+                            </span>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold text-muted small text-uppercase">Avance:</span>
+                                <field name="progress_percentage" widget="progressbar" class="w-100 flex-grow-1" nolabel="1"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Listas Dinámicas (Pendiente / Hecho) -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h4 class="mb-2 text-warning fw-bold"><i class="fa fa-clock-o"></i> Por Hacer </h4>
+                            <p class="text-muted small">Escribe el peso real y presiona la tecla <b>Enter</b> para guardar automáticamente.</p>
+                            <field name="detail_line_pending_ids" nolabel="1">
+                                <list string="Por Hacer" editable="bottom" create="0" delete="0" decoration-warning="actual_kg == 0" class="guapante-list-touch">
+                                    <field name="daily_sequence" string="Caja #" readonly="1" optional="show" decoration-bf="1"/>
+                                    <field name="product_description" string="Producto exacto" readonly="1" decoration-bf="1"/>
+                                    <field name="packaging_name" column_invisible="1"/>
+                                    <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
+                                    <field name="zone_name" string="Zona" readonly="1"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                    <field name="customer_uom_label" string="En" readonly="1"/>
+                                    <field name="estimated_kg" column_invisible="1"/>
+                                    <field name="needs_weighing" column_invisible="1"/>
+                                    <field name="is_done" column_invisible="1"/>
+                                    <field name="actual_kg" string="Peso real (kg)" digits="[10,3]"/>
+                                    <button name="action_save_line_weight_from_ui" type="object" icon="fa-check" title="Confirmar peso" class="btn btn-sm btn-success fw-bold"/>
+                                </list>
+                            </field>
+                        </div>
+                        <div class="col-12 mt-4" invisible="not detail_line_done_ids">
+                            <h4 class="mb-2 text-success fw-bold"><i class="fa fa-check-circle"></i> Hechos en esta sesión</h4>
+                            <field name="detail_line_done_ids" nolabel="1" readonly="1">
+                                <list string="Hechos" decoration-muted="1" create="0" delete="0" open="0">
+                                    <field name="daily_sequence" string="Caja #" readonly="1"/>
+                                    <field name="product_description" string="Producto exacto" readonly="1"/>
+                                    <field name="packaging_name" column_invisible="1"/>
+                                    <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
+                                    <field name="zone_name" string="Zona" readonly="1"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                    <field name="customer_uom_label" string="En" readonly="1"/>
+                                    <field name="estimated_kg" column_invisible="1"/>
+                                    <field name="actual_kg" string="Peso Registrado (kg)" digits="[10,3]" decoration-bf="1" decoration-success="1"/>
+                                    <button name="action_undo_line" type="object" icon="fa-undo" title="Corregir (Devolver a Pendientes)" class="btn btn-sm btn-warning fw-bold"/>
+                                </list>
+                            </field>
+                        </div>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
 </odoo>

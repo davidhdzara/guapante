@@ -3,3 +3,4 @@ access_preparation_day,guapante.preparation.day,model_guapante_preparation_day,b
 access_preparation_day_line,guapante.preparation.day.line,model_guapante_preparation_day_line,base.group_user,1,1,1,1
 access_preparation_day_summary,guapante.preparation.day.summary,model_guapante_preparation_day_summary,base.group_user,1,1,1,1
 access_picking_log,guapante.picking.log,model_guapante_picking_log,base.group_user,1,1,1,1
+access_preparation_day_wizard,guapante.preparation.day.product.wizard,model_guapante_preparation_day_product_wizard,base.group_user,1,1,1,1

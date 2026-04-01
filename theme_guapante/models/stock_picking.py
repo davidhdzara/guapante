@@ -12,12 +12,21 @@ class StockPicking(models.Model):
         compute='_compute_is_recolectar',
         store=False,
     )
-    commercial_partner_id = fields.Many2one(
+    sale_parent_id = fields.Many2one(
         'res.partner',
-        related='sale_id.partner_id',
-        string="Cliente (Facturación)",
-        readonly=True,
+        compute='_compute_sale_parent_id',
+        string="Cliente Principal",
+        store=False,
     )
+    
+    @api.depends('sale_id.partner_id')
+    def _compute_sale_parent_id(self):
+        for picking in self:
+            partner = picking.sale_id.partner_id
+            if partner:
+                picking.sale_parent_id = partner.parent_id if partner.parent_id else partner
+            else:
+                picking.sale_parent_id = False
     
     @api.depends('picking_type_id')
     def _compute_is_recolectar(self):
