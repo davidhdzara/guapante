@@ -6,6 +6,12 @@ class StockPicking(models.Model):
 
     vehicle_id = fields.Many2one('fleet.vehicle', string="Vehículo Asignado")
     driver_id = fields.Many2one('res.partner', string="Conductor")
+    daily_sequence = fields.Integer(
+        string='Caja #',
+        related='sale_id.daily_sequence',
+        store=True,
+        readonly=True,
+    )
     
     is_recolectar_operation = fields.Boolean(
         string='Es operación Recolectar',

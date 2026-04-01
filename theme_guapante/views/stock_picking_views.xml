@@ -5,16 +5,18 @@
         <field name="model">stock.picking</field>
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
+            <!-- Caja # junto al documento origen -->
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="daily_sequence" invisible="daily_sequence == 0"/>
+                <field name="is_recolectar_operation" invisible="1"/>
+                <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
+                <field name="driver_id" placeholder="Conductor Asignado"/>
+            </xpath>
+
             <!-- Cliente Principal antes de la dirección -->
             <xpath expr="//field[@name='partner_id']" position="before">
                 <field name="sale_parent_id" 
                        invisible="not partner_id or partner_id == sale_parent_id" />
-            </xpath>
-
-            <xpath expr="//field[@name='origin']" position="after">
-                <field name="is_recolectar_operation" invisible="1"/>
-                <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
-                <field name="driver_id" placeholder="Conductor Asignado"/>
             </xpath>
 
             <!-- Columnas: Cant. Cliente y UdM Cliente después de Demanda -->
@@ -29,6 +31,18 @@
                        widget="boolean_toggle"
                        column_invisible="parent.is_recolectar_operation == False"
                        readonly="parent.state in ('done', 'cancel')"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Caja # en la vista lista de Recolecciones y Entregas -->
+    <record id="view_picking_list_inherit_guapante" model="ir.ui.view">
+        <field name="name">stock.picking.list.inherit.guapante</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.vpicktree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="daily_sequence" string="Caja #" optional="show" decoration-bf="1"/>
             </xpath>
         </field>
     </record>
