@@ -341,12 +341,10 @@ class PreparationDay(models.Model):
         if not line or line.is_done or line.actual_kg <= 0:
             return False
 
-        # Inyectar al flujo logístico (primer pesaje previo al Despacho final)
+        # Registrar el peso real en el movimiento de stock (cantidad ejecutada).
+        # No se toca product_uom_qty de la línea de venta para preservar la demanda original.
         if line.stock_move_id:
             line.stock_move_id.sudo().write({'quantity': line.actual_kg})
-        if line.sale_line_id:
-            sale_line = line.sale_line_id.sudo()
-            sale_line.write({'product_uom_qty': line.actual_kg})
             
         # Marcar como hecho en esta sesión persistente
         line.is_done = True
