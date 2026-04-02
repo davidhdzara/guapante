@@ -25,7 +25,13 @@
                         string="Finalizar Sesión"
                         class="btn-success"
                         invisible="state == 'draft' or state == 'done'"
-                        confirm="¿Estás seguro que deseas finalizar esta sesión? Ya no podrás editarla."
+                        confirm="¿Estás seguro que deseas finalizar esta sesión?"
+                    />
+                    <button
+                        name="action_reopen"
+                        type="object"
+                        string="Reabrir Sesión"
+                        invisible="state != 'done'"
                     />
                     <field name="state" widget="statusbar" statusbar_visible="draft,loaded,done"/>
                 </header>

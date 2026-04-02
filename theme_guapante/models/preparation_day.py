@@ -199,7 +199,7 @@ class PreparationDay(models.Model):
     def action_load(self):
         """Load all confirmed sale order lines whose picking is scheduled on self.date."""
         if self.state == 'done':
-            raise UserError('La sesión ya fue marcada como finalizada.')
+            self.state = 'loaded'
             
         # Clean up existing pending lines if their associated order or move got cancelled
         lines_to_unlink = self.line_ids.filtered(
@@ -412,6 +412,11 @@ class PreparationDay(models.Model):
     def action_mark_done(self):
         """Mark session as done."""
         self.state = 'done'
+        return False
+
+    def action_reopen(self):
+        """Reopen a finished session to allow adding new orders."""
+        self.state = 'loaded'
         return False
 
 
