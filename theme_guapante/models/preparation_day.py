@@ -133,6 +133,9 @@ class PreparationDayLine(models.Model):
                     summary.total_done_kg = round(
                         max(0.0, summary.total_done_kg - line.actual_kg), 3
                     )
+                # Limpiar la cantidad ejecutada en el picking
+                if line.stock_move_id:
+                    line.stock_move_id.sudo().move_line_ids.write({'quantity': 0})
                 line.write({'is_done': False, 'actual_kg': 0.0})
         return True
 
@@ -341,10 +344,25 @@ class PreparationDay(models.Model):
         if not line or line.is_done or line.actual_kg <= 0:
             return False
 
-        # Registrar el peso real en el movimiento de stock (cantidad ejecutada).
-        # No se toca product_uom_qty de la línea de venta para preservar la demanda original.
+        # Registrar el peso real en stock.move.line (cantidad ejecutada visible en el picking).
+        # Limpiamos todas las move_lines existentes para evitar acumulación por operaciones
+        # previas de guardar/deshacer, luego dejamos exactamente una con el peso correcto.
         if line.stock_move_id:
-            line.stock_move_id.sudo().write({'quantity': line.actual_kg})
+            move = line.stock_move_id.sudo()
+            if move.move_line_ids:
+                move.move_line_ids.write({'quantity': 0})
+                move.move_line_ids[0].quantity = line.actual_kg
+            else:
+                move.write({
+                    'move_line_ids': [(0, 0, {
+                        'product_id': move.product_id.id,
+                        'product_uom_id': move.product_uom.id,
+                        'quantity': line.actual_kg,
+                        'location_id': move.location_id.id,
+                        'location_dest_id': move.location_dest_id.id,
+                        'picking_id': move.picking_id.id,
+                    })]
+                })
             
         # Marcar como hecho en esta sesión persistente
         line.is_done = True
