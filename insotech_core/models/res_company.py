@@ -10,9 +10,11 @@ Fields defined here:
 - insotech_last_successful_ping   → Último ping exitoso al license server
 """
 import logging
-import requests
 from datetime import timedelta
-from odoo import models, fields
+
+import requests
+
+from odoo import fields, models
 
 _logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ class ResCompany(models.Model):
     insotech_usage_count = fields.Integer(string="Contador de Uso Insotech", default=0, copy=False)
     insotech_last_successful_ping = fields.Datetime(string="Último Ping Exitoso Insotech", copy=False)
 
-    def _validate_and_report_license(self):
+    def _validate_and_report_license(self) -> bool:
         self.ensure_one()
 
         token = self.insotech_license_token
@@ -43,7 +45,7 @@ class ResCompany(models.Model):
             'reset_counter': True,
         }
 
-        def _check_grace_period():
+        def _check_grace_period() -> bool:
             if self.insotech_last_successful_ping:
                 limit_date = fields.Datetime.now() - timedelta(hours=72)
                 if self.insotech_last_successful_ping >= limit_date:
