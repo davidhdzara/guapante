@@ -126,7 +126,14 @@ class PreparationDayLine(models.Model):
         """Devuelve una línea de los Hechos a los Pendientes para ser corregida."""
         for line in self:
             if line.is_done:
-                line.write({'is_done': False})
+                summary = line.wizard_id.summary_ids.filtered(
+                    lambda s: s.product_id == line.product_product_id
+                )
+                if summary:
+                    summary.total_done_kg = round(
+                        max(0.0, summary.total_done_kg - line.actual_kg), 3
+                    )
+                line.write({'is_done': False, 'actual_kg': 0.0})
         return True
 
 
@@ -343,6 +350,11 @@ class PreparationDay(models.Model):
             
         # Marcar como hecho en esta sesión persistente
         line.is_done = True
+
+        # Actualizar total_done_kg en el resumen del producto
+        summary = self.summary_ids.filtered(lambda s: s.product_id == line.product_product_id)
+        if summary:
+            summary.total_done_kg = round(summary.total_done_kg + line.actual_kg, 3)
         
         # Calcular tiempo para el Log de rendimiento
         last_log = self.env['guapante.picking.log'].search([
@@ -400,6 +412,20 @@ class PreparationDaySummary(models.Model):
     order_count = fields.Integer(string='Órdenes', readonly=True)
     available_qty = fields.Float(string='Disponible (kg)', digits=(10, 3), readonly=True)
     stock_ok = fields.Boolean(string='Stock OK', readonly=True)
+    progress_pct = fields.Float(
+        string='Progreso',
+        compute='_compute_progress_pct',
+        digits=(5, 1),
+    )
+
+    @api.depends('wizard_id.line_ids.is_done', 'wizard_id.line_ids.product_product_id')
+    def _compute_progress_pct(self):
+        for rec in self:
+            all_lines = rec.wizard_id.line_ids.filtered(
+                lambda l: l.product_product_id == rec.product_id
+            )
+            done = all_lines.filtered(lambda l: l.is_done)
+            rec.progress_pct = (len(done) / len(all_lines) * 100.0) if all_lines else 0.0
 
     def action_select_product(self):
         """Abre un wizard Transitorio para empacar este producto, sin interferir con otros usuarios."""

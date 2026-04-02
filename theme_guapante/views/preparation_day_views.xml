@@ -71,7 +71,8 @@
                                     <field name="product_id" string="Producto"/>
                                     <field name="order_count" string="Órdenes"/>
                                     <field name="total_estimated_kg" string="Total a preparar (kg)" digits="[10,3]"/>
-                                    <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" widget="progressbar" options="{'current_value': 'total_done_kg', 'max_value': 'total_estimated_kg'}"/>
+                                    <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" optional="hide"/>
+                                    <field name="progress_pct" string="Progreso" widget="progressbar" options="{'editable': false}"/>
                                     <field name="available_qty" string="Disponible en bodega" digits="[10,3]"/>
                                     <button
                                         name="action_select_product"
@@ -126,7 +127,8 @@
                 <field name="product_id" string="Producto"/>
                 <field name="order_count" string="Órdenes"/>
                 <field name="total_estimated_kg" string="Total a preparar (kg)" digits="[10,3]"/>
-                <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" widget="progressbar" options="{'current_value': 'total_done_kg', 'max_value': 'total_estimated_kg'}"/>
+                <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" optional="hide"/>
+                <field name="progress_pct" string="Progreso" widget="progressbar" options="{'editable': false}"/>
                 <field name="available_qty" string="Disponible en bodega" digits="[10,3]"/>
                 <button
                     name="action_select_product"
