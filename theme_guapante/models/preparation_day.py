@@ -126,7 +126,17 @@ class PreparationDayLine(models.Model):
         """Devuelve una línea de los Hechos a los Pendientes para ser corregida."""
         for line in self:
             if line.is_done:
-                line.write({'is_done': False})
+                summary = line.wizard_id.summary_ids.filtered(
+                    lambda s: s.product_id == line.product_product_id
+                )
+                if summary:
+                    summary.total_done_kg = round(
+                        max(0.0, summary.total_done_kg - line.actual_kg), 3
+                    )
+                # Limpiar la cantidad ejecutada en el picking
+                if line.stock_move_id:
+                    line.stock_move_id.sudo().move_line_ids.write({'quantity': 0})
+                line.write({'is_done': False, 'actual_kg': 0.0})
         return True
 
 
@@ -189,7 +199,7 @@ class PreparationDay(models.Model):
     def action_load(self):
         """Load all confirmed sale order lines whose picking is scheduled on self.date."""
         if self.state == 'done':
-            raise UserError('La sesión ya fue marcada como finalizada.')
+            self.state = 'loaded'
             
         # Clean up existing pending lines if their associated order or move got cancelled
         lines_to_unlink = self.line_ids.filtered(
@@ -216,6 +226,9 @@ class PreparationDay(models.Model):
         orders = self.env['sale.order'].search(domain)
         if not orders and not self.line_ids:
             raise UserError('No hay pedidos pendientes para la fecha seleccionada.')
+
+        # Assign daily_sequence scoped to this delivery date (restarts from 1 each day).
+        self.env['sale.order']._assign_daily_sequences(self.date)
 
         existing_sale_line_ids = self.line_ids.mapped('sale_line_id').ids
         line_vals = []
@@ -268,7 +281,7 @@ class PreparationDay(models.Model):
                         if line.product_packaging_id and (line.uom_mode or 'unit') == 'unit'
                         else False
                     ),
-                    'daily_sequence': order.daily_sequence if hasattr(order, 'daily_sequence') else 0,
+                    'daily_sequence': order.daily_sequence,
                     'order_name': order.name,
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
@@ -331,15 +344,33 @@ class PreparationDay(models.Model):
         if not line or line.is_done or line.actual_kg <= 0:
             return False
 
-        # Inyectar al flujo logístico (primer pesaje previo al Despacho final)
+        # Registrar el peso real en stock.move.line (cantidad ejecutada visible en el picking).
+        # Limpiamos todas las move_lines existentes para evitar acumulación por operaciones
+        # previas de guardar/deshacer, luego dejamos exactamente una con el peso correcto.
         if line.stock_move_id:
-            line.stock_move_id.sudo().write({'quantity': line.actual_kg})
-        if line.sale_line_id:
-            sale_line = line.sale_line_id.sudo()
-            sale_line.write({'product_uom_qty': line.actual_kg})
+            move = line.stock_move_id.sudo()
+            if move.move_line_ids:
+                move.move_line_ids.write({'quantity': 0})
+                move.move_line_ids[0].quantity = line.actual_kg
+            else:
+                move.write({
+                    'move_line_ids': [(0, 0, {
+                        'product_id': move.product_id.id,
+                        'product_uom_id': move.product_uom.id,
+                        'quantity': line.actual_kg,
+                        'location_id': move.location_id.id,
+                        'location_dest_id': move.location_dest_id.id,
+                        'picking_id': move.picking_id.id,
+                    })]
+                })
             
         # Marcar como hecho en esta sesión persistente
         line.is_done = True
+
+        # Actualizar total_done_kg en el resumen del producto
+        summary = self.summary_ids.filtered(lambda s: s.product_id == line.product_product_id)
+        if summary:
+            summary.total_done_kg = round(summary.total_done_kg + line.actual_kg, 3)
         
         # Calcular tiempo para el Log de rendimiento
         last_log = self.env['guapante.picking.log'].search([
@@ -383,6 +414,11 @@ class PreparationDay(models.Model):
         self.state = 'done'
         return False
 
+    def action_reopen(self):
+        """Reopen a finished session to allow adding new orders."""
+        self.state = 'loaded'
+        return False
+
 
 class PreparationDaySummary(models.Model):
     """Aggregated view: one row per product variant showing totals."""
@@ -397,6 +433,20 @@ class PreparationDaySummary(models.Model):
     order_count = fields.Integer(string='Órdenes', readonly=True)
     available_qty = fields.Float(string='Disponible (kg)', digits=(10, 3), readonly=True)
     stock_ok = fields.Boolean(string='Stock OK', readonly=True)
+    progress_pct = fields.Float(
+        string='Progreso',
+        compute='_compute_progress_pct',
+        digits=(5, 1),
+    )
+
+    @api.depends('wizard_id.line_ids.is_done', 'wizard_id.line_ids.product_product_id')
+    def _compute_progress_pct(self):
+        for rec in self:
+            all_lines = rec.wizard_id.line_ids.filtered(
+                lambda l: l.product_product_id == rec.product_id
+            )
+            done = all_lines.filtered(lambda l: l.is_done)
+            rec.progress_pct = (len(done) / len(all_lines) * 100.0) if all_lines else 0.0
 
     def action_select_product(self):
         """Abre un wizard Transitorio para empacar este producto, sin interferir con otros usuarios."""
