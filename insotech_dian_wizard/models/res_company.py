@@ -111,7 +111,7 @@ class ResCompany(models.Model):
     )
 
     @api.depends('insotech_dian_cert_file', 'insotech_dian_cert_password')
-    def _compute_cert_expiry_date(self):
+    def _compute_cert_expiry_date(self) -> None:
         """Extracts the expiry date from the .p12 certificate."""
         for company in self:
             company.insotech_dian_cert_expiry_date = False
@@ -142,7 +142,7 @@ class ResCompany(models.Model):
                 )
 
     @api.depends('insotech_dian_cert_expiry_date')
-    def _compute_cert_days_remaining(self):
+    def _compute_cert_days_remaining(self) -> None:
         """Calculates days remaining until certificate expiry."""
         today = fields.Date.context_today(self)
         for company in self:
@@ -153,7 +153,7 @@ class ResCompany(models.Model):
                 company.insotech_dian_cert_days_remaining = -1
 
     @api.model
-    def _cron_check_certificate_expiry(self):
+    def _cron_check_certificate_expiry(self) -> None:
         """CRON: Check certificate expiry for all companies.
 
         Runs daily. Posts an activity on the company and logs:
@@ -233,7 +233,7 @@ class ResCompany(models.Model):
                     company.name, e,
                 )
 
-    def _register_hook(self):
+    def _register_hook(self) -> None:
         """Ensure product.product_category_goods XML ID exists.
 
         Runs on every server start. Prevents ValueError in

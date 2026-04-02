@@ -10,8 +10,13 @@ class TestSaleOrderDeliveryStatus(TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.warehouse = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
-        if cls.warehouse:
-            cls.warehouse.delivery_steps = 'pick_ship'
+        if not cls.warehouse:
+            cls.warehouse = cls.env['stock.warehouse'].create({
+                'name': 'Test Warehouse Guapante',
+                'code': 'TWG',
+                'company_id': cls.env.company.id,
+            })
+        cls.warehouse.delivery_steps = 'pick_ship'
         
         cls.partner = cls.env['res.partner'].create({
             'name': 'Test Partner Guapante',
