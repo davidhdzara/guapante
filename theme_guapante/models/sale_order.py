@@ -28,27 +28,31 @@ class SaleOrder(models.Model):
             )
 
     def action_confirm(self):
-        res = super().action_confirm()
-        for order in self:
-            if order.daily_sequence:
-                continue
-            order_date = order.date_order.date()
-            # Buscar el MAX de daily_sequence del día para evitar duplicados
-            # cuando se cancelan órdenes intermedias.
-            max_result = self.env['sale.order'].sudo().read_group(
-                domain=[
-                    ('date_order', '>=', fields.Datetime.to_datetime(order_date)),
-                    ('date_order', '<', fields.Datetime.to_datetime(order_date + timedelta(days=1))),
-                    ('daily_sequence', '>', 0),
-                ],
-                fields=['daily_sequence:max'],
-                groupby=[],
-            )
-            max_seq = (max_result[0].get('daily_sequence') or 0) if max_result else 0
-            order.daily_sequence = max_seq + 1
-            # Flush para que transacciones concurrentes vean este valor inmediatamente
-            order.flush_recordset(['daily_sequence'])
-        return res
+        return super().action_confirm()
+
+    def _assign_daily_sequences(self, delivery_date):
+        """Assign daily_sequence to confirmed orders for a given delivery date.
+
+        Called from PreparationDay.action_load so the sequence is always scoped
+        to the actual delivery date of the session, not the order creation date.
+        Orders that already have a sequence keep it; new orders receive the next number.
+        """
+        orders_for_date = self.env['sale.order'].sudo().search(
+            [
+                ('picking_ids.scheduled_date', '>=', fields.Datetime.to_datetime(delivery_date)),
+                ('picking_ids.scheduled_date', '<', fields.Datetime.to_datetime(
+                    delivery_date + timedelta(days=1)
+                )),
+                ('state', 'in', ('sale', 'done')),
+            ],
+            order='id asc',
+        )
+        next_seq = 1
+        for order in orders_for_date:
+            if not order.daily_sequence:
+                order.daily_sequence = next_seq
+                order.flush_recordset(['daily_sequence'])
+            next_seq = max(next_seq, order.daily_sequence) + 1
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
     def _compute_cart_info(self):

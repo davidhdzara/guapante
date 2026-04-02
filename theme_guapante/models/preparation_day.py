@@ -217,6 +217,9 @@ class PreparationDay(models.Model):
         if not orders and not self.line_ids:
             raise UserError('No hay pedidos pendientes para la fecha seleccionada.')
 
+        # Assign daily_sequence scoped to this delivery date (restarts from 1 each day).
+        self.env['sale.order']._assign_daily_sequences(self.date)
+
         existing_sale_line_ids = self.line_ids.mapped('sale_line_id').ids
         line_vals = []
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
@@ -268,7 +271,7 @@ class PreparationDay(models.Model):
                         if line.product_packaging_id and (line.uom_mode or 'unit') == 'unit'
                         else False
                     ),
-                    'daily_sequence': order.daily_sequence if hasattr(order, 'daily_sequence') else 0,
+                    'daily_sequence': order.daily_sequence,
                     'order_name': order.name,
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,
