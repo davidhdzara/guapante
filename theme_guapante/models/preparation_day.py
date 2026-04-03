@@ -355,23 +355,28 @@ class PreparationDay(models.Model):
         # Recrear summaries desde cero basándose en las líneas actuales.
         self.summary_ids.unlink()
 
-        domain = [
-            ('state', 'in', ('sale', 'done')),
-            (
-                'picking_ids.scheduled_date',
-                '>=',
-                fields.Datetime.to_datetime(self.date),
-            ),
-            (
-                'picking_ids.scheduled_date',
-                '<',
-                fields.Datetime.to_datetime(
-                    fields.Date.add(self.date, days=1)
-                ),
-            ),
-            ('picking_ids.state', 'not in', ('done', 'cancel')),
-        ]
-        Orders = self.env['sale.order'].search(domain)
+        # ── Buscar órdenes via stock.picking directo ──
+        # IMPORTANTE: No usar dominio sobre sale.order.picking_ids
+        # porque Odoo evalúa cada condición en picking_ids como un
+        # EXISTS independiente (puede matchear pickings DIFERENTES).
+        # En warehouse 2-step (pick_ship), esto causa que:
+        # - Una condición machee el PICK y otra el OUT → falso positivo
+        # - Ninguna condición machee ambas a la vez → falso negativo
+        #
+        # La solución es buscar directamente en stock.picking donde
+        # TODAS las condiciones aplican al MISMO registro.
+        dt_start = fields.Datetime.to_datetime(self.date)
+        dt_end = fields.Datetime.to_datetime(
+            fields.Date.add(self.date, days=1)
+        )
+        Pickings = self.env['stock.picking'].sudo().search([
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('state', 'not in', ('done', 'cancel')),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
+        ])
+        Orders = Pickings.mapped('sale_id')
         if not Orders and not self.line_ids:
             raise UserError(
                 'No hay pedidos pendientes para la fecha seleccionada.'

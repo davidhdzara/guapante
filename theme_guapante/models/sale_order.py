@@ -67,18 +67,19 @@ class SaleOrder(models.Model):
             if cid
             else [('company_id', '=', False)]
         )
-        # sudo(): necesitamos leer TODAS las órdenes de la compañía
-        # para determinar el máximo secuencial, independientemente
-        # de los permisos del usuario actual.
-        # NO filtramos por state: una caja asignada a una orden
-        # cancelada sigue siendo "usada" y no debe reasignarse.
-        Candidates = self.env['sale.order'].sudo().search(
-            domain_company + [
-                ('picking_ids.scheduled_date', '>=', dt_start),
-                ('picking_ids.scheduled_date', '<', dt_end),
-                ('daily_sequence', '>', 0),
-            ],
-        )
+        # Buscar via stock.picking directo para evitar bug de EXISTS
+        # independientes en dominio sale.order.picking_ids.
+        PickDomain = [
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('sale_id', '!=', False),
+            ('sale_id.daily_sequence', '>', 0),
+        ]
+        if cid:
+            PickDomain.append(('company_id', '=', cid))
+
+        Pickings = self.env['stock.picking'].sudo().search(PickDomain)
+        Candidates = Pickings.mapped('sale_id')
         if not Candidates:
             return 0
         return max(Candidates.mapped('daily_sequence'))
@@ -161,26 +162,20 @@ class SaleOrder(models.Model):
         Orders that already have a sequence keep it; new orders receive
         the next number from an ir.sequence (concurrency-safe).
         """
-        # sudo(): necesitamos acceso a TODAS las órdenes de la fecha
-        # para asignar secuencias, sin importar el usuario actual.
-        OrdersForDate = self.env['sale.order'].sudo().search(
-            [
-                (
-                    'picking_ids.scheduled_date',
-                    '>=',
-                    fields.Datetime.to_datetime(delivery_date),
-                ),
-                (
-                    'picking_ids.scheduled_date',
-                    '<',
-                    fields.Datetime.to_datetime(
-                        delivery_date + timedelta(days=1)
-                    ),
-                ),
-                ('state', 'in', ('sale', 'done')),
-            ],
-            order='id asc',
+        # Buscar pickings directamente para evitar el bug de EXISTS
+        # independientes en dominio sobre picking_ids (ver docstring
+        # de PreparationDay.action_load para explicación completa).
+        dt_start = fields.Datetime.to_datetime(delivery_date)
+        dt_end = fields.Datetime.to_datetime(
+            delivery_date + timedelta(days=1)
         )
+        Pickings = self.env['stock.picking'].sudo().search([
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
+        ])
+        OrdersForDate = Pickings.mapped('sale_id').sorted('id')
         seq_by_company = {}
         Touched = self.env['sale.order']
         for order in OrdersForDate:
