@@ -251,6 +251,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
         // Require explicit interaction with variant attributes if any exist
         if (this.$('.guapante-add-to-cart-btn').data('needs-selection')) {
+            let missingNames = [];
             $('.js_add_cart_variants .variant_attribute').each(function() {
                  let selected = false;
                  if ($(this).find('input[type="radio"]').length > 0 && $(this).find('input[type="radio"]:checked').length > 0) {
@@ -262,16 +263,24 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                  
                  if (!selected) {
                      $(this).removeClass('border-danger').addClass('border border-danger rounded p-2');
+                     let attrName = $(this).find('.attribute_name').first().text() || $(this).find('strong').first().text() || 'opción';
+                     attrName = attrName.replace(/[:*\n]/g, '').trim().toLowerCase();
+                     if (attrName) {
+                         missingNames.push(attrName);
+                     }
                  } else {
                      $(this).removeClass('border border-danger rounded p-2');
                  }
             });
             
-            $btn.addClass('btn-danger text-white').html('<i class="fa fa-exclamation-triangle me-2"></i> Atributos requeridos');
-            setTimeout(() => {
-                $btn.removeClass('btn-danger text-white').html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
-            }, 3000);
-            return;
+            if (missingNames.length > 0) {
+                let msg = 'Seleccione ' + missingNames.join(' y ');
+                $btn.addClass('btn-danger text-white').html('<i class="fa fa-exclamation-triangle me-2"></i> ' + msg);
+                setTimeout(() => {
+                    $btn.removeClass('btn-danger text-white').html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
+                }, 3000);
+                return;
+            }
         }
 
         console.log("GUAPANTE-DEBUG: _onAddToCart FIRED, domain:", window.location.hostname);
