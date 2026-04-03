@@ -428,11 +428,23 @@ class PreparationDay(models.Model):
                         })
                     continue
 
-                # Buscar stock.move asociado
+                # Buscar stock.move del PICK (internal/Recolectar).
+                # En warehouse 2-step cada SO line genera 2 moves:
+                # uno para PICK y otro para OUT. Sin este filtro,
+                # limit=1 podía agarrar el OUT y el peso nunca
+                # llegaba al Recolectar.
                 Move = self.env['stock.move'].search([
                     ('sale_line_id', '=', line.id),
+                    ('picking_type_code', '=', 'internal'),
                     ('state', 'not in', ('done', 'cancel')),
                 ], limit=1)
+                if not Move:
+                    # Fallback: PICK ya done — vincular para referencia
+                    # (el peso se escribirá en sus move_lines igualmente)
+                    Move = self.env['stock.move'].search([
+                        ('sale_line_id', '=', line.id),
+                        ('picking_type_code', '=', 'internal'),
+                    ], limit=1, order='id desc')
 
                 mode = line.uom_mode or 'unit'
                 is_weight = (
