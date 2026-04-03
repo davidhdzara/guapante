@@ -149,7 +149,7 @@
 
                     <hr class="my-3" style="border-color: #e0e0e0;"/>
 
-                    <a href="/shop/checkout?express=1" class="btn btn-order w-100 mb-4 d-flex justify-content-center align-items-center gap-2 text-white">
+                    <a href="/shop/address" class="btn btn-order w-100 mb-4 d-flex justify-content-center align-items-center gap-2 text-white">
                         Ordenar <i class="fa fa-check"></i>
                     </a>
 
