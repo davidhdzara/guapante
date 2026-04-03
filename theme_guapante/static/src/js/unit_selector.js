@@ -256,11 +256,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _getActivelySelectedVariant: async function ($form) {
         var combination = [];
-        $form.find('.js_add_cart_variants input[type="radio"]:checked').each(function() {
+        // USAR BÚSQUEDA GLOBAL: product_layout_fix.js mueve estas etiquetas FUERA del $form principal.
+        $('.js_add_cart_variants input[type="radio"]:checked').each(function() {
             var val = $(this).val();
             if (val) combination.push(parseInt(val));
         });
-        $form.find('.js_add_cart_variants select').each(function() {
+        $('.js_add_cart_variants select').each(function() {
             var val = $(this).val();
             // Evitar placeholder vacío
             if (val && val !== "") combination.push(parseInt(val));
