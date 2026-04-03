@@ -218,6 +218,10 @@ publicWidget.registry.GuapanteMaturityColors = publicWidget.Widget.extend({
                 } else if (searchText.includes('maduro') && !searchText.includes('pintón') && !searchText.includes('pinton')) {
                     maturityLevel = 'maduro';
                     colorStyle = 'background: #FBBF24;'; // Solid yellow
+                } else if (searchText.includes('cascara negra') || searchText.includes('cáscara negra')) {
+                    maturityLevel = 'cascara-negra';
+                    // Gradient: almost black → dark brown → beige/yellow
+                    colorStyle = 'background: linear-gradient(135deg, #27272A 0%, #451A03 50%, #D97706 85%, #FBBF24 100%);';
                 }
 
                 if (maturityLevel) {
