@@ -57,7 +57,7 @@ class PurchaseOrderLine(models.Model):
                 line.uom_mode = 'unit'
                 return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" es un producto unitario, no se puede pesar.'}}
 
-    @api.depends('product_qty', 'uom_mode', 'product_id')
+    @api.depends('product_qty', 'product_id')
     def _compute_visual_qty(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
         for line in self:
@@ -74,7 +74,9 @@ class PurchaseOrderLine(models.Model):
                 line.visual_qty = line.product_qty
             else: # unit
                 if is_weight:
-                    packaging = line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0)[:1]
+                    packaging = line.product_packaging_id
+                    if not packaging:
+                        packaging = line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0)[:1]
                     if packaging:
                         line.visual_qty = line.product_qty / packaging.qty
                     else:
@@ -97,7 +99,9 @@ class PurchaseOrderLine(models.Model):
                 line.product_packaging_id = False
             else: # unit
                 if is_weight:
-                    packaging = line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0)[:1]
+                    packaging = line.product_packaging_id
+                    if not packaging:
+                        packaging = line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0)[:1]
                     if packaging:
                         line.product_qty = qty * packaging.qty
                         line.product_packaging_id = packaging.id
