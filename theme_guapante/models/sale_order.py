@@ -1,7 +1,11 @@
 import math
 import logging
 from datetime import timedelta
-from odoo import models, fields, api
+
+from psycopg2 import IntegrityError
+
+from odoo import api, fields, models
+from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -12,7 +16,7 @@ class SaleOrder(models.Model):
         string='# del día',
         default=0,
         copy=False,
-        help='Consecutivo diario de la orden según la fecha de creación.',
+        help='Daily box number for the order’s delivery date (pickings scheduled date).',
     )
 
     guapante_product_line_count = fields.Integer(
@@ -30,12 +34,79 @@ class SaleOrder(models.Model):
     def action_confirm(self):
         return super().action_confirm()
 
+    @api.model
+    def _guapante_daily_sequence_code(self, company_id, delivery_date):
+        """Stable ir.sequence code: one counter per company and calendar delivery day."""
+        d = fields.Date.to_date(delivery_date)
+        cid = int(company_id) if company_id else 0
+        return 'guapante.daily.%s.%s' % (cid, d.strftime('%Y%m%d'))
+
+    @api.model
+    def _guapante_max_daily_sequence_on_date(self, company_id, delivery_date):
+        """Max existing daily_sequence for orders on this delivery date (historical data)."""
+        dt_start = fields.Datetime.to_datetime(delivery_date)
+        dt_end = fields.Datetime.to_datetime(delivery_date + timedelta(days=1))
+        cid = company_id if company_id else None
+        domain_company = [('company_id', '=', cid)] if cid else [('company_id', '=', False)]
+        SaleOrder = self.env['sale.order'].sudo()
+        candidates = SaleOrder.search(
+            domain_company
+            + [
+                ('picking_ids.scheduled_date', '>=', dt_start),
+                ('picking_ids.scheduled_date', '<', dt_end),
+                ('state', 'in', ('sale', 'done')),
+                ('daily_sequence', '>', 0),
+            ],
+        )
+        if not candidates:
+            return 0
+        return max(candidates.mapped('daily_sequence'))
+
+    @api.model
+    def _guapante_get_or_create_daily_ir_sequence(self, company_id, delivery_date):
+        """Return ir.sequence for (company, day); create with safe number_next for legacy rows."""
+        Sequence = self.env['ir.sequence'].sudo()
+        code = self._guapante_daily_sequence_code(company_id, delivery_date)
+        seq = Sequence.search([('code', '=', code)], limit=1)
+        if seq:
+            return seq
+
+        max_existing = self._guapante_max_daily_sequence_on_date(company_id, delivery_date)
+        number_next = max_existing + 1 if max_existing >= 0 else 1
+        d = fields.Date.to_date(delivery_date)
+        vals = {
+            'name': 'Guapante delivery day %s (%s)' % (d.isoformat(), code),
+            'code': code,
+            'implementation': 'standard',
+            'company_id': company_id if company_id else False,
+            'active': True,
+            'prefix': '',
+            'suffix': '',
+            'padding': 1,
+            'number_increment': 1,
+            'number_next': number_next,
+        }
+        try:
+            with self.env.cr.savepoint():
+                seq = Sequence.create(vals)
+        except IntegrityError:
+            seq = Sequence.browse()
+        if not seq:
+            seq = Sequence.search([('code', '=', code)], limit=1)
+        if not seq:
+            _logger.error('Guapante: failed to get ir.sequence for code %s', code)
+            raise UserError(
+                'Could not initialize the daily order sequence. Please retry or contact support.'
+            )
+        return seq
+
     def _assign_daily_sequences(self, delivery_date):
         """Assign daily_sequence to confirmed orders for a given delivery date.
 
         Called from PreparationDay.action_load so the sequence is always scoped
         to the actual delivery date of the session, not the order creation date.
-        Orders that already have a sequence keep it; new orders receive the next number.
+        Orders that already have a sequence keep it; new orders receive the next number
+        from an ir.sequence (concurrency-safe). Existing DB values are not rewritten.
         """
         orders_for_date = self.env['sale.order'].sudo().search(
             [
@@ -47,12 +118,29 @@ class SaleOrder(models.Model):
             ],
             order='id asc',
         )
-        next_seq = 1
+        seq_by_company = {}
+        touched = self.env['sale.order']
         for order in orders_for_date:
-            if not order.daily_sequence:
-                order.daily_sequence = next_seq
-                order.flush_recordset(['daily_sequence'])
-            next_seq = max(next_seq, order.daily_sequence) + 1
+            if order.daily_sequence:
+                continue
+            cid = order.company_id.id if order.company_id else False
+            if cid not in seq_by_company:
+                seq_by_company[cid] = self.env['sale.order'].sudo()._guapante_get_or_create_daily_ir_sequence(
+                    cid, delivery_date
+                )
+            seq = seq_by_company[cid]
+            next_str = seq.next_by_id()
+            try:
+                order.daily_sequence = int(next_str)
+            except (TypeError, ValueError) as err:
+                _logger.error(
+                    'Guapante: invalid sequence value %r from %s: %s',
+                    next_str, seq.display_name, err
+                )
+                raise
+            touched |= order
+        if touched:
+            touched.flush_recordset(['daily_sequence'])
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
     def _compute_cart_info(self):
