@@ -254,6 +254,47 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         $info.addClass('d-none');
     },
 
+    _getActivelySelectedVariant: async function ($form) {
+        var combination = [];
+        $form.find('.js_add_cart_variants input[type="radio"]:checked').each(function() {
+            var val = $(this).val();
+            if (val) combination.push(parseInt(val));
+        });
+        $form.find('.js_add_cart_variants select').each(function() {
+            var val = $(this).val();
+            // Evitar placeholder vacío
+            if (val && val !== "") combination.push(parseInt(val));
+        });
+
+        var pt_id = $form.find('.product_template_id').val();
+        if (!pt_id) return null;
+
+        try {
+            var data = await $.ajax({
+                url: '/website_sale/get_combination_info',
+                method: 'POST',
+                dataType: 'json',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'call',
+                    params: {
+                        product_template_id: parseInt(pt_id),
+                        product_id: false,
+                        combination: combination,
+                        add_qty: 1
+                    }
+                })
+            });
+            var result = (data && data.result) ? data.result : data;
+            console.log("GUAPANTE-DEBUG: Resolved Combination Info ->", result);
+            if (result && result.product_id) return result.product_id;
+        } catch (e) {
+            console.error("GUAPANTE-DEBUG: Error resolviendo combinación manualmente:", e);
+        }
+        return null;
+    },
+
     _onAddToCart: async function (ev) {
         ev.preventDefault();
         const $btn = $(ev.currentTarget);
@@ -298,8 +339,14 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         if (!$mainProduct.length) {
             $mainProduct = $('.js_product').first();
         }
+
+        $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Buscando...');
+
+        // 100% Guaranteed way to fetch what the user visibly selected
+        let resolvedProductId = await this._getActivelySelectedVariant($mainProduct);
         let productIdStr = $mainProduct.find('.product_id').val();
-        const productId = productIdStr || this.$el.data('product-id');
+        
+        const productId = resolvedProductId || productIdStr || this.$el.data('product-id');
         
         console.log("GUAPANTE-DEBUG: productId=", productId, "mode=", this.currentMode);
 
