@@ -58,6 +58,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
     },
 
     _initializeView: function () {
+        // Guarantee our utility class overrides Odoo's native display
+        if ($('#guapante-error-hider-style').length === 0) {
+            $('<style id="guapante-error-hider-style">.guapante-hide-error { display: none !important; }</style>').appendTo('head');
+        }
         const $modeSelector = this.$('.guapante-uom-mode-selector');
         const $unitOption = this.$('#mode_unit').next('label');
         const $unitInput = this.$('#mode_unit');
@@ -427,8 +431,16 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             if (allSelected) {
                 self.$('.guapante-add-to-cart-btn').data('needs-selection', false);
                 $('.js_add_cart_variants .variant_attribute').removeClass('border border-danger rounded p-2');
+                $('.css_not_available_msg').removeClass('d-none guapante-hide-error');
+            } else {
+                self.$('.guapante-add-to-cart-btn').data('needs-selection', true);
+                // Hide Odoo's native "This combination does not exist" while selection is incomplete
+                $('.css_not_available_msg').addClass('d-none guapante-hide-error');
             }
         });
+        
+        // Hide it initially since nothing is selected
+        $('.css_not_available_msg').addClass('d-none guapante-hide-error');
     },
 
     _onVariantChange: async function () {

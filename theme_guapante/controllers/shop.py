@@ -254,9 +254,10 @@ class GuapanteWebsiteSale(WebsiteSale):
                 # Trigger stock rule for each new line since the order is already confirmed
                 new_line.sudo()._action_launch_stock_rule()
                 
-            # 2. Log in chatter
+            # 2. Log in chatter with details of what was added
+            added_lines_details = ", ".join([f"{int(line.product_uom_qty)}x {line.product_id.name}" for line in current_cart.order_line])
             target_order.message_post(
-                body=f"📦 <b>Anexo Web:</b> El cliente añadió {items_added} productos desde un nuevo carrito en la tienda online.",
+                body=f"El cliente anexó nuevos productos a esta orden desde la tienda online: {added_lines_details}.",
                 subtype_xmlid="mail.mt_note"
             )
             
