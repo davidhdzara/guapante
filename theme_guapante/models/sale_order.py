@@ -52,7 +52,11 @@ class SaleOrder(models.Model):
     def _guapante_max_daily_sequence_on_date(
         self, company_id: int, delivery_date
     ) -> int:
-        """Max existing daily_sequence for orders on this delivery date."""
+        """Max existing daily_sequence for orders on this delivery date.
+
+        Includes ALL states (even cancelled) to prevent box number
+        reuse after order cancellation.
+        """
         dt_start = fields.Datetime.to_datetime(delivery_date)
         dt_end = fields.Datetime.to_datetime(
             delivery_date + timedelta(days=1)
@@ -66,11 +70,12 @@ class SaleOrder(models.Model):
         # sudo(): necesitamos leer TODAS las órdenes de la compañía
         # para determinar el máximo secuencial, independientemente
         # de los permisos del usuario actual.
+        # NO filtramos por state: una caja asignada a una orden
+        # cancelada sigue siendo "usada" y no debe reasignarse.
         Candidates = self.env['sale.order'].sudo().search(
             domain_company + [
                 ('picking_ids.scheduled_date', '>=', dt_start),
                 ('picking_ids.scheduled_date', '<', dt_end),
-                ('state', 'in', ('sale', 'done')),
                 ('daily_sequence', '>', 0),
             ],
         )
@@ -84,7 +89,8 @@ class SaleOrder(models.Model):
     ):
         """Return ir.sequence for (company, day); create if missing.
 
-        Uses a safe number_next based on existing legacy rows.
+        SIEMPRE sincroniza number_next con el máximo real de la BD
+        para evitar duplicados tras cancelaciones o ediciones manuales.
         """
         # sudo(): ir.sequence creation requiere permisos de admin
         # ya que el usuario de preparación normalmente no tiene
@@ -94,13 +100,26 @@ class SaleOrder(models.Model):
             company_id, delivery_date,
         )
         seq = Sequence.search([('code', '=', code)], limit=1)
-        if seq:
-            return seq
 
         max_existing = self._guapante_max_daily_sequence_on_date(
             company_id, delivery_date,
         )
-        number_next = max_existing + 1 if max_existing >= 0 else 1
+        safe_next = max_existing + 1 if max_existing >= 0 else 1
+
+        if seq:
+            # CORRECCIÓN: Siempre sincronizar number_next con el max
+            # real de la BD. Si alguien canceló órdenes, editó
+            # manualmente, o la secuencia quedó desincronizada,
+            # esto garantiza que el próximo número sea max + 1.
+            if seq.number_next_actual < safe_next:
+                seq.sudo().write({'number_next': safe_next})
+                _logger.info(
+                    'Guapante: synced ir.sequence %s number_next '
+                    'to %d (was %d)',
+                    code, safe_next, seq.number_next_actual,
+                )
+            return seq
+
         d = fields.Date.to_date(delivery_date)
         vals = {
             'name': 'Guapante delivery day %s (%s)' % (
@@ -114,7 +133,7 @@ class SaleOrder(models.Model):
             'suffix': '',
             'padding': 1,
             'number_increment': 1,
-            'number_next': number_next,
+            'number_next': safe_next,
         }
         try:
             with self.env.cr.savepoint():
