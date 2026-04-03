@@ -250,6 +250,18 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
             var step = p.is_weight_uom ? '0.5' : '1';
             var minVal = p.is_weight_uom ? '0.1' : '1';
 
+            // Build variants selector if there are multiple options (e.g. Madurez)
+            var variantsHtml = '';
+            if (p.variants && p.variants.length > 0) {
+                variantsHtml = '<div class="guapante-mini-variant-wrap mb-2">'
+                    + '<select class="form-select guapante-mini-variant-selector border-secondary" style="font-size: 0.85rem; font-weight: bold;">'
+                    + '<option value="" disabled selected>Seleccione opción (Requerido)</option>';
+                p.variants.forEach(function(v) {
+                    variantsHtml += '<option value="' + v.id + '">' + v.name + '</option>';
+                });
+                variantsHtml += '</select></div>';
+            }
+
             html += '<div class="guapante-result-card"'
                 + ' data-product-id="' + p.id + '"'
                 + ' data-tmpl-id="' + p.product_tmpl_id + '"'
@@ -275,6 +287,7 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
                 + '</div>'
                 // Expandable cart controls
                 + '<div class="guapante-result-cart-expand">'
+                + variantsHtml
                 + uomToggle
                 + pkgSelector
                 + '<div class="guapante-mini-qty-row">'
@@ -389,6 +402,22 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
         var $card = $btn.closest('.guapante-result-card');
         var productId = parseInt($card.data('product-id'));
         var isWeight = $card.data('is-weight') === 1 || $card.data('is-weight') === '1';
+
+        // Si hay selector de variante, obligar selección
+        var $variantSelect = $card.find('.guapante-mini-variant-selector');
+        if ($variantSelect.length > 0) {
+            var selectedVariantId = $variantSelect.val();
+            if (!selectedVariantId) {
+                $variantSelect.addClass('border-danger text-danger');
+                $btn.html('<i class="fa fa-exclamation-triangle"></i> Requerido').addClass('btn-danger text-white');
+                setTimeout(() => {
+                    $variantSelect.removeClass('border-danger text-danger');
+                    $btn.removeClass('btn-danger text-white').html('<i class="fa fa-shopping-cart"></i> Agregar');
+                }, 2000);
+                return;
+            }
+            productId = parseInt(selectedVariantId);
+        }
 
         // Determine current UoM mode
         var $activeMode = $card.find('.guapante-mini-uom-toggle .guapante-mini-uom-btn.active');

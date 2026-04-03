@@ -32,6 +32,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         this._hideOriginalControls();
         this._setupVariantListener();
 
+        if ($('.js_add_cart_variants').length > 0) {
+            this._resetAttributes();
+        }
+
         // Bind add-to-cart using document-level delegation.
         // product_layout_fix.js moves #product_detail in the DOM,
         // which can break publicWidget's jQuery event bindings on $el.
@@ -243,8 +247,34 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
     _onAddToCart: async function (ev) {
         ev.preventDefault();
-        console.log("GUAPANTE-DEBUG: _onAddToCart FIRED, domain:", window.location.hostname);
         const $btn = $(ev.currentTarget);
+
+        // Require explicit interaction with variant attributes if any exist
+        if (this.$('.guapante-add-to-cart-btn').data('needs-selection')) {
+            $('.js_add_cart_variants .variant_attribute').each(function() {
+                 let selected = false;
+                 if ($(this).find('input[type="radio"]').length > 0 && $(this).find('input[type="radio"]:checked').length > 0) {
+                     selected = true;
+                 }
+                 if ($(this).find('select').length > 0 && $(this).find('select').val()) {
+                     selected = true;
+                 }
+                 
+                 if (!selected) {
+                     $(this).removeClass('border-danger').addClass('border border-danger rounded p-2');
+                 } else {
+                     $(this).removeClass('border border-danger rounded p-2');
+                 }
+            });
+            
+            $btn.addClass('btn-danger text-white').html('<i class="fa fa-exclamation-triangle me-2"></i> Atributos requeridos');
+            setTimeout(() => {
+                $btn.removeClass('btn-danger text-white').html('<i class="fa fa-shopping-cart me-2"></i> Agregar al Pedido');
+            }, 3000);
+            return;
+        }
+
+        console.log("GUAPANTE-DEBUG: _onAddToCart FIRED, domain:", window.location.hostname);
         const productId = $('input[name="product_id"]').val() || this.$el.data('product-id');
         console.log("GUAPANTE-DEBUG: productId=", productId, "mode=", this.currentMode);
 
@@ -348,6 +378,46 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             console.log('Guapante: variant changed, new product_id:', newId);
             if (newId && newId !== '0') {
                 self._onVariantChange();
+            }
+        });
+    },
+
+    _resetAttributes: function() {
+        const self = this;
+        // Disable Add to Cart initially
+        this.$('.guapante-add-to-cart-btn').data('needs-selection', true);
+
+        // Deselect Radio buttons visually without breaking Odoo handlers
+        $('.js_add_cart_variants input[type="radio"]').prop('checked', false);
+        $('.js_add_cart_variants label.active').removeClass('active');
+        
+        // Deselect Select dropdowns
+        $('.js_add_cart_variants select').each(function() {
+            if ($(this).find('option.guapante-placeholder').length === 0) {
+                $(this).prepend('<option class="guapante-placeholder" value="" disabled selected>Seleccione opción</option>');
+            }
+            $(this).val('');
+        });
+
+        // Listen for user making a selection
+        $('.js_add_cart_variants').on('change', 'input[type="radio"], select', function() {
+            // Check if all groups have a selection
+            let allSelected = true;
+            $('.js_add_cart_variants .variant_attribute').each(function() {
+                const hasRadio = $(this).find('input[type="radio"]').length > 0;
+                const hasSelect = $(this).find('select').length > 0;
+                
+                if (hasRadio && $(this).find('input[type="radio"]:checked').length === 0) {
+                    allSelected = false;
+                }
+                if (hasSelect && !$(this).find('select').val()) {
+                    allSelected = false;
+                }
+            });
+            
+            if (allSelected) {
+                self.$('.guapante-add-to-cart-btn').data('needs-selection', false);
+                $('.js_add_cart_variants .variant_attribute').removeClass('border border-danger rounded p-2');
             }
         });
     },

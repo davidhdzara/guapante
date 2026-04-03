@@ -554,6 +554,20 @@ class GuapanteWebsiteSale(WebsiteSale):
                         'qty': pkg.qty,
                     })
 
+                # Inject variants if product has multiple choices (e.g. Madurez)
+                variants_list = []
+                # Ensure we only show dropdown if there's an actual choice
+                if len(tmpl.product_variant_ids) > 1:
+                    for v in tmpl.product_variant_ids:
+                        # Extract the variant name (e.g. "Verde" instead of "Plátano (Verde)")
+                        var_name = v.display_name.replace(tmpl.name, '').strip(' ()')
+                        if not var_name:
+                            var_name = 'Estándar'
+                        variants_list.append({
+                            'id': v.id,
+                            'name': var_name
+                        })
+
                 products.append({
                     'id': variant.id,
                     'product_tmpl_id': tmpl.id,
@@ -563,6 +577,7 @@ class GuapanteWebsiteSale(WebsiteSale):
                     'is_weight_uom': is_weight,
                     'has_packaging': has_packaging,
                     'packagings': packagings_data,
+                    'variants': variants_list,
                 })
 
             return {
