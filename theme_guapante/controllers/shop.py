@@ -108,6 +108,19 @@ class GuapanteWebsiteSale(WebsiteSale):
             render_values['states'] = request.env['res.country.state'].sudo().search([])
             render_values['default_country_id'] = False
 
+        # --- GUAPANTE MERGE ORDER WIDGET LOGIC ---
+        # Look for existing eligible orders that are confirmed but not shipped, so the user can append
+        if not request.env.user._is_public():
+            commercial_p = request.env.user.partner_id.commercial_partner_id
+            domain = [
+                ('message_partner_ids', 'child_of', [commercial_p.id]),
+                ('state', '=', 'sale'),
+                ('guapante_delivery_status', 'in', ['received', 'preparing']),
+                ('id', '!=', Order.id) # Obviously exclude current cart
+            ]
+            open_orders = request.env['sale.order'].sudo().search(domain, order='date_order desc')
+            render_values['open_orders'] = open_orders
+
         # Build display data from session for the template
         render_values['uom_display'] = self._build_uom_display(Order)
 
@@ -210,6 +223,58 @@ class GuapanteWebsiteSale(WebsiteSale):
         except Exception as e:
             _logger.error("Error confirming order: %s", e)
             return request.redirect('/shop/checkout?error=confirm_failed')
+
+    @http.route(['/shop/checkout/append_to_order'], type='http', auth="user", website=True, sitemap=False, methods=['POST'], csrf=True)
+    def append_to_order(self, target_order_id=None, **post):
+        """
+        Merge current cart lines into an existing pending order (SOXXXX) and completely cancel current cart.
+        """
+        target_order_id = int(target_order_id) if target_order_id else 0
+        current_cart = request.website.sale_get_order()
+        
+        if not current_cart or not current_cart.order_line or not target_order_id:
+            return request.redirect('/shop')
+            
+        target_order = request.env['sale.order'].sudo().browse(target_order_id)
+        if not target_order.exists() or target_order.state != 'sale':
+            return request.redirect('/shop/address?error=invalid_target')
+            
+        # Security verify ownership
+        commercial_p = request.env.user.partner_id.commercial_partner_id
+        if target_order.partner_id.commercial_partner_id != commercial_p:
+            raise Forbidden("No tienes permiso para fusionar en esta orden.")
+            
+        try:
+            items_added = len(current_cart.order_line)
+            # 1. Loop and duplicate lines into the target order
+            for line in current_cart.order_line:
+                new_line = line.copy({
+                    'order_id': target_order.id,
+                })
+                # Trigger stock rule for each new line since the order is already confirmed
+                new_line.sudo()._action_launch_stock_rule()
+                
+            # 2. Log in chatter
+            target_order.message_post(
+                body=f"📦 <b>Anexo Web:</b> El cliente añadió {items_added} productos desde un nuevo carrito en la tienda online.",
+                subtype_xmlid="mail.mt_note"
+            )
+            
+            # Recalculate totals officially
+            target_order._compute_amounts()
+            
+            # 3. Clean up: destroy the ghost cart and reset session
+            current_cart.action_cancel()
+            if 'guapante_uom_modes' in request.session:
+                del request.session['guapante_uom_modes']
+            request.website.sale_reset()
+            
+            # 4. Success redirect
+            return request.redirect('/shop/order/status/%s?access_token=%s&merged=1' % (target_order.id, target_order.access_token))
+            
+        except Exception as e:
+            _logger.error("Guapante Append: Error al fusionar la orden: %s", e)
+            return request.redirect('/shop/address?error=append_failed')
 
     @http.route(['/shop/order/status/<int:order_id>'], type='http', auth="public", website=True, sitemap=False)
     def order_status(self, order_id, **post):

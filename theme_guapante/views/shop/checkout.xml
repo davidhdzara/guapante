@@ -323,10 +323,28 @@
                                         </div>
                                     </div>
 
+                                    <!-- APPEND TO EXISTING ORDER WIDGET -->
+                                    <t t-if="open_orders">
+                                        <div class="guapante-append-note p-3 mb-4 rounded-3 border border-warning" style="background-color: #fff8e1;">
+                                            <h6 class="fw-bold text-dark mb-2"><i class="fa fa-exclamation-triangle text-warning me-2"></i>¡Tienes un envío pendiente!</h6>
+                                            <p class="small text-muted mb-3">Encontramos que ya tienes un pedido en preparación. Puedes fusionar los productos de este carrito a esa misma caja para facilitar tu entrega.</p>
+                                            <button type="button" class="btn btn-warning btn-sm w-100 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#appendOrderModal">
+                                                <i class="fa fa-plus-circle me-1"></i> Añadir a mi envío pendiente
+                                            </button>
+                                        </div>
+                                    </t>
+
                                     <!-- Confirm Button — Simple link, no form submission -->
-                                    <a href="/shop/checkout/confirm" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4 text-center" id="guapante_confirm_btn">
-                                        <i class="fa fa-paper-plane me-2"></i> Confirmar Pedido
-                                    </a>
+                                    <t t-if="open_orders">
+                                        <a href="/shop/checkout/confirm" class="btn btn-outline-success border-2 w-100 py-3 fw-bold fs-6 mb-4 text-center" id="guapante_confirm_btn">
+                                            Confirmar como NUEVO Pedido
+                                        </a>
+                                    </t>
+                                    <t t-else="">
+                                        <a href="/shop/checkout/confirm" class="btn btn-success w-100 py-3 fw-bold fs-6 shadow-sm mb-4 text-center" id="guapante_confirm_btn">
+                                            <i class="fa fa-paper-plane me-2"></i> Confirmar Pedido
+                                        </a>
+                                    </t>
                                     
                                     <div class="text-center text-muted small">
                                         <i class="fa fa-clock-o me-1"></i> Entrega Flexible
@@ -350,6 +368,42 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ==========================================
+                 APPEND TO EXISTING ORDER MODAL
+                 ========================================== -->
+            <t t-if="open_orders">
+                <div class="modal fade" id="appendOrderModal" tabindex="-1" aria-labelledby="appendOrderModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content border-0 rounded-4 shadow">
+                            <div class="modal-header border-0 pb-0 px-4 pt-4">
+                                <h5 class="modal-title fw-bold" id="appendOrderModalLabel">Añadir a mi envío</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body px-4 py-4">
+                                <p class="text-muted small mb-4">Selecciona a qué pedido pendiente deseas agregar estos <t t-esc="website_sale_order.cart_quantity"/> productos. El monto total de tu deuda se actualizará en tu estado de cuenta tras el pesaje.</p>
+                                <form method="POST" action="/shop/checkout/append_to_order">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <div class="list-group mb-4">
+                                        <t t-foreach="open_orders" t-as="op_order">
+                                            <label class="list-group-item d-flex gap-2 align-items-center">
+                                                <input class="form-check-input flex-shrink-0" type="radio" name="target_order_id" t-att-value="op_order.id" required="required" t-att-checked="op_order_index == 0"/>
+                                                <div class="d-flex flex-column ms-2">
+                                                    <strong class="d-block"><t t-esc="op_order.name"/></strong>
+                                                    <small class="text-muted">Iniciado el <span t-field="op_order.date_order" t-options='{"widget": "date"}'/></small>
+                                                </div>
+                                            </label>
+                                        </t>
+                                    </div>
+                                    <button type="submit" class="btn btn-warning w-100 fw-bold rounded-pill shadow-sm py-2" onclick="this.innerHTML='<i class=\'fa fa-spinner fa-spin me-2\'></i>Fusionando...'; this.classList.add('disabled');">
+                                        <i class="fa fa-compress me-1"></i> Confirmar Fusión
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </t>
         </t>
     </template>
 

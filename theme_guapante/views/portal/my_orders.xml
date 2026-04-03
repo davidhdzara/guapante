@@ -232,7 +232,7 @@
                                                             <form t-attf-action="/my/orders/cancel/#{order.id}" method="post" class="d-inline">
                                                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                                                 <button type="submit" class="btn guapante-btn-cancel btn-sm rounded-pill fw-bold px-3"
-                                                                        onclick="return confirm('¿Estás seguro de que deseas cancelar este pedido? Esta acción no se puede deshacer.');">
+                                                                        onclick="return confirm('Para retirar o cambiar un producto, debes cancelar toda la orden y volver a enviarla a tu carrito. ¿Deseas cancelar esta orden ahora?');">
                                                                     Cancelar orden
                                                                 </button>
                                                             </form>
@@ -247,9 +247,12 @@
 
                                                         <!-- Cancelled: Details link -->
                                                         <t t-else="">
-                                                            <span class="text-muted small">
-                                                                Orden Cancelada
-                                                            </span>
+                                                            <div class="d-flex flex-column align-items-end gap-1">
+                                                                <span class="text-muted small fw-bold">Cancelada</span>
+                                                                <a t-attf-href="/my/orders/reorder/#{order.id}" class="btn border btn-sm rounded-pill fw-bold text-dark px-3 mt-1" style="font-size: 0.75rem;">
+                                                                    <i class="fa fa-shopping-cart me-1 text-success"></i> Edítala en el Carrito
+                                                                </a>
+                                                            </div>
                                                         </t>
                                                     </div>
                                                 </td>
