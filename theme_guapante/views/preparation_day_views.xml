@@ -65,6 +65,33 @@
                             <field name="save_note" readonly="1" nolabel="1"/>
                         </div>
 
+                        <!-- ── PROGRESO GLOBAL DE LA SESIÓN ── -->
+                        <field name="total_lines" invisible="1"/>
+                        <field name="done_lines" invisible="1"/>
+                        <field name="pending_lines" invisible="1"/>
+                        <div class="row align-items-center mb-4 bg-light p-3 rounded-3 border" invisible="total_lines == 0">
+                            <div class="col-12 col-md-8 mb-2 mb-md-0">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="fw-bold text-uppercase small text-muted">Avance General:</span>
+                                    <field name="global_progress_pct" widget="progressbar" class="w-100 flex-grow-1" nolabel="1" options="{'editable': false}"/>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-4 text-md-end">
+                                <span class="badge text-bg-success px-3 py-2 me-1" style="font-size: 0.85rem;">
+                                    <i class="fa fa-check-circle"></i>
+                                    <field name="done_lines" nolabel="1" readonly="1" class="d-inline"/> hechas
+                                </span>
+                                <span class="badge text-bg-warning px-3 py-2 me-1" style="font-size: 0.85rem;">
+                                    <i class="fa fa-clock-o"></i>
+                                    <field name="pending_lines" nolabel="1" readonly="1" class="d-inline"/> pendientes
+                                </span>
+                                <span class="badge text-bg-secondary px-3 py-2" style="font-size: 0.85rem;">
+                                    <i class="fa fa-cube"></i>
+                                    <field name="total_lines" nolabel="1" readonly="1" class="d-inline"/> total
+                                </span>
+                            </div>
+                        </div>
+
                         <!-- ── PASO 1: RESUMEN POR PRODUCTO ── -->
                         <div>
                             <h5 class="text-muted mb-2"><i class="fa fa-list"></i> Selecciona un producto para empezar o continuar el empaque</h5>

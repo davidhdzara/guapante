@@ -273,6 +273,24 @@ class PreparationDay(models.Model):
     )
     save_note = fields.Char(string='Resultado', readonly=True)
 
+    global_progress_pct = fields.Float(
+        string='Progreso General',
+        compute='_compute_global_progress',
+        digits=(5, 1),
+    )
+    total_lines = fields.Integer(
+        string='Total líneas',
+        compute='_compute_global_progress',
+    )
+    done_lines = fields.Integer(
+        string='Completadas',
+        compute='_compute_global_progress',
+    )
+    pending_lines = fields.Integer(
+        string='Pendientes',
+        compute='_compute_global_progress',
+    )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -288,6 +306,19 @@ class PreparationDay(models.Model):
     def _compute_summary_count(self) -> None:
         for session in self:
             session.summary_count = len(session.summary_ids)
+
+    @api.depends('line_ids.is_done')
+    def _compute_global_progress(self) -> None:
+        """Calcula el progreso global de toda la sesión."""
+        for session in self:
+            total = len(session.line_ids)
+            done = len(session.line_ids.filtered(lambda l: l.is_done))
+            session.total_lines = total
+            session.done_lines = done
+            session.pending_lines = total - done
+            session.global_progress_pct = (
+                (done / total * 100.0) if total else 0.0
+            )
 
     def action_view_summaries(self) -> dict:
         """Abre la vista de resumen por producto (Smart Button)."""
