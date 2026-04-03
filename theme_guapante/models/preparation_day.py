@@ -359,23 +359,28 @@ class PreparationDay(models.Model):
         # IMPORTANTE: No usar dominio sobre sale.order.picking_ids
         # porque Odoo evalúa cada condición en picking_ids como un
         # EXISTS independiente (puede matchear pickings DIFERENTES).
-        # En warehouse 2-step (pick_ship), esto causa que:
-        # - Una condición machee el PICK y otra el OUT → falso positivo
-        # - Ninguna condición machee ambas a la vez → falso negativo
         #
-        # La solución es buscar directamente en stock.picking donde
-        # TODAS las condiciones aplican al MISMO registro.
+        # Solo buscamos pickings de tipo PICK/Recolectar (internal)
+        # porque el Preparation Day es para la etapa de alistamiento,
+        # NO para la entrega (OUT). Si el warehouse es 1-step (solo
+        # OUT), se usa outgoing como fallback.
         dt_start = fields.Datetime.to_datetime(self.date)
         dt_end = fields.Datetime.to_datetime(
             fields.Date.add(self.date, days=1)
         )
-        Pickings = self.env['stock.picking'].sudo().search([
+        base_domain = [
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),
             ('state', 'not in', ('done', 'cancel')),
             ('sale_id', '!=', False),
             ('sale_id.state', 'in', ('sale', 'done')),
-        ])
+        ]
+        # Solo pickings internos (Recolectar / PICK step).
+        # El Preparation Day prepara lo del PICK; el OUT hereda
+        # la información que se registró aquí.
+        Pickings = self.env['stock.picking'].sudo().search(
+            base_domain + [('picking_type_code', '=', 'internal')]
+        )
         Orders = Pickings.mapped('sale_id')
         if not Orders and not self.line_ids:
             raise UserError(

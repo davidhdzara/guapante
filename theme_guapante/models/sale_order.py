@@ -67,11 +67,11 @@ class SaleOrder(models.Model):
             if cid
             else [('company_id', '=', False)]
         )
-        # Buscar via stock.picking directo para evitar bug de EXISTS
-        # independientes en dominio sale.order.picking_ids.
+        # Solo pickings PICK (internal/Recolectar).
         PickDomain = [
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),
+            ('picking_type_code', '=', 'internal'),
             ('sale_id', '!=', False),
             ('sale_id.daily_sequence', '>', 0),
         ]
@@ -162,9 +162,8 @@ class SaleOrder(models.Model):
         Orders that already have a sequence keep it; new orders receive
         the next number from an ir.sequence (concurrency-safe).
         """
-        # Buscar pickings directamente para evitar el bug de EXISTS
-        # independientes en dominio sobre picking_ids (ver docstring
-        # de PreparationDay.action_load para explicación completa).
+        # Buscar solo pickings PICK (internal/Recolectar) para la fecha.
+        # El Preparation Day solo opera sobre el PICK step.
         dt_start = fields.Datetime.to_datetime(delivery_date)
         dt_end = fields.Datetime.to_datetime(
             delivery_date + timedelta(days=1)
@@ -172,6 +171,7 @@ class SaleOrder(models.Model):
         Pickings = self.env['stock.picking'].sudo().search([
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),
+            ('picking_type_code', '=', 'internal'),
             ('sale_id', '!=', False),
             ('sale_id.state', 'in', ('sale', 'done')),
         ])
