@@ -221,10 +221,11 @@ class PreparationDayLine(models.Model):
                 # Limpiar la cantidad ejecutada en el picking.
                 # sudo(): el operario puede no tener permisos
                 # de escritura directa sobre stock.move.line.
+                # skip_inverse_visual_qty: misma protección que en save.
                 if line.stock_move_id:
-                    line.stock_move_id.sudo().move_line_ids.write(
-                        {'quantity': 0}
-                    )
+                    line.stock_move_id.sudo().with_context(
+                        skip_inverse_visual_qty=True,
+                    ).move_line_ids.write({'quantity': 0})
                 line.with_context(skip_auto_save=True).write(
                     {'is_done': False, 'actual_kg': 0.0}
                 )
@@ -530,8 +531,13 @@ class PreparationDay(models.Model):
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de
         # escritura directa sobre stock.move.line del almacén.
+        # skip_inverse_visual_qty: evita que el cambio en quantity
+        # propague de vuelta a sale.order.line.product_uom_qty
+        # a través del campo visual_qty compute/inverse.
         if Line.stock_move_id:
-            Move = Line.stock_move_id.sudo()
+            Move = Line.stock_move_id.sudo().with_context(
+                skip_inverse_visual_qty=True,
+            )
             if Move.move_line_ids:
                 Move.move_line_ids.write({'quantity': 0})
                 Move.move_line_ids[0].quantity = Line.actual_kg
