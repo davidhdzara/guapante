@@ -445,17 +445,31 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         finalQty = Math.round(finalQty * 1000) / 1000;
         console.log("GUAPANTE-DEBUG: ✅ SENDING → product_id=", productId, "add_qty=", finalQty, "uom=", uomMode, "pkg=", packagingId);
 
-        let noVariantAttributeValues = [];
+        // ── CRITICAL FIX: Collect no_variant attribute values directly from DOM ──
+        // These attributes (Madurez, Tamaño) are configured as 'no_variant' in Odoo,
+        // meaning they DON'T create separate product.product records. Instead, the
+        // selected PTAV IDs must be sent as no_variant_attribute_value_ids so they
+        // appear correctly on the sale order line description.
+        let noVariantIds = [];
+        $('.js_add_cart_variants input.no_variant:checked').each(function() {
+            var val = parseInt($(this).val());
+            if (!isNaN(val)) noVariantIds.push(val);
+        });
+        // Fallback: also try broader selector in case class name differs
+        if (noVariantIds.length === 0) {
+            $('input.js_variant_change[class*="no_variant"]:checked').each(function() {
+                var val = parseInt($(this).val());
+                if (!isNaN(val)) noVariantIds.push(val);
+            });
+        }
+        console.log("GUAPANTE-DEBUG: no_variant_attribute_value_ids:", JSON.stringify(noVariantIds));
+
         let productCustomAttributeValues = [];
         let $form = $btn.closest('form');
         if (!$form.length) {
             $form = $('.js_product').closest('form');
         }
         if ($form.length) {
-            const noVarInput = $form.find('input[name="no_variant_attribute_values"]').val();
-            if (noVarInput) {
-                try { noVariantAttributeValues = JSON.parse(noVarInput); } catch (e) {}
-            }
             const customInput = $form.find('input[name="product_custom_attribute_values"]').val();
             if (customInput) {
                 try { productCustomAttributeValues = JSON.parse(customInput); } catch (e) {}
@@ -478,7 +492,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                         add_qty: finalQty,
                         product_packaging_id: packagingId,
                         uom_mode: uomMode,
-                        no_variant_attribute_values: noVariantAttributeValues,
+                        no_variant_attribute_value_ids: noVariantIds,
                         product_custom_attribute_values: productCustomAttributeValues,
                         display: false,
                     }
