@@ -293,7 +293,14 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         }
 
         console.log("GUAPANTE-DEBUG: _onAddToCart FIRED, domain:", window.location.hostname);
-        const productId = $('input[name="product_id"]').val() || this.$el.data('product-id');
+        
+        let $mainProduct = $btn.closest('.js_product');
+        if (!$mainProduct.length) {
+            $mainProduct = $('.js_product').first();
+        }
+        let productIdStr = $mainProduct.find('.product_id').val();
+        const productId = productIdStr || this.$el.data('product-id');
+        
         console.log("GUAPANTE-DEBUG: productId=", productId, "mode=", this.currentMode);
 
         let qtyInput = this._parseValue(this.$('.guapante-qty-input').val());
@@ -328,7 +335,10 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
         let noVariantAttributeValues = [];
         let productCustomAttributeValues = [];
-        const $form = $btn.closest('form');
+        let $form = $btn.closest('form');
+        if (!$form.length) {
+            $form = $('.js_product').closest('form');
+        }
         if ($form.length) {
             const noVarInput = $form.find('input[name="no_variant_attribute_values"]').val();
             if (noVarInput) {
