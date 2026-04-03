@@ -109,11 +109,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
             var kgVal = currentVal / 1000;
             $qtyInput.val(this._formatValue(Math.max(0.1, parseFloat(kgVal.toFixed(2)))));
         } else if (this.currentMode === 'unit') {
-            $qtyInput.val(this._formatValue(1));
+            var unitVal = (previousMode === 'g') ? (currentVal / 1000) : currentVal;
+            $qtyInput.val(this._formatValue(Math.max(1, Math.round(unitVal))));
         } else if (previousMode === 'unit' && this.currentMode === 'kg') {
-            $qtyInput.val(this._formatValue(1));
+            $qtyInput.val(this._formatValue(Math.max(0.1, currentVal)));
         } else if (previousMode === 'unit' && this.currentMode === 'g') {
-            $qtyInput.val(this._formatValue(500));
+            $qtyInput.val(this._formatValue(Math.max(50, Math.round(currentVal * 1000))));
         }
         this._updateUIBasedOnMode();
     },
