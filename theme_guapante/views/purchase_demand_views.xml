@@ -47,8 +47,8 @@
                                 type="object" name="action_select_deficit"
                                 invisible="state != 'loaded'">
                             <div class="o_stat_info">
-                                <field name="deficit_count" class="o_stat_value text-danger"/>
-                                <span class="o_stat_text">Con Déficit</span>
+                                <field name="deficit_product_count" class="o_stat_value text-danger"/>
+                                <span class="o_stat_text">Sin Stock</span>
                             </div>
                         </button>
                     </div>
@@ -69,7 +69,7 @@
                                 type="object"
                                 class="btn-sm btn-outline-primary me-1"/>
                         <button name="action_select_deficit"
-                                string="Solo Déficit"
+                                string="Solo Con Déficit"
                                 type="object"
                                 class="btn-sm btn-outline-danger me-1"/>
                         <button name="action_deselect_all"
@@ -80,12 +80,12 @@
 
                     <!-- Demand Lines -->
                     <notebook>
-                        <page string="Demanda" name="demand_lines">
+                        <page string="Demanda por Atributo" name="demand_lines">
                             <field name="line_ids" nolabel="1">
                                 <list editable="bottom"
-                                      decoration-danger="deficit &gt; 0"
-                                      decoration-success="deficit == 0 and pending_kg &gt; 0"
-                                      default_order="deficit desc, product_id">
+                                      decoration-danger="product_deficit &gt; 0"
+                                      decoration-success="product_deficit == 0 and pending_kg &gt; 0"
+                                      default_order="product_deficit desc, product_id">
                                     <field name="selected" string="✓"
                                            widget="boolean_toggle"/>
                                     <field name="product_id" string="Producto"/>
@@ -98,11 +98,19 @@
                                            sum="Total kg"/>
                                     <field name="packaging_name" string="Embalaje"
                                            optional="show"/>
-                                    <field name="available_qty" string="Stock"
-                                           optional="show"/>
-                                    <field name="deficit" string="Déficit (kg)"
-                                           sum="Total déficit"
-                                           optional="show"/>
+                                    <!-- PRODUCT-LEVEL: shared for all combos -->
+                                    <field name="product_stock"
+                                           string="Stock (producto)"
+                                           optional="show"
+                                           decoration-muted="True"/>
+                                    <field name="product_total_demand"
+                                           string="Demanda Total (producto)"
+                                           optional="show"
+                                           decoration-muted="True"/>
+                                    <field name="product_deficit"
+                                           string="Déficit (producto)"
+                                           optional="show"
+                                           decoration-danger="product_deficit &gt; 0"/>
                                     <field name="order_count" string="# Órdenes"
                                            optional="show"/>
                                     <field name="supplier_id" string="Proveedor"
@@ -122,12 +130,13 @@
                     <!-- Totals footer -->
                     <group invisible="state != 'loaded'">
                         <group>
-                            <field name="total_lines" string="Total líneas"/>
+                            <field name="total_lines" string="Total combinaciones"/>
                             <field name="total_products" string="Productos únicos"/>
                         </group>
                         <group>
                             <field name="total_demand_kg" string="Demanda total (kg)"/>
-                            <field name="deficit_count" string="Con déficit"/>
+                            <field name="deficit_product_count"
+                                   string="Productos con déficit"/>
                         </group>
                     </group>
                 </sheet>
@@ -147,7 +156,7 @@
                 <field name="state"/>
                 <field name="total_products" string="Productos"/>
                 <field name="total_demand_kg" string="Kg totales"/>
-                <field name="deficit_count" string="Déficit"/>
+                <field name="deficit_product_count" string="Con Déficit"/>
                 <field name="create_date" string="Creada"/>
             </list>
         </field>

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+from collections import defaultdict
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
@@ -50,8 +51,8 @@ class PurchaseDemand(models.Model):
         string='Líneas de Demanda',
         compute='_compute_totals',
     )
-    deficit_count = fields.Integer(
-        string='Con Déficit',
+    deficit_product_count = fields.Integer(
+        string='Productos con Déficit',
         compute='_compute_totals',
     )
     save_note = fields.Char(string='Resultado', readonly=True)
@@ -65,7 +66,11 @@ class PurchaseDemand(models.Model):
                 )
         return super().create(vals_list)
 
-    @api.depends('line_ids', 'line_ids.pending_kg', 'line_ids.deficit')
+    @api.depends(
+        'line_ids',
+        'line_ids.pending_kg',
+        'line_ids.product_deficit',
+    )
     def _compute_totals(self) -> None:
         for session in self:
             lines = session.line_ids
@@ -76,9 +81,11 @@ class PurchaseDemand(models.Model):
             session.total_demand_kg = round(
                 sum(lines.mapped('pending_kg')), 2,
             )
-            session.deficit_count = len(
-                lines.filtered(lambda l: l.deficit > 0)
-            )
+            # Count unique products with deficit
+            deficit_products = lines.filtered(
+                lambda l: l.product_deficit > 0
+            ).mapped('product_id')
+            session.deficit_product_count = len(deficit_products)
 
     # ─────────────────────────────────────────────────
     #  action_refresh: Load demand from confirmed SOs
@@ -87,7 +94,8 @@ class PurchaseDemand(models.Model):
         """Rebuild demand lines from all confirmed SO lines pending delivery.
 
         Groups by product_id + attribute combination (no_variant values).
-        Separates kg/g products from unit products.
+        Calculates deficit at the PRODUCT level (shared stock) and
+        distributes it correctly across attribute combos.
         """
         self.line_ids.unlink()
 
@@ -148,23 +156,19 @@ class PurchaseDemand(models.Model):
                     'pending_product_qty': 0.0,
                     'order_ids': set(),
                     'order_names': [],
-                    'line_uom_modes': [],
                     'packaging_ids': [],
                 }
 
             demand[key]['pending_product_qty'] += pending_product_qty
             demand[key]['order_ids'].add(line.order_id.id)
             demand[key]['order_names'].append(line.order_id.name)
-            demand[key]['line_uom_modes'].append(
-                line.uom_mode or 'unit'
-            )
             if line.product_packaging_id:
                 demand[key]['packaging_ids'].append(
                     line.product_packaging_id.id
                 )
 
-        # ── Build line vals ──
-        line_vals = []
+        # ── Phase 1: Build per-line data (without deficit) ──
+        raw_lines = []
         for key, data in demand.items():
             product = self.env['product.product'].browse(
                 data['product_id']
@@ -176,7 +180,6 @@ class PurchaseDemand(models.Model):
                 AttrValues = self.env[
                     'product.template.attribute.value'
                 ].browse(data['attr_value_ids'])
-                # Sort by attribute sequence for consistent display
                 sorted_vals = AttrValues.sorted(
                     key=lambda v: (
                         v.attribute_id.sequence,
@@ -190,15 +193,12 @@ class PurchaseDemand(models.Model):
 
             # Determine the dominant uom_mode
             if data['is_weight']:
-                # For weight products, the base qty is already in kg
                 uom_mode = 'kg'
                 pending_qty = round(data['pending_product_qty'], 3)
                 pending_kg = pending_qty
             else:
-                # For unit products
                 uom_mode = 'unit'
                 pending_qty = round(data['pending_product_qty'], 2)
-                # Convert to kg estimate via packaging
                 packaging = product.packaging_ids.filtered(
                     lambda p: p.purchase and p.qty > 0
                 )[:1]
@@ -212,7 +212,6 @@ class PurchaseDemand(models.Model):
             # Packaging name (most common among the lines)
             packaging_name = ''
             if data['packaging_ids']:
-                # Get most frequent packaging
                 pkg_id = max(
                     set(data['packaging_ids']),
                     key=data['packaging_ids'].count,
@@ -231,43 +230,92 @@ class PurchaseDemand(models.Model):
                 supplier_info.price if supplier_info else 0.0
             )
 
-            # Stock available
-            available_qty = product.qty_available
-
-            # Deficit calculation
-            deficit = max(0, round(pending_kg - available_qty, 3))
-
-            # Unique order names
             unique_names = sorted(set(data['order_names']))
 
-            line_vals.append({
-                'session_id': self.id,
-                'product_id': pid,
-                'attribute_combination': attr_combination or 'Sin atributos',
-                'attribute_value_ids': [
-                    (6, 0, data['attr_value_ids'])
-                ],
+            raw_lines.append({
+                'product_id': product.id,
+                'attribute_combination': (
+                    attr_combination or 'Sin atributos'
+                ),
+                'attr_value_ids': data['attr_value_ids'],
                 'uom_mode': uom_mode,
                 'pending_qty': pending_qty,
                 'pending_kg': pending_kg,
                 'packaging_name': packaging_name,
                 'order_count': len(data['order_ids']),
                 'sale_order_names': ', '.join(unique_names[:10]),
-                'available_qty': available_qty,
-                'deficit': deficit,
                 'supplier_id': supplier_id,
                 'supplier_price': supplier_price,
-                'selected': deficit > 0,  # Auto-select deficit lines
+            })
+
+        # ── Phase 2: Calculate PRODUCT-LEVEL stock & deficit ──
+        # The deficit must be at the product level because no_variant
+        # attributes share the same stock pool.
+        product_totals = defaultdict(lambda: {
+            'total_demand_kg': 0.0,
+            'available_qty': 0.0,
+        })
+        for rline in raw_lines:
+            pid = rline['product_id']
+            product_totals[pid]['total_demand_kg'] += rline['pending_kg']
+
+        # Fetch stock once per product
+        for pid in product_totals:
+            product = self.env['product.product'].browse(pid)
+            product_totals[pid]['available_qty'] = product.qty_available
+
+        # Calculate product-level deficit
+        for pid, totals in product_totals.items():
+            totals['deficit'] = round(max(
+                0,
+                totals['total_demand_kg'] - totals['available_qty'],
+            ), 3)
+
+        # ── Phase 3: Create demand lines with correct values ──
+        line_vals = []
+        for rline in raw_lines:
+            pid = rline['product_id']
+            pt = product_totals[pid]
+
+            line_vals.append({
+                'session_id': self.id,
+                'product_id': pid,
+                'attribute_combination': rline['attribute_combination'],
+                'attribute_value_ids': [
+                    (6, 0, rline['attr_value_ids'])
+                ],
+                'uom_mode': rline['uom_mode'],
+                'pending_qty': rline['pending_qty'],
+                'pending_kg': rline['pending_kg'],
+                'packaging_name': rline['packaging_name'],
+                'order_count': rline['order_count'],
+                'sale_order_names': rline['sale_order_names'],
+                'product_stock': pt['available_qty'],
+                'product_total_demand': pt['total_demand_kg'],
+                'product_deficit': pt['deficit'],
+                'supplier_id': rline['supplier_id'],
+                'supplier_price': rline['supplier_price'],
+                # Auto-select lines for products with deficit
+                'selected': pt['deficit'] > 0,
             })
 
         if line_vals:
             self.env['guapante.purchase.demand.line'].create(line_vals)
 
         self.state = 'loaded'
+        deficit_products = len([
+            pid for pid, pt in product_totals.items()
+            if pt['deficit'] > 0
+        ])
         self.save_note = (
             '✅ %d combinaciones producto-atributo cargadas '
-            'desde %d líneas de venta pendientes.'
-            % (len(line_vals), len(PendingLines))
+            'desde %d líneas de venta. %d producto%s con déficit.'
+            % (
+                len(line_vals),
+                len(PendingLines),
+                deficit_products,
+                's' if deficit_products != 1 else '',
+            )
         )
         return False
 
@@ -365,7 +413,9 @@ class PurchaseDemand(models.Model):
                     'product_id': product.id,
                     'name': description,
                     'product_qty': dline.pending_kg,
-                    'product_uom': product.uom_po_id.id or product.uom_id.id,
+                    'product_uom': (
+                        product.uom_po_id.id or product.uom_id.id
+                    ),
                     'price_unit': (
                         supplier_info.price
                         if supplier_info
@@ -416,10 +466,10 @@ class PurchaseDemand(models.Model):
         return False
 
     def action_select_deficit(self) -> bool:
-        """Select only lines with stock deficit."""
+        """Select only lines whose PRODUCT has a deficit."""
         self.line_ids.write({'selected': False})
         deficit_lines = self.line_ids.filtered(
-            lambda l: l.deficit > 0
+            lambda l: l.product_deficit > 0
         )
         if deficit_lines:
             deficit_lines.write({'selected': True})
@@ -432,10 +482,17 @@ class PurchaseDemand(models.Model):
 
 
 class PurchaseDemandLine(models.Model):
-    """One row per product + attribute combination."""
+    """One row per product + attribute combination.
+
+    IMPORTANT on stock and deficit:
+    Since no_variant attributes share the same stock pool, the
+    fields product_stock, product_total_demand and product_deficit
+    are PRODUCT-LEVEL values, not per-line. All attribute combos
+    of the same product show identical stock/deficit values.
+    """
     _name = 'guapante.purchase.demand.line'
     _description = 'Línea de Demanda de Compra'
-    _order = 'deficit desc, product_id, attribute_combination'
+    _order = 'product_deficit desc, product_id, attribute_combination'
 
     session_id = fields.Many2one(
         'guapante.purchase.demand',
@@ -458,6 +515,9 @@ class PurchaseDemandLine(models.Model):
     )
     attribute_value_ids = fields.Many2many(
         'product.template.attribute.value',
+        relation='guapante_demand_line_attr_val_rel',
+        column1='demand_line_id',
+        column2='attr_value_id',
         string='Valores de Atributo',
         readonly=True,
     )
@@ -475,8 +535,9 @@ class PurchaseDemandLine(models.Model):
         digits='Product Unit of Measure',
         readonly=True,
         help=(
-            'Cantidad total pendiente: en kg para productos de '
-            'peso, en unidades para productos unitarios.'
+            'Cantidad total pendiente de ESTA combinación de '
+            'atributos: en kg para productos de peso, en '
+            'unidades para productos unitarios.'
         ),
     )
     pending_kg = fields.Float(
@@ -499,16 +560,37 @@ class PurchaseDemandLine(models.Model):
         readonly=True,
     )
 
-    available_qty = fields.Float(
-        string='Stock',
+    # ── PRODUCT-LEVEL stock & deficit ──
+    # These fields are IDENTICAL for all lines of the same product
+    # because no_variant attributes share a single stock pool.
+    product_stock = fields.Float(
+        string='Stock Producto (kg)',
         digits=(10, 3),
         readonly=True,
+        help=(
+            'Stock disponible del PRODUCTO completo '
+            '(compartido entre todas las combinaciones de atributos).'
+        ),
     )
-    deficit = fields.Float(
-        string='Déficit (kg)',
+    product_total_demand = fields.Float(
+        string='Demanda Total Producto (kg)',
         digits=(10, 3),
         readonly=True,
-        help='Faltante: demanda_kg - stock_disponible.',
+        help=(
+            'Demanda TOTAL del producto sumando TODAS las '
+            'combinaciones de atributos.'
+        ),
+    )
+    product_deficit = fields.Float(
+        string='Déficit Producto (kg)',
+        digits=(10, 3),
+        readonly=True,
+        help=(
+            'Faltante a nivel de PRODUCTO: '
+            'demanda_total_producto - stock_disponible. '
+            'Todas las combinaciones del mismo producto '
+            'comparten este valor.'
+        ),
     )
 
     supplier_id = fields.Many2one(
