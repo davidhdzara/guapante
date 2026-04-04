@@ -162,8 +162,9 @@ class SaleOrder(models.Model):
         Orders that already have a sequence keep it; new orders receive
         the next number from an ir.sequence (concurrency-safe).
         """
-        # Buscar solo pickings PICK (internal/Recolectar) para la fecha.
-        # El Preparation Day solo opera sobre el PICK step.
+        # Buscar solo pickings PICK (internal/Recolectar) PENDIENTES.
+        # Excluir done/cancel: órdenes ya entregadas no deben recibir
+        # un nuevo número de caja (bug S00204/S00220).
         dt_start = fields.Datetime.to_datetime(delivery_date)
         dt_end = fields.Datetime.to_datetime(
             delivery_date + timedelta(days=1)
@@ -172,6 +173,7 @@ class SaleOrder(models.Model):
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),
             ('picking_type_code', '=', 'internal'),
+            ('state', 'not in', ('done', 'cancel')),
             ('sale_id', '!=', False),
             ('sale_id.state', 'in', ('sale', 'done')),
         ])
