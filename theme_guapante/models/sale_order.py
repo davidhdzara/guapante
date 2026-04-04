@@ -39,6 +39,31 @@ class SaleOrder(models.Model):
     def action_confirm(self):
         return super().action_confirm()
 
+    def _prepare_invoice(self):
+        """Ensure invoice is always created for the commercial partner (parent).
+
+        eCommerce users authenticate with a child contact (type=delivery),
+        so the SO's partner_id is the child.  The child does NOT carry fiscal
+        data (NIT, fiscal responsibilities, regime) required by DIAN
+        electronic invoicing.  By forcing the invoice partner to the
+        commercial partner we guarantee:
+          - Correct NIT and fiscal information on the invoice
+          - partner_shipping_id (delivery address) remains untouched
+          - No manual replication of fiscal data to child contacts
+        """
+        invoice_vals = super()._prepare_invoice()
+        commercial = self.partner_id.commercial_partner_id
+        if self.partner_id.id != commercial.id:
+            invoice_vals['partner_id'] = commercial.id
+            _logger.info(
+                'Guapante: invoice partner switched from child [%s] %s '
+                'to commercial [%s] %s for %s',
+                self.partner_id.id, self.partner_id.name,
+                commercial.id, commercial.name,
+                self.name,
+            )
+        return invoice_vals
+
     @api.model
     def _guapante_daily_sequence_code(
         self, company_id: int, delivery_date
