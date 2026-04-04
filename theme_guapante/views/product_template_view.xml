@@ -15,6 +15,37 @@
         </field>
     </record>
 
+    <!-- Add "Exclusivo B2B" toggle + config to product form -->
+    <record id="product_template_form_view_b2b" model="ir.ui.view">
+        <field name="name">product.template.form.b2b</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='options']" position="inside">
+                <span class="d-inline-flex">
+                    <field name="is_b2b_exclusive" widget="boolean_toggle"/>
+                    <label for="is_b2b_exclusive" string="Exclusivo B2B 🔒"/>
+                </span>
+            </xpath>
+            <xpath expr="//page[@name='sales']//group" position="after">
+                <group name="b2b_exclusivity" string="Exclusividad B2B eCommerce" invisible="not is_b2b_exclusive">
+                    <field name="b2b_exclusive_customer_ids" widget="many2many_tags"
+                           placeholder="Añadir clientes permitidos..."
+                           options="{'no_create': True}"/>
+                    <field name="b2b_replaces_product_ids" widget="many2many_tags"
+                           placeholder="Productos que este reemplaza para los clientes VIP..."
+                           options="{'no_create': True}"
+                           domain="[('is_b2b_exclusive', '=', False), ('id', '!=', id)]"/>
+                    <div colspan="2" class="text-muted">
+                        <em>Los clientes listados arriba verán este producto exclusivo en la tienda.
+                        Si se indican productos a reemplazar, esos productos se ocultarán para estos clientes.</em>
+                    </div>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
     <!-- Add "De Temporada" column and filter to product list view -->
     <record id="product_template_list_view_seasonal" model="ir.ui.view">
         <field name="name">product.template.list.seasonal</field>
@@ -23,11 +54,12 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='list_price']" position="after">
                 <field name="is_seasonal" string="Temporada" widget="boolean_toggle" optional="show"/>
+                <field name="is_b2b_exclusive" string="VIP B2B 🔒" widget="boolean_toggle" optional="show"/>
             </xpath>
         </field>
     </record>
 
-    <!-- Add filter "De Temporada" to product search view -->
+    <!-- Add filters to product search view -->
     <record id="product_template_search_view_seasonal" model="ir.ui.view">
         <field name="name">product.template.search.seasonal</field>
         <field name="model">product.template</field>
@@ -35,6 +67,7 @@
         <field name="arch" type="xml">
             <xpath expr="//filter[@name='published']" position="after">
                 <filter name="seasonal" string="De Temporada" domain="[('is_seasonal', '=', True)]"/>
+                <filter name="b2b_exclusive" string="Exclusivo B2B" domain="[('is_b2b_exclusive', '=', True)]"/>
             </xpath>
         </field>
     </record>

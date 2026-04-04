@@ -18,9 +18,9 @@ Esta skill es **OBLIGATORIA** antes de modificar cualquier archivo relacionado c
 | `theme_guapante/controllers/shop.py` | Override del controlador `WebsiteSale`. Intercepta `/shop/cart/update_json` para conversión de unidades y persistencia de `uom_mode` y `product_packaging_id`. |
 | `theme_guapante/models/sale_order.py` | Override de `sale.order`: soporte de cantidades fraccionarias (`_cart_update`), matcher de líneas con separación por embalaje (`_cart_find_product_line`), y `cart_quantity` con `ceil()`. |
 | `theme_guapante/models/sale_order_line.py` | Campo custom `uom_mode` (`g`, `kg`, `unit`) en la línea de venta. |
-| `theme_guapante/models/product_packaging.py` | Extiende `product.packaging` con `is_b2b_exclusive` y `b2b_exclusive_customer_ids` para embalajes VIP. |
+| `theme_guapante/models/product_template.py` | Extiende `product.template` con `is_b2b_exclusive`, `b2b_exclusive_customer_ids` y `b2b_replaces_product_ids` para productos VIP. |
 | `theme_guapante/views/shop/cart.xml` | Template del carrito personalizado. Muestra packaging name solo cuando `uom_mode == 'unit'`. |
-| `theme_guapante/views/product_packaging_views.xml` | Inyecta columnas B2B en la tabla de embalaje del producto (toggle VIP + clientes permitidos). |
+| `theme_guapante/views/product_template_view.xml` | Inyecta toggle VIP B2B + configuración de clientes/reemplazos en el formulario de producto. |
 
 ---
 
@@ -170,12 +170,20 @@ Luego ejecuta `analyze_cart.py` (script de diagnóstico en la raíz del proyecto
 
 ---
 
-## 5.5 Arquitectura B2B Exclusive Packagings
+## 5.5 Arquitectura VIP B2B — Exclusividad a Nivel Producto
 
-Los embalajes pueden marcarse como exclusivos B2B. El filtrado ocurre en:
-- `get_product_packagings()` → selector de embalaje en página de producto
-- `search_products()` → resultados del buscador rápido
-- `_cart_find_product_line()` → separación de líneas en el carrito
+La exclusividad VIP opera a nivel `product.template` (NO packaging). Campos clave:
+- `is_b2b_exclusive` (Boolean): ¿Es producto exclusivo?
+- `b2b_exclusive_customer_ids` (Many2many → `res.partner`): Clientes autorizados
+- `b2b_replaces_product_ids` (Many2many → `product.template`): Productos que reemplaza
+
+**Método centralizado de filtrado:**
+> `_get_b2b_product_filter()` en `shop.py` retorna `(exclude_ids, hidden_ids)`. Se usa en `_get_shop_domain()` (SQL), `search_products()` y `product()` (redirect).
+
+**Reglas de visibilidad:**
+- **Público**: No ve ningún producto VIP
+- **VIP autorizado**: Ve el producto VIP; si tiene `b2b_replaces_product_ids`, los productos generales listados se ocultan
+- **No autorizado**: No ve el producto VIP; si accede por URL directa → redirect `/shop`
 
 **Regla de oro de separación de líneas:**
 > Solo separar líneas por `product_packaging_id` cuando el valor recibido en `kwargs` sea un entero **mayor que cero**. Si es `None` o `0`, dejar que Odoo fusione normalmente.
@@ -187,7 +195,7 @@ Los embalajes pueden marcarse como exclusivos B2B. El filtrado ocurre en:
 > La etiqueta del embalaje en `cart.xml` debe condicionarse con `line_display.get('mode') == 'unit'`. Si el usuario pidió por kg/g, Odoo internamente puede asignar un packaging pero no debe mostrarse al usuario.
 
 **⚠️ Esta regla aplica a TODA la cadena del pedido:**
-> No solo al carrito (`cart.xml`). También aplica a cualquier módulo backend que muestre información de embalaje (ej. `preparation_day.py`). Ver documento de aprendizaje completo abajo.
+> No solo al carrito (`cart.xml`). También aplica a cualquier módulo backend que muestre información de embalaje (ej. `preparation_day.py`).
 
 ---
 

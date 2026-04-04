@@ -360,6 +360,40 @@ class GuapanteWebsiteSale(WebsiteSale):
             response.qcontext['uom_display'] = self._build_uom_display(order)
         return response
 
+    # ── VIP B2B: Centralized product filter ──────────────────────
+
+    def _get_b2b_product_filter(self):
+        """Compute product IDs to exclude from shop/search for the current user.
+
+        Returns:
+            tuple: (exclude_ids, hidden_ids)
+                - exclude_ids: VIP products this user is NOT authorized to see.
+                - hidden_ids: General products replaced by VIP products this user CAN see.
+        """
+        all_vip = request.env['product.template'].sudo().search([
+            ('is_b2b_exclusive', '=', True),
+        ])
+
+        if not all_vip:
+            return ([], [])
+
+        user = request.env.user
+        if user._is_public():
+            # Public users see NO VIP products
+            return (all_vip.ids, [])
+
+        partner_id = user.partner_id.commercial_partner_id.id
+
+        my_vip = all_vip.filtered(
+            lambda p: partner_id in p.b2b_exclusive_customer_ids.ids
+        )
+        not_my_vip = all_vip - my_vip
+
+        # General products that my VIP products replace
+        hidden_ids = my_vip.mapped('b2b_replaces_product_ids').ids
+
+        return (not_my_vip.ids, hidden_ids)
+
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):
         """Override shop to pass is_seasonal flag."""
@@ -369,15 +403,33 @@ class GuapanteWebsiteSale(WebsiteSale):
         return response
 
     def _get_shop_domain(self, search, category, attrib_values, search_in_description=True):
-        """MED-05 FIX: Add is_seasonal to search domain BEFORE pagination."""
+        """Inject VIP B2B + is_seasonal filters into the shop SQL domain."""
         domain = super()._get_shop_domain(search, category, attrib_values, search_in_description)
         if request.params.get('is_seasonal'):
             domain.append(('is_seasonal', '=', True))
+
+        # ── VIP B2B: SQL-level exclusion for performance ──
+        exclude_ids, hidden_ids = self._get_b2b_product_filter()
+        all_invisible = list(set(exclude_ids + hidden_ids))
+        if all_invisible:
+            domain.append(('id', 'not in', all_invisible))
+
         return domain
 
     @http.route()
     def product(self, product, category='', search='', **kwargs):
-        """ Override to inject categories sidebar context into product page. """
+        """ Override to inject categories sidebar + VIP B2B access control. """
+
+        # ── VIP B2B: Block unauthorized access to exclusive products ──
+        tmpl = product if hasattr(product, 'is_b2b_exclusive') else product.product_tmpl_id
+        if tmpl.sudo().is_b2b_exclusive:
+            user = request.env.user
+            if user._is_public():
+                return request.redirect('/shop')
+            partner_id = user.partner_id.commercial_partner_id.id
+            if partner_id not in tmpl.sudo().b2b_exclusive_customer_ids.ids:
+                return request.redirect('/shop')
+
         # 1. Call super to get standard qcontext
         response = super().product(product, category=category, search=search, **kwargs)
         
@@ -385,33 +437,18 @@ class GuapanteWebsiteSale(WebsiteSale):
         qcontext = response.qcontext
 
         # 3. Inject Categories for Sidebar
-        # Logic copied from WebsiteSale.shop to ensure consistency
         Category = request.env['product.public.category']
         website = request.website
-        
-        # Get root categories (same as in /shop)
-        search_product = qcontext.get('search_product')
-        if search_product:
-            # If searching, show all categories (standard odoo behavior)
-            categories = Category.search([('parent_id', '=', False)] + website.website_domain())
-        else:
-            categories = Category.search([('parent_id', '=', False)] + website.website_domain())
-            
+        categories = Category.search([('parent_id', '=', False)] + website.website_domain())
         qcontext['categories'] = categories
         
         # 4. Ensure 'category' is a recordset for the sidebar active state
-        # The standard controller might define 'category' as an ID, recordset, or None/False.
-        # Our XML template expects a recordset to check "c.id == category.id"
         current_category = qcontext.get('category')
-        
         if not current_category:
-            # If no category came from URL, try to pick one from the product
-            # to highlight it in the sidebar (UX improvement)
             if product.public_categ_ids:
                 qcontext['category'] = product.public_categ_ids[0]
         elif not isinstance(current_category, models.Model):
-             # Ensure it's a recordset if it came as ID (unlikely in Odoo 18 but safe)
-             qcontext['category'] = Category.browse(int(current_category))
+              qcontext['category'] = Category.browse(int(current_category))
 
         return response
 
@@ -521,8 +558,9 @@ class GuapanteWebsiteSale(WebsiteSale):
     @http.route(['/shop/product/packagings/<int:product_id>'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def get_product_packagings(self, product_id, **kwargs):
         """
-        Get packagings for a specific product variant
-        Returns list of packagings with id, name, qty
+        Get packagings for a specific product variant.
+        Returns list of packagings with id, name, qty.
+        VIP exclusivity now lives at the product level, not packaging level.
         """
         product = request.env['product.product'].sudo().browse(product_id)
         
@@ -531,16 +569,6 @@ class GuapanteWebsiteSale(WebsiteSale):
         
         # Get packagings that are enabled for sales
         packagings = product.packaging_ids.filtered(lambda p: p.sales)
-        
-        # Filter out B2B exclusive packagings based on user
-        user = request.env.user
-        if user._is_public():
-            packagings = packagings.filtered(lambda p: not p.is_b2b_exclusive)
-        else:
-            partner_id = user.partner_id.commercial_partner_id.id
-            packagings = packagings.filtered(
-                lambda p: not p.is_b2b_exclusive or partner_id in p.b2b_exclusive_customer_ids.ids
-            )
         
         result = []
         for pkg in packagings:
@@ -561,6 +589,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         """
         Search products using Odoo's native fuzzy search engine.
         Returns enriched product data for the mobile search overlay.
+        VIP B2B filtering is applied at the product level.
         """
         if not query or len(query.strip()) < 2:
             return {'products': [], 'count': 0}
@@ -577,6 +606,13 @@ class GuapanteWebsiteSale(WebsiteSale):
             )
 
             _logger.info("Search '%s': found %s templates", query, product_count)
+
+            # ── VIP B2B: Filter search results at product level ──
+            exclude_ids, hidden_ids = self._get_b2b_product_filter()
+            all_invisible = set(exclude_ids + hidden_ids)
+            if all_invisible:
+                search_result = search_result.filtered(lambda t: t.id not in all_invisible)
+                product_count = len(search_result)
 
             # Limit results
             templates = search_result[:limit]
@@ -598,20 +634,9 @@ class GuapanteWebsiteSale(WebsiteSale):
                     and uom.category_id.id == weight_categ_id
                 )
 
-                # Get sales-enabled packagings
+                # Get sales-enabled packagings (no packaging-level VIP filter)
                 packagings_data = []
                 sales_packagings = variant.sudo().packaging_ids.filtered(lambda p: p.sales)
-                
-                # Filter out B2B exclusive packagings based on user
-                user = request.env.user
-                if user._is_public():
-                    sales_packagings = sales_packagings.filtered(lambda p: not p.is_b2b_exclusive)
-                else:
-                    partner_id = user.partner_id.commercial_partner_id.id
-                    sales_packagings = sales_packagings.filtered(
-                        lambda p: not p.is_b2b_exclusive or partner_id in p.b2b_exclusive_customer_ids.ids
-                    )
-                    
                 has_packaging = bool(sales_packagings)
                 for pkg in sales_packagings:
                     packagings_data.append({
@@ -622,10 +647,8 @@ class GuapanteWebsiteSale(WebsiteSale):
 
                 # Inject variants if product has multiple choices (e.g. Madurez)
                 variants_list = []
-                # Ensure we only show dropdown if there's an actual choice
                 if len(tmpl.product_variant_ids) > 1:
                     for v in tmpl.product_variant_ids:
-                        # Extract the variant name (e.g. "Verde" instead of "Plátano (Verde)")
                         var_name = v.display_name.replace(tmpl.name, '').strip(' ()')
                         if not var_name:
                             var_name = 'Estándar'
