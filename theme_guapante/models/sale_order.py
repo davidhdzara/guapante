@@ -3,6 +3,8 @@ import logging
 import math
 from datetime import timedelta
 
+import pytz
+
 from psycopg2 import IntegrityError
 
 from odoo import api, fields, models
@@ -82,10 +84,8 @@ class SaleOrder(models.Model):
         Includes ALL states (even cancelled) to prevent box number
         reuse after order cancellation.
         """
-        dt_start = fields.Datetime.to_datetime(delivery_date)
-        dt_end = fields.Datetime.to_datetime(
-            delivery_date + timedelta(days=1)
-        )
+        from .preparation_day import _date_to_utc_range
+        dt_start, dt_end = _date_to_utc_range(self.env, delivery_date)
         cid = company_id if company_id else None
         domain_company = (
             [('company_id', '=', cid)]
@@ -190,10 +190,8 @@ class SaleOrder(models.Model):
         # Buscar solo pickings PICK (internal/Recolectar) PENDIENTES.
         # Excluir done/cancel: órdenes ya entregadas no deben recibir
         # un nuevo número de caja (bug S00204/S00220).
-        dt_start = fields.Datetime.to_datetime(delivery_date)
-        dt_end = fields.Datetime.to_datetime(
-            delivery_date + timedelta(days=1)
-        )
+        from .preparation_day import _date_to_utc_range
+        dt_start, dt_end = _date_to_utc_range(self.env, delivery_date)
         Pickings = self.env['stock.picking'].sudo().search([
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),

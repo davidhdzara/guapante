@@ -1,10 +1,38 @@
 # -*- coding: utf-8 -*-
 import logging
+from datetime import timedelta
+
+import pytz
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
+
+# Zona horaria por defecto para operaciones de Guapante.
+_DEFAULT_TZ = 'America/Bogota'
+
+
+def _date_to_utc_range(env, date_val):
+    """Convert a naive date into a UTC datetime range respecting
+    the user's (or default) timezone.
+
+    Returns (dt_start_utc, dt_end_utc) where:
+      - dt_start_utc = midnight of *date_val* in local tz → UTC
+      - dt_end_utc   = midnight of *date_val + 1 day* in local tz → UTC
+
+    Example for America/Bogota (UTC-5):
+      date_val = 2026-04-04
+      → dt_start = 2026-04-04 05:00:00 UTC
+      → dt_end   = 2026-04-05 05:00:00 UTC
+    """
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    naive_start = fields.Datetime.to_datetime(date_val)
+    naive_end = fields.Datetime.to_datetime(date_val + timedelta(days=1))
+    dt_start = local_tz.localize(naive_start).astimezone(pytz.utc).replace(tzinfo=None)
+    dt_end = local_tz.localize(naive_end).astimezone(pytz.utc).replace(tzinfo=None)
+    return dt_start, dt_end
 
 
 class PreparationDayLog(models.Model):
@@ -363,9 +391,8 @@ class PreparationDay(models.Model):
                 session.draft_count = 0
                 continue
 
-            dt_start = fields.Datetime.to_datetime(session.date)
-            dt_end = fields.Datetime.to_datetime(
-                fields.Date.add(session.date, days=1)
+            dt_start, dt_end = _date_to_utc_range(
+                self.env, session.date,
             )
 
             # Pickings PICK (internal) de órdenes activas para la fecha.
@@ -445,10 +472,7 @@ class PreparationDay(models.Model):
         # porque el Preparation Day es para la etapa de alistamiento,
         # NO para la entrega (OUT). Si el warehouse es 1-step (solo
         # OUT), se usa outgoing como fallback.
-        dt_start = fields.Datetime.to_datetime(self.date)
-        dt_end = fields.Datetime.to_datetime(
-            fields.Date.add(self.date, days=1)
-        )
+        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
         base_domain = [
             ('scheduled_date', '>=', dt_start),
             ('scheduled_date', '<', dt_end),
