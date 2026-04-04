@@ -657,8 +657,11 @@ class PreparationDay(models.Model):
     def action_save_line_weight(self, line_id: int) -> bool:
         """Called when user sets weight (via JS Enter or manual button).
 
-        Registers the real weight in stock.move.line and marks the
-        preparation line as done.
+        Registers the real weight in stock.move.line, marks the preparation
+        line as done, and auto-validates the PICK + OUT pickings for the
+        order when all its lines are weighed. Auto-validation ensures
+        qty_delivered is updated immediately so the order can be invoiced
+        without manual warehouse steps.
         """
         Line = self.env['guapante.preparation.day.line'].browse(line_id)
         if not Line or Line.is_done or Line.actual_kg <= 0:
@@ -733,7 +736,7 @@ class PreparationDay(models.Model):
             ['amount_untaxed', 'amount_tax', 'amount_total']
         )
 
-        # Auto-finish si ya no quedan líneas pendientes
+        # Auto-finish si ya no quedan líneas pendientes en toda la sesión
         pending_total = self.env[
             'guapante.preparation.day.line'
         ].search_count([

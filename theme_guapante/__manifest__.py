@@ -3,7 +3,7 @@
     'description': 'Modern, fresh theme for Guapante based on Odoo 18 best practices.',
     'category': 'Theme/eCommerce',
     'summary': 'Fresh, Organic, Modern',
-    'version': '2.0.15',
+    'version': '2.0.8',
     'images': [
         'static/description/guapante_preview.png',
         'static/description/icon.png',
@@ -11,9 +11,9 @@
     'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'stock_picking_batch', 'fleet', 'account', 'sale', 'purchase'],
     'data': [
         'security/ir.model.access.csv',
+        'data/stock_config.xml',
         'views/sale_order_views.xml',
         'views/purchase_order_views.xml',
-        'views/purchase_demand_views.xml',
         'report/sale_report_templates.xml',
         'report/purchase_report_templates.xml',
         'views/preparation_day_views.xml',
@@ -98,7 +98,9 @@
             'theme_guapante/static/src/js/seasonal_harvest.js',  # Seasonal products dynamic loader
             'theme_guapante/static/src/js/search_modal.js',  # Full-screen search overlay
         ],
-        'web.assets_backend': [],
+        'web.assets_backend': [
+            'theme_guapante/static/src/js/preparation_list.js',
+        ],
     },
     'application': False,
     'auto_install': False,
