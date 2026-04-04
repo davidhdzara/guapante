@@ -254,6 +254,91 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         $info.addClass('d-none');
     },
 
+    _getActivelySelectedVariant: async function ($form) {
+        var combination = [];
+
+        // ── Strategy 1: Global search (product_layout_fix.js moves elements) ──
+        $('.js_add_cart_variants input[type="radio"]:checked').each(function() {
+            var val = $(this).val();
+            if (val) combination.push(parseInt(val));
+        });
+        $('.js_add_cart_variants select').each(function() {
+            var val = $(this).val();
+            if (val && val !== "") combination.push(parseInt(val));
+        });
+
+        // ── Strategy 2: Broader search if Strategy 1 found nothing ──
+        if (combination.length === 0) {
+            console.log("GUAPANTE-DEBUG: Strategy 1 empty, trying broader selectors");
+            // Try variant_attribute containers directly
+            $('.variant_attribute input[type="radio"]:checked, .js_variant_change:checked').each(function() {
+                var val = $(this).val();
+                if (val && !isNaN(parseInt(val))) combination.push(parseInt(val));
+            });
+            // Try selects inside variant containers
+            $('.variant_attribute select, select.js_variant_change').each(function() {
+                var val = $(this).val();
+                if (val && val !== "" && !isNaN(parseInt(val))) combination.push(parseInt(val));
+            });
+        }
+
+        // ── Strategy 3: Scan active labels (Odoo 18 pills) ──
+        if (combination.length === 0) {
+            console.log("GUAPANTE-DEBUG: Strategy 2 empty, trying active labels");
+            $('ul.js_add_cart_variants label.active input, .variant_attribute label.active input').each(function() {
+                var val = $(this).val();
+                if (val && !isNaN(parseInt(val))) combination.push(parseInt(val));
+            });
+        }
+
+        console.log("GUAPANTE-DEBUG: Combination collected:", JSON.stringify(combination));
+
+        // ── CRITICAL FIX: If combination is empty, do NOT call the API. ──
+        // Calling get_combination_info with combination=[] always returns the
+        // DEFAULT variant (Verde/Mediano), which masks the user's real selection.
+        // Instead, return null to let the fallback logic use Odoo's native
+        // .product_id hidden input, which IS correctly updated by Odoo's JS.
+        if (combination.length === 0) {
+            console.warn("GUAPANTE-DEBUG: ⚠️ Combination empty — skipping API, will use Odoo native .product_id");
+            return null;
+        }
+
+        var pt_id = $form.find('.product_template_id').val();
+        if (!pt_id) {
+            // Try global search
+            pt_id = $('.product_template_id').first().val();
+        }
+        if (!pt_id) {
+            console.warn("GUAPANTE-DEBUG: ⚠️ product_template_id not found");
+            return null;
+        }
+
+        try {
+            var data = await $.ajax({
+                url: '/website_sale/get_combination_info',
+                method: 'POST',
+                dataType: 'json',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'call',
+                    params: {
+                        product_template_id: parseInt(pt_id),
+                        product_id: false,
+                        combination: combination,
+                        add_qty: 1
+                    }
+                })
+            });
+            var result = (data && data.result) ? data.result : data;
+            console.log("GUAPANTE-DEBUG: ✅ Resolved Combination Info -> product_id:", result.product_id, "display:", result.display_name);
+            if (result && result.product_id) return result.product_id;
+        } catch (e) {
+            console.error("GUAPANTE-DEBUG: ❌ Error resolviendo combinación:", e);
+        }
+        return null;
+    },
+
     _onAddToCart: async function (ev) {
         ev.preventDefault();
         const $btn = $(ev.currentTarget);
@@ -298,8 +383,35 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         if (!$mainProduct.length) {
             $mainProduct = $('.js_product').first();
         }
-        let productIdStr = $mainProduct.find('.product_id').val();
-        const productId = productIdStr || this.$el.data('product-id');
+
+        $btn.addClass('disabled').html('<i class="fa fa-spinner fa-spin me-2"></i> Buscando...');
+
+        // ── Variant Resolution: multi-layer fallback ──
+        // Layer 1: Our custom API resolution (uses PTAV combination)
+        let resolvedProductId = await this._getActivelySelectedVariant($mainProduct);
+        // Layer 2: Odoo's native hidden input (updated by _onChangeCombination JS)
+        let odooNativeId = $mainProduct.find('.product_id').val() || $('.product_id').first().val();
+        // Layer 3: Static data attribute from page load (always the DEFAULT variant)
+        let containerDefault = this.$el.data('product-id');
+
+        // ── CRITICAL FIX: Smart product ID selection ──
+        // If our API resolution returned null (empty combination), trust Odoo's native
+        // .product_id which IS correctly updated by the framework on variant change.
+        // Only fall back to containerDefault as absolute last resort.
+        let productId;
+        if (resolvedProductId && resolvedProductId != containerDefault) {
+            // API resolved a NON-default variant → trust it
+            productId = resolvedProductId;
+            console.log("GUAPANTE-DEBUG: Using API-resolved variant:", productId);
+        } else if (odooNativeId && odooNativeId != '0' && odooNativeId != 'false') {
+            // Odoo's native handler updated .product_id → use it
+            productId = parseInt(odooNativeId);
+            console.log("GUAPANTE-DEBUG: Using Odoo native .product_id:", productId);
+        } else {
+            // Absolute fallback
+            productId = resolvedProductId || containerDefault;
+            console.log("GUAPANTE-DEBUG: Using fallback:", productId);
+        }
         
         console.log("GUAPANTE-DEBUG: productId=", productId, "mode=", this.currentMode);
 
@@ -334,14 +446,16 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         console.log("GUAPANTE-DEBUG: ✅ SENDING → product_id=", productId, "add_qty=", finalQty, "uom=", uomMode, "pkg=", packagingId);
 
         // ── CRITICAL FIX: Collect no_variant attribute values directly from DOM ──
-        // Madurez and Tamaño are 'no_variant' attributes: they don't create separate
-        // product.product records. The selected PTAV IDs must be sent as
-        // no_variant_attribute_value_ids so they appear on the sale order line.
+        // These attributes (Madurez, Tamaño) are configured as 'no_variant' in Odoo,
+        // meaning they DON'T create separate product.product records. Instead, the
+        // selected PTAV IDs must be sent as no_variant_attribute_value_ids so they
+        // appear correctly on the sale order line description.
         let noVariantIds = [];
         $('.js_add_cart_variants input.no_variant:checked').each(function() {
             var val = parseInt($(this).val());
             if (!isNaN(val)) noVariantIds.push(val);
         });
+        // Fallback: also try broader selector in case class name differs
         if (noVariantIds.length === 0) {
             $('input.js_variant_change[class*="no_variant"]:checked').each(function() {
                 var val = parseInt($(this).val());

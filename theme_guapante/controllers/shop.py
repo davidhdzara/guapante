@@ -673,6 +673,67 @@ class GuapanteWebsiteSale(WebsiteSale):
             'image_url': '/web/image/product.public.category/%d/image_128' % c.id if c.image_128 else '',
         } for c in categs]
 
+    @http.route(['/shop/debug_product/<int:tmpl_id>'], type='http', auth="public", website=True, sitemap=False)
+    def debug_product(self, tmpl_id, **kwargs):
+        """
+        Diagnostic endpoint: shows how attributes are configured for a product template.
+        Reveals if attributes create real variants (product.product) or are no_variant.
+        Usage: /shop/debug_product/123
+        """
+        tmpl = request.env['product.template'].sudo().browse(tmpl_id)
+        if not tmpl.exists():
+            return request.make_response(f"Product template {tmpl_id} not found.", headers=[('Content-Type', 'text/plain')])
+
+        output = []
+        output.append(f"═══════════════════════════════════════════════════")
+        output.append(f"  DIAGNÓSTICO DE PRODUCTO: {tmpl.name}")
+        output.append(f"  Template ID: {tmpl.id}")
+        output.append(f"  UoM: {tmpl.uom_id.name} (Cat: {tmpl.uom_id.category_id.name})")
+        output.append(f"═══════════════════════════════════════════════════\n")
+
+        # Attribute Lines
+        output.append(f"─── ATRIBUTOS CONFIGURADOS ({len(tmpl.attribute_line_ids)}) ───")
+        for line in tmpl.attribute_line_ids:
+            attr = line.attribute_id
+            output.append(f"\n  📋 Atributo: {attr.name}")
+            output.append(f"     create_variant: {attr.create_variant}")
+            output.append(f"     display_type: {attr.display_type}")
+            output.append(f"     Valores configurados:")
+            for val in line.value_ids:
+                output.append(f"       - {val.name} (ID: {val.id})")
+            # Product Template Attribute Values (ptav)
+            ptavs = line.product_template_value_ids
+            output.append(f"     PTAVs (product.template.attribute.value):")
+            for ptav in ptavs:
+                output.append(f"       - ptav_id={ptav.id} → valor='{ptav.name}' is_active={ptav.ptav_active} price_extra={ptav.price_extra}")
+
+        # Product Variants
+        variants = tmpl.product_variant_ids
+        output.append(f"\n─── VARIANTES product.product ({len(variants)}) ───")
+        for v in variants:
+            attrs_desc = []
+            for ptav in v.product_template_attribute_value_ids:
+                attrs_desc.append(f"{ptav.attribute_id.name}={ptav.name}(ptav:{ptav.id})")
+            output.append(f"  🔹 variant_id={v.id}: {v.display_name}")
+            output.append(f"     Combinación: {', '.join(attrs_desc) if attrs_desc else 'SIN ATRIBUTOS'}")
+
+        # Conclusión
+        output.append(f"\n─── CONCLUSIÓN ───")
+        no_var_attrs = [l for l in tmpl.attribute_line_ids if l.attribute_id.create_variant == 'no_variant']
+        var_attrs = [l for l in tmpl.attribute_line_ids if l.attribute_id.create_variant != 'no_variant']
+        if no_var_attrs:
+            output.append(f"  ⚠️  ATRIBUTOS NO_VARIANT (NO crean product.product, se envían via no_variant_attribute_values):")
+            for l in no_var_attrs:
+                output.append(f"       → {l.attribute_id.name}")
+            output.append(f"  👉 Si estos llegan vacíos al carrito, es porque el JS NO los está recolectando.")
+        if var_attrs:
+            output.append(f"  ✅ ATRIBUTOS QUE CREAN VARIANTES (cada combinación = product.product distinto):")
+            for l in var_attrs:
+                output.append(f"       → {l.attribute_id.name} (create_variant={l.attribute_id.create_variant})")
+            output.append(f"  👉 Si estos no cambian, es porque el product_id que se envía al carrito es siempre el default.")
+
+        return request.make_response("\n".join(output), headers=[('Content-Type', 'text/plain; charset=utf-8')])
+
     @http.route(['/shop/debug_cart'], type='http', auth="public", website=True, sitemap=False)
     def debug_cart(self, **kwargs):
         """
@@ -687,23 +748,36 @@ class GuapanteWebsiteSale(WebsiteSale):
         output.append(f"   Cliente: {order.partner_id.name}\n")
         
         for line in order.order_line:
-            output.append(f"--- LÍNEA {line.id} ---")
-            output.append(f"Producto     : {line.product_id.display_name} (ID: {line.product_id.id})")
-            output.append(f"Cantidad     : {line.product_uom_qty} {line.product_uom.name}")
-            output.append(f"Modo UoM     : {getattr(line, 'uom_mode', 'N/A')}")
+            if line.display_type:
+                continue
+            product = line.product_id
+            tmpl = product.product_tmpl_id
+            output.append(f"═══ LÍNEA {line.id} ═══")
+            output.append(f"Producto      : {product.display_name}")
+            output.append(f"product_id    : {product.id}")
+            output.append(f"template_id   : {tmpl.id}  → Diagnóstico: /shop/debug_product/{tmpl.id}")
+            output.append(f"Cantidad      : {line.product_uom_qty} {line.product_uom.name}")
+            output.append(f"Modo UoM      : {getattr(line, 'uom_mode', 'N/A')}")
             pkg = getattr(line, 'product_packaging_id', False)
-            output.append(f"Empaque ID   : {pkg.id if pkg else 'Ninguno'} ({pkg.name if pkg else ''})")
+            output.append(f"Empaque       : {pkg.id if pkg else 'Ninguno'} ({pkg.name if pkg else ''})")
             
-            # Atributos nativos
+            # Atributos de la variante (los que CREAN variantes)
+            variant_ptavs = product.product_template_attribute_value_ids
+            if variant_ptavs:
+                output.append(f"Variante(PTAV): {[(ptav.attribute_id.name, ptav.name, ptav.id) for ptav in variant_ptavs]}")
+            
+            # Atributos nativos no_variant en la línea de venta
             if hasattr(line, 'product_no_variant_attribute_value_ids'):
                 no_vars = line.product_no_variant_attribute_value_ids
-                output.append(f"Atrib(NoVar) : IDs: {no_vars.ids} -> {[a.display_name for a in no_vars]}")
+                output.append(f"NoVariant     : IDs: {no_vars.ids} → {[(a.attribute_id.name, a.name) for a in no_vars]}")
+                if not no_vars:
+                    output.append(f"  ⚠️  VACÍO - Los atributos no_variant NO llegaron al carrito")
             
             if hasattr(line, 'product_custom_attribute_value_ids'):
                 cus_vars = line.product_custom_attribute_value_ids
-                output.append(f"Atrib(Custom): IDs: {cus_vars.ids}")
+                output.append(f"Custom        : IDs: {cus_vars.ids}")
                 
-            output.append(f"Desc interna : {line.name[:60]}")
+            output.append(f"Descripción   : {line.name[:80]}")
             output.append("")
 
         return request.make_response("\n".join(output), headers=[('Content-Type', 'text/plain; charset=utf-8')])

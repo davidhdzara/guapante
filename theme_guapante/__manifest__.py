@@ -97,9 +97,7 @@
             'theme_guapante/static/src/js/seasonal_harvest.js',  # Seasonal products dynamic loader
             'theme_guapante/static/src/js/search_modal.js',  # Full-screen search overlay
         ],
-        'web.assets_backend': [
-            'theme_guapante/static/src/js/preparation_list.js',
-        ],
+        'web.assets_backend': [],
     },
     'application': False,
     'auto_install': False,

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models, api
+from odoo import api, fields, models
 
 
 class StockMove(models.Model):
@@ -18,27 +18,37 @@ class StockMove(models.Model):
     is_weight_confirmed = fields.Boolean(
         string='Pesaje Confirmado',
         default=False,
-        help='Marca para confirmar que el producto ha sido re-pesado en bodega y corroborado.',
+        help=(
+            'Marca para confirmar que el producto ha sido '
+            're-pesado en bodega y corroborado.'
+        ),
     )
 
     @api.depends('sale_line_id', 'purchase_line_id')
-    def _compute_customer_uom_display(self):
-        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+    def _compute_customer_uom_display(self) -> None:
+        weight_categ = self.env.ref(
+            'uom.product_uom_categ_kgm',
+            raise_if_not_found=False,
+        )
 
         for move in self:
             s_line = move.sale_line_id
-            p_line = move.purchase_line_id if hasattr(move, 'purchase_line_id') else False
-            
+            p_line = (
+                move.purchase_line_id
+                if hasattr(move, 'purchase_line_id')
+                else False
+            )
+
             if s_line:
                 mode = s_line.uom_mode or 'unit'
                 qty = s_line.product_uom_qty
-                pack_filter = lambda p: p.sales and p.qty > 0
                 product = s_line.product_id
+                pack_filter = lambda p: p.sales and p.qty > 0
             elif p_line:
                 mode = p_line.uom_mode or 'unit'
                 qty = p_line.product_qty
-                pack_filter = lambda p: p.purchase and p.qty > 0
                 product = p_line.product_id
+                pack_filter = lambda p: p.purchase and p.qty > 0
             else:
                 move.customer_qty_display = ''
                 move.customer_uom_display = ''
@@ -49,39 +59,62 @@ class StockMove(models.Model):
                 move.customer_uom_display = 'g'
             elif mode == 'kg':
                 val = round(qty, 2)
-                move.customer_qty_display = str(int(val)) if val == int(val) else str(val)
+                display = (
+                    str(int(val)) if val == int(val) else str(val)
+                )
+                move.customer_qty_display = display
                 move.customer_uom_display = 'kg'
             else:
-                is_weight = weight_categ and product.uom_id.category_id == weight_categ
+                is_weight = (
+                    weight_categ
+                    and product.uom_id.category_id == weight_categ
+                )
                 if is_weight:
-                    packaging = product.packaging_ids.filtered(pack_filter)[:1]
-                    if packaging:
-                        qty_units = round(qty / packaging.qty)
+                    Packaging = product.packaging_ids.filtered(
+                        pack_filter
+                    )[:1]
+                    if Packaging:
+                        qty_units = round(qty / Packaging.qty)
                     else:
-                        qty_units = int(qty) if qty == int(qty) else qty
+                        qty_units = (
+                            int(qty) if qty == int(qty) else qty
+                        )
                 else:
-                    qty_units = int(qty) if qty == int(qty) else qty
+                    qty_units = (
+                        int(qty) if qty == int(qty) else qty
+                    )
 
                 move.customer_qty_display = str(int(qty_units))
                 move.customer_uom_display = 'Unidades'
 
     @api.onchange('quantity')
-    def _onchange_quantity_tolerance(self):
-        """ Alerta suave si el operario digita más del 20% del peso esperado """
+    def _onchange_quantity_tolerance(self) -> None:
+        """Alerta suave si operario digita más del 20% del peso esperado."""
         for move in self:
             if move.product_uom_qty > 0 and move.quantity > 0:
                 expected_kg = move.product_uom_qty
                 registered_kg = move.quantity
-                
+
                 # Revisa si es un producto por peso
-                weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
-                if not weight_categ or move.product_id.uom_id.category_id != weight_categ:
+                weight_categ = self.env.ref(
+                    'uom.product_uom_categ_kgm',
+                    raise_if_not_found=False,
+                )
+                if (
+                    not weight_categ
+                    or move.product_id.uom_id.category_id != weight_categ
+                ):
                     continue
-                    
+
                 if registered_kg > (expected_kg * 1.20):
                     return {
                         'warning': {
                             'title': '⚠️ Alerta de Tolerancia de Peso',
-                            'message': f'La cantidad pesada ({registered_kg} kg) excede en más de un 20% lo pedido ({expected_kg} kg). Asegúrate de que la báscula y el producto sean correctos.'
-                        }
+                            'message': (
+                                f'La cantidad pesada ({registered_kg} kg) '
+                                f'excede en más de un 20% lo pedido '
+                                f'({expected_kg} kg). Asegúrate de que la '
+                                f'báscula y el producto sean correctos.'
+                            ),
+                        },
                     }

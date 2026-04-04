@@ -224,3 +224,119 @@ class TestDailySequence(TransactionCase):
         self.env['sale.order'].sudo()._assign_daily_sequences(d)
         self.assertEqual(o1.daily_sequence, 50)
         self.assertEqual(o2.daily_sequence, 51)
+
+    def test_no_duplicate_after_cancelled_order(self):
+        """Cancelled orders keep their box number reserved — new orders skip them."""
+        o1 = self._create_confirmed_order()
+        o2 = self._create_confirmed_order()
+        o3 = self._create_confirmed_order()
+        d = fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']),
+            days=28,
+        )
+        self._set_pickings_scheduled_date((o1, o2, o3), d)
+        o1.daily_sequence = 0
+        o2.daily_sequence = 0
+        o3.daily_sequence = 0
+
+        # Primera asignación: cajas 1, 2, 3
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+        self.assertEqual(o1.daily_sequence, 1)
+        self.assertEqual(o2.daily_sequence, 2)
+        self.assertEqual(o3.daily_sequence, 3)
+
+        # Cancelar orden 2 (caja 2 queda "reservada")
+        o2.action_cancel()
+
+        # Nueva orden llega
+        o4 = self._create_confirmed_order()
+        self._set_pickings_scheduled_date((o4,), d)
+        o4.daily_sequence = 0
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+
+        # o4 debe obtener caja 4, NO reusar la 2
+        self.assertEqual(o4.daily_sequence, 4)
+        # Las existentes no cambian
+        self.assertEqual(o1.daily_sequence, 1)
+        self.assertEqual(o3.daily_sequence, 3)
+
+    def test_sequence_sync_after_manual_edit(self):
+        """ir.sequence syncs its number_next when manual edits create gaps."""
+        o1 = self._create_confirmed_order()
+        d = fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']),
+            days=35,
+        )
+        self._set_pickings_scheduled_date((o1,), d)
+        o1.daily_sequence = 0
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+        self.assertEqual(o1.daily_sequence, 1)
+
+        # Simular edición manual: alguien pone caja 99
+        o1.daily_sequence = 99
+
+        # Nueva orden debe ser 100
+        o2 = self._create_confirmed_order()
+        self._set_pickings_scheduled_date((o2,), d)
+        o2.daily_sequence = 0
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+        self.assertEqual(o2.daily_sequence, 100)
+
+    def test_reload_assigns_max_plus_one(self):
+        """On reload, new orders always get max_existing + 1."""
+        o1 = self._create_confirmed_order()
+        o2 = self._create_confirmed_order()
+        d = fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']),
+            days=42,
+        )
+        self._set_pickings_scheduled_date((o1, o2), d)
+
+        # Primera carga
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+        seq_o1 = o1.daily_sequence
+        seq_o2 = o2.daily_sequence
+        max_seq = max(seq_o1, seq_o2)
+
+        # Agregar nueva orden y recargar
+        o3 = self._create_confirmed_order()
+        self._set_pickings_scheduled_date((o3,), d)
+        self.env['sale.order'].sudo()._assign_daily_sequences(d)
+
+        self.assertEqual(
+            o3.daily_sequence,
+            max_seq + 1,
+            "New order on reload should get max + 1",
+        )
+        # Existentes no cambian
+        self.assertEqual(o1.daily_sequence, seq_o1)
+        self.assertEqual(o2.daily_sequence, seq_o2)
+
+    def test_frozen_after_session_delete(self):
+        """Box numbers persist on sale.order even if session is deleted."""
+        o1 = self._create_confirmed_order()
+        d = fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']),
+            days=49,
+        )
+        self._set_pickings_scheduled_date((o1,), d)
+
+        # Crear sesión, cargar, luego borrarla
+        session = self.env['guapante.preparation.day'].create({
+            'date': d,
+        })
+        session.action_load()
+
+        saved_seq = o1.daily_sequence
+        self.assertGreater(saved_seq, 0)
+
+        # Borrar la sesión
+        session.unlink()
+
+        # El número de caja sigue en la orden
+        o1.invalidate_recordset(['daily_sequence'])
+        self.assertEqual(
+            o1.daily_sequence,
+            saved_seq,
+            "Box number should persist after session deletion",
+        )
