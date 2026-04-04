@@ -813,3 +813,110 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         return request.make_response("\n".join(output), headers=[('Content-Type', 'text/plain; charset=utf-8')])
 
+    @http.route(['/shop/debug_vip'], type='http', auth="public", website=True, sitemap=False)
+    def debug_vip(self, **kwargs):
+        """
+        Diagnostic endpoint: shows VIP B2B filtering state.
+        Reveals which products are marked VIP, what the filter returns,
+        and whether _get_search_domain is called correctly.
+        Usage: /shop/debug_vip
+        """
+        output = []
+        output.append("═══════════════════════════════════════════════════")
+        output.append("  DIAGNÓSTICO VIP B2B")
+        output.append("═══════════════════════════════════════════════════\n")
+
+        # 1. Check if field exists
+        output.append("─── 1. CAMPO is_b2b_exclusive EN product.template ───")
+        try:
+            has_field = 'is_b2b_exclusive' in request.env['product.template'].sudo()._fields
+            output.append(f"  Campo existe: {has_field}")
+            if has_field:
+                field = request.env['product.template'].sudo()._fields['is_b2b_exclusive']
+                output.append(f"  Tipo: {field.type}")
+        except Exception as e:
+            output.append(f"  ❌ ERROR: {e}")
+
+        # 2. VIP products in DB
+        output.append("\n─── 2. PRODUCTOS VIP EN BASE DE DATOS ───")
+        try:
+            all_vip = request.env['product.template'].sudo().search([
+                ('is_b2b_exclusive', '=', True),
+            ])
+            output.append(f"  Total productos VIP: {len(all_vip)}")
+            for p in all_vip:
+                customers = p.b2b_exclusive_customer_ids
+                replaces = p.b2b_replaces_product_ids
+                output.append(f"\n  🔒 {p.name} (ID: {p.id})")
+                output.append(f"     is_b2b_exclusive = {p.is_b2b_exclusive}")
+                output.append(f"     Clientes permitidos ({len(customers)}): {[(c.id, c.name) for c in customers]}")
+                output.append(f"     Reemplaza productos ({len(replaces)}): {[(r.id, r.name) for r in replaces]}")
+        except Exception as e:
+            output.append(f"  ❌ ERROR buscando VIP: {e}")
+
+        # 3. Current user info
+        output.append("\n─── 3. USUARIO ACTUAL ───")
+        user = request.env.user
+        output.append(f"  User: {user.name} (ID: {user.id})")
+        output.append(f"  Is public: {user._is_public()}")
+        if not user._is_public():
+            partner = user.partner_id
+            commercial = partner.commercial_partner_id
+            output.append(f"  Partner: {partner.name} (ID: {partner.id})")
+            output.append(f"  Commercial Partner: {commercial.name} (ID: {commercial.id})")
+            output.append(f"  is_company: {commercial.is_company}")
+
+        # 4. Filter result
+        output.append("\n─── 4. RESULTADO DE _get_b2b_product_filter() ───")
+        try:
+            exclude_ids, hidden_ids = self._get_b2b_product_filter()
+            output.append(f"  exclude_ids (VIP que NO puedo ver): {exclude_ids}")
+            output.append(f"  hidden_ids (generales reemplazados): {hidden_ids}")
+            output.append(f"  Total a excluir: {len(set(exclude_ids + hidden_ids))}")
+        except Exception as e:
+            output.append(f"  ❌ ERROR: {e}")
+            import traceback
+            output.append(f"  Traceback: {traceback.format_exc()}")
+
+        # 5. Method resolution - is _get_search_domain being overridden?
+        output.append("\n─── 5. METHOD RESOLUTION ORDER ───")
+        try:
+            method = getattr(self, '_get_search_domain', None)
+            output.append(f"  _get_search_domain exists: {method is not None}")
+            if method:
+                output.append(f"  Defined in: {method.__qualname__}")
+
+            method2 = getattr(self, '_get_shop_domain', None)
+            output.append(f"  _get_shop_domain exists: {method2 is not None}")
+            if method2:
+                output.append(f"  Defined in: {method2.__qualname__}")
+
+            # Check MRO
+            output.append(f"\n  MRO (Method Resolution Order):")
+            for klass in type(self).__mro__[:8]:
+                has_search = '_get_search_domain' in klass.__dict__
+                has_shop = '_get_shop_domain' in klass.__dict__
+                markers = []
+                if has_search: markers.append('_get_search_domain')
+                if has_shop: markers.append('_get_shop_domain')
+                marker_str = f" ← [{', '.join(markers)}]" if markers else ""
+                output.append(f"    → {klass.__name__}{marker_str}")
+        except Exception as e:
+            output.append(f"  ❌ ERROR: {e}")
+
+        # 6. Simulate actual domain
+        output.append("\n─── 6. DOMAIN SIMULADO ───")
+        try:
+            domain = self._get_search_domain('', None, set())
+            vip_clauses = [d for d in domain if isinstance(d, tuple) and 'not in' in str(d)]
+            output.append(f"  Full domain: {domain}")
+            output.append(f"  VIP exclusion clauses: {vip_clauses}")
+        except Exception as e:
+            output.append(f"  ❌ ERROR al simular domain: {e}")
+            import traceback
+            output.append(f"  Traceback: {traceback.format_exc()}")
+
+        return request.make_response("\n".join(output), headers=[
+            ('Content-Type', 'text/plain; charset=utf-8'),
+            ('Cache-Control', 'no-store'),
+        ])
