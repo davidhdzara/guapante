@@ -260,9 +260,13 @@ class PurchaseDemand(models.Model):
             product_totals[pid]['total_demand_kg'] += rline['pending_kg']
 
         # Fetch stock once per product
+        # Use virtual_available = on_hand + incoming - outgoing
+        # so confirmed POs are accounted for (avoids double ordering).
         for pid in product_totals:
             product = self.env['product.product'].browse(pid)
-            product_totals[pid]['available_qty'] = product.qty_available
+            product_totals[pid]['available_qty'] = (
+                product.virtual_available
+            )
 
         # Calculate product-level deficit
         for pid, totals in product_totals.items():
@@ -568,8 +572,9 @@ class PurchaseDemandLine(models.Model):
         digits=(10, 3),
         readonly=True,
         help=(
-            'Stock disponible del PRODUCTO completo '
-            '(compartido entre todas las combinaciones de atributos).'
+            'Stock virtual del PRODUCTO: stock en mano + '
+            'POs confirmadas en tránsito - demanda saliente. '
+            'Compartido entre todas las combinaciones de atributos.'
         ),
     )
     product_total_demand = fields.Float(
