@@ -408,9 +408,9 @@ class GuapanteWebsiteSale(WebsiteSale):
             response.qcontext['is_seasonal'] = True
         return response
 
-    def _get_search_domain(self, search, category, attrib_values, search_in_description=True):
+    def _get_shop_domain(self, search, category, attrib_values, search_in_description=True):
         """Inject VIP B2B + is_seasonal filters into the shop SQL domain."""
-        domain = super()._get_search_domain(search, category, attrib_values, search_in_description)
+        domain = super()._get_shop_domain(search, category, attrib_values, search_in_description)
         if request.params.get('is_seasonal'):
             domain.append(('is_seasonal', '=', True))
 
@@ -420,7 +420,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         if all_invisible:
             domain.append(('id', 'not in', all_invisible))
 
-        _logger.info("VIP-B2B: _get_search_domain called → excluding %s product IDs, domain=%s", len(all_invisible), all_invisible)
+        _logger.info("VIP-B2B: _get_shop_domain called → excluding %s product IDs: %s", len(all_invisible), all_invisible)
 
         return domain
 
