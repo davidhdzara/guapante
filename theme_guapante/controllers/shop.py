@@ -907,7 +907,7 @@ class GuapanteWebsiteSale(WebsiteSale):
         # 6. Simulate actual domain
         output.append("\n─── 6. DOMAIN SIMULADO ───")
         try:
-            domain = self._get_search_domain('', None, set())
+            domain = self._get_shop_domain('', None, set())
             vip_clauses = [d for d in domain if isinstance(d, tuple) and 'not in' in str(d)]
             output.append(f"  Full domain: {domain}")
             output.append(f"  VIP exclusion clauses: {vip_clauses}")
