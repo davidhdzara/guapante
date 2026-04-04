@@ -198,7 +198,7 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         return request.redirect('/shop/address')
 
-    @http.route(['/shop/checkout/confirm'], type='http', auth="public", website=True, sitemap=False)
+    @http.route(['/shop/checkout/confirm'], type='http', auth="user", website=True, sitemap=False)
     def confirm_order_skip_payment(self, **post):
         """
         Confirm order immediately, skipping payment, and redirect to status page.
