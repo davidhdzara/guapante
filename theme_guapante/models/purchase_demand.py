@@ -124,7 +124,9 @@ class PurchaseDemand(models.Model):
             )
 
         # ── Build demand dictionary ──
-        # Key = (product_id, frozenset of attribute_value_ids)
+        # Key = (product_id, frozenset of attribute_value_ids, uom_mode)
+        # uom_mode is included so unit orders and kg orders of same
+        # product + attribute are tracked separately.
         demand = {}
         for line in PendingLines:
             product = line.product_id
@@ -137,22 +139,21 @@ class PurchaseDemand(models.Model):
                     line.product_no_variant_attribute_value_ids.ids
                 )
 
-            key = (pid, attr_ids)
+            # Use the ACTUAL uom_mode from the SO line, not the
+            # product's base UoM. In Guapante, all products have
+            # kg as base UoM but customers order by 'unit' or 'kg'.
+            line_uom_mode = getattr(line, 'uom_mode', None) or 'unit'
+
+            key = (pid, attr_ids, line_uom_mode)
             pending_product_qty = (
                 line.product_uom_qty - line.qty_delivered
             )
 
             if key not in demand:
-                # Determine uom_mode for this product
-                is_weight = (
-                    weight_categ
-                    and product.uom_id.category_id == weight_categ
-                )
-
                 demand[key] = {
                     'product_id': pid,
                     'attr_value_ids': list(attr_ids),
-                    'is_weight': is_weight,
+                    'uom_mode': line_uom_mode,
                     'pending_product_qty': 0.0,
                     'order_ids': set(),
                     'order_names': [],
@@ -191,23 +192,17 @@ class PurchaseDemand(models.Model):
                     for v in sorted_vals
                 )
 
-            # Determine the dominant uom_mode
-            if data['is_weight']:
-                uom_mode = 'kg'
-                pending_qty = round(data['pending_product_qty'], 3)
-                pending_kg = pending_qty
-            else:
-                uom_mode = 'unit'
-                pending_qty = round(data['pending_product_qty'], 2)
-                packaging = product.packaging_ids.filtered(
-                    lambda p: p.purchase and p.qty > 0
-                )[:1]
-                if packaging:
-                    pending_kg = round(
-                        pending_qty * packaging.qty, 3,
-                    )
-                else:
-                    pending_kg = pending_qty
+            # Use the uom_mode from the SO lines (already stored
+            # in the grouping key — NOT from the product's UoM).
+            uom_mode = data['uom_mode']
+            pending_qty = round(data['pending_product_qty'], 3)
+
+            # pending_kg: internal qty is already in kg for
+            # weight-based products. For 'unit' mode on weight
+            # products, product_uom_qty stores the kg equivalent
+            # (inverse was already applied by the SO line), so
+            # pending_product_qty IS kg regardless of uom_mode.
+            pending_kg = pending_qty
 
             # Packaging name (most common among the lines)
             packaging_name = ''
@@ -379,21 +374,30 @@ class PurchaseDemand(models.Model):
 
             for dline in demand_lines:
                 product = dline.product_id
-                is_weight = (
-                    weight_categ
-                    and product.uom_id.category_id == weight_categ
-                )
 
                 # Build description with attribute detail
+                uom_label = (
+                    'ud' if dline.uom_mode == 'unit'
+                    else 'kg' if dline.uom_mode == 'kg'
+                    else 'g'
+                )
                 desc_parts = [product.display_name]
                 if (
                     dline.attribute_combination
-                    and dline.attribute_combination != 'Sin atributos'
+                    and dline.attribute_combination
+                    != 'Sin atributos'
                 ):
                     desc_parts.append(
                         '— %s' % dline.attribute_combination
                     )
-                if dline.packaging_name and dline.uom_mode == 'unit':
+                # Add qty + mode to desc for clarity
+                desc_parts.append(
+                    '× %.2f %s' % (dline.pending_qty, uom_label)
+                )
+                if (
+                    dline.packaging_name
+                    and dline.uom_mode == 'unit'
+                ):
                     desc_parts.append(
                         '(%s)' % dline.packaging_name
                     )
@@ -401,7 +405,7 @@ class PurchaseDemand(models.Model):
 
                 # Determine packaging for the PO line
                 packaging = False
-                if dline.uom_mode == 'unit' and is_weight:
+                if dline.uom_mode == 'unit':
                     packaging = product.packaging_ids.filtered(
                         lambda p: p.purchase and p.qty > 0
                     )[:1]
@@ -411,14 +415,18 @@ class PurchaseDemand(models.Model):
                     lambda s: s.partner_id.id == supplier_id
                 )[:1]
 
-                # PO line: always use product's UoM internally
+                # PO line: product_qty in kg (Odoo internal),
+                # visual_qty in the mode the customer ordered.
+                # The PurchaseOrderLine._inverse_visual_qty will
+                # handle conversion when visual_qty is written.
                 po_line_vals = {
                     'order_id': po.id,
                     'product_id': product.id,
                     'name': description,
                     'product_qty': dline.pending_kg,
                     'product_uom': (
-                        product.uom_po_id.id or product.uom_id.id
+                        product.uom_po_id.id
+                        or product.uom_id.id
                     ),
                     'price_unit': (
                         supplier_info.price
@@ -530,6 +538,7 @@ class PurchaseDemandLine(models.Model):
         [
             ('unit', 'Unidades'),
             ('kg', 'Kilogramos'),
+            ('g', 'Gramos'),
         ],
         string='UdM',
         readonly=True,
