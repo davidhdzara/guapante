@@ -1,0 +1,541 @@
+# -*- coding: utf-8 -*-
+import logging
+
+from odoo import api, fields, models
+from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
+
+
+class PurchaseDemand(models.Model):
+    """Session to analyze pending purchase demand from confirmed SOs.
+
+    Follows the same pattern as guapante.preparation.day: a session
+    with a 'Refresh' button that loads data from sale.order.lines.
+    """
+    _name = 'guapante.purchase.demand'
+    _description = 'Sesión de Demanda de Compra'
+
+    name = fields.Char(
+        string='Referencia',
+        required=True,
+        copy=False,
+        readonly=True,
+        default='Nueva Sesión',
+    )
+    state = fields.Selection(
+        [
+            ('draft', 'Borrador'),
+            ('loaded', 'Cargada'),
+        ],
+        default='draft',
+    )
+    line_ids = fields.One2many(
+        'guapante.purchase.demand.line',
+        'session_id',
+        string='Líneas de Demanda',
+    )
+
+    # ── Smart Buttons / Header Info ──
+    total_products = fields.Integer(
+        string='Productos Únicos',
+        compute='_compute_totals',
+    )
+    total_demand_kg = fields.Float(
+        string='Demanda Total (kg)',
+        compute='_compute_totals',
+        digits=(10, 2),
+    )
+    total_lines = fields.Integer(
+        string='Líneas de Demanda',
+        compute='_compute_totals',
+    )
+    deficit_count = fields.Integer(
+        string='Con Déficit',
+        compute='_compute_totals',
+    )
+    save_note = fields.Char(string='Resultado', readonly=True)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', 'Nueva Sesión') == 'Nueva Sesión':
+                vals['name'] = 'Demanda de Compra: %s' % (
+                    fields.Date.context_today(self),
+                )
+        return super().create(vals_list)
+
+    @api.depends('line_ids', 'line_ids.pending_kg', 'line_ids.deficit')
+    def _compute_totals(self) -> None:
+        for session in self:
+            lines = session.line_ids
+            session.total_lines = len(lines)
+            session.total_products = len(
+                lines.mapped('product_id')
+            )
+            session.total_demand_kg = round(
+                sum(lines.mapped('pending_kg')), 2,
+            )
+            session.deficit_count = len(
+                lines.filtered(lambda l: l.deficit > 0)
+            )
+
+    # ─────────────────────────────────────────────────
+    #  action_refresh: Load demand from confirmed SOs
+    # ─────────────────────────────────────────────────
+    def action_refresh(self) -> bool:
+        """Rebuild demand lines from all confirmed SO lines pending delivery.
+
+        Groups by product_id + attribute combination (no_variant values).
+        Separates kg/g products from unit products.
+        """
+        self.line_ids.unlink()
+
+        weight_categ = self.env.ref(
+            'uom.product_uom_categ_kgm',
+            raise_if_not_found=False,
+        )
+
+        # ── Fetch all confirmed SO lines with pending delivery ──
+        SaleLines = self.env['sale.order.line'].sudo().search([
+            ('order_id.state', 'in', ('sale', 'done')),
+            ('product_uom_qty', '>', 0),
+            ('display_type', '=', False),
+            ('product_id', '!=', False),
+        ])
+
+        # Filter to only lines with pending quantity
+        PendingLines = SaleLines.filtered(
+            lambda l: l.product_uom_qty > l.qty_delivered
+        )
+
+        if not PendingLines:
+            raise UserError(
+                'No hay demanda pendiente de entrega en las '
+                'órdenes confirmadas.'
+            )
+
+        # ── Build demand dictionary ──
+        # Key = (product_id, frozenset of attribute_value_ids)
+        demand = {}
+        for line in PendingLines:
+            product = line.product_id
+            pid = product.id
+
+            # Get no_variant attribute values
+            attr_ids = frozenset()
+            if hasattr(line, 'product_no_variant_attribute_value_ids'):
+                attr_ids = frozenset(
+                    line.product_no_variant_attribute_value_ids.ids
+                )
+
+            key = (pid, attr_ids)
+            pending_product_qty = (
+                line.product_uom_qty - line.qty_delivered
+            )
+
+            if key not in demand:
+                # Determine uom_mode for this product
+                is_weight = (
+                    weight_categ
+                    and product.uom_id.category_id == weight_categ
+                )
+
+                demand[key] = {
+                    'product_id': pid,
+                    'attr_value_ids': list(attr_ids),
+                    'is_weight': is_weight,
+                    'pending_product_qty': 0.0,
+                    'order_ids': set(),
+                    'order_names': [],
+                    'line_uom_modes': [],
+                    'packaging_ids': [],
+                }
+
+            demand[key]['pending_product_qty'] += pending_product_qty
+            demand[key]['order_ids'].add(line.order_id.id)
+            demand[key]['order_names'].append(line.order_id.name)
+            demand[key]['line_uom_modes'].append(
+                line.uom_mode or 'unit'
+            )
+            if line.product_packaging_id:
+                demand[key]['packaging_ids'].append(
+                    line.product_packaging_id.id
+                )
+
+        # ── Build line vals ──
+        line_vals = []
+        for key, data in demand.items():
+            product = self.env['product.product'].browse(
+                data['product_id']
+            )
+
+            # Build attribute combination string
+            attr_combination = ''
+            if data['attr_value_ids']:
+                AttrValues = self.env[
+                    'product.template.attribute.value'
+                ].browse(data['attr_value_ids'])
+                # Sort by attribute sequence for consistent display
+                sorted_vals = AttrValues.sorted(
+                    key=lambda v: (
+                        v.attribute_id.sequence,
+                        v.product_attribute_value_id.sequence,
+                    )
+                )
+                attr_combination = ' / '.join(
+                    v.product_attribute_value_id.name
+                    for v in sorted_vals
+                )
+
+            # Determine the dominant uom_mode
+            if data['is_weight']:
+                # For weight products, the base qty is already in kg
+                uom_mode = 'kg'
+                pending_qty = round(data['pending_product_qty'], 3)
+                pending_kg = pending_qty
+            else:
+                # For unit products
+                uom_mode = 'unit'
+                pending_qty = round(data['pending_product_qty'], 2)
+                # Convert to kg estimate via packaging
+                packaging = product.packaging_ids.filtered(
+                    lambda p: p.purchase and p.qty > 0
+                )[:1]
+                if packaging:
+                    pending_kg = round(
+                        pending_qty * packaging.qty, 3,
+                    )
+                else:
+                    pending_kg = pending_qty
+
+            # Packaging name (most common among the lines)
+            packaging_name = ''
+            if data['packaging_ids']:
+                # Get most frequent packaging
+                pkg_id = max(
+                    set(data['packaging_ids']),
+                    key=data['packaging_ids'].count,
+                )
+                pkg = self.env['product.packaging'].browse(pkg_id)
+                packaging_name = pkg.name or ''
+
+            # Supplier info
+            supplier_info = product.seller_ids[:1]
+            supplier_id = (
+                supplier_info.partner_id.id
+                if supplier_info
+                else False
+            )
+            supplier_price = (
+                supplier_info.price if supplier_info else 0.0
+            )
+
+            # Stock available
+            available_qty = product.qty_available
+
+            # Deficit calculation
+            deficit = max(0, round(pending_kg - available_qty, 3))
+
+            # Unique order names
+            unique_names = sorted(set(data['order_names']))
+
+            line_vals.append({
+                'session_id': self.id,
+                'product_id': pid,
+                'attribute_combination': attr_combination or 'Sin atributos',
+                'attribute_value_ids': [
+                    (6, 0, data['attr_value_ids'])
+                ],
+                'uom_mode': uom_mode,
+                'pending_qty': pending_qty,
+                'pending_kg': pending_kg,
+                'packaging_name': packaging_name,
+                'order_count': len(data['order_ids']),
+                'sale_order_names': ', '.join(unique_names[:10]),
+                'available_qty': available_qty,
+                'deficit': deficit,
+                'supplier_id': supplier_id,
+                'supplier_price': supplier_price,
+                'selected': deficit > 0,  # Auto-select deficit lines
+            })
+
+        if line_vals:
+            self.env['guapante.purchase.demand.line'].create(line_vals)
+
+        self.state = 'loaded'
+        self.save_note = (
+            '✅ %d combinaciones producto-atributo cargadas '
+            'desde %d líneas de venta pendientes.'
+            % (len(line_vals), len(PendingLines))
+        )
+        return False
+
+    # ─────────────────────────────────────────────────
+    #  action_generate_purchase_orders
+    # ─────────────────────────────────────────────────
+    def action_generate_purchase_orders(self) -> dict:
+        """Generate Purchase Orders from selected demand lines.
+
+        Groups lines by supplier (vendor) and creates one PO per vendor.
+        Each PO line includes the attribute breakdown in the description.
+        """
+        self.ensure_one()
+
+        selected = self.line_ids.filtered(lambda l: l.selected)
+        if not selected:
+            raise UserError(
+                'Selecciona al menos una línea de demanda para '
+                'generar la orden de compra.'
+            )
+
+        # Validate all selected lines have a supplier
+        no_supplier = selected.filtered(lambda l: not l.supplier_id)
+        if no_supplier:
+            product_names = ', '.join(
+                no_supplier.mapped('product_id.name')
+            )
+            raise UserError(
+                'Los siguientes productos no tienen proveedor '
+                'configurado: %s\n\n'
+                'Configura un proveedor en la pestaña "Compra" '
+                'de cada producto antes de generar la PO.'
+                % product_names
+            )
+
+        # Group by supplier
+        suppliers = {}
+        for line in selected:
+            sid = line.supplier_id.id
+            if sid not in suppliers:
+                suppliers[sid] = []
+            suppliers[sid].append(line)
+
+        created_orders = self.env['purchase.order']
+        weight_categ = self.env.ref(
+            'uom.product_uom_categ_kgm',
+            raise_if_not_found=False,
+        )
+
+        for supplier_id, demand_lines in suppliers.items():
+            # Create the PO header
+            po_vals = {
+                'partner_id': supplier_id,
+                'origin': 'Demanda Guapante: %s' % self.name,
+            }
+            po = self.env['purchase.order'].create(po_vals)
+
+            for dline in demand_lines:
+                product = dline.product_id
+                is_weight = (
+                    weight_categ
+                    and product.uom_id.category_id == weight_categ
+                )
+
+                # Build description with attribute detail
+                desc_parts = [product.display_name]
+                if (
+                    dline.attribute_combination
+                    and dline.attribute_combination != 'Sin atributos'
+                ):
+                    desc_parts.append(
+                        '— %s' % dline.attribute_combination
+                    )
+                if dline.packaging_name and dline.uom_mode == 'unit':
+                    desc_parts.append(
+                        '(%s)' % dline.packaging_name
+                    )
+                description = ' '.join(desc_parts)
+
+                # Determine packaging for the PO line
+                packaging = False
+                if dline.uom_mode == 'unit' and is_weight:
+                    packaging = product.packaging_ids.filtered(
+                        lambda p: p.purchase and p.qty > 0
+                    )[:1]
+
+                # Get supplier info for price
+                supplier_info = product.seller_ids.filtered(
+                    lambda s: s.partner_id.id == supplier_id
+                )[:1]
+
+                # PO line: always use product's UoM internally
+                po_line_vals = {
+                    'order_id': po.id,
+                    'product_id': product.id,
+                    'name': description,
+                    'product_qty': dline.pending_kg,
+                    'product_uom': product.uom_po_id.id or product.uom_id.id,
+                    'price_unit': (
+                        supplier_info.price
+                        if supplier_info
+                        else product.standard_price
+                    ),
+                    'uom_mode': dline.uom_mode,
+                    'visual_qty': dline.pending_qty,
+                }
+
+                if packaging:
+                    po_line_vals['product_packaging_id'] = packaging.id
+
+                self.env['purchase.order.line'].create(po_line_vals)
+
+            created_orders |= po
+
+        count = len(created_orders)
+        self.save_note = (
+            '🛒 %d orden%s de compra generada%s exitosamente.'
+            % (
+                count,
+                'es' if count > 1 else '',
+                's' if count > 1 else '',
+            )
+        )
+
+        # Return action to view the created POs
+        if len(created_orders) == 1:
+            return {
+                'type': 'ir.actions.act_window',
+                'res_model': 'purchase.order',
+                'res_id': created_orders.id,
+                'view_mode': 'form',
+                'target': 'current',
+            }
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'purchase.order',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', created_orders.ids)],
+            'target': 'current',
+            'name': 'Órdenes de Compra Generadas',
+        }
+
+    def action_select_all(self) -> bool:
+        """Select all demand lines."""
+        self.line_ids.write({'selected': True})
+        return False
+
+    def action_select_deficit(self) -> bool:
+        """Select only lines with stock deficit."""
+        self.line_ids.write({'selected': False})
+        deficit_lines = self.line_ids.filtered(
+            lambda l: l.deficit > 0
+        )
+        if deficit_lines:
+            deficit_lines.write({'selected': True})
+        return False
+
+    def action_deselect_all(self) -> bool:
+        """Deselect all demand lines."""
+        self.line_ids.write({'selected': False})
+        return False
+
+
+class PurchaseDemandLine(models.Model):
+    """One row per product + attribute combination."""
+    _name = 'guapante.purchase.demand.line'
+    _description = 'Línea de Demanda de Compra'
+    _order = 'deficit desc, product_id, attribute_combination'
+
+    session_id = fields.Many2one(
+        'guapante.purchase.demand',
+        string='Sesión',
+        required=True,
+        ondelete='cascade',
+    )
+    product_id = fields.Many2one(
+        'product.product',
+        string='Producto',
+        readonly=True,
+    )
+    attribute_combination = fields.Char(
+        string='Atributos',
+        readonly=True,
+        help=(
+            'Combinación de atributos no-variante del producto '
+            '(ej. Pintón / Grande).'
+        ),
+    )
+    attribute_value_ids = fields.Many2many(
+        'product.template.attribute.value',
+        string='Valores de Atributo',
+        readonly=True,
+    )
+
+    uom_mode = fields.Selection(
+        [
+            ('unit', 'Unidades'),
+            ('kg', 'Kilogramos'),
+        ],
+        string='UdM',
+        readonly=True,
+    )
+    pending_qty = fields.Float(
+        string='Demanda',
+        digits='Product Unit of Measure',
+        readonly=True,
+        help=(
+            'Cantidad total pendiente: en kg para productos de '
+            'peso, en unidades para productos unitarios.'
+        ),
+    )
+    pending_kg = fields.Float(
+        string='Demanda (kg)',
+        digits=(10, 3),
+        readonly=True,
+        help='Total en kg (para unitarios: qty × peso embalaje).',
+    )
+    packaging_name = fields.Char(
+        string='Embalaje',
+        readonly=True,
+    )
+
+    order_count = fields.Integer(
+        string='# Órdenes',
+        readonly=True,
+    )
+    sale_order_names = fields.Char(
+        string='Órdenes',
+        readonly=True,
+    )
+
+    available_qty = fields.Float(
+        string='Stock',
+        digits=(10, 3),
+        readonly=True,
+    )
+    deficit = fields.Float(
+        string='Déficit (kg)',
+        digits=(10, 3),
+        readonly=True,
+        help='Faltante: demanda_kg - stock_disponible.',
+    )
+
+    supplier_id = fields.Many2one(
+        'res.partner',
+        string='Proveedor',
+        readonly=True,
+    )
+    supplier_price = fields.Float(
+        string='Precio Proveedor',
+        digits='Product Price',
+        readonly=True,
+    )
+    estimated_cost = fields.Float(
+        string='Costo Estimado',
+        compute='_compute_estimated_cost',
+        digits='Product Price',
+    )
+
+    selected = fields.Boolean(
+        string='Seleccionar',
+        default=False,
+        help='Marca las líneas que deseas incluir en la PO.',
+    )
+
+    @api.depends('pending_kg', 'supplier_price')
+    def _compute_estimated_cost(self) -> None:
+        for line in self:
+            line.estimated_cost = round(
+                line.pending_kg * line.supplier_price, 2,
+            )

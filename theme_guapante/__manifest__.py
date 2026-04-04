@@ -13,6 +13,7 @@
         'security/ir.model.access.csv',
         'views/sale_order_views.xml',
         'views/purchase_order_views.xml',
+        'views/purchase_demand_views.xml',
         'report/sale_report_templates.xml',
         'report/purchase_report_templates.xml',
         'views/preparation_day_views.xml',

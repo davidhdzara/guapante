@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ════════════════════════════════════════════════════
+         FORM: Sesión de Demanda de Compra
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_view_form" model="ir.ui.view">
+        <field name="name">guapante.purchase.demand.form</field>
+        <field name="model">guapante.purchase.demand</field>
+        <field name="arch" type="xml">
+            <form string="Demanda de Compra">
+                <header>
+                    <button name="action_refresh"
+                            string="🔄 Actualizar Demanda"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-refresh"/>
+                    <button name="action_generate_purchase_orders"
+                            string="🛒 Generar Orden de Compra"
+                            type="object"
+                            class="btn-success"
+                            invisible="state != 'loaded'"
+                            icon="fa-shopping-cart"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,loaded"/>
+                </header>
+
+                <sheet>
+                    <!-- Smart Buttons -->
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" icon="fa-cubes"
+                                type="object" name="action_refresh"
+                                invisible="state != 'loaded'">
+                            <div class="o_stat_info">
+                                <field name="total_products" class="o_stat_value"/>
+                                <span class="o_stat_text">Productos</span>
+                            </div>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-balance-scale"
+                                type="object" name="action_refresh"
+                                invisible="state != 'loaded'">
+                            <div class="o_stat_info">
+                                <field name="total_demand_kg" class="o_stat_value"/>
+                                <span class="o_stat_text">Kg totales</span>
+                            </div>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-exclamation-triangle"
+                                type="object" name="action_select_deficit"
+                                invisible="state != 'loaded'">
+                            <div class="o_stat_info">
+                                <field name="deficit_count" class="o_stat_value text-danger"/>
+                                <span class="o_stat_text">Con Déficit</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+
+                    <!-- Result Note -->
+                    <div invisible="not save_note" class="alert alert-info mt-2 mb-2" role="alert">
+                        <field name="save_note" nolabel="1"/>
+                    </div>
+
+                    <!-- Selection helpers -->
+                    <div invisible="state != 'loaded'" class="mb-2">
+                        <button name="action_select_all"
+                                string="Seleccionar Todo"
+                                type="object"
+                                class="btn-sm btn-outline-primary me-1"/>
+                        <button name="action_select_deficit"
+                                string="Solo Déficit"
+                                type="object"
+                                class="btn-sm btn-outline-danger me-1"/>
+                        <button name="action_deselect_all"
+                                string="Deseleccionar Todo"
+                                type="object"
+                                class="btn-sm btn-outline-secondary"/>
+                    </div>
+
+                    <!-- Demand Lines -->
+                    <notebook>
+                        <page string="Demanda" name="demand_lines">
+                            <field name="line_ids" nolabel="1">
+                                <list editable="bottom"
+                                      decoration-danger="deficit &gt; 0"
+                                      decoration-success="deficit == 0 and pending_kg &gt; 0"
+                                      default_order="deficit desc, product_id">
+                                    <field name="selected" string="✓"
+                                           widget="boolean_toggle"/>
+                                    <field name="product_id" string="Producto"/>
+                                    <field name="attribute_combination"
+                                           string="Atributos"/>
+                                    <field name="pending_qty" string="Demanda"
+                                           sum="Total"/>
+                                    <field name="uom_mode" string="UdM"/>
+                                    <field name="pending_kg" string="Kg equiv."
+                                           sum="Total kg"/>
+                                    <field name="packaging_name" string="Embalaje"
+                                           optional="show"/>
+                                    <field name="available_qty" string="Stock"
+                                           optional="show"/>
+                                    <field name="deficit" string="Déficit (kg)"
+                                           sum="Total déficit"
+                                           optional="show"/>
+                                    <field name="order_count" string="# Órdenes"
+                                           optional="show"/>
+                                    <field name="supplier_id" string="Proveedor"
+                                           optional="show"/>
+                                    <field name="supplier_price" string="P. Unit."
+                                           optional="hide"/>
+                                    <field name="estimated_cost" string="Costo Est."
+                                           sum="Total costo"
+                                           optional="hide"/>
+                                    <field name="sale_order_names" string="Órdenes"
+                                           optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+
+                    <!-- Totals footer -->
+                    <group invisible="state != 'loaded'">
+                        <group>
+                            <field name="total_lines" string="Total líneas"/>
+                            <field name="total_products" string="Productos únicos"/>
+                        </group>
+                        <group>
+                            <field name="total_demand_kg" string="Demanda total (kg)"/>
+                            <field name="deficit_count" string="Con déficit"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         LIST: Sesiones de Demanda de Compra
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_view_list" model="ir.ui.view">
+        <field name="name">guapante.purchase.demand.list</field>
+        <field name="model">guapante.purchase.demand</field>
+        <field name="arch" type="xml">
+            <list string="Sesiones de Demanda de Compra">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="total_products" string="Productos"/>
+                <field name="total_demand_kg" string="Kg totales"/>
+                <field name="deficit_count" string="Déficit"/>
+                <field name="create_date" string="Creada"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         ACTION: Demanda de Compra
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_action" model="ir.actions.act_window">
+        <field name="name">Demanda de Compra</field>
+        <field name="res_model">guapante.purchase.demand</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Analiza la demanda de compra
+            </p>
+            <p>
+                Crea una sesión de demanda para ver qué productos
+                necesitas comprar, desglosados por atributos
+                (madurez, tamaño) y con el stock disponible.
+            </p>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         MENU: Compra > Demanda de Compra
+         ════════════════════════════════════════════════════ -->
+    <menuitem id="guapante_purchase_demand_menu"
+              name="Demanda de Compra"
+              parent="purchase.menu_purchase_root"
+              action="guapante_purchase_demand_action"
+              sequence="5"/>
+
+</odoo>
