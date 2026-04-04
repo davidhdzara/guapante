@@ -1,11 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="guapante_report_purchaseorder_document" inherit_id="purchase.report_purchaseorder_document">
+    <!-- ════════════════════════════════════════════════════
+         Override: Purchase Order PDF Report
+         
+         Changes from standard:
+         1. Title: Always "Orden de Compra" (never "Solicitud")
+         2. Hide: Price, Discount, Taxes, Subtotal columns
+         3. Show: Description, Fecha Prevista, Cantidad (visual)
+         4. Quantity uses visual_qty + uom_mode label
+         ════════════════════════════════════════════════════ -->
+
+    <template id="guapante_report_purchaseorder_document"
+              inherit_id="purchase.report_purchaseorder_document">
+
+        <!-- ── 1. Title: always "Orden de Compra" ── -->
+        <xpath expr="//h2[contains(@t-if, 'draft')]" position="replace">
+            <h2 class="mt-4">
+                Orden de Compra
+                <span t-field="o.name"/>
+            </h2>
+        </xpath>
+        <xpath expr="//h2[contains(@t-elif, 'sent')]" position="replace"/>
+        <xpath expr="//h2[contains(@t-else, '')]" position="replace"/>
+
+        <!-- ── 2. Table Header: only Description, Fecha Prevista, Cantidad ── -->
+        <xpath expr="//thead/tr/th[@name='th_description']" position="replace">
+            <th name="th_description" class="text-start"><strong>Descripción</strong></th>
+        </xpath>
+        <xpath expr="//thead/tr/th[@name='th_date_req']" position="replace">
+            <th name="th_date_req" class="text-center"><strong>Fecha Prevista</strong></th>
+        </xpath>
+        <xpath expr="//thead/tr/th[@name='th_quantity']" position="replace">
+            <th name="th_quantity" class="text-end"><strong>Cant.</strong></th>
+        </xpath>
+
+        <!-- Hide price, discount, taxes, subtotal headers -->
+        <xpath expr="//thead/tr/th[@name='th_price_unit']" position="replace"/>
+        <xpath expr="//thead/tr/th[@name='th_taxes']" position="replace"/>
+        <xpath expr="//thead/tr/th[@name='th_subtotal']" position="replace"/>
+        <xpath expr="//thead/tr/th[@name='th_discount']" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+
+        <!-- ── 3. Table Body: override quantity, hide financial columns ── -->
+        <!-- Replace quantity with visual_qty + uom_mode -->
         <xpath expr="//span[@t-field='line.product_qty']" position="replace">
             <span t-esc="line.visual_qty"/>
         </xpath>
         <xpath expr="//span[@t-field='line.product_uom']" position="replace">
             <span t-esc="dict(line._fields['uom_mode'].selection).get(line.uom_mode) if line.uom_mode else line.product_uom.name"/>
         </xpath>
+
+        <!-- Hide price_unit column -->
+        <xpath expr="//td[@name='td_price_unit']" position="replace"/>
+        <!-- Hide taxes column -->
+        <xpath expr="//td[@name='td_taxes']" position="replace"/>
+        <!-- Hide subtotal column -->
+        <xpath expr="//td[@name='td_subtotal']" position="replace"/>
+        <!-- Hide discount column -->
+        <xpath expr="//td[@name='td_discount']" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+
+        <!-- ── 4. Hide the totals section (price_tax, amount_total, etc.) ── -->
+        <xpath expr="//div[@id='total']" position="replace"/>
+
     </template>
 </odoo>

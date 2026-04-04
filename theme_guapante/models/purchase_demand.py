@@ -391,12 +391,7 @@ class PurchaseDemand(models.Model):
             for dline in demand_lines:
                 product = dline.product_id
 
-                # Build description with attribute detail
-                uom_label = (
-                    'ud' if dline.uom_mode == 'unit'
-                    else 'kg' if dline.uom_mode == 'kg'
-                    else 'g'
-                )
+                # Description: clean — just product + variant
                 desc_parts = [product.display_name]
                 if (
                     dline.attribute_combination
@@ -405,17 +400,6 @@ class PurchaseDemand(models.Model):
                 ):
                     desc_parts.append(
                         '— %s' % dline.attribute_combination
-                    )
-                # Add qty + mode to desc for clarity
-                desc_parts.append(
-                    '× %.2f %s' % (dline.pending_qty, uom_label)
-                )
-                if (
-                    dline.packaging_name
-                    and dline.uom_mode == 'unit'
-                ):
-                    desc_parts.append(
-                        '(%s)' % dline.packaging_name
                     )
                 description = ' '.join(desc_parts)
 
