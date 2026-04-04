@@ -519,7 +519,7 @@ class PreparationDay(models.Model):
                 # llegaba al Recolectar.
                 Move = self.env['stock.move'].search([
                     ('sale_line_id', '=', line.id),
-                    ('picking_type_code', '=', 'internal'),
+                    ('picking_type_id.code', '=', 'internal'),
                     ('state', 'not in', ('done', 'cancel')),
                 ], limit=1)
                 if not Move:
@@ -527,7 +527,7 @@ class PreparationDay(models.Model):
                     # (el peso se escribirá en sus move_lines igualmente)
                     Move = self.env['stock.move'].search([
                         ('sale_line_id', '=', line.id),
-                        ('picking_type_code', '=', 'internal'),
+                        ('picking_type_id.code', '=', 'internal'),
                     ], limit=1, order='id desc')
 
                 mode = line.uom_mode or 'unit'
