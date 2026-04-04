@@ -291,6 +291,26 @@ class PreparationDay(models.Model):
         compute='_compute_global_progress',
     )
 
+    # ── Conciliación Cajas: Ventas vs Inventario ──
+    so_count = fields.Integer(
+        string='Órdenes de Venta',
+        compute='_compute_box_reconciliation',
+        help='Cantidad de órdenes de venta confirmadas para la fecha.',
+    )
+    pick_count = fields.Integer(
+        string='Pickings (Recolectar)',
+        compute='_compute_box_reconciliation',
+        help='Cantidad de pickings PICK programados para la fecha.',
+    )
+    box_diff = fields.Integer(
+        string='Diferencia',
+        compute='_compute_box_reconciliation',
+    )
+    box_match = fields.Boolean(
+        string='Coinciden',
+        compute='_compute_box_reconciliation',
+    )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -319,6 +339,52 @@ class PreparationDay(models.Model):
             session.global_progress_pct = (
                 (done / total * 100.0) if total else 0.0
             )
+
+    @api.depends('date', 'line_ids')
+    def _compute_box_reconciliation(self) -> None:
+        """Compara órdenes de venta vs pickings PICK para la fecha.
+
+        Permite al equipo verificar que todo coincide antes de
+        empezar la preparación.
+        """
+        for session in self:
+            if not session.date:
+                session.so_count = 0
+                session.pick_count = 0
+                session.box_diff = 0
+                session.box_match = True
+                continue
+
+            dt_start = fields.Datetime.to_datetime(session.date)
+            dt_end = fields.Datetime.to_datetime(
+                fields.Date.add(session.date, days=1)
+            )
+
+            # Pickings PICK (internal) para la fecha
+            Pickings = self.env['stock.picking'].sudo().search([
+                ('scheduled_date', '>=', dt_start),
+                ('scheduled_date', '<', dt_end),
+                ('picking_type_code', '=', 'internal'),
+                ('sale_id', '!=', False),
+                ('state', 'not in', ('cancel',)),
+            ])
+            pick_orders = Pickings.mapped('sale_id')
+            session.pick_count = len(pick_orders)
+
+            # Órdenes de venta confirmadas con picking en esa fecha
+            # (incluye las que ya tienen picking done)
+            AllPickings = self.env['stock.picking'].sudo().search([
+                ('scheduled_date', '>=', dt_start),
+                ('scheduled_date', '<', dt_end),
+                ('picking_type_code', '=', 'internal'),
+                ('sale_id', '!=', False),
+                ('sale_id.state', 'in', ('sale', 'done')),
+            ])
+            so_orders = AllPickings.mapped('sale_id')
+            session.so_count = len(so_orders)
+
+            session.box_diff = session.so_count - session.pick_count
+            session.box_match = (session.box_diff == 0)
 
     def action_view_summaries(self) -> dict:
         """Abre la vista de resumen por producto (Smart Button)."""
