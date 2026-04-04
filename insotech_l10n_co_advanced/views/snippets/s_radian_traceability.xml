@@ -3,14 +3,13 @@
     <template id="s_radian_traceability" name="Trazabilidad Legal DIAN">
         <t t-if="invoice.insotech_dian_status == 'accepted'">
             <!-- PDF Footer Replica Match -->
-            <div class="row w-100 mt-2 mx-0" style="font-size: 0.70rem; color: #000; font-family: sans-serif; line-height: 1.2;">
+            <div class="row w-100 mt-1 mx-0" style="font-size: 0.65rem; color: #000; font-family: sans-serif; line-height: 1.15;">
                 
                 <!-- Row 1: Left QR and Right Profile Info -->
-                <div class="col-12 px-0 d-flex flex-wrap align-items-center mb-1">
-                    
-                    <div style="width: 140px; margin-right: 20px;" class="mb-2 mb-md-0">
+                <div class="col-12 px-0 d-flex flex-wrap align-items-start mb-1">
+                    <div style="width: 100px; min-width: 100px; margin-right: 12px;">
                         <t t-set="qr_string" t-value="invoice.l10n_co_edi_qr_code if 'l10n_co_edi_qr_code' in invoice and invoice.l10n_co_edi_qr_code else 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (invoice.l10n_co_edi_cufe_cude_ref or '')"/>
-                        <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=140&amp;height=140" class="img-fluid" alt="QR DIAN"/>
+                        <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=100&amp;height=100" class="img-fluid" alt="QR DIAN"/>
                     </div>
                     
                     <div class="flex-grow-1 text-start ps-0">
@@ -38,14 +37,16 @@
                 </div>
                 
                 <!-- Row 2: Full Width DIAN Core Details -->
-                <div class="col-12 px-0 text-start mt-1" style="word-break: break-all;">
+                <div class="col-12 px-0 text-start mt-1" style="word-break: break-all; font-size: 0.6rem;">
                     <div><strong>CUFE:</strong> <span t-esc="invoice.l10n_co_edi_cufe_cude_ref or ''"/></div>
-                    <div><strong>Fecha de firma:</strong> <span t-esc="(invoice.l10n_co_edi_datetime or invoice.create_date).strftime('%Y-%m-%d %H:%M:%S') if 'l10n_co_edi_datetime' in invoice else invoice.create_date.strftime('%Y-%m-%d %H:%M:%S')"/></div>
-                    <div><strong>Fecha de emisión:</strong> <span t-esc="invoice.invoice_date"/> <span t-esc="invoice.create_date.strftime('%H:%M:%S') if invoice.create_date else ''"/></div>
-                    <div><strong>Generado por:</strong> Software Propio</div>
-                    <div><strong>NIT:</strong> <span t-esc="invoice.company_id.vat"/></div>
+                    <div>
+                        <strong>Firma:</strong> <span t-esc="(invoice.l10n_co_edi_datetime or invoice.create_date).strftime('%Y-%m-%d %H:%M:%S') if 'l10n_co_edi_datetime' in invoice else invoice.create_date.strftime('%Y-%m-%d %H:%M:%S')"/>
+                        | <strong>Emisión:</strong> <span t-esc="invoice.invoice_date"/>
+                        | <strong>NIT:</strong> <span t-esc="invoice.company_id.vat"/>
+                        | Software Propio
+                    </div>
                     <t t-set="sig_val" t-value="invoice._get_dian_signature_value()"/>
-                    <div t-if="sig_val"><strong>Firma:</strong> <span t-esc="sig_val" style="word-break: break-all;"/></div>
+                    <div t-if="sig_val" style="max-height: 1.2em; overflow: hidden;"><strong>Firma digital:</strong> <span t-esc="sig_val[:80] + '...' if sig_val and len(sig_val) &gt; 80 else sig_val"/></div>
                 </div>
                 
                 <!-- Texto legal obligatorio -->
