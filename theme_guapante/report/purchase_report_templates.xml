@@ -1,49 +1,140 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- ════════════════════════════════════════════════════
-         Override: Purchase Order PDF Report (Guapante)
-
-         XPaths verified against REAL Odoo 18 template
-         (dumped from ir.ui.view in production).
+         Reporte propio: Orden de Compra Guapante
+         
+         Reemplaza el reporte estándar de PO con uno limpio:
+         - Título: "Orden de Compra"
+         - Solo: Descripción | Fecha Prevista | Cantidad
+         - Cantidad muestra kg O unidades, nunca ambos
+         - Sin columnas financieras
          ════════════════════════════════════════════════════ -->
 
-    <template id="guapante_report_purchaseorder_document"
-              inherit_id="purchase.report_purchaseorder_document">
+    <!-- 1. Report action: binding propio para purchase.order -->
+    <record id="action_report_purchase_order_guapante" model="ir.actions.report">
+        <field name="name">Orden de Compra Guapante</field>
+        <field name="model">purchase.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">theme_guapante.report_purchaseorder_guapante</field>
+        <field name="report_file">theme_guapante.report_purchaseorder_guapante</field>
+        <field name="binding_model_id" ref="purchase.model_purchase_order"/>
+        <field name="binding_type">report</field>
+    </record>
 
-        <!-- ── 1. Title: Always "Orden de Compra" ── -->
-        <xpath expr="//t[@t-set='layout_document_title']" position="replace">
-            <t t-set="layout_document_title">
-                Orden de Compra #<span t-field="o.name"/>
+    <!-- 2. Template principal (wrapper) -->
+    <template id="report_purchaseorder_guapante">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="theme_guapante.report_purchaseorder_guapante_document"/>
             </t>
-        </xpath>
-
-        <!-- ── 2. Quantity: show visual_qty for units, product_qty for kg ── -->
-        <xpath expr="//span[@t-field='line.product_qty']" position="replace">
-            <t t-if="line.uom_mode == 'unit'">
-                <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else round(line.visual_qty, 2)"/>
-            </t>
-            <t t-else="">
-                <span t-field="line.product_qty"/>
-            </t>
-        </xpath>
-
-        <!-- ── 3. UoM label: mode-specific ── -->
-        <xpath expr="//span[@t-field='line.product_uom.name']" position="replace">
-            <t t-if="line.uom_mode == 'unit'">
-                <span>Unidad</span>
-            </t>
-            <t t-elif="line.uom_mode == 'g'">
-                <span>Gramos</span>
-            </t>
-            <t t-else="">
-                <span t-field="line.product_uom.name"/>
-            </t>
-        </xpath>
-
-        <!-- ── 4. Hide packaging display "(810 Unidad)" ── -->
-        <xpath expr="//span[@t-if='line.product_packaging_id']" position="attributes">
-            <attribute name="t-if">False</attribute>
-        </xpath>
-
+        </t>
     </template>
+
+    <!-- 3. Template del documento -->
+    <template id="report_purchaseorder_guapante_document">
+        <t t-call="web.external_layout">
+            <t t-set="o" t-value="o.with_context(lang=o.partner_id.lang)"/>
+            <t t-set="address">
+                <div t-field="o.partner_id"
+                     t-options='{"widget": "contact", "fields": ["address", "name", "phone", "vat"], "no_marker": True, "phone_icons": True}'/>
+            </t>
+            <t t-if="o.dest_address_id">
+                <t t-set="information_block">
+                    <strong class="d-block mt-3">Dirección de envío</strong>
+                    <div t-field="o.dest_address_id"
+                         t-options='{"widget": "contact", "fields": ["address", "name", "phone"], "no_marker": True, "phone_icons": True}'/>
+                </t>
+            </t>
+
+            <div class="page">
+                <div class="oe_structure"/>
+
+                <!-- ── Título: siempre "Orden de Compra" ── -->
+                <div class="mt-4">
+                    <t t-set="layout_document_title">
+                        Orden de Compra #<span t-field="o.name"/>
+                    </t>
+                </div>
+
+                <!-- ── Info del pedido ── -->
+                <div id="informations" class="row mb-4">
+                    <div t-if="o.user_id" class="col">
+                        <strong>Comprador</strong>
+                        <div t-field="o.user_id"/>
+                    </div>
+                    <div t-if="o.date_order" class="col-2 bm-2">
+                        <strong>Fecha límite:</strong>
+                        <p t-field="o.date_order"
+                           t-options="{'date_only': 'true'}" class="m-0"/>
+                    </div>
+                    <div t-if="o.date_planned" class="col-2 bm-2">
+                        <strong>Llegada esperada:</strong>
+                        <p t-field="o.date_planned"
+                           t-options="{'date_only': 'true'}" class="m-0"/>
+                    </div>
+                </div>
+
+                <!-- ── Tabla: solo Descripción, Fecha, Cantidad ── -->
+                <table class="table table-sm table-borderless mt-4">
+                    <thead>
+                        <tr>
+                            <th class="text-start"><strong>DESCRIPCIÓN</strong></th>
+                            <th class="text-center"><strong>FECHA PREVISTA</strong></th>
+                            <th class="text-end"><strong>CANT.</strong></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="o.order_line" t-as="line">
+                            <tr t-if="not line.display_type">
+                                <!-- Descripción -->
+                                <td class="text-start">
+                                    <span t-field="line.name"/>
+                                </td>
+                                <!-- Fecha prevista -->
+                                <td class="text-center">
+                                    <span t-field="line.date_planned"
+                                          t-options="{'widget': 'date'}"/>
+                                </td>
+                                <!-- Cantidad: kg O unidades, NUNCA ambos -->
+                                <td class="text-end">
+                                    <t t-if="line.uom_mode == 'unit'">
+                                        <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else '%.2f' % line.visual_qty"/>
+                                        <span> Unidad</span>
+                                    </t>
+                                    <t t-elif="line.uom_mode == 'g'">
+                                        <span t-esc="'%.0f' % line.visual_qty"/>
+                                        <span> Gramos</span>
+                                    </t>
+                                    <t t-else="">
+                                        <span t-esc="'%.2f' % line.product_qty"/>
+                                        <span> kg</span>
+                                    </t>
+                                </td>
+                            </tr>
+                            <!-- Secciones -->
+                            <tr t-if="line.display_type == 'line_section'">
+                                <td colspan="3" class="fw-bold">
+                                    <span t-field="line.name"/>
+                                </td>
+                            </tr>
+                            <!-- Notas -->
+                            <tr t-if="line.display_type == 'line_note'">
+                                <td colspan="3" class="fst-italic">
+                                    <span t-field="line.name"/>
+                                </td>
+                            </tr>
+                        </t>
+                    </tbody>
+                </table>
+
+                <div class="oe_structure"/>
+            </div>
+        </t>
+    </template>
+
+    <!-- 4. Desactivar el reporte estándar para que no aparezca duplicado -->
+    <record id="purchase.action_report_purchase_order" model="ir.actions.report">
+        <field name="binding_model_id" eval="False"/>
+    </record>
+
 </odoo>
