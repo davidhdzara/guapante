@@ -195,14 +195,30 @@ class PurchaseDemand(models.Model):
             # Use the uom_mode from the SO lines (already stored
             # in the grouping key — NOT from the product's UoM).
             uom_mode = data['uom_mode']
-            pending_qty = round(data['pending_product_qty'], 3)
 
-            # pending_kg: internal qty is already in kg for
-            # weight-based products. For 'unit' mode on weight
-            # products, product_uom_qty stores the kg equivalent
-            # (inverse was already applied by the SO line), so
-            # pending_product_qty IS kg regardless of uom_mode.
-            pending_kg = pending_qty
+            # pending_kg is ALWAYS the internal Odoo qty (kg).
+            # product_uom_qty is stored in the product's UoM (kg)
+            # regardless of how the customer ordered.
+            pending_kg = round(data['pending_product_qty'], 3)
+
+            # pending_qty: what the customer sees
+            # - kg mode: same as pending_kg
+            # - unit mode: convert kg → visual units via packaging
+            # - g mode: kg × 1000
+            if uom_mode == 'unit':
+                pkg = product.packaging_ids.filtered(
+                    lambda p: p.purchase and p.qty > 0
+                )[:1]
+                if pkg and pkg.qty > 0:
+                    pending_qty = round(
+                        pending_kg / pkg.qty, 2,
+                    )
+                else:
+                    pending_qty = pending_kg
+            elif uom_mode == 'g':
+                pending_qty = round(pending_kg * 1000, 0)
+            else:  # kg
+                pending_qty = pending_kg
 
             # Packaging name (most common among the lines)
             packaging_name = ''
@@ -415,10 +431,11 @@ class PurchaseDemand(models.Model):
                     lambda s: s.partner_id.id == supplier_id
                 )[:1]
 
-                # PO line: product_qty in kg (Odoo internal),
-                # visual_qty in the mode the customer ordered.
-                # The PurchaseOrderLine._inverse_visual_qty will
-                # handle conversion when visual_qty is written.
+                # PO line: product_qty in kg (Odoo internal).
+                # Do NOT set visual_qty manually — the POL compute
+                # (_compute_visual_qty) will derive it correctly
+                # from product_qty + uom_mode + packaging.
+                # Setting it manually causes double-conversion.
                 po_line_vals = {
                     'order_id': po.id,
                     'product_id': product.id,
@@ -434,7 +451,6 @@ class PurchaseDemand(models.Model):
                         else product.standard_price
                     ),
                     'uom_mode': dline.uom_mode,
-                    'visual_qty': dline.pending_qty,
                 }
 
                 if packaging:
