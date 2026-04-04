@@ -291,6 +291,31 @@ class PreparationDay(models.Model):
         compute='_compute_global_progress',
     )
 
+    # ── Conciliación Cajas: Ventas vs Inventario ──
+    so_count = fields.Integer(
+        string='Órdenes de Venta',
+        compute='_compute_box_reconciliation',
+        help='Cantidad de órdenes de venta confirmadas para la fecha.',
+    )
+    pick_count = fields.Integer(
+        string='Pickings (Recolectar)',
+        compute='_compute_box_reconciliation',
+        help='Cantidad de pickings PICK programados para la fecha.',
+    )
+    box_diff = fields.Integer(
+        string='Diferencia',
+        compute='_compute_box_reconciliation',
+    )
+    box_match = fields.Boolean(
+        string='Coinciden',
+        compute='_compute_box_reconciliation',
+    )
+    draft_count = fields.Integer(
+        string='Cotizaciones pendientes',
+        compute='_compute_box_reconciliation',
+        help='Cotizaciones (draft/sent) que podrían ser cajas si se confirman.',
+    )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -319,6 +344,65 @@ class PreparationDay(models.Model):
             session.global_progress_pct = (
                 (done / total * 100.0) if total else 0.0
             )
+
+    @api.depends('date', 'line_ids')
+    def _compute_box_reconciliation(self) -> None:
+        """Conciliación de cajas: confirmadas vs cotizaciones pendientes.
+
+        En Guapante, toda orden confirmada genera un PICK
+        inmediatamente, así que so_count == pick_count siempre.
+        El valor real de este indicador es mostrar cotizaciones
+        draft/sent que podrían convertirse en cajas adicionales.
+        """
+        for session in self:
+            if not session.date:
+                session.so_count = 0
+                session.pick_count = 0
+                session.box_diff = 0
+                session.box_match = True
+                session.draft_count = 0
+                continue
+
+            dt_start = fields.Datetime.to_datetime(session.date)
+            dt_end = fields.Datetime.to_datetime(
+                fields.Date.add(session.date, days=1)
+            )
+
+            # Pickings PICK (internal) confirmados para la fecha
+            Pickings = self.env['stock.picking'].sudo().search([
+                ('scheduled_date', '>=', dt_start),
+                ('scheduled_date', '<', dt_end),
+                ('picking_type_code', '=', 'internal'),
+                ('sale_id', '!=', False),
+                ('state', 'not in', ('cancel',)),
+            ])
+            pick_orders = Pickings.mapped('sale_id')
+            session.pick_count = len(pick_orders)
+
+            # Órdenes confirmadas (vía pickings, mismo conteo)
+            confirmed_orders = Pickings.filtered(
+                lambda p: p.sale_id.state in ('sale', 'done')
+            ).mapped('sale_id')
+            session.so_count = len(confirmed_orders)
+
+            session.box_diff = session.so_count - session.pick_count
+            session.box_match = (session.box_diff == 0)
+
+            # Cotizaciones pendientes (draft/sent) que podrían
+            # llegar si el cliente confirma.
+            # Buscan por expected_date (fecha estimada de entrega
+            # calculada por Odoo) o date_order (fecha de creación).
+            DraftOrders = self.env['sale.order'].sudo().search([
+                ('state', 'in', ('draft', 'sent')),
+                '|',
+                '&',
+                ('expected_date', '>=', dt_start),
+                ('expected_date', '<', dt_end),
+                '&',
+                ('date_order', '>=', dt_start),
+                ('date_order', '<', dt_end),
+            ])
+            session.draft_count = len(DraftOrders)
 
     def action_view_summaries(self) -> dict:
         """Abre la vista de resumen por producto (Smart Button)."""
