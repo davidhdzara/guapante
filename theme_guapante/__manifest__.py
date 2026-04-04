@@ -3,7 +3,7 @@
     'description': 'Modern, fresh theme for Guapante based on Odoo 18 best practices.',
     'category': 'Theme/eCommerce',
     'summary': 'Fresh, Organic, Modern',
-    'version': '2.0.7',
+    'version': '2.0.8',
     'images': [
         'static/description/guapante_preview.png',
         'static/description/icon.png',
@@ -11,6 +11,7 @@
     'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'stock_picking_batch', 'fleet', 'account', 'sale', 'purchase'],
     'data': [
         'security/ir.model.access.csv',
+        'data/stock_config.xml',
         'views/sale_order_views.xml',
         'views/purchase_order_views.xml',
         'report/sale_report_templates.xml',
