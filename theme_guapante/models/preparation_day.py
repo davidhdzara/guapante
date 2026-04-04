@@ -491,7 +491,12 @@ class PreparationDay(models.Model):
             shipping_name = order.partner_shipping_id.name or ''
 
             ProductLines = order.order_line.filtered(
-                lambda l: l.product_id and not l.display_type
+                lambda l: (
+                    l.product_id
+                    and not l.display_type
+                    # Excluir servicios (delivery, shipping charges)
+                    and l.product_id.type != 'service'
+                )
             )
             for line in ProductLines:
                 if line.id in existing_sale_line_ids:
@@ -520,12 +525,9 @@ class PreparationDay(models.Model):
                     ('state', 'not in', ('done', 'cancel')),
                 ], limit=1)
                 if not Move:
-                    # Fallback: PICK ya done — vincular para referencia
-                    # (el peso se escribirá en sus move_lines igualmente)
-                    Move = self.env['stock.move'].search([
-                        ('sale_line_id', '=', line.id),
-                        ('picking_type_id.code', '=', 'internal'),
-                    ], limit=1, order='id desc')
+                    # No hay move pendiente → línea ya procesada
+                    # o cancelada. No cargar en la preparación.
+                    continue
 
                 mode = line.uom_mode or 'unit'
                 is_weight = (
