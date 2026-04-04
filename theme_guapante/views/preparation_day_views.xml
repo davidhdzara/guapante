@@ -97,29 +97,29 @@
                         <field name="pick_count" invisible="1"/>
                         <field name="box_diff" invisible="1"/>
                         <field name="box_match" invisible="1"/>
-                        <div class="row mb-4" invisible="so_count == 0 and pick_count == 0">
+                        <field name="draft_count" invisible="1"/>
+                        <div class="row mb-4" invisible="so_count == 0 and pick_count == 0 and draft_count == 0">
                             <div class="col-12">
-                                <div class="d-flex align-items-center gap-3 p-3 rounded-3 border"
+                                <div class="d-flex align-items-center flex-wrap gap-3 p-3 rounded-3 border"
                                      style="background-color: #f8f9fa;">
                                     <div class="d-flex align-items-center gap-2">
                                         <i class="fa fa-archive text-primary" style="font-size: 1.2rem;"></i>
                                         <span class="fw-bold text-uppercase small text-muted">Cajas a alistar:</span>
                                     </div>
                                     <span class="badge text-bg-primary px-3 py-2" style="font-size: 0.9rem;">
-                                        <i class="fa fa-shopping-cart"></i>
-                                        <field name="so_count" nolabel="1" readonly="1" class="d-inline"/> ventas
-                                    </span>
-                                    <span class="text-muted">vs</span>
-                                    <span class="badge text-bg-info px-3 py-2" style="font-size: 0.9rem;">
-                                        <i class="fa fa-truck"></i>
-                                        <field name="pick_count" nolabel="1" readonly="1" class="d-inline"/> pickings
+                                        <i class="fa fa-check-circle"></i>
+                                        <field name="pick_count" nolabel="1" readonly="1" class="d-inline"/> confirmadas
                                     </span>
                                     <span class="badge text-bg-success px-3 py-2" style="font-size: 0.9rem;" invisible="not box_match">
-                                        <i class="fa fa-check-circle"></i> Todo coincide
+                                        <i class="fa fa-check"></i> Ventas = Pickings
                                     </span>
                                     <span class="badge text-bg-danger px-3 py-2" style="font-size: 0.9rem;" invisible="box_match">
                                         <i class="fa fa-exclamation-triangle"></i>
                                         Diferencia: <field name="box_diff" nolabel="1" readonly="1" class="d-inline"/>
+                                    </span>
+                                    <span class="badge text-bg-warning px-3 py-2" style="font-size: 0.9rem;" invisible="draft_count == 0">
+                                        <i class="fa fa-file-text-o"></i>
+                                        <field name="draft_count" nolabel="1" readonly="1" class="d-inline"/> cotizaciones pendientes
                                     </span>
                                 </div>
                             </div>
