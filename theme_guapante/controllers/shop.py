@@ -374,12 +374,15 @@ class GuapanteWebsiteSale(WebsiteSale):
             ('is_b2b_exclusive', '=', True),
         ])
 
+        _logger.info("VIP-B2B: Found %s VIP products: %s", len(all_vip), all_vip.mapped('name'))
+
         if not all_vip:
             return ([], [])
 
         user = request.env.user
         if user._is_public():
             # Public users see NO VIP products
+            _logger.info("VIP-B2B: Public user → excluding ALL VIP IDs: %s", all_vip.ids)
             return (all_vip.ids, [])
 
         partner_id = user.partner_id.commercial_partner_id.id
@@ -391,6 +394,9 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         # General products that my VIP products replace
         hidden_ids = my_vip.mapped('b2b_replaces_product_ids').ids
+
+        _logger.info("VIP-B2B: Partner %s → my_vip=%s, not_my_vip=%s, hidden=%s",
+                      partner_id, my_vip.ids, not_my_vip.ids, hidden_ids)
 
         return (not_my_vip.ids, hidden_ids)
 
@@ -413,6 +419,8 @@ class GuapanteWebsiteSale(WebsiteSale):
         all_invisible = list(set(exclude_ids + hidden_ids))
         if all_invisible:
             domain.append(('id', 'not in', all_invisible))
+
+        _logger.info("VIP-B2B: _get_shop_domain called → excluding %s product IDs", len(all_invisible))
 
         return domain
 
