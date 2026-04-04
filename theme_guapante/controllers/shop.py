@@ -491,11 +491,11 @@ class GuapanteWebsiteSale(WebsiteSale):
 
     @http.route(['/shop/cart/update'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def update_cart_native(self, line_id=None, quantity=None, product_id=None, **kwargs):
-        debug_order = request.website.sale_get_order()
-        if debug_order:
-            debug_msg = f"\n[NATIVE UPDATE PAYLOAD]: line_id={line_id}, qty={quantity}, product_id={product_id}, kwargs={kwargs}\n"
-            current_note = debug_order.sudo().note or ''
-            debug_order.sudo().write({'note': current_note + debug_msg})
+        # debug_order = request.website.sale_get_order()
+        # if debug_order:
+        #     debug_msg = f"\n[NATIVE UPDATE PAYLOAD]: line_id={line_id}, qty={quantity}, product_id={product_id}, kwargs={kwargs}\n"
+        #     current_note = debug_order.sudo().note or ''
+        #     debug_order.sudo().write({'note': current_note + debug_msg})
         return super().update_cart(line_id=line_id, quantity=quantity, product_id=product_id, **kwargs)
 
     @http.route(['/shop/cart/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
@@ -539,11 +539,11 @@ class GuapanteWebsiteSale(WebsiteSale):
                         add_qty = add_qty * factor
 
         # 1. Spy on Javascript payload for debugging
-        debug_order = request.website.sale_get_order()
-        if debug_order:
-            debug_msg = f"\n[JS PAYLOAD IN CONTROLLER]: args=(product_id={product_id}, uom_mode={uom_mode}, packaging={product_packaging_id}) kwargs={kwargs}\n"
-            current_note = debug_order.sudo().note or ''
-            debug_order.sudo().write({'note': current_note + debug_msg})
+        # debug_order = request.website.sale_get_order()
+        # if debug_order:
+        #     debug_msg = f"\n[JS PAYLOAD IN CONTROLLER]: args=(product_id={product_id}, uom_mode={uom_mode}, packaging={product_packaging_id}) kwargs={kwargs}\n"
+        #     current_note = debug_order.sudo().note or ''
+        #     debug_order.sudo().write({'note': current_note + debug_msg})
 
         # 1. Call super to perform standard logic
         response = super().cart_update_json(
