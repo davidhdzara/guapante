@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
-import logging
 import math
+import logging
 from datetime import timedelta
 
 from psycopg2 import IntegrityError
@@ -10,7 +9,6 @@ from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
-
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
@@ -18,10 +16,7 @@ class SaleOrder(models.Model):
         string='# del día',
         default=0,
         copy=False,
-        help=(
-            'Daily box number for the order\'s delivery date '
-            '(pickings scheduled date).'
-        ),
+        help='Daily box number for the order’s delivery date (pickings scheduled date).',
     )
 
     guapante_product_line_count = fields.Integer(
@@ -30,7 +25,7 @@ class SaleOrder(models.Model):
     )
 
     @api.depends('order_line', 'order_line.display_type')
-    def _compute_guapante_product_line_count(self) -> None:
+    def _compute_guapante_product_line_count(self):
         for order in self:
             order.guapante_product_line_count = len(
                 order.order_line.filtered(lambda l: not l.display_type)
@@ -40,92 +35,47 @@ class SaleOrder(models.Model):
         return super().action_confirm()
 
     @api.model
-    def _guapante_daily_sequence_code(
-        self, company_id: int, delivery_date
-    ) -> str:
-        """Stable ir.sequence code: one counter per company and day."""
+    def _guapante_daily_sequence_code(self, company_id, delivery_date):
+        """Stable ir.sequence code: one counter per company and calendar delivery day."""
         d = fields.Date.to_date(delivery_date)
         cid = int(company_id) if company_id else 0
         return 'guapante.daily.%s.%s' % (cid, d.strftime('%Y%m%d'))
 
     @api.model
-    def _guapante_max_daily_sequence_on_date(
-        self, company_id: int, delivery_date
-    ) -> int:
-        """Max existing daily_sequence for orders on this delivery date.
-
-        Includes ALL states (even cancelled) to prevent box number
-        reuse after order cancellation.
-        """
+    def _guapante_max_daily_sequence_on_date(self, company_id, delivery_date):
+        """Max existing daily_sequence for orders on this delivery date (historical data)."""
         dt_start = fields.Datetime.to_datetime(delivery_date)
-        dt_end = fields.Datetime.to_datetime(
-            delivery_date + timedelta(days=1)
-        )
+        dt_end = fields.Datetime.to_datetime(delivery_date + timedelta(days=1))
         cid = company_id if company_id else None
-        domain_company = (
-            [('company_id', '=', cid)]
-            if cid
-            else [('company_id', '=', False)]
+        domain_company = [('company_id', '=', cid)] if cid else [('company_id', '=', False)]
+        SaleOrder = self.env['sale.order'].sudo()
+        candidates = SaleOrder.search(
+            domain_company
+            + [
+                ('picking_ids.scheduled_date', '>=', dt_start),
+                ('picking_ids.scheduled_date', '<', dt_end),
+                ('state', 'in', ('sale', 'done')),
+                ('daily_sequence', '>', 0),
+            ],
         )
-        # Solo pickings PICK (internal/Recolectar).
-        PickDomain = [
-            ('scheduled_date', '>=', dt_start),
-            ('scheduled_date', '<', dt_end),
-            ('picking_type_code', '=', 'internal'),
-            ('sale_id', '!=', False),
-            ('sale_id.daily_sequence', '>', 0),
-        ]
-        if cid:
-            PickDomain.append(('company_id', '=', cid))
-
-        Pickings = self.env['stock.picking'].sudo().search(PickDomain)
-        Candidates = Pickings.mapped('sale_id')
-        if not Candidates:
+        if not candidates:
             return 0
-        return max(Candidates.mapped('daily_sequence'))
+        return max(candidates.mapped('daily_sequence'))
 
     @api.model
-    def _guapante_get_or_create_daily_ir_sequence(
-        self, company_id: int, delivery_date
-    ):
-        """Return ir.sequence for (company, day); create if missing.
-
-        SIEMPRE sincroniza number_next con el máximo real de la BD
-        para evitar duplicados tras cancelaciones o ediciones manuales.
-        """
-        # sudo(): ir.sequence creation requiere permisos de admin
-        # ya que el usuario de preparación normalmente no tiene
-        # acceso a la configuración de secuencias.
+    def _guapante_get_or_create_daily_ir_sequence(self, company_id, delivery_date):
+        """Return ir.sequence for (company, day); create with safe number_next for legacy rows."""
         Sequence = self.env['ir.sequence'].sudo()
-        code = self._guapante_daily_sequence_code(
-            company_id, delivery_date,
-        )
+        code = self._guapante_daily_sequence_code(company_id, delivery_date)
         seq = Sequence.search([('code', '=', code)], limit=1)
-
-        max_existing = self._guapante_max_daily_sequence_on_date(
-            company_id, delivery_date,
-        )
-        safe_next = max_existing + 1 if max_existing >= 0 else 1
-
         if seq:
-            # CORRECCIÓN: Siempre sincronizar number_next con el max
-            # real de la BD. Si alguien canceló órdenes, editó
-            # manualmente, o la secuencia quedó desincronizada,
-            # esto garantiza que el próximo número sea max + 1.
-            if seq.number_next_actual < safe_next:
-                seq.sudo().write({'number_next': safe_next})
-                _logger.info(
-                    'Guapante: synced ir.sequence %s number_next '
-                    'to %d (was %d)',
-                    code, safe_next, seq.number_next_actual,
-                )
             return seq
 
+        max_existing = self._guapante_max_daily_sequence_on_date(company_id, delivery_date)
+        number_next = max_existing + 1 if max_existing >= 0 else 1
         d = fields.Date.to_date(delivery_date)
         vals = {
-            'name': 'Guapante delivery day %s (%s)' % (
-                d.isoformat(), code,
-            ),
+            'name': 'Guapante delivery day %s (%s)' % (d.isoformat(), code),
             'code': code,
             'implementation': 'standard',
             'company_id': company_id if company_id else False,
@@ -134,7 +84,7 @@ class SaleOrder(models.Model):
             'suffix': '',
             'padding': 1,
             'number_increment': 1,
-            'number_next': safe_next,
+            'number_next': number_next,
         }
         try:
             with self.env.cr.savepoint():
@@ -144,53 +94,39 @@ class SaleOrder(models.Model):
         if not seq:
             seq = Sequence.search([('code', '=', code)], limit=1)
         if not seq:
-            _logger.error(
-                'Guapante: failed to get ir.sequence for code %s',
-                code,
-            )
+            _logger.error('Guapante: failed to get ir.sequence for code %s', code)
             raise UserError(
-                'Could not initialize the daily order sequence. '
-                'Please retry or contact support.'
+                'Could not initialize the daily order sequence. Please retry or contact support.'
             )
         return seq
 
-    def _assign_daily_sequences(self, delivery_date) -> None:
-        """Assign daily_sequence to confirmed orders for a delivery date.
+    def _assign_daily_sequences(self, delivery_date):
+        """Assign daily_sequence to confirmed orders for a given delivery date.
 
-        Called from PreparationDay.action_load so the sequence is always
-        scoped to the actual delivery date, not the order creation date.
-        Orders that already have a sequence keep it; new orders receive
-        the next number from an ir.sequence (concurrency-safe).
+        Called from PreparationDay.action_load so the sequence is always scoped
+        to the actual delivery date of the session, not the order creation date.
+        Orders that already have a sequence keep it; new orders receive the next number
+        from an ir.sequence (concurrency-safe). Existing DB values are not rewritten.
         """
-        # Buscar solo pickings PICK (internal/Recolectar) PENDIENTES.
-        # Excluir done/cancel: órdenes ya entregadas no deben recibir
-        # un nuevo número de caja (bug S00204/S00220).
-        dt_start = fields.Datetime.to_datetime(delivery_date)
-        dt_end = fields.Datetime.to_datetime(
-            delivery_date + timedelta(days=1)
+        orders_for_date = self.env['sale.order'].sudo().search(
+            [
+                ('picking_ids.scheduled_date', '>=', fields.Datetime.to_datetime(delivery_date)),
+                ('picking_ids.scheduled_date', '<', fields.Datetime.to_datetime(
+                    delivery_date + timedelta(days=1)
+                )),
+                ('state', 'in', ('sale', 'done')),
+            ],
+            order='id asc',
         )
-        Pickings = self.env['stock.picking'].sudo().search([
-            ('scheduled_date', '>=', dt_start),
-            ('scheduled_date', '<', dt_end),
-            ('picking_type_code', '=', 'internal'),
-            ('state', 'not in', ('done', 'cancel')),
-            ('sale_id', '!=', False),
-            ('sale_id.state', 'in', ('sale', 'done')),
-        ])
-        OrdersForDate = Pickings.mapped('sale_id').sorted('id')
         seq_by_company = {}
-        Touched = self.env['sale.order']
-        for order in OrdersForDate:
+        touched = self.env['sale.order']
+        for order in orders_for_date:
             if order.daily_sequence:
                 continue
             cid = order.company_id.id if order.company_id else False
             if cid not in seq_by_company:
-                seq_by_company[cid] = (
-                    self.env['sale.order']
-                    .sudo()
-                    ._guapante_get_or_create_daily_ir_sequence(
-                        cid, delivery_date,
-                    )
+                seq_by_company[cid] = self.env['sale.order'].sudo()._guapante_get_or_create_daily_ir_sequence(
+                    cid, delivery_date
                 )
             seq = seq_by_company[cid]
             next_str = seq.next_by_id()
@@ -199,15 +135,15 @@ class SaleOrder(models.Model):
             except (TypeError, ValueError) as err:
                 _logger.error(
                     'Guapante: invalid sequence value %r from %s: %s',
-                    next_str, seq.display_name, err,
+                    next_str, seq.display_name, err
                 )
                 raise
-            Touched |= order
-        if Touched:
-            Touched.flush_recordset(['daily_sequence'])
+            touched |= order
+        if touched:
+            touched.flush_recordset(['daily_sequence'])
 
     @api.depends('order_line.product_uom_qty', 'order_line.product_id')
-    def _compute_cart_info(self) -> None:
+    def _compute_cart_info(self):
         """Override to use ceil() instead of int().
 
         Odoo 18 uses int(sum(qty)) for cart_quantity. For fractional
@@ -216,230 +152,165 @@ class SaleOrder(models.Model):
         Using ceil() ensures any non-zero quantity counts as at least 1.
         """
         for order in self:
-            raw_qty = sum(
-                order.mapped('website_order_line.product_uom_qty')
-            )
-            order.cart_quantity = (
-                math.ceil(raw_qty) if raw_qty > 0 else 0
-            )
+            raw_qty = sum(order.mapped('website_order_line.product_uom_qty'))
+            order.cart_quantity = math.ceil(raw_qty) if raw_qty > 0 else 0
             order.only_services = all(
                 sol.product_id.type == 'service'
                 for sol in order.website_order_line
             )
 
-    guapante_delivery_status = fields.Selection(
-        [
-            ('received', 'Recibido'),
-            ('preparing', 'Preparando'),
-            ('shipping', 'En Camino'),
-            ('delivered', 'Entregado'),
-        ],
-        string="Estado de Entrega (Guapante)",
-        compute='_compute_guapante_delivery_status',
-        store=True,
-    )
+    guapante_delivery_status = fields.Selection([
+        ('received', 'Recibido'),
+        ('preparing', 'Preparando'),
+        ('shipping', 'En Camino'),
+        ('delivered', 'Entregado'),
+    ], string="Estado de Entrega (Guapante)", compute='_compute_guapante_delivery_status', store=True)
 
     @api.depends('state', 'picking_ids.state')
-    def _compute_guapante_delivery_status(self) -> None:
+    def _compute_guapante_delivery_status(self):
         for order in self:
-            status = 'received'
-
-            Pickings = order.picking_ids.filtered(
-                lambda p: p.state != 'cancel'
-            )
-            if not Pickings:
+            status = 'received' # Default: Order Confirmed
+            
+            # If order is not confirmed, it might be draft/sent, so we keep it simple or handle it.
+            # Assuming this logic runs for confirmed orders primarily.
+            
+            pickings = order.picking_ids.filtered(lambda p: p.state != 'cancel')
+            if not pickings:
                 order.guapante_delivery_status = status
                 continue
 
-            # Identificar Recolectar (Internal/Pick) vs Entregas (Out)
-            PickPickings = Pickings.filtered(
-                lambda p: p.picking_type_id.code == 'internal'
-            )
-            OutPickings = Pickings.filtered(
-                lambda p: p.picking_type_id.code == 'outgoing'
-            )
+            # Identify "Recolectar" (Internal/Pick) vs "Órdenes de entrega" (Outgoing/Out)
+            pick_pickings = pickings.filtered(lambda p: p.picking_type_id.code == 'internal')
+            out_pickings = pickings.filtered(lambda p: p.picking_type_id.code == 'outgoing')
 
-            # Fallback 1-step: outgoing es el step principal
-            if not PickPickings and OutPickings:
-                PickPickings = OutPickings
+            # Fallback for 1-step delivery: treat the outgoing as the primary picking step
+            if not pick_pickings and out_pickings:
+                pick_pickings = out_pickings
 
-            # 4. Entregado: todas las entregas están hechas
-            if OutPickings and all(
-                p.state == 'done' for p in OutPickings
-            ):
+            # 4. Entregado: All outgoing deliveries are done
+            if out_pickings and all(p.state == 'done' for p in out_pickings):
                 status = 'delivered'
 
-            # 3. En Camino: entrega asignada o recolección completada
-            elif (
-                (
-                    OutPickings
-                    and any(
-                        p.state in ['assigned', 'in_progress']
-                        for p in OutPickings
-                    )
-                )
-                or (
-                    PickPickings
-                    and all(p.state == 'done' for p in PickPickings)
-                    and OutPickings
-                )
-            ):
+            # 3. En Camino: Delivery is assigned/in_progress OR picking is done (it entered the Delivery section)
+            elif (out_pickings and any(p.state in ['assigned', 'in_progress'] for p in out_pickings)) or \
+                 (pick_pickings and all(p.state == 'done' for p in pick_pickings) and out_pickings):
                 status = 'shipping'
 
-            # 2. Preparando: recolección abierta con pesaje iniciado
-            elif PickPickings and any(
-                p.state not in ['done', 'cancel']
-                for p in PickPickings
-            ):
-                ActivePicks = PickPickings.filtered(
-                    lambda p: p.state not in ['done', 'cancel']
-                )
-                has_picked_field = (
-                    'picked' in self.env['stock.move.line']._fields
-                )
+            # 2. Validación y Pesaje: "Recolectar" is still open, but user started weighing (quantity > 0 / picked = True)
+            elif pick_pickings and any(p.state not in ['done', 'cancel'] for p in pick_pickings):
+                active_picks = pick_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
+                has_picked_field = 'picked' in self.env['stock.move.line']._fields
                 has_qty = False
-                for p in ActivePicks:
+                for p in active_picks:
                     if p.move_line_ids:
-                        if has_picked_field and any(
-                            ml.picked for ml in p.move_line_ids
-                        ):
+                        # In Odoo 18, `picked` indicates user action.
+                        if has_picked_field and any(ml.picked for ml in p.move_line_ids):
                             has_qty = True
                             break
-                        elif not has_picked_field and any(
-                            ml.quantity > 0 for ml in p.move_line_ids
-                        ):
+                        # Fallback for Odoo 17 or environments where picked isn't set but quantity is modified
+                        elif not has_picked_field and any(ml.quantity > 0 for ml in p.move_line_ids):
                             has_qty = True
                             break
                 if has_qty:
                     status = 'preparing'
-
+            
             order.guapante_delivery_status = status
 
-    def _cart_update(
-        self,
-        product_id,
-        line_id=None,
-        add_qty=0,
-        set_qty=0,
-        **kwargs,
-    ):
+    def _cart_update(self, product_id, line_id=None, add_qty=0, set_qty=0, **kwargs):
         """Override to support fractional quantities (e.g. 500g = 0.5 kg).
 
         Odoo 18's native _cart_update truncates quantities with int(),
-        so 0.5 kg becomes 0 and the line gets deleted. We ceil() to
-        keep the line alive, then write the exact float value.
+        so 0.5 kg becomes 0 and the line gets deleted. We ceil() to keep
+        the line alive, then write the exact float value afterwards.
         """
         float_add = float(add_qty or 0)
         float_set = float(set_qty or 0)
-        is_fractional = (
-            (float_add and float_add != int(float_add))
-            or (float_set and float_set != int(float_set))
-        )
+        is_fractional = (float_add and float_add != int(float_add)) or \
+                        (float_set and float_set != int(float_set))
 
         if not is_fractional:
             return super()._cart_update(
-                product_id,
-                line_id=line_id,
-                add_qty=add_qty,
-                set_qty=set_qty,
-                **kwargs,
+                product_id, line_id=line_id,
+                add_qty=add_qty, set_qty=set_qty, **kwargs
             )
 
-        # Para fraccional, buscar la línea existente primero
-        ExistingLine = self._cart_find_product_line(
-            product_id, line_id, **kwargs
-        )[:1]
+        # For fractional, find the existing line first
+        existing_line = self._cart_find_product_line(product_id, line_id, **kwargs)[:1]
 
         if float_set:
             desired_qty = float_set
         else:
-            current_qty = (
-                ExistingLine.product_uom_qty if ExistingLine else 0
-            )
+            current_qty = existing_line.product_uom_qty if existing_line else 0
             desired_qty = current_qty + float_add
 
         if desired_qty <= 0:
             return super()._cart_update(
-                product_id,
-                line_id=line_id,
-                add_qty=0,
-                set_qty=0,
-                **kwargs,
+                product_id, line_id=line_id, add_qty=0, set_qty=0, **kwargs
             )
 
         ceil_qty = max(1, math.ceil(desired_qty))
-        found_line_id = ExistingLine.id if ExistingLine else line_id
+        found_line_id = existing_line.id if existing_line else line_id
         result = super()._cart_update(
-            product_id,
-            line_id=found_line_id,
-            set_qty=ceil_qty,
-            **kwargs,
+            product_id, line_id=found_line_id, set_qty=ceil_qty, **kwargs
         )
 
         if result and result.get('line_id'):
-            # sudo(): necesitamos escribir la qty exacta fraccionaria
-            # después de que Odoo la truncó internamente.
-            Line = self.env['sale.order.line'].sudo().browse(
-                result['line_id']
-            )
-            if Line.exists() and Line.product_uom_qty != desired_qty:
-                Line.product_uom_qty = desired_qty
+            line = self.env['sale.order.line'].sudo().browse(result['line_id'])
+            if line.exists() and line.product_uom_qty != desired_qty:
+                line.product_uom_qty = desired_qty
                 result['quantity'] = desired_qty
                 _logger.info(
-                    "Guapante _cart_update: wrote exact fractional "
-                    "qty=%.4f on line %s",
-                    desired_qty,
-                    Line.id,
+                    "Guapante _cart_update: wrote exact fractional qty=%.4f on line %s",
+                    desired_qty, line.id
                 )
 
         return result
 
-    def _cart_find_product_line(
-        self, product_id, line_id=None, **kwargs
-    ):
-        """Override to:
-        1. Fix attribute ID order sensitivity in Odoo 18.
-        2. Ensure different packagings get SEPARATE cart lines.
+    def _cart_find_product_line(self, product_id, line_id=None, **kwargs):
+        """
+        Override to:
+        1. Fix attribute ID order sensitivity in Odoo 18 (set comparison fallback).
+        2. Ensure different packagings of the same product get SEPARATE cart lines.
 
-        Rule: Only separate by packaging when a specific non-zero
-        packaging_id is explicitly requested.
+        Rule: Only separate by packaging when a specific non-zero packaging_id is
+        explicitly requested. Cart +/- updates (which send no packaging_id) and
+        products without packagings are NOT affected.
         """
         self.ensure_one()
 
         # 1. Let Odoo's native logic run first
-        Lines = super()._cart_find_product_line(
-            product_id, line_id, **kwargs
-        )
+        lines = super()._cart_find_product_line(product_id, line_id, **kwargs)
 
-        # 2. Separar líneas por packaging cuando se pide explícitamente.
-        # El JS envía un packaging_id real (>0) solo cuando el usuario
-        # seleccionó un botón específico (ej. 'Paquete 200g').
+        # 2. GUAPANTE: Separate cart lines by packaging when an explicit packaging is requested.
+        # The JS sends a real (non-zero) packaging ID only when the user selected a specific
+        # packaging button (e.g. 'Paquete 200g'). If it's 0 or absent, behave normally.
         target_pkg_id = kwargs.get('product_packaging_id')
         if target_pkg_id and int(target_pkg_id) > 0:
-            Lines = Lines.filtered(
+            # Only match lines that have this EXACT packaging — prevents merging
+            # a '200g' line with a '500g' line.
+            lines = lines.filtered(
                 lambda l: l.product_packaging_id.id == int(target_pkg_id)
             )
 
-        if Lines:
-            return Lines
+        if lines:
+            return lines
 
-        # 3. Fallback: reintento con comparación de atributos por set
+        # 3. Fallback: retry with set-based attribute comparison
         no_var_ids = kwargs.get('no_variant_attribute_value_ids') or []
         if not no_var_ids:
-            return Lines  # Empty, nothing else we can try
+            return lines  # Empty, nothing else we can try
 
         target_set = set(no_var_ids)
-        Matched = self.env['sale.order.line']
+        matched = self.env['sale.order.line']
         for line in self.order_line:
             if line.product_id.id != product_id:
                 continue
             if line_id and line.id != line_id:
                 continue
             if hasattr(line, 'product_no_variant_attribute_value_ids'):
-                line_set = set(
-                    line.product_no_variant_attribute_value_ids.ids
-                )
-                if line_set == target_set:
-                    Matched |= line
+                if set(line.product_no_variant_attribute_value_ids.ids) == target_set:
+                    matched |= line
 
-        return Matched
+        return matched
+
+
