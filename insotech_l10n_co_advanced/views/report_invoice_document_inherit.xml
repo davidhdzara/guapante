@@ -7,6 +7,26 @@
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
 
         <!-- ============================================================
+             COMPRESIÓN GLOBAL DE LA FACTURA
+             Reduce los espacios de la tabla nativa "table-sm" y ajusta fuentes
+             para optimizar espacio y evitar el salto a 2 páginas.
+             ============================================================ -->
+        <xpath expr="//div[hasclass('page')]" position="before">
+            <style type="text/css">
+                table.table-sm td, table.table-sm th {
+                    padding: 0.25rem 0.2rem !important; 
+                    font-size: 0.85rem !important;
+                }
+                .page {
+                    font-size: 0.9rem !important;
+                }
+                #informations .col-auto {
+                    margin-bottom: 0.2rem !important;
+                }
+            </style>
+        </xpath>
+
+        <!-- ============================================================
              A. INFORMACIÓN DEL EMISOR + COMPLEMENTO CLIENTE
              Se inyecta ANTES de #informations (ancla confiable y probada).
              ============================================================ -->
