@@ -400,9 +400,38 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         return (not_my_vip.ids, hidden_ids)
 
+    def _shop_lookup_products(self, attrib_set, options, post, search, website):
+        """Override to filter VIP B2B products from the shop listing.
+
+        In Odoo 18, _get_shop_domain is only used for price calculations,
+        NOT for loading products. Products are loaded here via
+        website._search_with_fuzzy(). We filter AFTER the search.
+        """
+        fuzzy_search_term, product_count, search_result = super()._shop_lookup_products(
+            attrib_set, options, post, search, website
+        )
+
+        # ── VIP B2B: Filter products post-search ──
+        exclude_ids, hidden_ids = self._get_b2b_product_filter()
+        all_invisible = set(exclude_ids + hidden_ids)
+        if all_invisible:
+            search_result = search_result.filtered(lambda t: t.id not in all_invisible)
+            product_count = len(search_result)
+            _logger.info("VIP-B2B: _shop_lookup_products filtered %s products, %s remain",
+                         len(all_invisible), product_count)
+
+        # ── is_seasonal filter ──
+        if post.get('is_seasonal') or request.params.get('is_seasonal'):
+            search_result = search_result.filtered(lambda t: t.is_seasonal)
+            product_count = len(search_result)
+
+        return fuzzy_search_term, product_count, search_result
+
     @http.route()
     def shop(self, page=0, category=None, search='', is_seasonal=None, **post):
         """Override shop to pass is_seasonal flag."""
+        if is_seasonal:
+            post['is_seasonal'] = True
         response = super().shop(page=page, category=category, search=search, **post)
         if is_seasonal:
             response.qcontext['is_seasonal'] = True
