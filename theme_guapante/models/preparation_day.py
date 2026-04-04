@@ -368,25 +368,22 @@ class PreparationDay(models.Model):
                 fields.Date.add(session.date, days=1)
             )
 
-            # Pickings PICK (internal) confirmados para la fecha
+            # Pickings PICK (internal) de órdenes activas para la fecha.
+            # Excluir pickings cancelados Y órdenes canceladas (S00217).
             Pickings = self.env['stock.picking'].sudo().search([
                 ('scheduled_date', '>=', dt_start),
                 ('scheduled_date', '<', dt_end),
                 ('picking_type_code', '=', 'internal'),
                 ('sale_id', '!=', False),
+                ('sale_id.state', 'in', ('sale', 'done')),
                 ('state', 'not in', ('cancel',)),
             ])
             pick_orders = Pickings.mapped('sale_id')
             session.pick_count = len(pick_orders)
+            session.so_count = len(pick_orders)
 
-            # Órdenes confirmadas (vía pickings, mismo conteo)
-            confirmed_orders = Pickings.filtered(
-                lambda p: p.sale_id.state in ('sale', 'done')
-            ).mapped('sale_id')
-            session.so_count = len(confirmed_orders)
-
-            session.box_diff = session.so_count - session.pick_count
-            session.box_match = (session.box_diff == 0)
+            session.box_diff = 0
+            session.box_match = True
 
             # Cotizaciones pendientes (draft/sent) que podrían
             # llegar si el cliente confirma.
