@@ -1,43 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- ════════════════════════════════════════════════════
-         Override: Purchase Order PDF Report
-         
-         Requirements:
-         1. Title: Always "Orden de Compra" (never "Solicitud")
-         2. Cant column: ONLY weight OR ONLY units, never both
-         3. Hide: Price, Discount, Taxes, Subtotal, Totals
-         4. Keep: Description, Fecha Prevista, Cantidad
+         Override: Purchase Order PDF Report (Guapante)
+
+         IMPORTANT: We use a single template with separate
+         xpath blocks. If one xpath fails, others still apply.
+
+         Changes:
+         1. Quantity: ONLY kg or ONLY units (never both)
+         2. Hide packaging "(810 Unidad)" display
+         3. Hide financial columns
+         4. Title: Always "Orden de Compra"
          ════════════════════════════════════════════════════ -->
 
-    <!-- ── TEMPLATE 1: Fix title ── -->
-    <template id="guapante_po_title"
-              inherit_id="purchase.report_purchaseorder_document"
-              priority="99">
-        <!-- Replace the conditional title spans with a single fixed title -->
-        <xpath expr="//h2/span[@t-if]" position="replace">
-            <span>Orden de Compra </span>
-        </xpath>
-        <!-- Remove the second conditional span (t-else or t-elif) -->
-        <xpath expr="//h2/span[@t-elif]" position="replace"/>
-        <xpath expr="//h2/span[@t-else]" position="replace"/>
-    </template>
+    <template id="guapante_report_purchaseorder_document"
+              inherit_id="purchase.report_purchaseorder_document">
 
-    <!-- ── TEMPLATE 2: Clean quantity display + hide financial columns ── -->
-    <template id="guapante_po_columns"
-              inherit_id="purchase.report_purchaseorder_document"
-              priority="100">
-
-        <!-- Replace quantity: show ONLY kg OR units, not both -->
+        <!-- ── Quantity: replace product_qty with clean display ── -->
         <xpath expr="//span[@t-field='line.product_qty']" position="replace">
             <t t-if="line.uom_mode == 'unit'">
-                <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else '%.2f' % line.visual_qty"/>
+                <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else round(line.visual_qty, 2)"/>
             </t>
             <t t-else="">
-                <span t-esc="'%.2f' % line.product_qty"/>
+                <span t-field="line.product_qty"/>
             </t>
         </xpath>
-        <!-- Replace UoM label based on uom_mode -->
+
+        <!-- ── UoM label: use uom_mode instead of product_uom ── -->
         <xpath expr="//span[@t-field='line.product_uom']" position="replace">
             <t t-if="line.uom_mode == 'unit'">
                 <span>Unidades</span>
@@ -46,26 +35,55 @@
                 <span>Gramos</span>
             </t>
             <t t-else="">
-                <span>kg</span>
+                <span t-field="line.product_uom"/>
             </t>
         </xpath>
 
-        <!-- Hide the packaging display "(810 Unidad)" -->
-        <xpath expr="//span[@t-field='line.product_packaging_qty']/.." position="replace"/>
+        <!-- ── Hide packaging "(810 Unidad)" display ── -->
+        <xpath expr="//span[@t-field='line.product_packaging_qty']/.." position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
 
-        <!-- Hide price_unit -->
+        <!-- ── Hide financial columns: header ── -->
         <xpath expr="//th[@name='th_price_unit']" position="replace"/>
-        <xpath expr="//td[@name='td_price_unit']" position="replace"/>
-
-        <!-- Hide taxes -->
         <xpath expr="//th[@name='th_taxes']" position="replace"/>
-        <xpath expr="//td[@name='td_taxes']" position="replace"/>
-
-        <!-- Hide subtotal -->
         <xpath expr="//th[@name='th_subtotal']" position="replace"/>
+
+        <!-- ── Hide financial columns: body ── -->
+        <xpath expr="//td[@name='td_price_unit']" position="replace"/>
+        <xpath expr="//td[@name='td_taxes']" position="replace"/>
         <xpath expr="//td[@name='td_subtotal']" position="replace"/>
 
-        <!-- Hide totals section -->
-        <xpath expr="//div[@id='total']" position="replace"/>
+        <!-- ── Hide discount column (uses t-if) ── -->
+        <xpath expr="//th[@name='th_discount']" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+        <xpath expr="//td[@name='td_discount']" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+
+        <!-- ── Hide totals section ── -->
+        <xpath expr="//div[@id='total']" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+
     </template>
+
+    <!-- ════════════════════════════════════════════════════
+         Separate template ONLY for title fix.
+         Isolated so if XPaths don't match, the above
+         template still applies cleanly.
+         ════════════════════════════════════════════════════ -->
+    <template id="guapante_po_title_fix"
+              inherit_id="purchase.report_purchaseorder_document"
+              priority="99">
+        <!-- Try to replace the RFQ title span -->
+        <xpath expr="//h2[1]" position="replace">
+            <h2 class="mt-4">
+                <span>Orden de Compra </span>
+                <span t-field="o.name"/>
+            </h2>
+        </xpath>
+    </template>
+
 </odoo>
