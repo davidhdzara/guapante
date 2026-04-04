@@ -466,3 +466,115 @@ class SaleOrder(models.Model):
                     Matched |= line
 
         return Matched
+
+    # ── Daily Price Update ────────────────────────────────────────
+
+    def action_update_daily_prices(self):
+        """Recalculate prices on all open SOs using their pricelists.
+
+        Triggered by a server action button.  Updates:
+          - Quotations (draft/sent)
+          - Confirmed orders (sale) without any posted invoice
+          - Confirmed orders with only draft invoices (not sent to DIAN)
+
+        Respects each order's pricelist, so both fixed-price and
+        cost+margin rules are correctly applied.
+        """
+        SaleOrder = self.env['sale.order'].sudo()
+
+        # 1. All quotations (draft/sent)
+        quotations = SaleOrder.search([
+            ('state', 'in', ('draft', 'sent')),
+        ])
+
+        # 2. Confirmed orders — filter out those with posted invoices
+        confirmed = SaleOrder.search([
+            ('state', '=', 'sale'),
+        ])
+        eligible_confirmed = confirmed.filtered(
+            lambda so: not so.invoice_ids.filtered(
+                lambda inv: inv.state == 'posted'
+            )
+        )
+
+        all_orders = quotations | eligible_confirmed
+        if not all_orders:
+            _logger.info(
+                'Guapante Daily Prices: no qualifying orders found.'
+            )
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Actualización de Precios',
+                    'message': 'No hay pedidos pendientes para actualizar.',
+                    'type': 'warning',
+                    'sticky': False,
+                },
+            }
+
+        updated_lines = 0
+        updated_orders = 0
+
+        for order in all_orders:
+            pricelist = order.pricelist_id
+            if not pricelist:
+                continue
+
+            order_changed = False
+            for line in order.order_line:
+                if line.display_type:
+                    # Skip section/note lines
+                    continue
+                if not line.product_id:
+                    continue
+
+                product = line.product_id.with_context(
+                    partner=order.partner_id.id,
+                    quantity=line.product_uom_qty,
+                    date=fields.Date.today(),
+                    pricelist=pricelist.id,
+                    uom=line.product_uom.id,
+                )
+                new_price = pricelist._get_product_price(
+                    product,
+                    line.product_uom_qty,
+                    currency=order.currency_id,
+                    date=fields.Date.today(),
+                )
+
+                if (
+                    new_price
+                    and round(new_price, 2) != round(line.price_unit, 2)
+                ):
+                    old_price = line.price_unit
+                    line.price_unit = new_price
+                    updated_lines += 1
+                    order_changed = True
+                    _logger.info(
+                        'Guapante Prices: %s | %s | $%.2f → $%.2f',
+                        order.name,
+                        line.product_id.name,
+                        old_price,
+                        new_price,
+                    )
+
+            if order_changed:
+                updated_orders += 1
+
+        msg = (
+            'Precios actualizados: %d líneas en %d pedidos.'
+            % (updated_lines, updated_orders)
+        )
+        _logger.info('Guapante Daily Prices: %s', msg)
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Actualización de Precios ✅',
+                'message': msg,
+                'type': 'success',
+                'sticky': False,
+            },
+        }
