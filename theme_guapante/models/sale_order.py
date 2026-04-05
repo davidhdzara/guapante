@@ -179,6 +179,7 @@ class SaleOrder(models.Model):
             )
         return seq
 
+    @api.model
     def _assign_daily_sequences(self, delivery_date) -> None:
         """Assign daily_sequence to confirmed orders for a delivery date.
 

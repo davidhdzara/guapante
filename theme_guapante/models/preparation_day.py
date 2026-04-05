@@ -712,6 +712,12 @@ class PreparationDay(models.Model):
                         'picking_id': Move.picking_id.id,
                     })],
                 })
+            # Odoo 18 nativo: Si no activamos este flag, el core asume que el pesaje es inválido
+            # y borra el quantity (lo vuelve 0) de forma silenciosa para proteger la bodega.
+            Move.picked = True
+            
+            # Guapante: Marcar también el flag personalizado para evitar el bloqueo del picking
+            Move.is_weight_confirmed = True
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.
