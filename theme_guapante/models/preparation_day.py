@@ -1,10 +1,40 @@
 # -*- coding: utf-8 -*-
 import logging
+from datetime import datetime, time, timedelta
+
+import pytz
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
+
+TZ_CO = pytz.timezone('America/Bogota')
+
+# The preparation day for date D covers orders created (date_order) from
+# D-1 at 00:31:00 CO time up to and including D at 00:30:59 CO time.
+# All comparisons are done in UTC because Odoo stores datetimes in UTC.
+_WINDOW_START_TIME = time(0, 31, 0)   # 00:31:00 CO — start of window (day before)
+_WINDOW_END_TIME   = time(0, 30, 59)  # 00:30:59 CO — end of window (prep day)
+
+
+def _prep_day_order_window(prep_date):
+    """Return (utc_start, utc_end) for orders belonging to prep_date.
+
+    The window in Colombian time is:
+        (prep_date - 1) at 00:31:00  →  prep_date at 00:30:59
+
+    Both values are naive UTC datetimes suitable for ORM domain comparisons.
+    """
+    prev_day = prep_date - timedelta(days=1)
+
+    start_co = TZ_CO.localize(datetime.combine(prev_day, _WINDOW_START_TIME))
+    end_co   = TZ_CO.localize(datetime.combine(prep_date, _WINDOW_END_TIME))
+
+    utc_start = start_co.astimezone(pytz.utc).replace(tzinfo=None)
+    utc_end   = end_co.astimezone(pytz.utc).replace(tzinfo=None)
+
+    return utc_start, utc_end
 
 
 class PreparationDayLog(models.Model):
@@ -363,41 +393,25 @@ class PreparationDay(models.Model):
                 session.draft_count = 0
                 continue
 
-            dt_start = fields.Datetime.to_datetime(session.date)
-            dt_end = fields.Datetime.to_datetime(
-                fields.Date.add(session.date, days=1)
-            )
+            dt_start, dt_end = _prep_day_order_window(session.date)
 
-            # Pickings PICK (internal) de órdenes activas para la fecha.
-            # Excluir pickings cancelados Y órdenes canceladas (S00217).
-            Pickings = self.env['stock.picking'].sudo().search([
-                ('scheduled_date', '>=', dt_start),
-                ('scheduled_date', '<', dt_end),
-                ('picking_type_code', '=', 'internal'),
-                ('sale_id', '!=', False),
-                ('sale_id.state', 'in', ('sale', 'done')),
-                ('state', 'not in', ('cancel',)),
+            # Órdenes confirmadas cuyo date_order cae en la ventana colombiana.
+            ConfirmedOrders = self.env['sale.order'].sudo().search([
+                ('date_order', '>=', dt_start),
+                ('date_order', '<=', dt_end),
+                ('state', 'in', ('sale', 'done')),
             ])
-            pick_orders = Pickings.mapped('sale_id')
-            session.pick_count = len(pick_orders)
-            session.so_count = len(pick_orders)
+            session.pick_count = len(ConfirmedOrders)
+            session.so_count = len(ConfirmedOrders)
 
             session.box_diff = 0
             session.box_match = True
 
-            # Cotizaciones pendientes (draft/sent) que podrían
-            # llegar si el cliente confirma.
-            # Buscan por expected_date (fecha estimada de entrega
-            # calculada por Odoo) o date_order (fecha de creación).
+            # Cotizaciones pendientes (draft/sent) dentro de la misma ventana.
             DraftOrders = self.env['sale.order'].sudo().search([
-                ('state', 'in', ('draft', 'sent')),
-                '|',
-                '&',
-                ('expected_date', '>=', dt_start),
-                ('expected_date', '<', dt_end),
-                '&',
                 ('date_order', '>=', dt_start),
-                ('date_order', '<', dt_end),
+                ('date_order', '<=', dt_end),
+                ('state', 'in', ('draft', 'sent')),
             ])
             session.draft_count = len(DraftOrders)
 
@@ -436,33 +450,25 @@ class PreparationDay(models.Model):
         # Recrear summaries desde cero basándose en las líneas actuales.
         self.summary_ids.unlink()
 
-        # ── Buscar órdenes via stock.picking directo ──
-        # IMPORTANTE: No usar dominio sobre sale.order.picking_ids
-        # porque Odoo evalúa cada condición en picking_ids como un
-        # EXISTS independiente (puede matchear pickings DIFERENTES).
-        #
-        # Solo buscamos pickings de tipo PICK/Recolectar (internal)
-        # porque el Preparation Day es para la etapa de alistamiento,
-        # NO para la entrega (OUT). Si el warehouse es 1-step (solo
-        # OUT), se usa outgoing como fallback.
-        dt_start = fields.Datetime.to_datetime(self.date)
-        dt_end = fields.Datetime.to_datetime(
-            fields.Date.add(self.date, days=1)
-        )
+        # Buscar órdenes confirmadas cuyo date_order cae en la ventana
+        # colombiana asignada a este día de preparación.
+        # La ventana es: (prep_date - 1) 00:31 CO  →  prep_date 00:30 CO
+        # converted to UTC for DB comparison.
+        dt_start, dt_end = _prep_day_order_window(self.date)
+
         base_domain = [
-            ('scheduled_date', '>=', dt_start),
-            ('scheduled_date', '<', dt_end),
-            ('state', 'not in', ('done', 'cancel')),
-            ('sale_id', '!=', False),
-            ('sale_id.state', 'in', ('sale', 'done')),
+            ('date_order', '>=', dt_start),
+            ('date_order', '<=', dt_end),
+            ('state', 'in', ('sale', 'done')),
         ]
-        # Solo pickings internos (Recolectar / PICK step).
-        # El Preparation Day prepara lo del PICK; el OUT hereda
-        # la información que se registró aquí.
-        Pickings = self.env['stock.picking'].sudo().search(
-            base_domain + [('picking_type_code', '=', 'internal')]
+        Orders = self.env['sale.order'].sudo().search(base_domain)
+        # Excluir órdenes cuyos pickings estén todos cancelados/hechos
+        Orders = Orders.filtered(
+            lambda o: any(
+                p.state not in ('done', 'cancel')
+                for p in o.picking_ids
+            )
         )
-        Orders = Pickings.mapped('sale_id')
         if not Orders and not self.line_ids:
             raise UserError(
                 'No hay pedidos pendientes para la fecha seleccionada.'

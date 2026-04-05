@@ -1,6 +1,8 @@
 import math
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+
+import pytz
 
 from psycopg2 import IntegrityError
 
@@ -8,6 +10,26 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
+
+TZ_CO = pytz.timezone('America/Bogota')
+_WINDOW_START_TIME = time(0, 31, 0)
+_WINDOW_END_TIME   = time(0, 30, 59)
+
+
+def _prep_day_order_window(prep_date):
+    """Return (utc_start, utc_end) for orders belonging to prep_date.
+
+    The window in Colombian time is:
+        (prep_date - 1) at 00:31:00  →  prep_date at 00:30:59
+
+    Both values are naive UTC datetimes suitable for ORM domain comparisons.
+    """
+    prev_day = prep_date - timedelta(days=1)
+    start_co = TZ_CO.localize(datetime.combine(prev_day, _WINDOW_START_TIME))
+    end_co   = TZ_CO.localize(datetime.combine(prep_date, _WINDOW_END_TIME))
+    utc_start = start_co.astimezone(pytz.utc).replace(tzinfo=None)
+    utc_end   = end_co.astimezone(pytz.utc).replace(tzinfo=None)
+    return utc_start, utc_end
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
@@ -42,18 +64,17 @@ class SaleOrder(models.Model):
         return 'guapante.daily.%s.%s' % (cid, d.strftime('%Y%m%d'))
 
     @api.model
-    def _guapante_max_daily_sequence_on_date(self, company_id, delivery_date):
-        """Max existing daily_sequence for orders on this delivery date (historical data)."""
-        dt_start = fields.Datetime.to_datetime(delivery_date)
-        dt_end = fields.Datetime.to_datetime(delivery_date + timedelta(days=1))
+    def _guapante_max_daily_sequence_on_date(self, company_id, prep_date):
+        """Max existing daily_sequence for orders belonging to prep_date window."""
+        dt_start, dt_end = _prep_day_order_window(prep_date)
         cid = company_id if company_id else None
         domain_company = [('company_id', '=', cid)] if cid else [('company_id', '=', False)]
         SaleOrder = self.env['sale.order'].sudo()
         candidates = SaleOrder.search(
             domain_company
             + [
-                ('picking_ids.scheduled_date', '>=', dt_start),
-                ('picking_ids.scheduled_date', '<', dt_end),
+                ('date_order', '>=', dt_start),
+                ('date_order', '<=', dt_end),
                 ('state', 'in', ('sale', 'done')),
                 ('daily_sequence', '>', 0),
             ],
@@ -100,20 +121,20 @@ class SaleOrder(models.Model):
             )
         return seq
 
-    def _assign_daily_sequences(self, delivery_date):
-        """Assign daily_sequence to confirmed orders for a given delivery date.
+    def _assign_daily_sequences(self, prep_date):
+        """Assign daily_sequence to confirmed orders for a given preparation date.
 
-        Called from PreparationDay.action_load so the sequence is always scoped
-        to the actual delivery date of the session, not the order creation date.
-        Orders that already have a sequence keep it; new orders receive the next number
-        from an ir.sequence (concurrency-safe). Existing DB values are not rewritten.
+        Called from PreparationDay.action_load. Scopes orders using the
+        Colombian-timezone window: (prep_date - 1) 00:31 CO → prep_date 00:30 CO.
+        Orders that already have a sequence keep it; new orders receive the next
+        number from an ir.sequence (concurrency-safe). Existing values are never
+        overwritten.
         """
+        dt_start, dt_end = _prep_day_order_window(prep_date)
         orders_for_date = self.env['sale.order'].sudo().search(
             [
-                ('picking_ids.scheduled_date', '>=', fields.Datetime.to_datetime(delivery_date)),
-                ('picking_ids.scheduled_date', '<', fields.Datetime.to_datetime(
-                    delivery_date + timedelta(days=1)
-                )),
+                ('date_order', '>=', dt_start),
+                ('date_order', '<=', dt_end),
                 ('state', 'in', ('sale', 'done')),
             ],
             order='id asc',
