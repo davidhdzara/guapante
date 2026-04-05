@@ -501,6 +501,12 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
 
             console.log("GUAPANTE-DEBUG: RESPONSE:", JSON.stringify(data).substring(0, 500));
             const result = (data && data.result) ? data.result : data;
+
+            if (result.error === 'login_required') {
+                window.location.href = result.redirect || '/web/login';
+                return;
+            }
+
             var itemCount = result.cart_quantity != null ? result.cart_quantity : (result.cart_lines_count || 0);
             console.log("GUAPANTE-DEBUG: itemCount=", itemCount, "line_id=", result.line_id, "qty=", result.quantity);
             var $badges = $('.my_cart_quantity');
