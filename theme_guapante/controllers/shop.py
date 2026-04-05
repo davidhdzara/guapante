@@ -491,6 +491,8 @@ class GuapanteWebsiteSale(WebsiteSale):
 
     @http.route(['/shop/cart/update'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def update_cart_native(self, line_id=None, quantity=None, product_id=None, **kwargs):
+        if request.env.user._is_public():
+            return {'error': 'login_required', 'redirect': '/web/login?redirect=/shop'}
         debug_order = request.website.sale_get_order()
         if debug_order:
             debug_msg = f"\n[NATIVE UPDATE PAYLOAD]: line_id={line_id}, qty={quantity}, product_id={product_id}, kwargs={kwargs}\n"
@@ -505,6 +507,9 @@ class GuapanteWebsiteSale(WebsiteSale):
         in the HTTP session (no DB column needed).
         SEARCH-07 FIX: product_packaging_id is now an explicit parameter.
         """
+        if request.env.user._is_public():
+            return {'error': 'login_required', 'redirect': '/web/login?redirect=/shop'}
+
         if uom_mode:
             _logger.info("Cart update: product_id=%s, uom_mode=%s, add_qty=%s, set_qty=%s", product_id, uom_mode, add_qty, set_qty)
 

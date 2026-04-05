@@ -142,7 +142,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
         }
 
         try {
-            await $.ajax({
+            const data = await $.ajax({
                 url: '/shop/cart/update_json',
                 method: 'POST',
                 dataType: 'json',
@@ -160,12 +160,16 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
                 })
             });
 
-            // Refresh the page to reflect changes
+            const result = (data && data.result) ? data.result : data;
+            if (result && result.error === 'login_required') {
+                window.location.href = result.redirect || '/web/login';
+                return;
+            }
+
             window.location.reload();
 
         } catch (error) {
             console.error('Guapante Cart: Error updating quantity', error);
-            // Revert input value
             this.$input.val(parseFloat(this.$input.val()) || 1);
         } finally {
             $buttons.prop('disabled', false);
@@ -201,7 +205,7 @@ publicWidget.registry.GuapanteCartDelete = publicWidget.Widget.extend({
         $el.closest('.guapante-cart-item').css('opacity', '0.4');
 
         try {
-            await $.ajax({
+            const data = await $.ajax({
                 url: '/shop/cart/update_json',
                 method: 'POST',
                 dataType: 'json',
@@ -217,6 +221,11 @@ publicWidget.registry.GuapanteCartDelete = publicWidget.Widget.extend({
                     }
                 })
             });
+            const result = (data && data.result) ? data.result : data;
+            if (result && result.error === 'login_required') {
+                window.location.href = result.redirect || '/web/login';
+                return;
+            }
             window.location.reload();
         } catch (error) {
             console.error('Guapante Cart: Error deleting product', error);
