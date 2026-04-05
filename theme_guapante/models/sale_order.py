@@ -41,6 +41,13 @@ class SaleOrder(models.Model):
     def action_confirm(self):
         return super().action_confirm()
 
+    @api.depends('state', 'order_line.invoice_status')
+    def _compute_invoice_status(self):
+        super()._compute_invoice_status()
+        for order in self:
+            if order.state == 'sale' and order.invoice_ids.filtered(lambda i: i.state != 'cancel'):
+                order.invoice_status = 'invoiced'
+
     def _prepare_invoice(self):
         """Ensure invoice is always created for the commercial partner (parent).
 
