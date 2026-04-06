@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Server Action: Update Daily Prices -->
+    <record id="action_update_daily_prices" model="ir.actions.server">
+        <field name="name">Actualizar Precios del Día</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">
+records.action_update_daily_prices()
+        </field>
+    </record>
+</odoo>

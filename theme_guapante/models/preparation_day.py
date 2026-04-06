@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 
 import pytz
 
@@ -9,32 +9,30 @@ from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
-TZ_CO = pytz.timezone('America/Bogota')
-
-# The preparation day for date D covers orders created (date_order) from
-# D-1 at 00:31:00 CO time up to and including D at 00:30:59 CO time.
-# All comparisons are done in UTC because Odoo stores datetimes in UTC.
-_WINDOW_START_TIME = time(0, 31, 0)   # 00:31:00 CO — start of window (day before)
-_WINDOW_END_TIME   = time(0, 30, 59)  # 00:30:59 CO — end of window (prep day)
+# Zona horaria por defecto para operaciones de Guapante.
+_DEFAULT_TZ = 'America/Bogota'
 
 
-def _prep_day_order_window(prep_date):
-    """Return (utc_start, utc_end) for orders belonging to prep_date.
+def _date_to_utc_range(env, date_val):
+    """Convert a naive date into a UTC datetime range respecting
+    the user's (or default) timezone.
 
-    The window in Colombian time is:
-        (prep_date - 1) at 00:31:00  →  prep_date at 00:30:59
+    Returns (dt_start_utc, dt_end_utc) where:
+      - dt_start_utc = midnight of *date_val* in local tz → UTC
+      - dt_end_utc   = midnight of *date_val + 1 day* in local tz → UTC
 
-    Both values are naive UTC datetimes suitable for ORM domain comparisons.
+    Example for America/Bogota (UTC-5):
+      date_val = 2026-04-04
+      → dt_start = 2026-04-04 05:00:00 UTC
+      → dt_end   = 2026-04-05 05:00:00 UTC
     """
-    prev_day = prep_date - timedelta(days=1)
-
-    start_co = TZ_CO.localize(datetime.combine(prev_day, _WINDOW_START_TIME))
-    end_co   = TZ_CO.localize(datetime.combine(prep_date, _WINDOW_END_TIME))
-
-    utc_start = start_co.astimezone(pytz.utc).replace(tzinfo=None)
-    utc_end   = end_co.astimezone(pytz.utc).replace(tzinfo=None)
-
-    return utc_start, utc_end
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    naive_start = fields.Datetime.to_datetime(date_val)
+    naive_end = fields.Datetime.to_datetime(date_val + timedelta(days=1))
+    dt_start = local_tz.localize(naive_start).astimezone(pytz.utc).replace(tzinfo=None)
+    dt_end = local_tz.localize(naive_end).astimezone(pytz.utc).replace(tzinfo=None)
+    return dt_start, dt_end
 
 
 class PreparationDayLog(models.Model):
@@ -393,25 +391,40 @@ class PreparationDay(models.Model):
                 session.draft_count = 0
                 continue
 
-            dt_start, dt_end = _prep_day_order_window(session.date)
+            dt_start, dt_end = _date_to_utc_range(
+                self.env, session.date,
+            )
 
-            # Órdenes confirmadas cuyo date_order cae en la ventana colombiana.
-            ConfirmedOrders = self.env['sale.order'].sudo().search([
-                ('date_order', '>=', dt_start),
-                ('date_order', '<=', dt_end),
-                ('state', 'in', ('sale', 'done')),
+            # Pickings PICK (internal) de órdenes activas para la fecha.
+            # Excluir pickings cancelados Y órdenes canceladas (S00217).
+            Pickings = self.env['stock.picking'].sudo().search([
+                ('scheduled_date', '>=', dt_start),
+                ('scheduled_date', '<', dt_end),
+                ('picking_type_code', '=', 'internal'),
+                ('sale_id', '!=', False),
+                ('sale_id.state', 'in', ('sale', 'done')),
+                ('state', 'not in', ('cancel',)),
             ])
-            session.pick_count = len(ConfirmedOrders)
-            session.so_count = len(ConfirmedOrders)
+            pick_orders = Pickings.mapped('sale_id')
+            session.pick_count = len(pick_orders)
+            session.so_count = len(pick_orders)
 
             session.box_diff = 0
             session.box_match = True
 
-            # Cotizaciones pendientes (draft/sent) dentro de la misma ventana.
+            # Cotizaciones pendientes (draft/sent) que podrían
+            # llegar si el cliente confirma.
+            # Buscan por expected_date (fecha estimada de entrega
+            # calculada por Odoo) o date_order (fecha de creación).
             DraftOrders = self.env['sale.order'].sudo().search([
-                ('date_order', '>=', dt_start),
-                ('date_order', '<=', dt_end),
                 ('state', 'in', ('draft', 'sent')),
+                '|',
+                '&',
+                ('expected_date', '>=', dt_start),
+                ('expected_date', '<', dt_end),
+                '&',
+                ('date_order', '>=', dt_start),
+                ('date_order', '<', dt_end),
             ])
             session.draft_count = len(DraftOrders)
 
@@ -450,25 +463,30 @@ class PreparationDay(models.Model):
         # Recrear summaries desde cero basándose en las líneas actuales.
         self.summary_ids.unlink()
 
-        # Buscar órdenes confirmadas cuyo date_order cae en la ventana
-        # colombiana asignada a este día de preparación.
-        # La ventana es: (prep_date - 1) 00:31 CO  →  prep_date 00:30 CO
-        # converted to UTC for DB comparison.
-        dt_start, dt_end = _prep_day_order_window(self.date)
-
+        # ── Buscar órdenes via stock.picking directo ──
+        # IMPORTANTE: No usar dominio sobre sale.order.picking_ids
+        # porque Odoo evalúa cada condición en picking_ids como un
+        # EXISTS independiente (puede matchear pickings DIFERENTES).
+        #
+        # Solo buscamos pickings de tipo PICK/Recolectar (internal)
+        # porque el Preparation Day es para la etapa de alistamiento,
+        # NO para la entrega (OUT). Si el warehouse es 1-step (solo
+        # OUT), se usa outgoing como fallback.
+        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
         base_domain = [
-            ('date_order', '>=', dt_start),
-            ('date_order', '<=', dt_end),
-            ('state', 'in', ('sale', 'done')),
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('state', 'not in', ('done', 'cancel')),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
         ]
-        Orders = self.env['sale.order'].sudo().search(base_domain)
-        # Excluir órdenes cuyos pickings estén todos cancelados/hechos
-        Orders = Orders.filtered(
-            lambda o: any(
-                p.state not in ('done', 'cancel')
-                for p in o.picking_ids
-            )
+        # Solo pickings internos (Recolectar / PICK step).
+        # El Preparation Day prepara lo del PICK; el OUT hereda
+        # la información que se registró aquí.
+        Pickings = self.env['stock.picking'].sudo().search(
+            base_domain + [('picking_type_code', '=', 'internal')]
         )
+        Orders = Pickings.mapped('sale_id')
         if not Orders and not self.line_ids:
             raise UserError(
                 'No hay pedidos pendientes para la fecha seleccionada.'
@@ -663,11 +681,8 @@ class PreparationDay(models.Model):
     def action_save_line_weight(self, line_id: int) -> bool:
         """Called when user sets weight (via JS Enter or manual button).
 
-        Registers the real weight in stock.move.line, marks the preparation
-        line as done, and auto-validates the PICK + OUT pickings for the
-        order when all its lines are weighed. Auto-validation ensures
-        qty_delivered is updated immediately so the order can be invoiced
-        without manual warehouse steps.
+        Registers the real weight in stock.move.line and marks the
+        preparation line as done.
         """
         Line = self.env['guapante.preparation.day.line'].browse(line_id)
         if not Line or Line.is_done or Line.actual_kg <= 0:
@@ -697,6 +712,12 @@ class PreparationDay(models.Model):
                         'picking_id': Move.picking_id.id,
                     })],
                 })
+            # Odoo 18 nativo: Si no activamos este flag, el core asume que el pesaje es inválido
+            # y borra el quantity (lo vuelve 0) de forma silenciosa para proteger la bodega.
+            Move.picked = True
+            
+            # Guapante: Marcar también el flag personalizado para evitar el bloqueo del picking
+            Move.is_weight_confirmed = True
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.
@@ -742,7 +763,7 @@ class PreparationDay(models.Model):
             ['amount_untaxed', 'amount_tax', 'amount_total']
         )
 
-        # Auto-finish si ya no quedan líneas pendientes en toda la sesión
+        # Auto-finish si ya no quedan líneas pendientes
         pending_total = self.env[
             'guapante.preparation.day.line'
         ].search_count([
