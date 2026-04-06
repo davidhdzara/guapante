@@ -18,7 +18,7 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         if 'active_shipments_count' in counters:
             domain = [
-                ('message_partner_ids', 'child_of', [partner.commercial_partner_id.id]),
+                ('message_partner_ids', 'child_of', [partner.id]),
                 ('state', 'in', ['sale', 'done']),
                 ('guapante_delivery_status', 'in', ['preparing', 'shipping'])
             ]
@@ -34,7 +34,7 @@ class GuapanteCustomerPortal(CustomerPortal):
 
         # Base domain: all orders for this partner (sale, done, cancel)
         base_domain = [
-            ('message_partner_ids', 'child_of', [partner.commercial_partner_id.id]),
+            ('message_partner_ids', 'child_of', [partner.id]),
             ('state', 'in', ['sale', 'done', 'cancel'])
         ]
 
@@ -44,7 +44,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         # --- Active shipments count (KPI card) ---
         # Only sale/done orders that are preparing or shipping (never cancelled)
         active_domain = [
-            ('message_partner_ids', 'child_of', [partner.commercial_partner_id.id]),
+            ('message_partner_ids', 'child_of', [partner.id]),
             ('state', 'in', ['sale', 'done']),
             ('guapante_delivery_status', 'in', ['preparing', 'shipping'])
         ]
@@ -350,11 +350,18 @@ class GuapanteCustomerPortal(CustomerPortal):
         """Render the Addresses page with all child contacts for this partner."""
         values = self._prepare_portal_layout_values()
         partner = request.env.user.partner_id
-        # Use the commercial partner (company) — addresses belong to the company
-        company_partner = partner.commercial_partner_id
 
-        # Get only DELIVERY addresses of the COMPANY (portal only manages delivery)
-        addresses = company_partner.child_ids.filtered(lambda c: c.active and c.type == 'delivery')
+        if partner.parent_id:
+            # Child contact: they ARE a delivery address. Show themselves + any
+            # sub-delivery addresses they may have created under themselves.
+            addresses = partner | partner.child_ids.filtered(
+                lambda c: c.active and c.type == 'delivery'
+            )
+        else:
+            # Company: show all delivery addresses that belong directly to them.
+            addresses = partner.child_ids.filtered(lambda c: c.active and c.type == 'delivery')
+
+        company_partner = partner
 
         # Countries & states for the add/edit modal
         countries = request.env['res.country'].sudo().search([])
@@ -383,15 +390,14 @@ class GuapanteCustomerPortal(CustomerPortal):
 
     @http.route(['/my/addresses/add'], type='http', auth='user', website=True, methods=['POST'], csrf=True)
     def portal_address_add(self, **post):
-        """Create a new child partner (address) under the COMPANY partner."""
+        """Create a new child partner (address) under this partner."""
         partner = request.env.user.partner_id
-        company_partner = partner.commercial_partner_id
 
         # Portal only creates delivery addresses
         vals = {
-            'parent_id': company_partner.id,  # Child of the COMPANY, not the user
+            'parent_id': partner.id,  # Child of the logged-in partner
             'type': 'delivery',
-            'name': post.get('name', '').strip() or company_partner.name,
+            'name': post.get('name', '').strip() or partner.name,
             'street': post.get('street', '').strip(),
             'street2': post.get('street2', '').strip() or False,
             'zip': post.get('zip', '').strip() or False,
@@ -442,7 +448,7 @@ class GuapanteCustomerPortal(CustomerPortal):
             vals['phone'] = phone
 
         request.env['res.partner'].sudo().create(vals)
-        _logger.info("Guapante Addresses: Created child address for company partner %s", company_partner.id)
+        _logger.info("Guapante Addresses: Created child address for partner %s", partner.id)
 
         return request.redirect('/my/addresses?success=added')
 
@@ -450,11 +456,10 @@ class GuapanteCustomerPortal(CustomerPortal):
     def portal_address_edit(self, address_id, **post):
         """Update an existing child partner (address)."""
         partner = request.env.user.partner_id
-        company_partner = partner.commercial_partner_id
         address = request.env['res.partner'].sudo().browse(address_id)
 
-        # Security: verify the address belongs to this COMPANY
-        if not address.exists() or address.parent_id.id != company_partner.id:
+        # Security: verify the address belongs directly to this partner
+        if not address.exists() or address.parent_id.id != partner.id:
             return request.redirect('/my/addresses?error=not_found')
 
         # Portal only manages delivery addresses
@@ -510,7 +515,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         vals['phone'] = phone if phone else False
 
         address.write(vals)
-        _logger.info("Guapante Addresses: Updated address %s for company partner %s", address_id, company_partner.id)
+        _logger.info("Guapante Addresses: Updated address %s for partner %s", address_id, partner.id)
 
         return request.redirect('/my/addresses?success=updated')
 
@@ -518,16 +523,15 @@ class GuapanteCustomerPortal(CustomerPortal):
     def portal_address_delete(self, address_id, **post):
         """Archive (deactivate) a child partner address."""
         partner = request.env.user.partner_id
-        company_partner = partner.commercial_partner_id
         address = request.env['res.partner'].sudo().browse(address_id)
 
-        # Security: verify the address belongs to this COMPANY
-        if not address.exists() or address.parent_id.id != company_partner.id:
+        # Security: verify the address belongs directly to this partner
+        if not address.exists() or address.parent_id.id != partner.id:
             return request.redirect('/my/addresses?error=not_found')
 
         # Archive instead of unlink to preserve references in existing orders
         address.write({'active': False})
-        _logger.info("Guapante Addresses: Archived address %s for company partner %s", address_id, company_partner.id)
+        _logger.info("Guapante Addresses: Archived address %s for partner %s", address_id, partner.id)
 
         return request.redirect('/my/addresses?success=deleted')
 
