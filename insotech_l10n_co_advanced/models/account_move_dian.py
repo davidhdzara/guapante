@@ -86,7 +86,7 @@ class AccountMoveDian(models.Model):
                         "move %s — no CUFE (force-accepted?)",
                         move.id,
                     )
-                else:
+                elif move.move_type == 'out_invoice':
                     num_match = re.search(
                         r'(\d+)\s*$', dian_name
                     )
@@ -447,6 +447,8 @@ class AccountMoveDian(models.Model):
             if not move.insotech_is_co_edi:
                 continue
             if move.insotech_dian_status == 'accepted':
+                continue
+            if move.move_type != 'out_invoice':
                 continue
 
             journal = move.journal_id

@@ -126,6 +126,9 @@ class AccountMovePreInv(models.Model):
         if not reserved:
             return None
 
+        if self.move_type == 'out_refund':
+            return reserved
+
         match = re.search(r'(\d+)\s*$', reserved)
         if not match:
             _logger.warning(
