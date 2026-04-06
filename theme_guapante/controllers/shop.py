@@ -90,11 +90,14 @@ class GuapanteWebsiteSale(WebsiteSale):
             'shippings': [],
         }
 
-        # If logged in, get shipping addresses from contacts module
+        # If logged in, get shipping addresses scoped to this partner.
+        # child_of [partner.id] returns the partner itself + all its descendants,
+        # so a child contact only sees their own address while a company sees all branches.
         if not request.env.user._is_public():
+            partner = request.env.user.partner_id
             render_values['shippings'] = Partner.search([
-                ("id", "child_of", request.env.user.partner_id.commercial_partner_id.ids),
-                '|', ("type", "in", ["delivery", "other"]), ("id", "=", request.env.user.partner_id.id)
+                ("id", "child_of", partner.ids),
+                '|', ("type", "in", ["delivery", "other"]), ("id", "=", partner.id)
             ], order='id desc')
 
         # States for the "add address" modal (filtered to Colombia)
