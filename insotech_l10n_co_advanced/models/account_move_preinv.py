@@ -126,6 +126,9 @@ class AccountMovePreInv(models.Model):
         if not reserved:
             return None
 
+        if self.move_type == 'out_refund':
+            return reserved
+
         match = re.search(r'(\d+)\s*$', reserved)
         if not match:
             _logger.warning(
@@ -221,6 +224,7 @@ class AccountMovePreInv(models.Model):
                 move.with_context(
                     skip_account_move_synchronization=True,
                 ).write({'name': dian_name})
+                move.invalidate_recordset(['name'])
 
     def _insotech_swap_to_pre_inv_name(self):
         """Restore the PRE-INV name after a failed send attempt."""
@@ -235,3 +239,4 @@ class AccountMovePreInv(models.Model):
                 move.with_context(
                     skip_account_move_synchronization=True,
                 ).write({'name': pre_inv})
+                move.invalidate_recordset(['name'])
