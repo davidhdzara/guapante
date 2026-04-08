@@ -1,149 +1,214 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
+        
+        <!-- 1. BLOQUEO DE CABECERAS NATIVAS (MÉTODO SEGURO SIN XPATH) -->
+        <xpath expr="." position="inside">
+            <t t-set="address" t-value="None"/>
+            <t t-set="information_block" t-value="None"/>
+        </xpath>
 
-        <!-- A. ESTILOS DE EMERGENCIA - INMUNES A PARSE ERRORS -->
-        <xpath expr="//div" position="before">
+        <!-- 2. ESTILOS DE ALTA GAMA V9 -->
+        <xpath expr="//div[hasclass('page')]" position="before">
             <style type="text/css">
-                /* Ocultar el título FE586 y redundancias nativas vía CSS (No causa errores de XPath) */
-                .page > h2:first-child, 
-                .page > h3:first-child, 
-                .page > div:first-of-type h2,
-                .page > .row:first-of-type h2 {
-                    display: none !important;
-                }
-                
-                /* Forzar ocultamiento de etiquetas de fecha nativas */
-                [name="invoice_date"], [name="invoice_date_due"], [name="payment_term"] {
-                    display: none !important;
-                }
-
                 .page {
-                    font-size: 8pt !important;
+                    font-size: 8.5pt !important;
                     color: #000 !important;
                     font-family: Arial, sans-serif !important;
-                    margin-top: -30px !important;
                 }
                 
+                /* Ocultar elementos nativos redundantes vía CSS (Antigravedad) */
+                h2, .total_words_box, [name="invoice_date"], [name="invoice_date_due"], [name="payment_term"] {
+                    display: none !important;
+                }
+
+                /* Tabla de Productos - Estética Imagen 2 */
                 .o_main_table {
                     border: 1.2pt solid #000 !important;
                     border-collapse: collapse !important;
-                    margin-top: 10px !important;
+                    margin-top: 15px !important;
                 }
                 .o_main_table thead th {
                     background-color: #333 !important;
                     color: #fff !important;
                     border: 1.2pt solid #000 !important;
+                    padding: 5px !important;
+                    font-weight: bold;
+                    text-transform: uppercase;
                 }
                 .o_main_table tbody td {
                     border: 0.8pt solid #000 !important;
-                    padding: 3px 4px !important;
+                    padding: 4px !important;
+                    vertical-align: middle !important;
                 }
 
-                .guapante-logo-box { width: 120px; height: 90px; display: flex; align-items: center; }
-                .guapante-logo { max-height: 85px; max-width: 115px; object-fit: contain; }
+                /* Cabecera Guapante V9 */
+                .guapante-logo {
+                    max-height: 95px;
+                    max-width: 120px;
+                    object-fit: contain;
+                }
+                .header-box-guapante {
+                    border: 1.2pt solid #000;
+                    padding: 5px;
+                    text-align: center;
+                    background-color: #f2f2f2;
+                }
 
-                .totals-table { border: 1.2pt solid #000 !important; width: 100%; border-collapse: collapse; }
-                .totals-table td { border: 0.8pt solid #000 !important; padding: 4px !important; }
-                .total-row-green { background-color: #28a745 !important; color: #fff !important; font-weight: bold; }
+                /* Bloque de Información Cliente */
+                .info-card-guapante {
+                    border: 1.2pt solid #000;
+                    padding: 6px;
+                    margin-top: 8px;
+                    background-color: #fff;
+                }
+                .card-label {
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    font-size: 7pt;
+                    border-bottom: 1.2pt solid #000;
+                    margin-bottom: 3px;
+                    display: block;
+                }
+
+                /* Totales V9 - Espaciado y Color Verde Digital */
+                .totals-container-guapante {
+                    margin-top: 20px !important; /* Espacio para que no se vea pegado */
+                }
+                .totals-table-guapante {
+                    border: 1.2pt solid #000 !important;
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .totals-table-guapante td {
+                    border: 0.8pt solid #000 !important;
+                    padding: 6px !important;
+                }
+                .total-row-highlight {
+                    background-color: #28a745 !important; /* Verde Corporativo */
+                    color: #fff !important;
+                    font-weight: bold;
+                    font-size: 10pt;
+                }
                 
-                .info-text { font-size: 7.5pt; line-height: 1.1; }
+                .son-text-guapante {
+                    font-size: 8pt;
+                    font-weight: bold;
+                    margin-top: 10px;
+                    text-transform: uppercase;
+                }
             </style>
         </xpath>
 
-        <!-- B. REEMPLAZOS QUIRÚRGICOS SEGUROS (Mantenemos solo IDs conocidos) -->
-        <xpath expr="//t[@t-set='address']" position="replace"><div/></xpath>
-        
+        <!-- 3. INYECCIÓN DE CONTENIDO UNIFICADO -->
         <xpath expr="//div[@id='informations']" position="replace">
-            <!-- CABECERA GUAPANTE V8 -->
-            <div class="row g-0 mb-2">
+            <!-- CABECERA PRINCIPAL -->
+            <div class="row g-0 mb-3">
                 <div class="col-7">
                     <div class="row g-0">
                         <div class="col-5">
-                            <div class="guapante-logo-box">
-                                <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
-                                <img t-if="not o.company_id.logo and res_company.logo" t-att-src="image_data_uri(res_company.logo)" class="guapante-logo" alt="Logo Fallback"/>
-                            </div>
+                            <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
+                            <img t-if="not o.company_id.logo and res_company.logo" t-att-src="image_data_uri(res_company.logo)" class="guapante-logo" alt="Logo Fallback"/>
                         </div>
-                        <div class="col-7 ps-2 info-text">
-                            <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
-                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><br/>
+                        <div class="col-7 ps-3" style="font-size: 8pt; line-height: 1.2;">
+                            <strong style="font-size: 11pt;" t-field="o.company_id.name"/><br/>
+                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
                             <span t-field="o.company_id.street"/><br/>
-                            <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
-                            <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
-                            <strong>Email:</strong> <span t-field="o.company_id.email"/>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-5 text-center">
-                    <div style="border: 1.2pt solid #000; padding: 4px; background-color: #eee;">
-                        <span style="font-size: 8.5pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
-                        <span style="font-size: 13pt; font-weight: bold;" t-field="o.name"/>
-                    </div>
-                    <table class="w-100 mt-1 info-text" style="border: 1pt solid #000; border-collapse: collapse;">
-                        <tr style="border-bottom: 1pt solid #000;">
-                            <td class="p-1"><strong>FECHA EMISIÓN:</strong></td>
-                            <td class="text-end p-1"><span t-field="o.invoice_date"/></td>
-                        </tr>
-                        <tr style="border-bottom: 1pt solid #000;">
-                            <td class="p-1"><strong>FECHA VENCIMIENTO:</strong></td>
-                            <td class="text-end p-1"><span t-field="o.invoice_date_due"/></td>
-                        </tr>
-                        <tr>
-                            <td class="p-1"><strong>FORMA DE PAGO:</strong></td>
-                            <td class="text-end p-1"><span t-field="o.invoice_payment_term_id.name"/></td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-
-            <!-- ADQUIRIENTE V8 -->
-            <div style="border: 1.2pt solid #000; padding: 4px 6px; margin-top: 5px; margin-bottom: 5px; width: 100%;">
-                <div class="row g-0 info-text">
-                    <div class="col-6 border-end pe-2">
-                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000;">Información Adquiriente</strong>
-                        <strong>CLIENTE:</strong> <span t-field="o.partner_id.name"/><br/>
-                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><br/>
-                        <strong>CIUDAD:</strong> <span t-field="o.partner_id.city"/> (<span t-field="o.partner_id.state_id.name"/>)
-                    </div>
-                    <div class="col-6 ps-2">
-                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000;">Dirección de Envío</strong>
-                        <strong>RECEPTOR:</strong> <span t-field="o.partner_shipping_id.name"/><br/>
-                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><br/>
-                        <strong>TELÉFONO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
-                    </div>
-                </div>
-            </div>
-        </xpath>
-
-        <!-- TOTALES V8 -->
-        <xpath expr="//div[@id='total']" position="replace">
-            <div class="row g-0 mt-3" style="page-break-inside: avoid;">
-                <div class="col-7 pe-3">
-                    <div class="row g-0">
-                        <div class="col-3 text-center" t-if="o.l10n_co_edi_cufe_cude_ref">
-                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ o.l10n_co_edi_qr_code or '' }}&amp;width=80&amp;height=80" style="max-height: 70px; max-width: 70px;" alt="QR"/>
-                        </div>
-                        <div class="col-9 ps-2">
-                            <div style="font-size: 8pt; font-weight: bold;"><span t-esc="o.amount_to_words or ''"/></div>
-                            <div style="font-size: 6.5pt; line-height: 1.1; margin-top: 4px;"><strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/></div>
+                            <strong>Tel:</strong> <span t-esc="o.company_id.phone"/><br/>
+                            <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
+                            <strong>Lugar Expedición:</strong> <span t-field="o.company_id.city"/>
                         </div>
                     </div>
                 </div>
                 <div class="col-5">
-                    <table class="totals-table table-sm">
-                        <tr><td><strong>Subtotal</strong></td><td class="text-end"><span t-field="o.amount_untaxed"/></td></tr>
+                    <div class="header-box-guapante">
+                        <span style="font-size: 9pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
+                        <span style="font-size: 15pt; font-weight: bold;" t-field="o.name"/>
+                    </div>
+                    <table class="w-100 mt-2" style="border: 1pt solid #000; font-size: 8pt; border-collapse: collapse;">
+                        <tr style="border-bottom: 1pt solid #000;">
+                            <td class="p-1 ps-2 text-start"><strong>FECHA EMISIÓN:</strong></td>
+                            <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date"/></td>
+                        </tr>
+                        <tr style="border-bottom: 1pt solid #000;">
+                            <td class="p-1 ps-2 text-start"><strong>FECHA VENCIMIENTO:</strong></td>
+                            <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date_due"/></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 ps-2 text-start"><strong>FORMA DE PAGO:</strong></td>
+                            <td class="p-1 pe-2 text-end"><span t-field="o.invoice_payment_term_id.name"/></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BLOQUES DE CLIENTE Y ENVÍO -->
+            <div class="info-card-guapante">
+                <div class="row g-0" style="font-size: 8pt;">
+                    <div class="col-6 border-end pe-3">
+                        <span class="card-label">Información de Facturación</span>
+                        <strong>CLIENTE:</strong> <span t-field="o.partner_id.name"/><br/>
+                        <strong>NIT/CC:</strong> <span t-field="o.partner_id.vat"/><br/>
+                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><br/>
+                        <strong>CIUDAD:</strong> <span t-field="o.partner_id.city"/> (<span t-field="o.partner_id.state_id.name"/>)
+                    </div>
+                    <div class="col-6 ps-3">
+                        <span class="card-label">Dirección de Despacho</span>
+                        <strong>RECEPTOR:</strong> <span t-field="o.partner_shipping_id.name"/><br/>
+                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><br/>
+                        <strong>CONTACTO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
+                    </div>
+                </div>
+            </div>
+        </xpath>
+
+        <!-- 4. TOTALES CON FILA VERDE Y ESPACIADO (V9) -->
+        <xpath expr="//div[@id='total']" position="replace">
+            <div class="row g-0 totals-container-guapante" style="page-break-inside: avoid;">
+                <div class="col-7 pe-4">
+                    <div class="row g-0">
+                        <div class="col-3 text-center" t-if="o.l10n_co_edi_cufe_cude_ref">
+                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ o.l10n_co_edi_qr_code or '' }}&amp;width=80&amp;height=80" style="max-height: 75px; max-width: 75px;" alt="QR"/>
+                        </div>
+                        <div class="col-9 ps-2">
+                            <div class="son-text-guapante">SON: <span t-esc="o.amount_to_words or ''"/></div>
+                            <div style="font-size: 6.5pt; color: #555; margin-top: 5px;">
+                                <strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
+                            </div>
+                            <div style="font-size: 6pt; color: #444; font-style: italic; margin-top: 5px; line-height: 1.2;">
+                                <strong>Nota Legal:</strong> Esta factura de venta se asimila a una letra de cambio (Art. 774 C.Cio). Se cobrarán intereses de mora a la tasa máxima vigente.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-5">
+                    <table class="totals-table-guapante table-sm">
+                        <tr>
+                            <td><strong>SUBTOTAL</strong></td>
+                            <td class="text-end"><span t-field="o.amount_untaxed"/></td>
+                        </tr>
                         <t t-foreach="o.line_ids.filtered(lambda l: l.display_type == 'tax')" t-as="tax">
-                            <tr><td><strong t-esc="tax.name"/></td><td class="text-end"><span t-field="tax.price_subtotal"/></td></tr>
+                            <tr>
+                                <td><strong t-esc="tax.name"/></td>
+                                <td class="text-end"><span t-field="tax.price_subtotal"/></td>
+                            </tr>
                         </t>
-                        <tr class="total-row-green"><td><strong>TOTAL A PAGAR</strong></td><td class="text-end"><strong><span t-field="o.amount_total"/></strong></td></tr>
+                        <tr class="total-row-highlight">
+                            <td class="p-2"><strong>TOTAL A PAGAR</strong></td>
+                            <td class="p-2 text-end"><strong><span t-field="o.amount_total"/></strong></td>
+                        </tr>
                     </table>
                 </div>
             </div>
         </xpath>
 
-        <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
-            <attribute name="t-call">web.basic_layout</attribute>
+        <!-- 5. LIMPIEZA DE PIE DE PÁGINA NATIVO -->
+        <xpath expr="//p[@name='payment_communication']" position="replace">
+            <div class="mt-4 text-center" style="font-size: 8pt; border-top: 1.2pt solid #000; padding-top: 10px;">
+                <strong>REFERENCIA DE PAGO:</strong> <span t-field="o.payment_reference"/> | 
+                <strong>BANCO:</strong> <span t-field="o.partner_bank_id.bank_id.name"/> | 
+                <strong>CUENTA:</strong> <span t-field="o.partner_bank_id.acc_number"/>
+            </div>
         </xpath>
 
     </template>
