@@ -63,7 +63,7 @@
                        <span t-field="o.company_id.street"/> 
                        <t t-if="o.company_id.street2">, <span t-field="o.company_id.street2"/></t><br/>
                        <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/> <span t-field="o.company_id.zip"/><br/>
-                       <strong>NIT: </strong> <span t-field="o.company_id.vat or ''"/><t t-if="o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit or ''"/></t>
+                       <strong>NIT: </strong> <span t-esc="o.company_id.vat or ''"/><t t-if="o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit or ''"/></t>
                    </div>
                 </div>
             </div>
