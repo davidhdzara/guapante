@@ -112,7 +112,7 @@
                         </div>
                         <div class="col-7 ps-3" style="font-size: 8pt; line-height: 1.2;">
                             <strong style="font-size: 11pt;" t-field="o.company_id.name"/><br/>
-                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
+                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
                             <span t-field="o.company_id.street"/><br/>
                             <strong>Tel:</strong> <span t-esc="o.company_id.phone"/><br/>
                             <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
@@ -167,14 +167,16 @@
             <div class="row g-0 totals-container-guapante" style="page-break-inside: avoid;">
                 <div class="col-7 pe-4">
                     <div class="row g-0">
-                        <div class="col-3 text-center" t-if="o.l10n_co_edi_cufe_cude_ref">
+                        <div class="col-3 text-center" t-if="'l10n_co_edi_cufe_cude_ref' in o._fields and o.l10n_co_edi_cufe_cude_ref">
                              <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ o.l10n_co_edi_qr_code or '' }}&amp;width=80&amp;height=80" style="max-height: 75px; max-width: 75px;" alt="QR"/>
                         </div>
                         <div class="col-9 ps-2">
                             <div class="son-text-guapante">SON: <span t-esc="o.amount_to_words or ''"/></div>
-                            <div style="font-size: 6.5pt; color: #555; margin-top: 5px;">
-                                <strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
-                            </div>
+                            <t t-if="'l10n_co_edi_cufe_cude_ref' in o._fields and o.l10n_co_edi_cufe_cude_ref">
+                                <div style="font-size: 6.5pt; color: #555; margin-top: 5px;">
+                                    <strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
+                                </div>
+                            </t>
                             <div style="font-size: 6pt; color: #444; font-style: italic; margin-top: 5px; line-height: 1.2;">
                                 <strong>Nota Legal:</strong> Esta factura de venta se asimila a una letra de cambio (Art. 774 C.Cio). Se cobrarán intereses de mora a la tasa máxima vigente.
                             </div>
