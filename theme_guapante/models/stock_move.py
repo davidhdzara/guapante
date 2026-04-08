@@ -118,3 +118,59 @@ class StockMove(models.Model):
                             ),
                         },
                     }
+
+
+class StockMoveLine(models.Model):
+    _inherit = 'stock.move.line'
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Forzar cantidad 0.0 en el momento de creación para Recolectar.
+
+        Odoo 18 puede pre-llenar la cantidad basado en la reserva
+        o el tipo de picking. Para Guapante, el operario debe
+        pesar obligatoriamente, por lo que empezamos en 0.
+        """
+        for vals in vals_list:
+            picking_type_id = vals.get('picking_type_id')
+            if not picking_type_id and vals.get('move_id'):
+                move = self.env['stock.move'].browse(vals['move_id'])
+                picking_type_id = move.picking_type_id.id
+
+            if picking_type_id:
+                pt = self.env['stock.picking.type'].browse(picking_type_id)
+                if pt.name and 'recolectar' in pt.name.lower():
+                    # Forzar cantidad a 0 y asegurar que NO esté marcado
+                    # como 'picked' (Odoo 18 logica nativa).
+                    vals['quantity'] = 0.0
+                    if 'picked' in self._fields:
+                        vals['picked'] = False
+
+        return super().create(vals_list)
+
+    def write(self, vals):
+        """Protección adicional para que el auto-llenado de Odoo 18
+        no sobrescriba el 0 inicial durante la asignación.
+        """
+        # Si la escritura viene del sistema y está intentando poner
+        # quantity > 0 basándose en la demanda.
+        if (
+            'quantity' in vals
+            and vals['quantity'] > 0
+            and not self.env.context.get('skip_recolectar_zero_check')
+            and not self.env.context.get('manual_entry')
+        ):
+            filtered_self = self.filtered(
+                lambda ml: (
+                    ml.picking_type_id.name
+                    and 'recolectar' in ml.picking_type_id.name.lower()
+                )
+            )
+            if filtered_self:
+                # Si matchea Recolectar, el sistema NO puede auto-llenar
+                # cantidad. Debemos dejarlo en 0.
+                vals['quantity'] = 0.0
+                if 'picked' in self._fields:
+                    vals['picked'] = False
+
+        return super().write(vals)

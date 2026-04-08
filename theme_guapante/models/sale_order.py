@@ -144,7 +144,7 @@ class SaleOrder(models.Model):
             # real de la BD. Si alguien canceló órdenes, editó
             # manualmente, o la secuencia quedó desincronizada,
             # esto garantiza que el próximo número sea max + 1.
-            if seq.number_next_actual < safe_next:
+            if seq.number_next_actual != safe_next:
                 seq.sudo().write({'number_next': safe_next})
                 _logger.info(
                     'Guapante: synced ir.sequence %s number_next '

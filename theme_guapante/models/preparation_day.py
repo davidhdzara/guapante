@@ -697,6 +697,7 @@ class PreparationDay(models.Model):
         if Line.stock_move_id:
             Move = Line.stock_move_id.sudo().with_context(
                 skip_inverse_visual_qty=True,
+                skip_recolectar_zero_check=True,
             )
             if Move.move_line_ids:
                 Move.move_line_ids.write({'quantity': 0})
@@ -717,7 +718,7 @@ class PreparationDay(models.Model):
             Move.picked = True
             
             # Guapante: Marcar también el flag personalizado para evitar el bloqueo del picking
-            Move.is_weight_confirmed = True
+            # Move.is_weight_confirmed = True
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.
