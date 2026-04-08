@@ -71,9 +71,14 @@
         </xpath>
 
         <!-- B. LIMPIEZA DE BLOQUES NATIVOS Y REDUNDANCIAS -->
+        <!-- Odoo 18 usa t-set="address" y information_block; los vaciamos -->
         <xpath expr="//t[@t-set='address']" position="replace"><div/></xpath>
         <xpath expr="//t[@t-set='information_block']" position="replace"><div/></xpath>
-        <xpath expr="//h2" position="replace"><div/></xpath>
+        
+        <!-- XPath Resiliente para el Título (evita ParseError si h2 no existe como tag directo) -->
+        <xpath expr="//div[hasclass('page')]//span[@t-field='o.name']/.." position="replace">
+            <div id="dummy_title_anchor"/>
+        </xpath>
 
         <!-- C. NUEVA CABECERA PROFESIONAL -->
         <xpath expr="//div[@id='informations']" position="before">
