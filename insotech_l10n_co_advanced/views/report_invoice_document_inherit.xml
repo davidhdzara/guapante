@@ -9,6 +9,7 @@
                     font-size: 8pt !important;
                     color: #000 !important;
                     font-family: Arial, sans-serif !important;
+                    margin-top: -10px !important; /* Subir contenido al maximo */
                 }
                 
                 /* Tabla de Productos Compacta y Elegante */
@@ -41,9 +42,10 @@
                     border: 0.5pt solid #ccc;
                     display: flex;
                     align-items: center;
-                    justify-content: center;
+                    justify-content: flex-start; /* Alineado a la izquierda */
                     overflow: hidden;
                     background-color: #fff;
+                    padding: 2px;
                 }
                 .guapante-logo {
                     max-height: 105px !important;
@@ -98,6 +100,8 @@
                     background-color: #f9f9f9;
                     line-height: 1.2;
                 }
+                /* Ocultar header de Odoo */
+                .header { display: none !important; }
             </style>
         </xpath>
 
@@ -111,19 +115,26 @@
             <div id="dummy_title_anchor"/>
         </xpath>
 
-        <!-- C. NUEVA CABECERA PROFESIONAL -->
-        <xpath expr="//div[@id='informations']" position="before">
-            <div class="row mb-2">
+        <!-- C. NUEVA CABECERA PROFESIONAL V3 (REEMPLAZA INFORMATIONS PARA BORRAR FECHAS REPETIDAS) -->
+        <xpath expr="//div[@id='informations']" position="replace">
+            <div class="row mb-2 g-0">
                 <!-- Logo e Información de Empresa (Izquierda) -->
                 <div class="col-7">
-                    <div class="info-text">
-                        <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
-                        <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
-                        <span t-field="o.company_id.street"/><br/>
-                        <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
-                        <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
-                        <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
-                        <strong>LUGAR DE EXPEDICIÓN:</strong> <span t-field="o.company_id.city"/>
+                    <div class="row g-0">
+                        <div class="col-4">
+                            <div class="guapante-logo-box">
+                                <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
+                            </div>
+                        </div>
+                        <div class="col-8 ps-2 info-text">
+                            <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
+                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
+                            <span t-field="o.company_id.street"/><br/>
+                            <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
+                            <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
+                            <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
+                            <strong>LUGAR DE EXPEDICIÓN:</strong> <span t-field="o.company_id.city"/>
+                        </div>
                     </div>
                 </div>
                 <!-- Box de Factura (Derecha) -->
@@ -149,7 +160,7 @@
                 </div>
             </div>
 
-            <!-- Información Adquiriente y Envío V2.1 -->
+            <!-- Información Adquiriente y Envío V3 -->
             <div class="customer-info-box">
                 <div class="row g-0 info-text">
                     <!-- Adquiriente (Facturación) -->
@@ -173,6 +184,9 @@
                 </div>
             </div>
         </xpath>
+
+        <!-- XPath ADICIONAL PARA BORRAR NOTAS NATIVAS REPETIDAS -->
+        <xpath expr="//p[@name='note']" position="replace"><div/></xpath>
 
         <!-- D. OPTIMIZACIÓN DE TABLA DE PRODUCTOS -->
         <xpath expr="//table[hasclass('o_main_table')]" position="attributes">
