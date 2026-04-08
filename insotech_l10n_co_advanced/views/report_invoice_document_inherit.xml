@@ -116,21 +116,14 @@
             <div class="row mb-2">
                 <!-- Logo e Información de Empresa (Izquierda) -->
                 <div class="col-7">
-                    <div class="row g-0">
-                        <div class="col-4">
-                            <div class="guapante-logo-box">
-                                <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
-                            </div>
-                        </div>
-                        <div class="col-8 ps-2 info-text">
-                            <strong style="font-size: 9pt;" t-field="o.company_id.name"/><br/>
-                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
-                            <span t-field="o.company_id.street"/><br/>
-                            <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
-                            <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
-                            <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
-                            <strong>LUGAR DE EXPEDICIÓN:</strong> <span t-field="o.company_id.city"/>
-                        </div>
+                    <div class="info-text">
+                        <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
+                        <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
+                        <span t-field="o.company_id.street"/><br/>
+                        <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
+                        <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
+                        <strong>Email:</strong> <span t-field="o.company_id.email"/><br/>
+                        <strong>LUGAR DE EXPEDICIÓN:</strong> <span t-field="o.company_id.city"/>
                     </div>
                 </div>
                 <!-- Box de Factura (Derecha) -->
@@ -156,19 +149,26 @@
                 </div>
             </div>
 
-            <!-- Información del Cliente (Receptor) -->
+            <!-- Información Adquiriente y Envío V2.1 -->
             <div class="customer-info-box">
-                <span class="section-label">Información del Adquiriente</span>
                 <div class="row g-0 info-text">
-                    <div class="col-7">
+                    <!-- Adquiriente (Facturación) -->
+                    <div class="col-6 border-end pe-2">
+                        <span class="section-label">Información Adquiriente (Facturación)</span>
                         <strong>CLIENTE:</strong> <span t-field="o.partner_id.name"/><br/>
                         <strong>NIT/CC:</strong> <span t-field="o.partner_id.vat"/><br/>
-                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><t t-if="o.partner_id.street2">, <span t-field="o.partner_id.street2"/></t>
-                    </div>
-                    <div class="col-5">
+                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><t t-if="o.partner_id.street2">, <span t-field="o.partner_id.street2"/></t><br/>
                         <strong>CIUDAD:</strong> <span t-field="o.partner_id.city"/> (<span t-field="o.partner_id.state_id.name"/>)<br/>
-                        <strong>TELÉFONO:</strong> <span t-esc="o.partner_id.phone or o.partner_id.mobile"/><br/>
-                        <strong>EMAIL:</strong> <span t-field="o.partner_id.email"/>
+                        <strong>TELÉFONO:</strong> <span t-esc="o.partner_id.phone or o.partner_id.mobile"/>
+                    </div>
+                    <!-- Envío (Despacho) -->
+                    <div class="col-6 ps-2">
+                        <span class="section-label">Dirección de Envío (Despacho)</span>
+                        <strong>RECEPTOR:</strong> <span t-field="o.partner_shipping_id.name"/><br/>
+                        <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><t t-if="o.partner_shipping_id.street2">, <span t-field="o.partner_shipping_id.street2"/></t><br/>
+                        <strong>CIUDAD:</strong> <span t-field="o.partner_shipping_id.city"/> (<span t-field="o.partner_shipping_id.state_id.name"/>)<br/>
+                        <strong>CONTACTO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_shipping_id.mobile or o.partner_id.phone"/><br/>
+                        <strong>EMAIL:</strong> <span t-field="o.partner_shipping_id.email or o.partner_id.email"/>
                     </div>
                 </div>
             </div>
@@ -180,14 +180,16 @@
             <attribute name="style">width: 100%; border: 0.8pt solid #000;</attribute>
         </xpath>
 
-        <!-- E. FILTRO DE DESCRIPCIÓN (1 LÍNEA Y SIN CANTIDAD SOLICITADA) -->
+        <!-- E. DESCRIPCIÓN REFINADA: [REF] NOMBRE (SIN VARIANTES ni CANTIDADES) -->
         <xpath expr="//td[@name='account_invoice_line_name']" position="replace">
             <td name="account_invoice_line_name">
-                <t t-set="clean_name" t-value="line.name.split('\n')[0]"/>
-                <!-- Regex-like replace using multiple replace calls for common variations -->
-                <t t-set="clean_name" t-value="clean_name.replace('Cantidad solicitada:', '').replace('cantidad solicitada:', '').replace('CANTIDAD SOLICITADA:', '')"/>
-                <t t-set="clean_name" t-value="clean_name.replace('Cantidad solicitada', '').replace('cantidad solicitada', '').replace('CANTIDAD SOLICITADA', '')"/>
-                <span t-esc="clean_name.strip()"/>
+                <t t-if="line.product_id">
+                    <t t-set="formatted_name" t-value="'[%s] %s' % (line.product_id.default_code, line.product_id.name) if line.product_id.default_code else line.product_id.name"/>
+                    <span t-esc="formatted_name"/>
+                </t>
+                <t t-else="">
+                    <span t-field="line.name" t-options="{'widget': 'text'}"/>
+                </t>
             </td>
         </xpath>
 
