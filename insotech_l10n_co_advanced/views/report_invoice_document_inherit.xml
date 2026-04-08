@@ -2,9 +2,22 @@
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
 
-        <!-- A. ESTILOS GLOBALES - PERFECCIÓN V7 (ESTABLE) -->
-        <xpath expr="//div[hasclass('page')]" position="before">
+        <!-- A. ESTILOS DE EMERGENCIA - INMUNES A PARSE ERRORS -->
+        <xpath expr="//div" position="before">
             <style type="text/css">
+                /* Ocultar el título FE586 y redundancias nativas vía CSS (No causa errores de XPath) */
+                .page > h2:first-child, 
+                .page > h3:first-child, 
+                .page > div:first-of-type h2,
+                .page > .row:first-of-type h2 {
+                    display: none !important;
+                }
+                
+                /* Forzar ocultamiento de etiquetas de fecha nativas */
+                [name="invoice_date"], [name="invoice_date_due"], [name="payment_term"] {
+                    display: none !important;
+                }
+
                 .page {
                     font-size: 8pt !important;
                     color: #000 !important;
@@ -12,7 +25,6 @@
                     margin-top: -30px !important;
                 }
                 
-                /* Tabla de Productos - Estilo Imagen 2 con bordes marcados */
                 .o_main_table {
                     border: 1.2pt solid #000 !important;
                     border-collapse: collapse !important;
@@ -22,63 +34,28 @@
                     background-color: #333 !important;
                     color: #fff !important;
                     border: 1.2pt solid #000 !important;
-                    padding: 4px !important;
                 }
                 .o_main_table tbody td {
-                    border: 0.8pt solid #000 !important; /* Líneas divisorias claras */
-                    padding: 3px 4px !important;
-                    vertical-align: middle !important;
-                }
-
-                /* Logo y Encabezado */
-                .guapante-logo-box {
-                    width: 120px;
-                    height: 90px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: flex-start;
-                }
-                .guapante-logo {
-                    max-height: 85px;
-                    max-width: 115px;
-                    object-fit: contain;
-                }
-
-                /* Totales con Fila Verde (Estilo Imagen 2) */
-                .totals-table {
-                    border: 1.2pt solid #000 !important;
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-                .totals-table td {
                     border: 0.8pt solid #000 !important;
-                    padding: 4px !important;
+                    padding: 3px 4px !important;
                 }
-                .total-row-green {
-                    background-color: #28a745 !important; 
-                    color: #fff !important;
-                    font-weight: bold;
-                    font-size: 9pt;
-                }
+
+                .guapante-logo-box { width: 120px; height: 90px; display: flex; align-items: center; }
+                .guapante-logo { max-height: 85px; max-width: 115px; object-fit: contain; }
+
+                .totals-table { border: 1.2pt solid #000 !important; width: 100%; border-collapse: collapse; }
+                .totals-table td { border: 0.8pt solid #000 !important; padding: 4px !important; }
+                .total-row-green { background-color: #28a745 !important; color: #fff !important; font-weight: bold; }
                 
-                .info-text {
-                    font-size: 7.5pt;
-                    line-height: 1.1;
-                }
+                .info-text { font-size: 7.5pt; line-height: 1.1; }
             </style>
         </xpath>
 
-        <!-- B. ELIMINACIÓN SEGURA DE ELEMENTOS NATIVOS -->
+        <!-- B. REEMPLAZOS QUIRÚRGICOS SEGUROS (Mantenemos solo IDs conocidos) -->
         <xpath expr="//t[@t-set='address']" position="replace"><div/></xpath>
-        <xpath expr="//t[@t-set='information_block']" position="replace"><div/></xpath>
         
-        <!-- Ocultamos el título nativo (H2/H3/Div) del inicio de la página de forma segura -->
-        <xpath expr="//div[hasclass('page')]/*[1][self::h2 or self::h3 or self::div]" position="attributes">
-            <attribute name="style">display: none !important;</attribute>
-        </xpath>
-        
-        <!-- C. CABECERA REFINADA V7 -->
         <xpath expr="//div[@id='informations']" position="replace">
+            <!-- CABECERA GUAPANTE V8 -->
             <div class="row g-0 mb-2">
                 <div class="col-7">
                     <div class="row g-0">
@@ -90,7 +67,7 @@
                         </div>
                         <div class="col-7 ps-2 info-text">
                             <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
-                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
+                            <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><br/>
                             <span t-field="o.company_id.street"/><br/>
                             <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
                             <strong>Tel:</strong> <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
@@ -98,9 +75,9 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-5">
-                    <div class="invoice-header-box" style="border: 1.2pt solid #000; padding: 4px; text-align: center; background-color: #eee;">
-                        <span style="font-size: 8.5pt; font-weight: bold; display: block; text-transform: uppercase;">Factura Electrónica de Venta</span>
+                <div class="col-5 text-center">
+                    <div style="border: 1.2pt solid #000; padding: 4px; background-color: #eee;">
+                        <span style="font-size: 8.5pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
                         <span style="font-size: 13pt; font-weight: bold;" t-field="o.name"/>
                     </div>
                     <table class="w-100 mt-1 info-text" style="border: 1pt solid #000; border-collapse: collapse;">
@@ -120,84 +97,51 @@
                 </div>
             </div>
 
-            <div style="border: 1.2pt solid #000; padding: 3px 6px; margin-top: 5px; margin-bottom: 5px; background-color: #fff; width: 100%;">
+            <!-- ADQUIRIENTE V8 -->
+            <div style="border: 1.2pt solid #000; padding: 4px 6px; margin-top: 5px; margin-bottom: 5px; width: 100%;">
                 <div class="row g-0 info-text">
                     <div class="col-6 border-end pe-2">
-                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000; margin-bottom: 2px;">Información Adquiriente</strong>
+                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000;">Información Adquiriente</strong>
                         <strong>CLIENTE:</strong> <span t-field="o.partner_id.name"/><br/>
-                        <strong>NIT/CC:</strong> <span t-field="o.partner_id.vat"/><br/>
                         <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><br/>
                         <strong>CIUDAD:</strong> <span t-field="o.partner_id.city"/> (<span t-field="o.partner_id.state_id.name"/>)
                     </div>
                     <div class="col-6 ps-2">
-                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000; margin-bottom: 2px;">Dirección de Envío</strong>
+                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000;">Dirección de Envío</strong>
                         <strong>RECEPTOR:</strong> <span t-field="o.partner_shipping_id.name"/><br/>
                         <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><br/>
-                        <strong>CONTACTO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
+                        <strong>TELÉFONO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
                     </div>
                 </div>
             </div>
         </xpath>
 
-        <!-- D. DESCRIPCIÓN REFINADA: [REF] NOMBRE -->
-        <xpath expr="//td[@name='account_invoice_line_name']" position="replace">
-            <td name="account_invoice_line_name">
-                <t t-if="line.product_id">
-                    <t t-set="formatted_name" t-value="'[%s] %s' % (line.product_id.default_code, line.product_id.name) if line.product_id.default_code else line.product_id.name"/>
-                    <span t-esc="formatted_name"/>
-                </t>
-                <t t-else="">
-                    <span t-field="line.name" t-options="{'widget': 'text'}"/>
-                </t>
-            </td>
-        </xpath>
-
-        <!-- E. TOTALES V7 CON FILA VERDE -->
+        <!-- TOTALES V8 -->
         <xpath expr="//div[@id='total']" position="replace">
             <div class="row g-0 mt-3" style="page-break-inside: avoid;">
                 <div class="col-7 pe-3">
                     <div class="row g-0">
-                        <div class="col-3 text-center" t-if="o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref">
-                             <t t-set="qr_string" t-value="o.l10n_co_edi_qr_code if 'l10n_co_edi_qr_code' in o and o.l10n_co_edi_qr_code else 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (o.l10n_co_edi_cufe_cude_ref or '')"/>
-                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=80&amp;height=80" style="max-height: 70px; max-width: 70px;" alt="QR DIAN"/>
+                        <div class="col-3 text-center" t-if="o.l10n_co_edi_cufe_cude_ref">
+                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ o.l10n_co_edi_qr_code or '' }}&amp;width=80&amp;height=80" style="max-height: 70px; max-width: 70px;" alt="QR"/>
                         </div>
-                        <div t-attf-class="{{ (o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref) and 'col-9 ps-2' or 'col-12' }}">
-                            <div class="mt-1" style="font-size: 8pt; font-weight: bold;">
-                                <span t-esc="o.amount_to_words or '' text-transform: uppercase;"/>
-                            </div>
-                            <t t-if="o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref">
-                                <div style="font-size: 6.5pt; line-height: 1.1; margin-top: 4px;">
-                                    <strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
-                                </div>
-                            </t>
-                            <div class="mt-1" style="font-size: 6pt; color: #444; font-style: italic;">
-                                <strong>Nota Legal:</strong> Esta factura de venta se asimila a una letra de cambio (Art. 774 C.Cio).
-                            </div>
+                        <div class="col-9 ps-2">
+                            <div style="font-size: 8pt; font-weight: bold;"><span t-esc="o.amount_to_words or ''"/></div>
+                            <div style="font-size: 6.5pt; line-height: 1.1; margin-top: 4px;"><strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/></div>
                         </div>
                     </div>
                 </div>
                 <div class="col-5">
                     <table class="totals-table table-sm">
-                        <tr>
-                            <td><strong>Subtotal</strong></td>
-                            <td class="text-end"><span t-field="o.amount_untaxed"/></td>
-                        </tr>
-                        <t t-foreach="o.line_ids.filtered(lambda line: line.display_type == 'tax')" t-as="tax_line">
-                            <tr>
-                                <td><strong t-esc="tax_line.name"/></td>
-                                <td class="text-end"><span t-field="tax_line.price_subtotal"/></td>
-                            </tr>
+                        <tr><td><strong>Subtotal</strong></td><td class="text-end"><span t-field="o.amount_untaxed"/></td></tr>
+                        <t t-foreach="o.line_ids.filtered(lambda l: l.display_type == 'tax')" t-as="tax">
+                            <tr><td><strong t-esc="tax.name"/></td><td class="text-end"><span t-field="tax.price_subtotal"/></td></tr>
                         </t>
-                        <tr class="total-row-green">
-                            <td><strong>TOTAL A PAGAR</strong></td>
-                            <td class="text-end"><strong><span t-field="o.amount_total"/></strong></td>
-                        </tr>
+                        <tr class="total-row-green"><td><strong>TOTAL A PAGAR</strong></td><td class="text-end"><strong><span t-field="o.amount_total"/></strong></td></tr>
                     </table>
                 </div>
             </div>
         </xpath>
 
-        <!-- F. AJUSTE DE LAYOUT PARA SUBIR TODO -->
         <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
             <attribute name="t-call">web.basic_layout</attribute>
         </xpath>
