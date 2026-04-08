@@ -77,16 +77,9 @@ class AccountMoveDian(models.Model):
                 })
 
                 # ── Capa 1: Persist last consecutive ──
-                cufe = getattr(
-                    move, 'l10n_co_edi_cufe_cude_ref', None
-                )
-                if not cufe:
-                    _logger.info(
-                        "Insotech: Skipping Capa 1 persist for "
-                        "move %s — no CUFE (force-accepted?)",
-                        move.id,
-                    )
-                elif move.move_type == 'out_invoice':
+                # IMPROVEMENT: Even without CUFE, we should persist the number
+                # if we are accepting the invoice, to avoid sequence clashes.
+                if move.move_type == 'out_invoice':
                     num_match = re.search(
                         r'(\d+)\s*$', dian_name
                     )
@@ -109,7 +102,8 @@ class AccountMoveDian(models.Model):
                             )
                             _logger.info(
                                 "Insotech: Persisted last DIAN "
-                                "consecutive for journal %d: %d",
+                                "consecutive for journal %d: %d "
+                                "(Accepted state)",
                                 move.journal_id.id, dian_num,
                             )
 
@@ -574,7 +568,7 @@ class AccountMoveDian(models.Model):
                 continue
             try:
                 move.invalidate_recordset(
-                    ['l10n_co_edi_cufe_cude_ref']
+                    ['l10n_co_edi_cufe_cude_ref', 'name']
                 )
                 cufe = getattr(
                     move, 'l10n_co_edi_cufe_cude_ref', None
