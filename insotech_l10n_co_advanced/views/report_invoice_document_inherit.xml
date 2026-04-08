@@ -168,7 +168,7 @@
                         <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><t t-if="o.partner_shipping_id.street2">, <span t-field="o.partner_shipping_id.street2"/></t><br/>
                         <strong>CIUDAD:</strong> <span t-field="o.partner_shipping_id.city"/> (<span t-field="o.partner_shipping_id.state_id.name"/>)<br/>
                         <strong>CONTACTO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_shipping_id.mobile or o.partner_id.phone"/><br/>
-                        <strong>EMAIL:</strong> <span t-field="o.partner_shipping_id.email or o.partner_id.email"/>
+                        <strong>EMAIL:</strong> <span t-esc="o.partner_shipping_id.email or o.partner_id.email"/>
                     </div>
                 </div>
             </div>
