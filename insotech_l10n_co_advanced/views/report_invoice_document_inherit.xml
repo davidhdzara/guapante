@@ -149,18 +149,18 @@
                         IMPORTE TOTAL CON LETRA:
                     </div>
                     <div style="font-size: 7pt; text-transform: uppercase;">
-                        <span t-esc=\"o.amount_to_words or ''\"/>
+                        <span t-esc="o.amount_to_words or ''"/>
                     </div>
                 </div>
             </div>
         </xpath>
 
         <!-- F. LIMPIEZA DE COMUNICACIÓN -->
-        <xpath expr=\"//p[@name='payment_communication']\" position=\"replace\">
-            <div class=\"mt-2\" style=\"font-size: 7pt;\">
-                <strong>REFERENCIA DE PAGO:</strong> <span t-field=\"o.payment_reference\"/> | 
-                <strong>BANCO:</strong> <span t-field=\"o.partner_bank_id.bank_id.name\"/> | 
-                <strong>CUENTA:</strong> <span t-field=\"o.partner_bank_id.acc_number\"/>
+        <xpath expr="//p[@name='payment_communication']" position="replace">
+            <div class="mt-2" style="font-size: 7pt;">
+                <strong>REFERENCIA DE PAGO:</strong> <span t-field="o.payment_reference"/> | 
+                <strong>BANCO:</strong> <span t-field="o.partner_bank_id.bank_id.name"/> | 
+                <strong>CUENTA:</strong> <span t-field="o.partner_bank_id.acc_number"/>
             </div>
         </xpath>
 
