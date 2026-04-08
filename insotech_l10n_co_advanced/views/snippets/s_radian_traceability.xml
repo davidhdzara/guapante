@@ -1,39 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="s_radian_traceability" name="Trazabilidad Legal DIAN">
-        <t t-if="invoice.insotech_dian_status == 'accepted'">
-            <!-- PDF Footer Replica Match -->
-            <div class="row w-100 mt-1 mx-0" style="font-size: 0.55rem; color: #333; font-family: sans-serif; line-height: 1.1;">
+        <t t-if="invoice.insotech_dian_status == 'accepted' or invoice.l10n_co_edi_cufe_cude_ref">
+            <!-- Pie de página reglamentario DIAN -->
+            <div class="row mt-2" style="font-size: 7pt; color: #333; font-family: sans-serif; border-top: 1pt solid #000; padding-top: 10px;">
                 
-                <!-- Row 1: Left QR and Right Profile Info -->
-                <div class="col-12 px-0 d-flex flex-wrap align-items-start mb-1">
-                    <div style="width: 80px; min-width: 80px; margin-right: 10px;">
-                        <t t-set="qr_string" t-value="invoice.l10n_co_edi_qr_code if 'l10n_co_edi_qr_code' in invoice and invoice.l10n_co_edi_qr_code else 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (invoice.l10n_co_edi_cufe_cude_ref or '')"/>
-                        <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=80&amp;height=80" class="img-fluid" alt="QR DIAN" style="max-height: 80px;"/>
+                <!-- QR Code Izquierda -->
+                <div class="col-3 text-center">
+                    <t t-set="qr_string" t-value="invoice.l10n_co_edi_qr_code if 'l10n_co_edi_qr_code' in invoice and invoice.l10n_co_edi_qr_code else 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (invoice.l10n_co_edi_cufe_cude_ref or '')"/>
+                    <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=100&amp;height=100" style="max-height: 80px; max-width: 80px;" alt="QR DIAN"/>
+                </div>
+                
+                <!-- Info Legal Centro/Derecha -->
+                <div class="col-9">
+                    <div style="margin-bottom: 5px;">
+                        <strong>AUTORIZACIÓN DIAN:</strong> <span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_number or 'N/A'"/> 
+                        de <span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_date or ''"/> 
+                        hasta <span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_end_date or ''"/> 
+                        (Rango: <span t-esc="invoice.journal_id.l10n_co_edi_min_range_number or ''"/> - <span t-esc="invoice.journal_id.l10n_co_edi_max_range_number or ''"/>)
                     </div>
                     
-                    <div class="flex-grow-1 text-start ps-0">
-                        <div><strong>DIAN Res.</strong> <span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_number or 'N/A'"/> (<span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_date or ''"/> a <span t-esc="invoice.journal_id.l10n_co_edi_dian_authorization_end_date or ''"/>) Rango: <span t-esc="invoice.journal_id.l10n_co_edi_min_range_number or ''"/> - <span t-esc="invoice.journal_id.l10n_co_edi_max_range_number or ''"/></div>
-                        
-                        <t t-set="partner_fiscal" t-value="invoice.company_id.partner_id"/>
-                        <t t-if="partner_fiscal">
-                            <t t-set="is_gc" t-value="partner_fiscal.l10n_co_edi_large_taxpayer if 'l10n_co_edi_large_taxpayer' in partner_fiscal else False"/>
-                            <div><t t-if="is_gc">Gran Contribuyente</t><t t-else="">No Gran Contribuyente</t> | Regimen: <t t-set="regime_tax" t-value="'IVA'"/><t t-if="'l10n_co_edi_obligation_type_ids' in partner_fiscal and partner_fiscal.l10n_co_edi_obligation_type_ids"><t t-if="partner_fiscal.l10n_co_edi_obligation_type_ids.filtered(lambda x: x.name == 'O-47')"><t t-set="regime_tax" t-value="'SIMPLE'"/></t></t><span t-esc="regime_tax"/> | Act. Eco: <span t-esc="partner_fiscal.industry_id.name[:30] if 'industry_id' in partner_fiscal and partner_fiscal.industry_id else 'N/A'"/></div>
-                            <div>Resp: <span t-esc="', '.join(partner_fiscal.l10n_co_edi_obligation_type_ids.mapped('name')) if 'l10n_co_edi_obligation_type_ids' in partner_fiscal and partner_fiscal.l10n_co_edi_obligation_type_ids else 'N/A'"/></div>
-                        </t>
-                        <div class="mt-1" style="word-break: break-all; opacity: 0.8;"><strong>CUFE:</strong> <span t-esc="invoice.l10n_co_edi_cufe_cude_ref or ''"/></div>
+                    <div style="margin-bottom: 5px; word-break: break-all;">
+                        <strong>CUFE / CUDE:</strong> <span t-esc="invoice.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
+                    </div>
+
+                    <div style="font-size: 6pt; opacity: 0.8;">
+                        Representación gráfica de factura electrónica. Software propio desarrollado por <span t-esc="invoice.company_id.name"/>. 
+                        Firma digital vinculada a esta factura según protocolos de la DIAN.
                     </div>
                 </div>
-                
-                <div class="col-12 px-0 text-start" style="font-size: 0.5rem; opacity: 0.7;">
-                    <strong>Firma:</strong> <span t-esc="(invoice.l10n_co_edi_datetime or invoice.create_date).strftime('%Y-%m-%d %H:%M:%S')"/> | <strong>NIT:</strong> <span t-esc="invoice.company_id.vat"/> | Software Propio (Guapante)
-                </div>
-                
-                <!-- Texto legal obligatorio -->
-                <div class="col-12 px-0 text-center mt-1 border-top" style="font-size: 0.55rem; opacity: 0.7;">
-                    Representación gráfica de factura electrónica. Software propio por <span t-esc="invoice.company_id.name"/>.
-                </div>
-                
             </div>
         </t>
     </template>
