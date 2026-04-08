@@ -112,16 +112,4 @@ class PurchaseOrderLine(models.Model):
                     line.product_qty = qty
                     line.product_packaging_id = False
 
-    def _prepare_account_move_line(self, move=False):
-        res = super()._prepare_account_move_line(move=move)
-        if self.visual_qty and self.uom_mode and res:
-            mode_label = dict(self._fields['uom_mode'].selection).get(self.uom_mode) or self.uom_mode
-            qty_fmt = int(self.visual_qty) if self.visual_qty == int(self.visual_qty) else self.visual_qty
-            visual_desc = f"\nSolicitado: {qty_fmt} {mode_label}"
-            
-            if self.qty_received > 0 and self.uom_mode == 'unit':
-                 visual_desc += f" (Peso recibido: {self.qty_received} {self.product_uom.name})"
-                 
-            if 'name' in res:
-                res['name'] += visual_desc
         return res

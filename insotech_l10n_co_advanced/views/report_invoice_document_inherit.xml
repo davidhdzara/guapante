@@ -13,15 +13,34 @@
              ============================================================ -->
         <xpath expr="//div[hasclass('page')]" position="before">
             <style type="text/css">
+                /* Compresión Global Estética */
                 table.table-sm td, table.table-sm th {
-                    padding: 0.25rem 0.2rem !important; 
-                    font-size: 0.85rem !important;
+                    padding: 0.12rem 0.2rem !important; 
+                    font-size: 0.8rem !important;
+                    line-height: 1.1 !important;
                 }
                 .page {
-                    font-size: 0.9rem !important;
+                    font-size: 0.85rem !important;
+                    line-height: 1.2 !important;
                 }
                 #informations .col-auto {
-                    margin-bottom: 0.2rem !important;
+                    margin-bottom: 0.1rem !important;
+                    padding-right: 0.5rem !important;
+                }
+                #informations strong {
+                    font-size: 0.7rem !important;
+                    text-transform: uppercase;
+                    color: #666;
+                }
+                .table thead th {
+                    background-color: #f8f9fa !important;
+                    border-bottom: 1px solid #dee2e6 !important;
+                }
+                /* Logo Fix 90x90 */
+                .guapante-logo {
+                    max-height: 90px !important;
+                    max-width: 90px !important;
+                    object-fit: contain;
                 }
             </style>
         </xpath>
@@ -31,43 +50,63 @@
              Se inyecta ANTES de #informations (ancla confiable y probada).
              ============================================================ -->
         <xpath expr="//div[@id='informations']" position="before">
+            <!-- Header Premium con Logo 90x90 -->
+            <div class="row mb-3 mt-n2">
+                <div class="col-3">
+                    <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
+                </div>
+                <div class="col-9 text-end" style="line-height: 1.1;">
+                   <h5 class="mb-1" style="font-weight: bold; color: #2c3e50;">
+                       <span t-field="o.company_id.name"/>
+                   </h5>
+                   <div style="font-size: 0.72rem; color: #444;">
+                       <span t-field="o.company_id.street"/> 
+                       <t t-if="o.company_id.street2">, <span t-field="o.company_id.street2"/></t><br/>
+                       <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/> <span t-field="o.company_id.zip"/><br/>
+                       <strong>NIT: </strong> <span t-field="o.company_id.vat or ''"/><t t-if="o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit or ''"/></t>
+                   </div>
+                </div>
+            </div>
+
+            <!-- Datos del Adquiriente Comprimidos -->
+            <hr class="mt-1 mb-1" style="border-top: 1px solid #eee;"/>
+            <div class="row mb-1" style="font-size: 0.75rem;">
+                <div class="col-12 text-uppercase">
+                    <strong><span t-field="o.partner_id.name"/></strong>
+                    <t t-if="o.partner_id.vat"> | NIT: <span t-field="o.partner_id.vat"/></t>
+                </div>
+                <div class="col-12 mt-1">
+                    <t t-if="o.partner_id.phone"><i class="fa fa-phone" aria-hidden="true"/> <span t-field="o.partner_id.phone"/></t>
+                    <t t-if="o.partner_id.email"> | <i class="fa fa-envelope" aria-hidden="true"/> <span t-field="o.partner_id.email"/></t>
+                    <t t-if="o.partner_id.street"> | <i class="fa fa-map-marker" aria-hidden="true"/> <span t-field="o.partner_id.street"/></t>
+                </div>
+            </div>
+
             <t t-set="company_partner" t-value="o.company_id.partner_id"/>
             <t t-set="obligations" t-value="company_partner.l10n_co_edi_obligation_type_ids if company_partner and 'l10n_co_edi_obligation_type_ids' in company_partner._fields else False"/>
             <t t-set="obligation_codes" t-value="obligations.mapped('name') if obligations else []"/>
             <t t-set="obligation_descriptions" t-value="obligations.mapped('description') if obligations else []"/>
             <t t-set="id_type" t-value="company_partner.l10n_latam_identification_type_id if company_partner and 'l10n_latam_identification_type_id' in company_partner._fields else False"/>
             <t t-set="doc_code" t-value="id_type.l10n_co_document_code if id_type and 'l10n_co_document_code' in id_type._fields else ''"/>
-            <div class="mb-1" style="font-size: 0.78em; line-height: 1.4;">
-                <div>
-                    <strong>NIT:</strong> <span t-esc="o.company_id.vat or ''"/><t t-if="company_partner and 'l10n_co_verification_digit' in company_partner._fields">-<span t-esc="company_partner.l10n_co_verification_digit or ''"/></t>
-                    <span class="ms-2">|</span>
-                    <strong class="ms-2">Organización:</strong>
-                    <t t-if="doc_code == '31'">Persona Jurídica</t><t t-elif="doc_code == '13'">Persona Natural</t><t t-else="">Persona Jurídica</t>
-                    <span class="ms-2">|</span>
-                    <strong class="ms-2">Operación:</strong>
-                    <t t-if="o.l10n_co_edi_operation_type"><span t-field="o.l10n_co_edi_operation_type"/></t><t t-else="">Estándar</t>
+            
+            <div class="mb-2 py-1 px-2" style="font-size: 0.72em; line-height: 1.3; background-color: #fdfdfd; border: 1px solid #f0f0f0; border-radius: 4px;">
+                <div class="row">
+                    <div class="col-4 border-end">
+                        <strong>Organización:</strong><br/>
+                        <t t-if="doc_code == '31'">Persona Jurídica</t><t t-elif="doc_code == '13'">Persona Natural</t><t t-else="">Persona Jurídica</t>
+                    </div>
+                    <div class="col-4 border-end">
+                        <strong>Régimen:</strong><br/>
+                        <t t-if="'O-47' in obligation_codes">Simp. - SIMPLE</t>
+                        <t t-elif="'O-48' in obligation_codes">IVA</t>
+                        <t t-elif="'O-15' in obligation_codes">G. Contribuyente</t>
+                        <t t-else="">IVA</t>
+                    </div>
+                    <div class="col-4">
+                        <strong>Operación:</strong><br/>
+                        <t t-if="o.l10n_co_edi_operation_type"><span t-field="o.l10n_co_edi_operation_type"/></t><t t-else="">Estándar</t>
+                    </div>
                 </div>
-                <div>
-                    <strong>Régimen:</strong>
-                    <t t-if="'O-47' in obligation_codes">Régimen Simple - SIMPLE</t>
-                    <t t-elif="'O-48' in obligation_codes">IVA</t>
-                    <t t-elif="'O-15' in obligation_codes">Gran contribuyente</t>
-                    <t t-else="">IVA</t>
-                    <span class="ms-2">|</span>
-                    <strong class="ms-2">Responsabilidad:</strong>
-                    <t t-if="obligation_descriptions"><span t-esc="', '.join(obligation_descriptions)"/></t><t t-else="">No definida</t>
-                </div>
-            </div>
-            <!-- Adquiriente: Teléfono + Email en línea -->
-            <div class="mb-1" style="font-size: 0.78em;">
-                <strong class="text-muted">Adquiriente:</strong>
-                <t t-if="o.partner_id.phone">
-                    Tel. <span t-field="o.partner_id.phone"/>
-                </t>
-                <t t-if="o.partner_id.phone and o.partner_id.email"> | </t>
-                <t t-if="o.partner_id.email">
-                    <span t-field="o.partner_id.email"/>
-                </t>
             </div>
         </xpath>
 
