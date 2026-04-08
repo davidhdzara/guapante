@@ -194,7 +194,6 @@ class SaleOrderLine(models.Model):
                     line.product_uom_qty = qty
                     line.product_packaging_id = False
 
-        return res
 
     # DEPRECATED: Kept temporarily to prevent crashes with stale views
     display_qty = fields.Char(compute='_compute_legacy_display')

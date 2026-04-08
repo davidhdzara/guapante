@@ -112,4 +112,3 @@ class PurchaseOrderLine(models.Model):
                     line.product_qty = qty
                     line.product_packaging_id = False
 
-        return res
