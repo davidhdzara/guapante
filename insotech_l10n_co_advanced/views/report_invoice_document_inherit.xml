@@ -2,17 +2,17 @@
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
 
-        <!-- A. ESTILOS GLOBALES - PERFECCIONAMIENTO V6.1 -->
+        <!-- A. ESTILOS GLOBALES - PERFECCIÓN V7 (ESTABLE) -->
         <xpath expr="//div[hasclass('page')]" position="before">
             <style type="text/css">
                 .page {
                     font-size: 8pt !important;
                     color: #000 !important;
                     font-family: Arial, sans-serif !important;
-                    margin-top: -40px !important; /* Subimos aún más para ganar espacio */
+                    margin-top: -30px !important;
                 }
                 
-                /* Tabla de Productos - Estilo Imagen 2 con bordes claros */
+                /* Tabla de Productos - Estilo Imagen 2 con bordes marcados */
                 .o_main_table {
                     border: 1.2pt solid #000 !important;
                     border-collapse: collapse !important;
@@ -25,26 +25,26 @@
                     padding: 4px !important;
                 }
                 .o_main_table tbody td {
-                    border: 0.8pt solid #000 !important; /* Líneas divisorias marcadas */
+                    border: 0.8pt solid #000 !important; /* Líneas divisorias claras */
                     padding: 3px 4px !important;
                     vertical-align: middle !important;
                 }
 
                 /* Logo y Encabezado */
                 .guapante-logo-box {
-                    width: 125px;
-                    height: 100px;
+                    width: 120px;
+                    height: 90px;
                     display: flex;
                     align-items: center;
                     justify-content: flex-start;
                 }
                 .guapante-logo {
-                    max-height: 98px;
-                    max-width: 120px;
+                    max-height: 85px;
+                    max-width: 115px;
                     object-fit: contain;
                 }
 
-                /* Totales con Fila Verde Vibrante */
+                /* Totales con Fila Verde (Estilo Imagen 2) */
                 .totals-table {
                     border: 1.2pt solid #000 !important;
                     width: 100%;
@@ -61,28 +61,23 @@
                     font-size: 9pt;
                 }
                 
-                /* Info Text Utilities */
                 .info-text {
                     font-size: 7.5pt;
                     line-height: 1.1;
                 }
-                .section-header-label {
-                    font-weight: bold;
-                    text-transform: uppercase;
-                    font-size: 6.5pt;
-                    border-bottom: 1.2pt solid #000;
-                    display: block;
-                    margin-bottom: 2px;
-                }
             </style>
         </xpath>
 
-        <!-- B. ELIMINACIÓN DE ELEMENTOS NATIVOS Y TÍTULO VERDE -->
+        <!-- B. ELIMINACIÓN SEGURA DE ELEMENTOS NATIVOS -->
         <xpath expr="//t[@t-set='address']" position="replace"><div/></xpath>
         <xpath expr="//t[@t-set='information_block']" position="replace"><div/></xpath>
-        <xpath expr="//h2" position="replace"><div/></xpath> <!-- Borra el título grande -->
         
-        <!-- C. CABECERA REFINADA V6.1 -->
+        <!-- Ocultamos el título nativo (H2/H3/Div) del inicio de la página de forma segura -->
+        <xpath expr="//div[hasclass('page')]/*[1][self::h2 or self::h3 or self::div]" position="attributes">
+            <attribute name="style">display: none !important;</attribute>
+        </xpath>
+        
+        <!-- C. CABECERA REFINADA V7 -->
         <xpath expr="//div[@id='informations']" position="replace">
             <div class="row g-0 mb-2">
                 <div class="col-7">
@@ -90,10 +85,11 @@
                         <div class="col-5">
                             <div class="guapante-logo-box">
                                 <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" class="guapante-logo" alt="Logo"/>
+                                <img t-if="not o.company_id.logo and res_company.logo" t-att-src="image_data_uri(res_company.logo)" class="guapante-logo" alt="Logo Fallback"/>
                             </div>
                         </div>
                         <div class="col-7 ps-2 info-text">
-                            <strong style="font-size: 10.5pt;" t-field="o.company_id.name"/><br/>
+                            <strong style="font-size: 10pt;" t-field="o.company_id.name"/><br/>
                             <strong>NIT:</strong> <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
                             <span t-field="o.company_id.street"/><br/>
                             <span t-field="o.company_id.city"/>, <span t-field="o.company_id.state_id.name"/><br/>
@@ -105,7 +101,7 @@
                 <div class="col-5">
                     <div class="invoice-header-box" style="border: 1.2pt solid #000; padding: 4px; text-align: center; background-color: #eee;">
                         <span style="font-size: 8.5pt; font-weight: bold; display: block; text-transform: uppercase;">Factura Electrónica de Venta</span>
-                        <span style="font-size: 14pt; font-weight: bold;" t-field="o.name"/>
+                        <span style="font-size: 13pt; font-weight: bold;" t-field="o.name"/>
                     </div>
                     <table class="w-100 mt-1 info-text" style="border: 1pt solid #000; border-collapse: collapse;">
                         <tr style="border-bottom: 1pt solid #000;">
@@ -124,21 +120,20 @@
                 </div>
             </div>
 
-            <!-- BLOQUES DE ADQUIRIENTE -->
-            <div style="border: 1.2pt solid #000; padding: 4px 6px; margin-top: 5px; margin-bottom: 5px; background-color: #fff;">
+            <div style="border: 1.2pt solid #000; padding: 3px 6px; margin-top: 5px; margin-bottom: 5px; background-color: #fff; width: 100%;">
                 <div class="row g-0 info-text">
                     <div class="col-6 border-end pe-2">
-                        <span class="section-header-label">Información Adquiriente (Facturación)</span>
+                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000; margin-bottom: 2px;">Información Adquiriente</strong>
                         <strong>CLIENTE:</strong> <span t-field="o.partner_id.name"/><br/>
                         <strong>NIT/CC:</strong> <span t-field="o.partner_id.vat"/><br/>
                         <strong>DIRECCIÓN:</strong> <span t-field="o.partner_id.street"/><br/>
                         <strong>CIUDAD:</strong> <span t-field="o.partner_id.city"/> (<span t-field="o.partner_id.state_id.name"/>)
                     </div>
                     <div class="col-6 ps-2">
-                        <span class="section-header-label">Dirección de Envío (Despacho)</span>
+                        <strong style="text-transform: uppercase; font-size: 6.5pt; display: block; border-bottom: 1pt solid #000; margin-bottom: 2px;">Dirección de Envío</strong>
                         <strong>RECEPTOR:</strong> <span t-field="o.partner_shipping_id.name"/><br/>
                         <strong>DIRECCIÓN:</strong> <span t-field="o.partner_shipping_id.street"/><br/>
-                        <strong>TELÉFONO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
+                        <strong>CONTACTO:</strong> <span t-esc="o.partner_shipping_id.phone or o.partner_id.phone"/>
                     </div>
                 </div>
             </div>
@@ -157,22 +152,21 @@
             </td>
         </xpath>
 
-        <!-- E. TOTALES INTEGRADOS V6.1 -->
+        <!-- E. TOTALES V7 CON FILA VERDE -->
         <xpath expr="//div[@id='total']" position="replace">
             <div class="row g-0 mt-3" style="page-break-inside: avoid;">
                 <div class="col-7 pe-3">
                     <div class="row g-0">
                         <div class="col-3 text-center" t-if="o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref">
                              <t t-set="qr_string" t-value="o.l10n_co_edi_qr_code if 'l10n_co_edi_qr_code' in o and o.l10n_co_edi_qr_code else 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (o.l10n_co_edi_cufe_cude_ref or '')"/>
-                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=80&amp;height=80" style="max-height: 75px; max-width: 75px;" alt="QR DIAN"/>
+                             <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_string }}&amp;width=80&amp;height=80" style="max-height: 70px; max-width: 70px;" alt="QR DIAN"/>
                         </div>
                         <div t-attf-class="{{ (o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref) and 'col-9 ps-2' or 'col-12' }}">
                             <div class="mt-1" style="font-size: 8pt; font-weight: bold;">
-                                <span t-esc="o.amount_to_words or ''"/>
+                                <span t-esc="o.amount_to_words or '' text-transform: uppercase;"/>
                             </div>
                             <t t-if="o.insotech_dian_status == 'accepted' or o.l10n_co_edi_cufe_cude_ref">
                                 <div style="font-size: 6.5pt; line-height: 1.1; margin-top: 4px;">
-                                    <strong>INFORMACIÓN DIAN:</strong> Res. <span t-esc="o.journal_id.l10n_co_edi_dian_authorization_number"/><br/>
                                     <strong>CUFE:</strong> <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
                                 </div>
                             </t>
@@ -203,13 +197,9 @@
             </div>
         </xpath>
 
-        <!-- F. LIMPIEZA DE COMUNICACIÓN -->
-        <xpath expr="//p[@name='payment_communication']" position="replace">
-            <div class="mt-2 text-center" style="font-size: 7.5pt; border-top: 1pt solid #000; padding-top: 5px;">
-                <strong>REFERENCIA DE PAGO:</strong> <span t-field="o.payment_reference"/> | 
-                <strong>BANCO:</strong> <span t-field="o.partner_bank_id.bank_id.name"/> | 
-                <strong>CUENTA:</strong> <span t-field="o.partner_bank_id.acc_number"/>
-            </div>
+        <!-- F. AJUSTE DE LAYOUT PARA SUBIR TODO -->
+        <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
+            <attribute name="t-call">web.basic_layout</attribute>
         </xpath>
 
     </template>
