@@ -93,7 +93,7 @@
                             <strong t-field="o.company_id.name"/><br/>
                             NIT: <span t-esc="o.company_id.vat"/><t t-if="o.company_id.partner_id and 'l10n_co_verification_digit' in o.company_id.partner_id._fields and o.company_id.partner_id.l10n_co_verification_digit">-<span t-esc="o.company_id.partner_id.l10n_co_verification_digit"/></t><br/>
                             <span t-field="o.company_id.street"/>, <span t-field="o.company_id.city"/><br/>
-                            Tel: <span t-field="o.company_id.phone or o.company_id.mobile"/><br/>
+                            Tel: <span t-esc="o.company_id.phone or o.company_id.mobile"/><br/>
                             <span t-field="o.company_id.email"/>
                         </div>
                     </div>
@@ -128,7 +128,7 @@
                     </div>
                     <div class="col-5 text-end">
                         Ciudad: <span t-field="o.partner_id.city"/><br/>
-                        Tel: <span t-field="o.partner_id.phone or o.partner_id.mobile"/><br/>
+                        Tel: <span t-esc="o.partner_id.phone or o.partner_id.mobile"/><br/>
                         Email: <span t-field="o.partner_id.email"/>
                     </div>
                 </div>
