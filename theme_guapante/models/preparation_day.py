@@ -708,6 +708,7 @@ class PreparationDay(models.Model):
             Move.write({
                 'picked': True,
                 'quantity': Line.actual_kg,
+                'is_weight_confirmed': True,
             })
             
             # Sincronización de estado para asegurar persistencia

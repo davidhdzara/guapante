@@ -120,22 +120,58 @@ class StockMove(models.Model):
                     }
 
 
-    def _action_assign(self):
-        """Prevenir que Odoo 18 auto-llene la cantidad hecha al reservar stock.
-        Para Guapante, el operario debe pesar manualmente.
+    def write(self, vals):
+        """Blindaje del Movimiento Principal: Impedir que Odoo 18
+        vacíe las cantidades ya pesadas manualmente.
         """
+        # PROTECCIÓN DE ATRIBUTOS CLAVE
+        # Si el sistema intenta resetear a 0.0 o quitar el flag 'picked'
+        # sin que sea una intención manual del asistente de Guapante.
+        if not self.env.context.get('guapante_wizard_intent'):
+            if 'quantity' in vals and vals['quantity'] == 0.0:
+                # Filtrar movimientos que ya tienen peso confirmado
+                # para que Odoo no pueda bajarlos a cero.
+                for move in self:
+                    if move.is_weight_confirmed and move.quantity > 0:
+                        vals.pop('quantity')
+                        break
+            
+            if 'picked' in vals and vals['picked'] is False:
+                for move in self:
+                    if move.is_weight_confirmed and move.picked:
+                        vals.pop('picked')
+                        break
+
+        return super(StockMove, self).write(vals)
+
+    def _action_assign(self):
+        """Interceptar la lógica de reserva de Odoo 18.
+        Si un movimiento tiene peso confirmado, forzamos que se mantenga 
+        como 'Asignado' ignorando la falta de stock físico.
+        """
+        # Ejecutar reserva nativa primero
         res = super(StockMove, self)._action_assign()
         
-        # Después de la reserva nativa, si es Recolectar, debemos asegurar el 0.0
-        # SOLO SI no hemos recibido un peso real desde la preparación o manual.
+        # Blindaje Post-Reserva: Odoo 18 puede haber 'limpiado' movimientos 
+        # que no tienen stock real. Si estaban confirmados por Guapante,
+        # los volvemos a poner en Disponible (assigned).
         for move in self:
-            if (
+            if move.is_weight_confirmed and move.quantity > 0:
+                # Si el sistema lo movió a 'confirmed' o 'waiting' por falta de stock,
+                # lo regresamos a 'assigned' con el contexto de protección.
+                if move.state in ('waiting', 'confirmed'):
+                    move.sudo().with_context(guapante_wizard_intent=True).write({
+                        'state': 'assigned',
+                        'picked': True
+                    })
+
+            # Lógica pre-existente para Recolectar (asegurar inicio en 0)
+            elif (
                 move.picking_type_id.name
                 and 'recolectar' in move.picking_type_id.name.lower()
-                and not move.is_weight_confirmed  # No ha sido confirmado por bodega
+                and not move.is_weight_confirmed
                 and not self.env.context.get('skip_recolectar_zero_check')
             ):
-                # Si Odoo auto-llenó la cantidad al reservar, la volvemos a poner en 0
                 move.sudo().move_line_ids.write({'quantity': 0.0})
                 move.sudo().write({'picked': False})
         return res
