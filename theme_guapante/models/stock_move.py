@@ -186,14 +186,12 @@ class StockMoveLine(models.Model):
                 lambda ml: (
                     ml.picking_type_id.name
                     and 'recolectar' in ml.picking_type_id.name.lower()
+                    and not ml.move_id.picked  # Odoo 18: Si ya está picked, no tocamos
                 )
             )
             if recolectar_lines:
-                # Si matchea Recolectar, forzamos a quedar en 0.
-                # Nota: Si el usuario está mezclando líneas de distintos tipos,
-                # solo las de Recolectar se verán afectadas (vía un super() separado
-                # o manejando vals con cuidado). Por simplicidad aquí, si hay alguna
-                # de recolectar, forzamos el valor en vals para el lote actual.
+                # Si matchea Recolectar y no ha sido 'recogido' manualmente,
+                # forzamos a quedar en 0.
                 vals['quantity'] = 0.0
                 if 'picked' in self._fields:
                     vals['picked'] = False

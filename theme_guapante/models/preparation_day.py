@@ -698,34 +698,24 @@ class PreparationDay(models.Model):
             Move = Line.stock_move_id.sudo().with_context(
                 skip_inverse_visual_qty=True,
                 skip_recolectar_zero_check=True,
+                manual_entry=True, # Contexto para Odoo 18
             )
-            MoveLines = Move.move_line_ids.with_context(Move._context)
-            if MoveLines:
-                MoveLines.write({'quantity': 0})
-                MoveLines[0].quantity = Line.actual_kg
-                if 'picked' in MoveLines._fields:
-                    MoveLines[0].picked = True
-            else:
-                # Caso Stock 0: Crear la línea MANUALMENTE DE FORMA DIRECTA
-                # Esto es más agresivo que el Move.write(...)
-                self.env['stock.move.line'].sudo().with_context(Move._context).create({
-                    'move_id': Move.id,
-                    'product_id': Move.product_id.id,
-                    'product_uom_id': Move.product_uom.id,
-                    'quantity': Line.actual_kg,
-                    'location_id': Move.location_id.id,
-                    'location_dest_id': Move.location_dest_id.id,
-                    'picking_id': Move.picking_id.id,
-                    'picked': True if 'picked' in self.env['stock.move.line']._fields else False,
-                })
             
-            # Forzar estado del movimiento para que Odoo 18 no lo ignore por falta de stock
-            Move.write({'picked': True})
+            # Odoo 18 Nativo: Al marcar 'picked' en el movimiento, habilitamos
+            # la edición directa de cantidad. Odoo se encargará de crear
+            # o actualizar la stock.move.line de forma estable.
+            Move.write({
+                'picked': True,
+                'quantity': Line.actual_kg,
+            })
+            
+            # Sincronización de estado para asegurar persistencia
             if Move.state == 'confirmed':
                 Move.write({'state': 'assigned'})
-            # Odoo 18 nativo: Si no activamos este flag, el core asume que el pesaje es inválido
-            # y borra el quantity (lo vuelve 0) de forma silenciosa para proteger la bodega.
-            Move.picked = True
+            
+            # Asegurar que todas las líneas tengan el flag 'picked' (Odoo 18)
+            if Move.move_line_ids:
+                Move.move_line_ids.write({'picked': True})
             
             # Guapante: Marcar también el flag personalizado para evitar el bloqueo del picking
             # Move.is_weight_confirmed = True
