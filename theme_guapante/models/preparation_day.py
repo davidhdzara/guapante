@@ -721,6 +721,19 @@ class PreparationDay(models.Model):
             # para que la cantidad llegue hasta la factura final.
             self._propagate_weight_to_chain(Move, Line.actual_kg)
 
+        # Marcar como hecho usando skip_auto_save para evitar que
+        # el override de write() vuelva a llamar este método.
+        Line.with_context(skip_auto_save=True).write({'is_done': True})
+
+        # Actualizar total_done_kg en el resumen del producto
+        Summary = self.summary_ids.filtered(
+            lambda s: s.product_id == Line.product_product_id
+        )
+        if Summary:
+            Summary.total_done_kg = round(
+                Summary.total_done_kg + Line.actual_kg, 3,
+            )
+
     def _propagate_weight_to_chain(self, move, weight):
         """Recursivamente inyecta el peso en los movimientos destino."""
         for dest in move.move_dest_ids:
@@ -737,19 +750,6 @@ class PreparationDay(models.Model):
                     dest.write({'state': 'assigned'})
                 # Seguir la cadena (recursivo)
                 self._propagate_weight_to_chain(dest, weight)
-
-        # Marcar como hecho usando skip_auto_save para evitar que
-        # el override de write() vuelva a llamar este método.
-        Line.with_context(skip_auto_save=True).write({'is_done': True})
-
-        # Actualizar total_done_kg en el resumen del producto
-        Summary = self.summary_ids.filtered(
-            lambda s: s.product_id == Line.product_product_id
-        )
-        if Summary:
-            Summary.total_done_kg = round(
-                Summary.total_done_kg + Line.actual_kg, 3,
-            )
 
         # Log de rendimiento por operario
         LastLog = self.env['guapante.picking.log'].search([
