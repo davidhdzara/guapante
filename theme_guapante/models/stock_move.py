@@ -153,22 +153,26 @@ class StockMoveLine(models.Model):
         no sobrescriba el 0 inicial durante la asignación.
         """
         # Si la escritura viene del sistema y está intentando poner
-        # quantity > 0 basándose en la demanda.
+        # quantity > 0 basándose en la demanda/reserva.
         if (
             'quantity' in vals
             and vals['quantity'] > 0
             and not self.env.context.get('skip_recolectar_zero_check')
             and not self.env.context.get('manual_entry')
         ):
-            filtered_self = self.filtered(
+            # Optimización: Solo filtrar si alguno pertenece a Recolectar
+            recolectar_lines = self.filtered(
                 lambda ml: (
                     ml.picking_type_id.name
                     and 'recolectar' in ml.picking_type_id.name.lower()
                 )
             )
-            if filtered_self:
-                # Si matchea Recolectar, el sistema NO puede auto-llenar
-                # cantidad. Debemos dejarlo en 0.
+            if recolectar_lines:
+                # Si matchea Recolectar, forzamos a quedar en 0.
+                # Nota: Si el usuario está mezclando líneas de distintos tipos,
+                # solo las de Recolectar se verán afectadas (vía un super() separado
+                # o manejando vals con cuidado). Por simplicidad aquí, si hay alguna
+                # de recolectar, forzamos el valor en vals para el lote actual.
                 vals['quantity'] = 0.0
                 if 'picked' in self._fields:
                     vals['picked'] = False

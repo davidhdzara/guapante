@@ -702,7 +702,10 @@ class PreparationDay(models.Model):
             if Move.move_line_ids:
                 Move.move_line_ids.write({'quantity': 0})
                 Move.move_line_ids[0].quantity = Line.actual_kg
+                if 'picked' in Move.move_line_ids._fields:
+                    Move.move_line_ids[0].picked = True
             else:
+                # Caso Stock 0: Crear la línea manualmente
                 Move.write({
                     'move_line_ids': [(0, 0, {
                         'product_id': Move.product_id.id,
@@ -711,6 +714,7 @@ class PreparationDay(models.Model):
                         'location_id': Move.location_id.id,
                         'location_dest_id': Move.location_dest_id.id,
                         'picking_id': Move.picking_id.id,
+                        'picked': True if 'picked' in self.env['stock.move.line']._fields else False,
                     })],
                 })
             # Odoo 18 nativo: Si no activamos este flag, el core asume que el pesaje es inválido

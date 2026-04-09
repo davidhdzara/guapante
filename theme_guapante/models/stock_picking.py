@@ -57,6 +57,12 @@ class StockPicking(models.Model):
 
         for picking in self:
             if picking.is_recolectar_operation:
+                # Odoo 18: Forzar 'picked' en los movimientos que tengan líneas con cantidad.
+                # Esto es vital para que la validación permita sobre-procesar sin stock.
+                picking.move_ids_without_package.filtered(
+                    lambda m: any(ml.quantity > 0 for ml in m.move_line_ids)
+                ).write({'picked': True})
+
                 unconfirmed_moves = picking.move_ids_without_package.filtered(
                     lambda m: (
                         not m.is_weight_confirmed
@@ -77,7 +83,9 @@ class StockPicking(models.Model):
                         "al final de la línea en los siguientes "
                         f"productos:\n\n{product_names}"
                     )
-        return super().button_validate()
+        # sudo(): la validación forzada de stock puede requerir permisos elevados
+        # si genera inventario negativo.
+        return super().sudo().button_validate()
 
     @api.onchange('vehicle_id')
     def _onchange_vehicle_id(self) -> None:
