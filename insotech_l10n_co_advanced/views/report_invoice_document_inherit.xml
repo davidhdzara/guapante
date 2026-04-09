@@ -2,21 +2,20 @@
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
         
-        <!-- A. CONTROL TOTAL DEL LAYOUT Y VARIABLES DE RESPALDO (V13 - COMPATIBILITY PATCH) -->
+        <!-- A. CONTROL TOTAL DEL LAYOUT Y VARIABLES DE RESPALDO (V14 - ULTRA-SAFE) -->
         <xpath expr="//t[@t-call='web.external_layout']" position="replace">
             <t t-call="web.external_layout">
-                <!-- NODOS TÉCNICOS PARA COMPATIBILIDAD V13 -->
+                <!-- NODOS TÉCNICOS PARA COMPATIBILIDAD V14 -->
                 <t t-set="address" t-value="None"/>
                 <t t-set="information_block" t-value="None"/>
-                <!-- Esta línea soluciona el ValueError en producción -->
                 <t t-set="layout_document_title" t-value="o.name"/>
 
-                <!-- LÓGICA INTELIGENTE V12: BUSCAR CUFE Y QR EN CUALQUIER ORIGEN -->
-                <t t-set="cufe_final" t-value="o.l10n_co_edi_cufe_cude_ref or (o.l10n_co_dian_document_ids.sorted('id', reverse=True)[:1].identifier if 'l10n_co_dian_document_ids' in o._fields and o.l10n_co_dian_document_ids else False)"/>
-                <t t-set="qr_final" t-value="o.l10n_co_edi_qr_code or (('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufe_final) if cufe_final else False)"/>
+                <!-- LÓGICA ULTRA-SEGURA V14: USAR GETATTR PARA EVITAR ATTRIBUTEERROR -->
+                <t t-set="cufe_final" t-value="getattr(o, 'l10n_co_edi_cufe_cude_ref', False) or (o.l10n_co_dian_document_ids.sorted('id', reverse=True)[:1].identifier if 'l10n_co_dian_document_ids' in o._fields and o.l10n_co_dian_document_ids else False)"/>
+                <t t-set="qr_final" t-value="getattr(o, 'l10n_co_edi_qr_code', False) or (('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufe_final) if cufe_final else False)"/>
 
                 <div class="page">
-                    <!-- 1. ESTILOS FINALES V13 -->
+                    <!-- 1. ESTILOS FINALES V14 -->
                     <style type="text/css">
                         .page {
                             font-size: 8.5pt !important;
@@ -104,7 +103,7 @@
                         }
                     </style>
 
-                    <!-- 2. CABECERA GUAPANTE V13 -->
+                    <!-- 2. CABECERA GUAPANTE V14 -->
                     <div class="row g-0 mb-3">
                         <div class="col-8 text-start">
                             <div class="row g-0">
@@ -162,7 +161,7 @@
                         </div>
                     </div>
 
-                    <!-- 4. TABLA DE PRODUCTOS V13 -->
+                    <!-- 4. TABLA DE PRODUCTOS -->
                     <table class="o_main_table table table-sm mt-3" name="invoice_line_table">
                         <thead>
                             <tr>
@@ -194,7 +193,7 @@
                         </tbody>
                     </table>
 
-                    <!-- 5. ZONA TÉCNICA V13 -->
+                    <!-- 5. ZONA TÉCNICA V14 (ULTRA-SAFE) -->
                     <div class="row g-0 mt-4" style="page-break-inside: avoid;">
                         <div class="col-7 pe-4">
                             <div class="row g-0">
