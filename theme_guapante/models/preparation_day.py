@@ -793,6 +793,7 @@ class PreparationDay(models.Model):
                 ).write({
                     'picked': True,
                     'quantity': weight,
+                    'is_weight_confirmed': True, # PROTEGER EL PESO EN TODA LA CADENA
                 })
                 # Forzar estado para evitar que Odoo lo limpie
                 if dest.state == 'confirmed':
