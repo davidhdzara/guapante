@@ -795,10 +795,12 @@ class PreparationDay(models.Model):
                     'quantity': weight,
                     'is_weight_confirmed': True, # PROTEGER EL PESO EN TODA LA CADENA
                 })
-                # Forzar estado para evitar que Odoo lo limpie
-                if dest.state == 'confirmed':
-                    dest.write({'state': 'assigned'})
-                # Seguir la cadena (recursivo)
+                # SEGUIR LA CADENA (Recursivo)
+                # Odoo 18: Forzar estado 'assigned' para que acepte el peso manual
+                # y no lo borre por estar "esperando otra operación".
+                if dest.state in ('waiting', 'confirmed'):
+                    dest.sudo().write({'state': 'assigned'})
+                
                 self._propagate_weight_to_chain(dest, weight)
 
     def action_mark_done(self) -> bool:
