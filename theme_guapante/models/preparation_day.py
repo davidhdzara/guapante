@@ -699,6 +699,7 @@ class PreparationDay(models.Model):
                 skip_inverse_visual_qty=True,
                 skip_recolectar_zero_check=True,
                 manual_entry=True, # Contexto para Odoo 18
+                guapante_wizard_intent=True, # Permitir correcciones humanas
             )
             
             # Odoo 18 Nativo: Al marcar 'picked' en el movimiento, habilitamos
@@ -787,7 +788,8 @@ class PreparationDay(models.Model):
             if dest.state not in ('done', 'cancel'):
                 dest.sudo().with_context(
                     skip_recolectar_zero_check=True,
-                    manual_entry=True
+                    manual_entry=True,
+                    guapante_wizard_intent=True # Autorizar el peso en toda la cadena
                 ).write({
                     'picked': True,
                     'quantity': weight,

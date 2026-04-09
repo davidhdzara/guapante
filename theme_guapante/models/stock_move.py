@@ -201,14 +201,31 @@ class StockMoveLine(models.Model):
         if (
             'quantity' in vals
             and vals['quantity'] == 0.0
-            and (self.env.context.get('manual_entry') or self.env.context.get('skip_recolectar_zero_check'))
+            and not self.env.context.get('guapante_wizard_intent')
         ):
             # Si el movimiento ya está 'picked' (pesado físicamente),
             # no permitimos que Odoo lo baje a 0.0 por falta de stock en validación.
             for record in self:
-                if record.move_id.picked and record.quantity > 0:
-                    # Omitimos el cambio a 0.0 para este registro
+                if (record.move_id.picked or record.is_weight_confirmed) and record.quantity > 0:
+                    # Omitimos el cambio a 0.0 para este registro si es automático del sistema
                     vals.pop('quantity')
                     break
 
         return super().write(vals)
+
+    def unlink(self):
+        """Impedir que Odoo borre líneas que ya tienen pesaje confirmado."""
+        if not self.env.context.get('guapante_wizard_intent'):
+            for record in self:
+                if record.is_weight_confirmed or record.quantity > 0:
+                    # Si Odoo intenta borrar una línea con peso, lanzamos error o simplemente la ignoramos.
+                    # Por seguridad en Odoo 18, es mejor elevar una advertencia si es una acción 
+                    # bloqueante, pero aquí simplemente filtraremos lo que no se debe borrar 
+                    # si es posible, o bloqueamos la transacción si es crítico.
+                    from odoo.exceptions import UserError
+                    raise UserError(
+                        f"No se puede eliminar el pesaje de {record.product_id.display_name}. "
+                        "El sistema intentó borrar esta línea por falta de stock, pero el peso "
+                        "ya ha sido confirmado físicamente. Por favor, valide la orden tal cual."
+                    )
+        return super().unlink()
