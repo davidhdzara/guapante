@@ -716,9 +716,27 @@ class PreparationDay(models.Model):
             # Asegurar que todas las líneas tengan el flag 'picked' (Odoo 18)
             if Move.move_line_ids:
                 Move.move_line_ids.write({'picked': True})
-            
-            # Guapante: Marcar también el flag personalizado para evitar el bloqueo del picking
-            # Move.is_weight_confirmed = True
+
+            # PROPAGACIÓN EN CADENA: Inyectar peso en los movimientos siguientes (Empaque, Salida)
+            # para que la cantidad llegue hasta la factura final.
+            self._propagate_weight_to_chain(Move, Line.actual_kg)
+
+    def _propagate_weight_to_chain(self, move, weight):
+        """Recursivamente inyecta el peso en los movimientos destino."""
+        for dest in move.move_dest_ids:
+            if dest.state not in ('done', 'cancel'):
+                dest.sudo().with_context(
+                    skip_recolectar_zero_check=True,
+                    manual_entry=True
+                ).write({
+                    'picked': True,
+                    'quantity': weight,
+                })
+                # Forzar estado para evitar que Odoo lo limpie
+                if dest.state == 'confirmed':
+                    dest.write({'state': 'assigned'})
+                # Seguir la cadena (recursivo)
+                self._propagate_weight_to_chain(dest, weight)
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.

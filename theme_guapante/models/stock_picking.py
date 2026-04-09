@@ -56,15 +56,15 @@ class StockPicking(models.Model):
             return super().button_validate()
 
         for picking in self:
-            if picking.is_recolectar_operation:
-                # Odoo 18: Forzar 'picked' en los movimientos que tengan líneas con cantidad.
-                # Esto es vital para que la validación permita sobre-procesar sin stock.
-                # También forzamos el estado a 'assigned' si fuera necesario para que 
-                # button_validate no bloquee preventivamente.
-                picking.move_ids_without_package.filtered(
-                    lambda m: any(ml.quantity > 0 for ml in m.move_line_ids)
-                ).write({'picked': True})
+            # Odoo 18: Forzar 'picked' en los movimientos que tengan líneas con cantidad.
+            # Esto es vital para que la validación permita sobre-procesar sin stock
+            # en cualquier parte de la cadena (Recolectar, Empaque o Salida).
+            picking.move_ids_without_package.filtered(
+                lambda m: any(ml.quantity > 0 for ml in m.move_line_ids) or m.quantity > 0
+            ).write({'picked': True})
 
+            # Solo validar pesaje confirmado en operaciones de RECOLECTAR
+            if picking.is_recolectar_operation:
                 unconfirmed_moves = picking.move_ids_without_package.filtered(
                     lambda m: (
                         not m.is_weight_confirmed
@@ -86,8 +86,6 @@ class StockPicking(models.Model):
                         f"productos:\n\n{product_names}"
                     )
         # Proceder con la validación nativa. 
-        # Si se requiere sudo para inventario negativo, el admin debe 
-        # tener los permisos o se debe usar un patrón de contexto no recursivo.
         return super().button_validate()
 
     @api.onchange('vehicle_id')
