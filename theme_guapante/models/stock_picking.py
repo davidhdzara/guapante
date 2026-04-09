@@ -85,9 +85,10 @@ class StockPicking(models.Model):
                         "al final de la línea en los siguientes "
                         f"productos:\n\n{product_names}"
                     )
-        # sudo(): la validación forzada de stock puede requerir permisos elevados
-        # si genera inventario negativo.
-        return super().sudo().button_validate()
+        # Proceder con la validación nativa. 
+        # Si se requiere sudo para inventario negativo, el admin debe 
+        # tener los permisos o se debe usar un patrón de contexto no recursivo.
+        return super().button_validate()
 
     @api.onchange('vehicle_id')
     def _onchange_vehicle_id(self) -> None:
