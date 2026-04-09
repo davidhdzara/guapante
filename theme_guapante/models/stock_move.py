@@ -214,15 +214,14 @@ class StockMoveLine(models.Model):
         return super().write(vals)
 
     def unlink(self):
-        """Impedir que Odoo borre líneas que ya tienen pesaje confirmado."""
+        """Filtrar silenciosamente líneas con peso para que Odoo no las borre."""
         if not self.env.context.get('guapante_wizard_intent'):
-            for record in self:
-                if record.move_id.is_weight_confirmed or record.quantity > 0:
-                    # Si Odoo intenta borrar una línea con peso, lanzamos error o simplemente la ignoramos.
-                    from odoo.exceptions import UserError
-                    raise UserError(
-                        f"No se puede eliminar el pesaje de {record.product_id.display_name}. "
-                        "El sistema intentó borrar esta línea por falta de stock, pero el peso "
-                        "ya ha sido confirmado físicamente. Por favor, valide la orden tal cual."
-                    )
+            # El escudo de 'Berenjena': solo permitimos el borrado de líneas 
+            # que NO tengan peso o que no hayan sido confirmadas por Guapante.
+            # Esto evita que Odoo las limpie por falta de stock.
+            records_to_unlink = self.filtered(
+                lambda r: not r.move_id.is_weight_confirmed and r.quantity == 0
+            )
+            return super(StockMoveLine, records_to_unlink).unlink()
+        
         return super().unlink()
