@@ -2,14 +2,18 @@
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
         
-        <!-- A. CONTROL TOTAL DEL LAYOUT (ELIMINA EL BLOQUE SUPERIOR GIGANTE) -->
+        <!-- A. CONTROL TOTAL DEL LAYOUT Y VARIABLES DE RESPALDO (V12) -->
         <xpath expr="//t[@t-call='web.external_layout']" position="replace">
             <t t-call="web.external_layout">
                 <t t-set="address" t-value="None"/>
                 <t t-set="information_block" t-value="None"/>
 
+                <!-- LÓGICA INTELIGENTE V12: BUSCAR CUFE Y QR EN CUALQUIER ORIGEN -->
+                <t t-set="cufe_final" t-value="o.l10n_co_edi_cufe_cude_ref or (o.l10n_co_dian_document_ids.sorted('id', reverse=True)[:1].identifier if 'l10n_co_dian_document_ids' in o._fields and o.l10n_co_dian_document_ids else False)"/>
+                <t t-set="qr_final" t-value="o.l10n_co_edi_qr_code or (('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufe_final) if cufe_final else False)"/>
+
                 <div class="page">
-                    <!-- 2. ESTILOS FINALES V11 - PERFECCIÓN VISUAL -->
+                    <!-- 1. ESTILOS FINALES V12 - COMPATIBILIDAD Y BELLEZA -->
                     <style type="text/css">
                         .page {
                             font-size: 8.5pt !important;
@@ -17,10 +21,8 @@
                             font-family: 'Helvetica', sans-serif !important;
                         }
                         
-                        /* Ocultar elementos nativos redundantes */
                         h2, h3, .total_words_box { display: none !important; }
 
-                        /* Tabla de Productos - Estilo Imagen 2 */
                         .o_main_table {
                             border: 1.2pt solid #000 !important;
                             border-collapse: collapse !important;
@@ -35,12 +37,11 @@
                             font-weight: bold;
                         }
                         .o_main_table tbody td {
-                            border: 1pt solid #000 !important;
+                            border: 1.1pt solid #000 !important;
                             padding: 5px !important;
                             vertical-align: middle !important;
                         }
 
-                        /* Logo y Cabecera Informativa */
                         .guapante-logo {
                             max-height: 90px;
                             max-width: 130px;
@@ -53,7 +54,6 @@
                             background-color: #f8f9fa;
                         }
 
-                        /* Cuadros de Información Cliente/Envío */
                         .info-card-guapante {
                             border: 1.2pt solid #000;
                             padding: 6px;
@@ -69,14 +69,13 @@
                             display: block;
                         }
 
-                        /* Tabla de Totales Estilo Imagen 2 */
                         .totals-table-guapante {
                             border: 1.2pt solid #000 !important;
                             width: 100%;
                             border-collapse: collapse;
                         }
                         .totals-table-guapante td {
-                            border: 1pt solid #000 !important;
+                            border: 1.1pt solid #000 !important;
                             padding: 6px !important;
                         }
                         .row-total-green {
@@ -86,7 +85,6 @@
                             font-size: 10.5pt;
                         }
                         
-                        /* Valor en letras - Ubicación V11 */
                         .valor-en-letras-box {
                             font-size: 8pt;
                             font-weight: bold;
@@ -95,21 +93,20 @@
                             text-transform: uppercase;
                         }
 
-                        /* QR y CUFE Technical Info */
                         .qr-box-guapante {
                             width: 95px;
                             height: 95px;
-                            border: 0.5pt solid #ccc;
+                            border: 0.5pt solid #eee;
                             padding: 2px;
                         }
                     </style>
 
-                    <!-- 3. CABECERA GUAPANTE V11 -->
+                    <!-- 2. CABECERA GUAPANTE V12 -->
                     <div class="row g-0 mb-3">
                         <div class="col-8">
                             <div class="row g-0">
                                 <div class="col-4">
-                                    <!-- LOGO ROBUSTO V11 -->
+                                    <!-- LOGO BLINDADO V12 -->
                                     <img t-att-src="'/web/image/res.company/%s/logo' % o.company_id.id" class="guapante-logo" alt="Logo Corporativo"/>
                                 </div>
                                 <div class="col-8 ps-3" style="line-height: 1.3;">
@@ -124,15 +121,15 @@
                         </div>
                         <div class="col-4">
                             <div class="header-box-guapante">
-                                <span style="font-size: 8pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
+                                <span style="font-size: 8.5pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
                                 <span style="font-size: 15pt; font-weight: bold;" t-field="o.name"/>
                             </div>
                             <table class="w-100 mt-2" style="border: 1.2pt solid #000; font-size: 8.5pt; border-collapse: collapse;">
-                                <tr style="border-bottom: 1pt solid #000;">
+                                <tr style="border-bottom: 1.2pt solid #000;">
                                     <td class="p-1 ps-2"><strong>EMISIÓN:</strong></td>
                                     <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date"/></td>
                                 </tr>
-                                <tr style="border-bottom: 1pt solid #000;">
+                                <tr style="border-bottom: 1.2pt solid #000;">
                                     <td class="p-1 ps-2"><strong>VENCE:</strong></td>
                                     <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date_due"/></td>
                                 </tr>
@@ -144,7 +141,7 @@
                         </div>
                     </div>
 
-                    <!-- 4. BLOQUES DE CLIENTE -->
+                    <!-- 3. BLOQUES DE CLIENTE -->
                     <div class="info-card-guapante">
                         <div class="row g-0">
                             <div class="col-6 border-end pe-3">
@@ -163,7 +160,7 @@
                         </div>
                     </div>
 
-                    <!-- 5. TABLA DE PRODUCTOS V11 -->
+                    <!-- 4. TABLA DE PRODUCTOS V12 -->
                     <table class="o_main_table table table-sm mt-3" name="invoice_line_table">
                         <thead>
                             <tr>
@@ -195,24 +192,23 @@
                         </tbody>
                     </table>
 
-                    <!-- 6. ZONA TÉCNICA Y TOTALES V11 -->
+                    <!-- 5. ZONA TÉCNICA Y TOTALES V12 (UNIVERSAL FALLBACK) -->
                     <div class="row g-0 mt-4" style="page-break-inside: avoid;">
-                        <!-- Bloque Izquierdo: QR, CUFE y Legal -->
                         <div class="col-7 pe-4">
                             <div class="row g-0">
-                                <div class="col-4 text-center" t-if="'l10n_co_edi_cufe_cude_ref' in o._fields and o.l10n_co_edi_cufe_cude_ref">
+                                <div class="col-4 text-center" t-if="qr_final">
                                      <div class="qr-box-guapante m-auto">
-                                         <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ o.l10n_co_edi_qr_code or '' }}&amp;width=95&amp;height=95" style="max-height: 90px; max-width: 90px;" alt="QR DIAN"/>
+                                         <img t-attf-src="/report/barcode/?barcode_type=QR&amp;value={{ qr_final }}&amp;width=95&amp;height=95" style="max-height: 90px; max-width: 90px;" alt="QR DIAN"/>
                                      </div>
                                 </div>
-                                <div t-attf-class="{{ ('l10n_co_edi_cufe_cude_ref' in o._fields and o.l10n_co_edi_cufe_cude_ref) and 'col-8 ps-3' or 'col-12' }}">
-                                    <t t-if="'l10n_co_edi_cufe_cude_ref' in o._fields and o.l10n_co_edi_cufe_cude_ref">
-                                        <div style="font-size: 6.8pt; color: #333; line-height: 1.2;">
+                                <div t-attf-class="{{ qr_final and 'col-8 ps-3' or 'col-12' }}">
+                                    <t t-if="cufe_final">
+                                        <div style="font-size: 7.2pt; color: #333; line-height: 1.3;">
                                             <strong>CUFE / CUDE:</strong><br/>
-                                            <span style="word-break: break-all;" t-esc="o.l10n_co_edi_cufe_cude_ref or 'N/A'"/>
+                                            <span style="word-break: break-all;" t-esc="cufe_final"/>
                                         </div>
                                     </t>
-                                    <div style="font-size: 6.5pt; color: #444; margin-top: 8px; font-style: italic; line-height: 1.3; text-align: justify;">
+                                    <div style="font-size: 6.8pt; color: #444; margin-top: 10px; font-style: italic; line-height: 1.4; text-align: justify;">
                                         Representación gráfica de factura electrónica generada por <strong>Software Propio de COMERCIALIZADORA Y PRODUCTORA GUAPANTE S.A.S.</strong><br/>
                                         Esta factura de venta se asimila a una letra de cambio (Art. 774 del Código de Comercio).
                                     </div>
@@ -220,14 +216,12 @@
                             </div>
                         </div>
 
-                        <!-- Bloque Derecho: Tabla de Totales -->
                         <div class="col-5">
                             <table class="totals-table-guapante table-sm">
                                 <tr>
                                     <td class="p-2"><strong>SUBTOTAL</strong></td>
                                     <td class="text-end p-2"><span t-field="o.amount_untaxed"/></td>
                                 </tr>
-                                <!-- Desglose de Impuestos V11 -->
                                 <t t-foreach="o.line_ids.filtered(lambda l: l.display_type == 'tax')" t-as="tax">
                                     <tr>
                                         <td class="p-2"><strong t-esc="tax.name"/></td>
@@ -243,13 +237,6 @@
                                 Valor en letras: <span t-esc="o.amount_to_words or ''"/>
                             </div>
                         </div>
-                    </div>
-                    
-                    <!-- 7. PIE DE PÁGINA COMUNICACIÓN -->
-                    <div class="mt-4 text-center" style="font-size: 8.5pt; border-top: 1.2pt solid #000; padding-top: 10px; color: #333;">
-                        <strong>PAGO:</strong> <span t-field="o.payment_reference"/> | 
-                        <strong>BANCO:</strong> <span t-field="o.partner_bank_id.bank_id.name"/> | 
-                        <strong>CUENTA:</strong> <span t-field="o.partner_bank_id.acc_number"/>
                     </div>
                 </div>
             </t>
