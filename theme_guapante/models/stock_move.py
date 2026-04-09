@@ -98,7 +98,6 @@ class StockMove(models.Model):
                 expected_kg = move.product_uom_qty
                 registered_kg = move.quantity
 
-                # Revisa si es un producto por peso
                 weight_categ = self.env.ref(
                     'uom.product_uom_categ_kgm',
                     raise_if_not_found=False,
@@ -123,87 +122,59 @@ class StockMove(models.Model):
                     }
 
     # ──────────────────────────────────────────────────────────────
-    # ESTRATEGIA "SAVE & RESTORE": Dejar que Odoo haga lo que
-    # quiera y luego restaurar los pesos confirmados.
+    # ESTRATEGIA "CONSULTA AL PICK": Después de que Odoo termina
+    # su procesamiento, leemos el peso del PICK (ya en estado
+    # 'done' en la BD) y lo pegamos tal cual en el OUT.
+    # Sin memoria temporal, sin riesgo de cruce entre usuarios.
     # ──────────────────────────────────────────────────────────────
 
     def _action_done(self, cancel_backorder=False):
-        """Override principal: Salvar pesos de movimientos destino (OUT)
-        ANTES de que Odoo los limpie, y restaurarlos DESPUÉS.
-        
-        Flujo:
-        1. PICK se valida → Odoo llama _action_done en moves del PICK
-        2. Dentro de _action_done, Odoo llama _action_assign en moves del OUT
-        3. _action_assign ve que no hay stock y vacía las cantidades del OUT
-        4. Nosotros restauramos las cantidades después de que Odoo terminó
+        """Después de que Odoo valida el PICK, leemos el peso
+        directamente del PICK (que ya está 'done' en BD) y lo
+        copiamos al OUT.
         """
-        # ── FASE 1: GUARDAR pesos de movimientos destino ──
-        weights_backup = {}
-        for move in self:
-            for dest in move.move_dest_ids:
-                if (
-                    dest.is_weight_confirmed
-                    and dest.state not in ('done', 'cancel')
-                ):
-                    # Leer el peso actual (puede venir del move o de sus lines)
-                    weight = dest.quantity
-                    if weight <= 0 and dest.move_line_ids:
-                        weight = sum(dest.move_line_ids.mapped('quantity'))
-                    
-                    if weight > 0:
-                        weights_backup[dest.id] = {
-                            'weight': weight,
-                            'product_id': dest.product_id.id,
-                            'product_uom_id': dest.product_uom.id,
-                            'location_id': dest.location_id.id,
-                            'location_dest_id': dest.location_dest_id.id,
-                            'picking_id': dest.picking_id.id,
-                        }
-                        _logger.info(
-                            "GUAPANTE SAVE: move %s (%s) → destino %s = %.3f kg",
-                            move.id, move.product_id.display_name,
-                            dest.id, weight,
-                        )
-
-        # ── FASE 2: EJECUTAR Odoo nativo ──
-        # Aquí Odoo valida el PICK, marca como 'done', y dispara
-        # _action_assign en los moves del OUT (que limpia las cantidades).
+        # Dejar que Odoo haga TODO su procesamiento nativo
         res = super()._action_done(cancel_backorder=cancel_backorder)
 
-        # ── FASE 3: RESTAURAR pesos ──
-        if weights_backup:
-            ctx = {
-                'guapante_wizard_intent': True,
-                'skip_recolectar_zero_check': True,
-                'manual_entry': True,
-            }
-            Move = self.env['stock.move'].sudo()
-            MoveLine = self.env['stock.move.line'].sudo()
+        # Ahora los moves del PICK están en 'done' con sus pesos intactos.
+        # Consultar cada uno y pegar el peso en el movimiento destino (OUT).
+        ctx = {
+            'guapante_wizard_intent': True,
+            'skip_recolectar_zero_check': True,
+            'manual_entry': True,
+        }
+        MoveLine = self.env['stock.move.line'].sudo()
 
-            for move_id, data in weights_backup.items():
-                dest = Move.browse(move_id)
-                if not dest.exists() or dest.state == 'done':
+        for pick_move in self:
+            # Solo procesar movimientos con pesaje confirmado
+            if not pick_move.is_weight_confirmed:
+                continue
+
+            # Leer el peso del PICK (fuente de verdad en la BD)
+            weight = pick_move.quantity
+            if weight <= 0:
+                continue
+
+            _logger.info(
+                "GUAPANTE: PICK move %s (%s) done con %.3f kg → propagando a destinos",
+                pick_move.id, pick_move.product_id.display_name, weight,
+            )
+
+            # Pegar el peso en cada movimiento destino (OUT, PACK, etc.)
+            for dest in pick_move.move_dest_ids:
+                if dest.state in ('done', 'cancel'):
                     continue
-
-                weight = data['weight']
-
-                _logger.info(
-                    "GUAPANTE RESTORE: move %s (%s) → %.3f kg (estado actual: %s, qty actual: %.3f)",
-                    dest.id, dest.product_id.display_name,
-                    weight, dest.state, dest.quantity,
-                )
 
                 # 1. Forzar estado a 'assigned' (disponible)
                 if dest.state in ('waiting', 'confirmed', 'partially_available'):
-                    dest.with_context(**ctx).write({'state': 'assigned'})
+                    dest.sudo().with_context(**ctx).write({'state': 'assigned'})
 
-                # 2. Restaurar peso en las líneas de movimiento
+                # 2. Pegar el peso en las líneas de movimiento
                 if dest.move_line_ids:
-                    # Usar la primera línea para el peso
-                    dest.move_line_ids[0].with_context(**ctx).write({
+                    dest.move_line_ids[0].sudo().with_context(**ctx).write({
                         'quantity': weight,
                     })
-                    # Limpiar líneas extra vacías que Odoo haya creado
+                    # Limpiar líneas extra vacías
                     extra_empty = dest.move_line_ids[1:].filtered(
                         lambda l: l.quantity == 0
                     )
@@ -213,88 +184,44 @@ class StockMove(models.Model):
                     # Odoo borró todas las líneas → crear una nueva
                     MoveLine.with_context(**ctx).create({
                         'move_id': dest.id,
-                        'product_id': data['product_id'],
-                        'product_uom_id': data['product_uom_id'],
-                        'location_id': data['location_id'],
-                        'location_dest_id': data['location_dest_id'],
-                        'picking_id': data['picking_id'],
+                        'product_id': dest.product_id.id,
+                        'product_uom_id': dest.product_uom.id,
+                        'location_id': dest.location_id.id,
+                        'location_dest_id': dest.location_dest_id.id,
+                        'picking_id': dest.picking_id.id,
                         'quantity': weight,
                     })
 
-                # 3. Marcar el movimiento como picked
-                dest.with_context(**ctx).write({'picked': True})
+                # 3. Marcar el destino como picked y confirmado
+                dest.sudo().with_context(**ctx).write({
+                    'picked': True,
+                    'is_weight_confirmed': True,
+                })
 
                 _logger.info(
-                    "GUAPANTE RESTORE OK: move %s → qty final: %.3f, state: %s",
-                    dest.id, dest.quantity, dest.state,
+                    "GUAPANTE: OUT move %s (%s) → pegado %.3f kg OK",
+                    dest.id, dest.product_id.display_name, weight,
                 )
 
         return res
 
     def _action_assign(self):
-        """Interceptor de reserva: Salvar y restaurar pesos confirmados.
-        
-        Cuando Odoo ejecuta _action_assign (sea desde _action_done del PICK
-        o desde cualquier otro trigger), salvamos los pesos antes y los
-        restauramos después.
+        """Después de la reserva nativa, si un movimiento del OUT
+        tiene peso confirmado pero fue vaciado, leemos el peso
+        del PICK origen (que está 'done') y lo restauramos.
         """
-        # Salvar pesos confirmados de los movimientos en self
-        confirmed_weights = {}
-        for move in self:
-            if move.is_weight_confirmed and move.quantity > 0:
-                confirmed_weights[move.id] = {
-                    'weight': move.quantity,
-                    'product_id': move.product_id.id,
-                    'product_uom_id': move.product_uom.id,
-                    'location_id': move.location_id.id,
-                    'location_dest_id': move.location_dest_id.id,
-                    'picking_id': move.picking_id.id,
-                }
-
         # Ejecutar reserva nativa
         res = super(StockMove, self)._action_assign()
 
-        # Restaurar pesos que Odoo pudo haber limpiado
-        if confirmed_weights:
-            ctx = {
-                'guapante_wizard_intent': True,
-                'skip_recolectar_zero_check': True,
-                'manual_entry': True,
-            }
-            Move = self.env['stock.move'].sudo()
-            MoveLine = self.env['stock.move.line'].sudo()
+        ctx = {
+            'guapante_wizard_intent': True,
+            'skip_recolectar_zero_check': True,
+            'manual_entry': True,
+        }
+        MoveLine = self.env['stock.move.line'].sudo()
 
-            for move_id, data in confirmed_weights.items():
-                move = Move.browse(move_id)
-                if not move.exists() or move.state == 'done':
-                    continue
-
-                weight = data['weight']
-
-                # Forzar estado a assigned
-                if move.state in ('waiting', 'confirmed', 'partially_available'):
-                    move.with_context(**ctx).write({'state': 'assigned'})
-
-                # Restaurar peso en líneas
-                if move.move_line_ids:
-                    move.move_line_ids[0].with_context(**ctx).write({
-                        'quantity': weight,
-                    })
-                else:
-                    MoveLine.with_context(**ctx).create({
-                        'move_id': move.id,
-                        'product_id': data['product_id'],
-                        'product_uom_id': data['product_uom_id'],
-                        'location_id': data['location_id'],
-                        'location_dest_id': data['location_dest_id'],
-                        'picking_id': data['picking_id'],
-                        'quantity': weight,
-                    })
-
-                move.with_context(**ctx).write({'picked': True})
-
-        # Recolectar: asegurar que líneas nuevas empiecen en 0
         for move in self:
+            # Caso 1: Movimientos de Recolectar sin confirmar → forzar a 0
             if (
                 not move.is_weight_confirmed
                 and move.picking_type_id.name
@@ -303,6 +230,46 @@ class StockMove(models.Model):
             ):
                 move.sudo().move_line_ids.write({'quantity': 0.0})
                 move.sudo().write({'picked': False})
+                continue
+
+            # Caso 2: Movimientos con peso confirmado que fue vaciado
+            if move.is_weight_confirmed and move.quantity <= 0:
+                # Consultar el peso del PICK origen (fuente de verdad)
+                weight = 0
+                for orig in move.move_orig_ids:
+                    if orig.state == 'done' and orig.is_weight_confirmed and orig.quantity > 0:
+                        weight = orig.quantity
+                        break
+
+                if weight <= 0:
+                    continue
+
+                _logger.info(
+                    "GUAPANTE _action_assign: Restaurando move %s (%s) → %.3f kg desde PICK origen",
+                    move.id, move.product_id.display_name, weight,
+                )
+
+                # Forzar estado
+                if move.state in ('waiting', 'confirmed', 'partially_available'):
+                    move.sudo().with_context(**ctx).write({'state': 'assigned'})
+
+                # Pegar peso
+                if move.move_line_ids:
+                    move.move_line_ids[0].sudo().with_context(**ctx).write({
+                        'quantity': weight,
+                    })
+                else:
+                    MoveLine.with_context(**ctx).create({
+                        'move_id': move.id,
+                        'product_id': move.product_id.id,
+                        'product_uom_id': move.product_uom.id,
+                        'location_id': move.location_id.id,
+                        'location_dest_id': move.location_dest_id.id,
+                        'picking_id': move.picking_id.id,
+                        'quantity': weight,
+                    })
+
+                move.sudo().with_context(**ctx).write({'picked': True})
 
         return res
 
@@ -312,12 +279,7 @@ class StockMoveLine(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Forzar cantidad 0.0 en el momento de creación para Recolectar.
-
-        Odoo 18 puede pre-llenar la cantidad basado en la reserva
-        o el tipo de picking. Para Guapante, el operario debe
-        pesar obligatoriamente, por lo que empezamos en 0.
-        """
+        """Forzar cantidad 0.0 en el momento de creación para Recolectar."""
         for vals in vals_list:
             picking_type_id = vals.get('picking_type_id')
             if not picking_type_id and vals.get('move_id'):
@@ -327,8 +289,6 @@ class StockMoveLine(models.Model):
             if picking_type_id:
                 pt = self.env['stock.picking.type'].browse(picking_type_id)
                 if pt.name and 'recolectar' in pt.name.lower():
-                    # Forzar cantidad a 0 y asegurar que NO esté marcado
-                    # como 'picked' (Odoo 18 logica nativa).
                     vals['quantity'] = 0.0
                     if 'picked' in self._fields:
                         vals['picked'] = False
