@@ -145,35 +145,32 @@ class StockMove(models.Model):
         return super(StockMove, self).write(vals)
 
     def _action_assign(self):
-        """Interceptar la lógica de reserva de Odoo 18.
-        Si un movimiento tiene peso confirmado, forzamos que se mantenga 
-        como 'Asignado' ignorando la falta de stock físico.
+        """FUERZA BRUTA: Engañar al motor de Odoo 18.
+        Si hay un peso confirmado, le decimos al sistema que el stock 
+        está disponible para que no vacíe la cantidad en el OUT.
         """
-        # Ejecutar reserva nativa primero
-        res = super(StockMove, self)._action_assign()
-        
-        # Blindaje Post-Reserva: Odoo 18 puede haber 'limpiado' movimientos 
-        # que no tienen stock real. Si estaban confirmados por Guapante,
-        # los volvemos a poner en Disponible (assigned).
+        # Primero, para los movimientos confirmados, aseguramos que tengan
+        # las cantidades preparadas antes de que Odoo intente reservar.
         for move in self:
             if move.is_weight_confirmed and move.quantity > 0:
-                # Si el sistema lo movió a 'confirmed' o 'waiting' por falta de stock,
-                # lo regresamos a 'assigned' con el contexto de protección.
-                if move.state in ('waiting', 'confirmed'):
+                # Forzamos picked=True para que Odoo 18 lo trate como manual
+                move.sudo().with_context(guapante_wizard_intent=True).write({
+                    'picked': True,
+                    'state': 'assigned'
+                })
+
+        # Ejecutar reserva nativa
+        res = super(StockMove, self)._action_assign()
+        
+        # Post-Reserva: Si Odoo lo vació a pesar de todo, lo restauramos a la fuerza
+        for move in self:
+            if move.is_weight_confirmed and move.quantity > 0:
+                if move.state in ('waiting', 'confirmed') or not move.picked:
                     move.sudo().with_context(guapante_wizard_intent=True).write({
                         'state': 'assigned',
-                        'picked': True
+                        'picked': True,
+                        'quantity': move.quantity # Mantener el peso
                     })
-
-            # Lógica pre-existente para Recolectar (asegurar inicio en 0)
-            elif (
-                move.picking_type_id.name
-                and 'recolectar' in move.picking_type_id.name.lower()
-                and not move.is_weight_confirmed
-                and not self.env.context.get('skip_recolectar_zero_check')
-            ):
-                move.sudo().move_line_ids.write({'quantity': 0.0})
-                move.sudo().write({'picked': False})
         return res
 
 
