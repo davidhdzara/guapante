@@ -59,6 +59,8 @@ class StockPicking(models.Model):
             if picking.is_recolectar_operation:
                 # Odoo 18: Forzar 'picked' en los movimientos que tengan líneas con cantidad.
                 # Esto es vital para que la validación permita sobre-procesar sin stock.
+                # También forzamos el estado a 'assigned' si fuera necesario para que 
+                # button_validate no bloquee preventivamente.
                 picking.move_ids_without_package.filtered(
                     lambda m: any(ml.quantity > 0 for ml in m.move_line_ids)
                 ).write({'picked': True})

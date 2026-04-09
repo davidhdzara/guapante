@@ -120,6 +120,26 @@ class StockMove(models.Model):
                     }
 
 
+    def _action_assign(self):
+        """Prevenir que Odoo 18 auto-llene la cantidad hecha al reservar stock.
+        Para Guapante, el operario debe pesar manualmente.
+        """
+        res = super(StockMove, self)._action_assign()
+        # Después de la reserva nativa, si es Recolectar, reseteamos a 0.0
+        recolectar_moves = self.filtered(
+            lambda m: (
+                m.picking_type_id.name
+                and 'recolectar' in m.picking_type_id.name.lower()
+            )
+        )
+        if recolectar_moves:
+            # Sudo para asegurar permisos sobre las líneas
+            recolectar_moves.sudo().move_line_ids.write({'quantity': 0.0})
+            # Odoo 18: No marcar como picked aún si no hay peso real
+            recolectar_moves.sudo().write({'picked': False})
+        return res
+
+
 class StockMoveLine(models.Model):
     _inherit = 'stock.move.line'
 

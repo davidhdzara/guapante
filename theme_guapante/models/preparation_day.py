@@ -699,11 +699,12 @@ class PreparationDay(models.Model):
                 skip_inverse_visual_qty=True,
                 skip_recolectar_zero_check=True,
             )
-            if Move.move_line_ids:
-                Move.move_line_ids.write({'quantity': 0})
-                Move.move_line_ids[0].quantity = Line.actual_kg
-                if 'picked' in Move.move_line_ids._fields:
-                    Move.move_line_ids[0].picked = True
+            MoveLines = Move.move_line_ids.with_context(Move._context)
+            if MoveLines:
+                MoveLines.write({'quantity': 0})
+                MoveLines[0].quantity = Line.actual_kg
+                if 'picked' in MoveLines._fields:
+                    MoveLines[0].picked = True
             else:
                 # Caso Stock 0: Crear la línea manualmente
                 Move.write({
