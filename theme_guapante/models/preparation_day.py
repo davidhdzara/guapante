@@ -734,23 +734,6 @@ class PreparationDay(models.Model):
                 Summary.total_done_kg + Line.actual_kg, 3,
             )
 
-    def _propagate_weight_to_chain(self, move, weight):
-        """Recursivamente inyecta el peso en los movimientos destino."""
-        for dest in move.move_dest_ids:
-            if dest.state not in ('done', 'cancel'):
-                dest.sudo().with_context(
-                    skip_recolectar_zero_check=True,
-                    manual_entry=True
-                ).write({
-                    'picked': True,
-                    'quantity': weight,
-                })
-                # Forzar estado para evitar que Odoo lo limpie
-                if dest.state == 'confirmed':
-                    dest.write({'state': 'assigned'})
-                # Seguir la cadena (recursivo)
-                self._propagate_weight_to_chain(dest, weight)
-
         # Log de rendimiento por operario
         LastLog = self.env['guapante.picking.log'].search([
             ('user_id', '=', self.env.user.id),
@@ -797,6 +780,23 @@ class PreparationDay(models.Model):
             )
 
         return True
+
+    def _propagate_weight_to_chain(self, move, weight):
+        """Recursivamente inyecta el peso en los movimientos destino."""
+        for dest in move.move_dest_ids:
+            if dest.state not in ('done', 'cancel'):
+                dest.sudo().with_context(
+                    skip_recolectar_zero_check=True,
+                    manual_entry=True
+                ).write({
+                    'picked': True,
+                    'quantity': weight,
+                })
+                # Forzar estado para evitar que Odoo lo limpie
+                if dest.state == 'confirmed':
+                    dest.write({'state': 'assigned'})
+                # Seguir la cadena (recursivo)
+                self._propagate_weight_to_chain(dest, weight)
 
     def action_mark_done(self) -> bool:
         """Mark session as done."""
