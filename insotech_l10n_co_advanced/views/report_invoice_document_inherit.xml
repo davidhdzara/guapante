@@ -2,18 +2,21 @@
 <odoo>
     <template id="report_invoice_document_inherit_radian" inherit_id="account.report_invoice_document">
         
-        <!-- A. CONTROL TOTAL DEL LAYOUT Y VARIABLES DE RESPALDO (V12) -->
+        <!-- A. CONTROL TOTAL DEL LAYOUT Y VARIABLES DE RESPALDO (V13 - COMPATIBILITY PATCH) -->
         <xpath expr="//t[@t-call='web.external_layout']" position="replace">
             <t t-call="web.external_layout">
+                <!-- NODOS TÉCNICOS PARA COMPATIBILIDAD V13 -->
                 <t t-set="address" t-value="None"/>
                 <t t-set="information_block" t-value="None"/>
+                <!-- Esta línea soluciona el ValueError en producción -->
+                <t t-set="layout_document_title" t-value="o.name"/>
 
                 <!-- LÓGICA INTELIGENTE V12: BUSCAR CUFE Y QR EN CUALQUIER ORIGEN -->
                 <t t-set="cufe_final" t-value="o.l10n_co_edi_cufe_cude_ref or (o.l10n_co_dian_document_ids.sorted('id', reverse=True)[:1].identifier if 'l10n_co_dian_document_ids' in o._fields and o.l10n_co_dian_document_ids else False)"/>
                 <t t-set="qr_final" t-value="o.l10n_co_edi_qr_code or (('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufe_final) if cufe_final else False)"/>
 
                 <div class="page">
-                    <!-- 1. ESTILOS FINALES V12 - COMPATIBILIDAD Y BELLEZA -->
+                    <!-- 1. ESTILOS FINALES V13 -->
                     <style type="text/css">
                         .page {
                             font-size: 8.5pt !important;
@@ -101,12 +104,11 @@
                         }
                     </style>
 
-                    <!-- 2. CABECERA GUAPANTE V12 -->
+                    <!-- 2. CABECERA GUAPANTE V13 -->
                     <div class="row g-0 mb-3">
-                        <div class="col-8">
+                        <div class="col-8 text-start">
                             <div class="row g-0">
                                 <div class="col-4">
-                                    <!-- LOGO BLINDADO V12 -->
                                     <img t-att-src="'/web/image/res.company/%s/logo' % o.company_id.id" class="guapante-logo" alt="Logo Corporativo"/>
                                 </div>
                                 <div class="col-8 ps-3" style="line-height: 1.3;">
@@ -121,15 +123,15 @@
                         </div>
                         <div class="col-4">
                             <div class="header-box-guapante">
-                                <span style="font-size: 8.5pt; font-weight: bold; display: block;">FACTURA ELECTRÓNICA DE VENTA</span>
+                                <span style="font-size: 8.5pt; font-weight: bold; display: block; text-transform: uppercase;">Factura Electrónica de Venta</span>
                                 <span style="font-size: 15pt; font-weight: bold;" t-field="o.name"/>
                             </div>
                             <table class="w-100 mt-2" style="border: 1.2pt solid #000; font-size: 8.5pt; border-collapse: collapse;">
-                                <tr style="border-bottom: 1.2pt solid #000;">
+                                <tr style="border-bottom: 1.1pt solid #000;">
                                     <td class="p-1 ps-2"><strong>EMISIÓN:</strong></td>
                                     <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date"/></td>
                                 </tr>
-                                <tr style="border-bottom: 1.2pt solid #000;">
+                                <tr style="border-bottom: 1.1pt solid #000;">
                                     <td class="p-1 ps-2"><strong>VENCE:</strong></td>
                                     <td class="p-1 pe-2 text-end"><span t-field="o.invoice_date_due"/></td>
                                 </tr>
@@ -160,7 +162,7 @@
                         </div>
                     </div>
 
-                    <!-- 4. TABLA DE PRODUCTOS V12 -->
+                    <!-- 4. TABLA DE PRODUCTOS V13 -->
                     <table class="o_main_table table table-sm mt-3" name="invoice_line_table">
                         <thead>
                             <tr>
@@ -192,7 +194,7 @@
                         </tbody>
                     </table>
 
-                    <!-- 5. ZONA TÉCNICA Y TOTALES V12 (UNIVERSAL FALLBACK) -->
+                    <!-- 5. ZONA TÉCNICA V13 -->
                     <div class="row g-0 mt-4" style="page-break-inside: avoid;">
                         <div class="col-7 pe-4">
                             <div class="row g-0">
