@@ -206,7 +206,7 @@ class StockMoveLine(models.Model):
             # Si el movimiento ya está 'picked' (pesado físicamente),
             # no permitimos que Odoo lo baje a 0.0 por falta de stock en validación.
             for record in self:
-                if (record.move_id.picked or record.is_weight_confirmed) and record.quantity > 0:
+                if (record.move_id.picked or record.move_id.is_weight_confirmed) and record.quantity > 0:
                     # Omitimos el cambio a 0.0 para este registro si es automático del sistema
                     vals.pop('quantity')
                     break
@@ -217,11 +217,8 @@ class StockMoveLine(models.Model):
         """Impedir que Odoo borre líneas que ya tienen pesaje confirmado."""
         if not self.env.context.get('guapante_wizard_intent'):
             for record in self:
-                if record.is_weight_confirmed or record.quantity > 0:
+                if record.move_id.is_weight_confirmed or record.quantity > 0:
                     # Si Odoo intenta borrar una línea con peso, lanzamos error o simplemente la ignoramos.
-                    # Por seguridad en Odoo 18, es mejor elevar una advertencia si es una acción 
-                    # bloqueante, pero aquí simplemente filtraremos lo que no se debe borrar 
-                    # si es posible, o bloqueamos la transacción si es crítico.
                     from odoo.exceptions import UserError
                     raise UserError(
                         f"No se puede eliminar el pesaje de {record.product_id.display_name}. "
