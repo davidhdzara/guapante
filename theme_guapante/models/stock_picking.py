@@ -85,8 +85,13 @@ class StockPicking(models.Model):
                         "al final de la línea en los siguientes "
                         f"productos:\n\n{product_names}"
                     )
-        # Proceder con la validación nativa. 
-        return super().button_validate()
+        # Proceder con la validación nativa inyectando el escudo de protección.
+        # manual_entry y skip_recolectar_zero_check le dicen al sistema que
+        # respete los pesos digitados aunque no haya stock.
+        return super(StockPicking, self.with_context(
+            manual_entry=True,
+            skip_recolectar_zero_check=True
+        )).button_validate()
 
     @api.onchange('vehicle_id')
     def _onchange_vehicle_id(self) -> None:

@@ -196,4 +196,19 @@ class StockMoveLine(models.Model):
                 if 'picked' in self._fields:
                     vals['picked'] = False
 
+        # BLOQUEO DE DRENAJE: Prevenir que Odoo 18 resetee a 0.0
+        # durante la validación si ya tenemos un peso manual.
+        if (
+            'quantity' in vals
+            and vals['quantity'] == 0.0
+            and (self.env.context.get('manual_entry') or self.env.context.get('skip_recolectar_zero_check'))
+        ):
+            # Si el movimiento ya está 'picked' (pesado físicamente),
+            # no permitimos que Odoo lo baje a 0.0 por falta de stock en validación.
+            for record in self:
+                if record.move_id.picked and record.quantity > 0:
+                    # Omitimos el cambio a 0.0 para este registro
+                    vals.pop('quantity')
+                    break
+
         return super().write(vals)
