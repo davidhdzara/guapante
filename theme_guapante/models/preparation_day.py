@@ -706,18 +706,23 @@ class PreparationDay(models.Model):
                 if 'picked' in MoveLines._fields:
                     MoveLines[0].picked = True
             else:
-                # Caso Stock 0: Crear la línea manualmente
-                Move.write({
-                    'move_line_ids': [(0, 0, {
-                        'product_id': Move.product_id.id,
-                        'product_uom_id': Move.product_uom.id,
-                        'quantity': Line.actual_kg,
-                        'location_id': Move.location_id.id,
-                        'location_dest_id': Move.location_dest_id.id,
-                        'picking_id': Move.picking_id.id,
-                        'picked': True if 'picked' in self.env['stock.move.line']._fields else False,
-                    })],
+                # Caso Stock 0: Crear la línea MANUALMENTE DE FORMA DIRECTA
+                # Esto es más agresivo que el Move.write(...)
+                self.env['stock.move.line'].sudo().with_context(Move._context).create({
+                    'move_id': Move.id,
+                    'product_id': Move.product_id.id,
+                    'product_uom_id': Move.product_uom.id,
+                    'quantity': Line.actual_kg,
+                    'location_id': Move.location_id.id,
+                    'location_dest_id': Move.location_dest_id.id,
+                    'picking_id': Move.picking_id.id,
+                    'picked': True if 'picked' in self.env['stock.move.line']._fields else False,
                 })
+            
+            # Forzar estado del movimiento para que Odoo 18 no lo ignore por falta de stock
+            Move.write({'picked': True})
+            if Move.state == 'confirmed':
+                Move.write({'state': 'assigned'})
             # Odoo 18 nativo: Si no activamos este flag, el core asume que el pesaje es inválido
             # y borra el quantity (lo vuelve 0) de forma silenciosa para proteger la bodega.
             Move.picked = True
