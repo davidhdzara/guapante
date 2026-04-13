@@ -2,34 +2,61 @@
 <odoo>
     <template id="report_invoice_document_inherit_insotech_advanced_table" inherit_id="account.report_invoice_document" priority="99999999">
         
-        <!-- 1. Color Corporativo de Guapante en la Cabecera (Verde Oscuro #14532d) -->
-        <xpath expr="//table[@name='invoice_line_table']/thead" position="attributes">
-            <attribute name="style">background-color: #14532d; color: white;</attribute>
-        </xpath>
-        
-        <!-- 2. Bordes estrictos para toda la tabla (vibe similar a la CFDI) -->
-        <xpath expr="//table[@name='invoice_line_table']" position="attributes">
-            <attribute name="class">o_has_total_table table table-sm table-bordered o_main_table mb-0</attribute>
+        <!-- 1. CSS Aislado Premium B2B (Anulando el borde negro grueso nativo) -->
+        <xpath expr="//table[@name='invoice_line_table']" position="before">
+            <style type="text/css">
+                /* Suavizamos los bordes y mejoramos la legibilidad */
+                table[name="invoice_line_table"] {
+                    border-collapse: collapse !important;
+                    border: 1px solid #e0e0e0 !important;
+                    font-size: 13px !important;
+                }
+                
+                table[name="invoice_line_table"] thead th {
+                    background-color: #14532d !important; 
+                    color: #ffffff !important;
+                    border: 1px solid #14532d !important; /* Mismo color de fondo para que no se vea una línea negra fea */
+                    font-weight: 500 !important;
+                    letter-spacing: 0.5px;
+                    padding: 8px 10px !important;
+                    vertical-align: middle !important;
+                }
+
+                table[name="invoice_line_table"] tbody td {
+                    border: 1px solid #e0e0e0 !important; /* Borde interior gris claro, NO negro */
+                    padding: 8px 10px !important;
+                    vertical-align: middle !important;
+                    color: #212529 !important; /* Color texto oscuro de tu paleta */
+                }
+                
+                table[name="invoice_line_table"] tbody tr:nth-child(even) {
+                    background-color: #f8f9fa; /* Zebra Striping muy sutil para facilitar la lectura */
+                }
+            </style>
         </xpath>
 
-        <!-- 3. Redibujamos cabeceras limpias, destruyendo los parches de Studio y usando el orden: DESC | CANT | UD -->
+        <!-- Quitamos las clases bruscas nativas que ensucian -->
+        <xpath expr="//table[@name='invoice_line_table']" position="attributes">
+            <attribute name="class">table table-sm o_main_table mb-0</attribute>
+        </xpath>
+
+        <!-- 2. Redibujamos cabeceras (Limpias) -->
         <xpath expr="//table[@name='invoice_line_table']/thead/tr" position="replace">
             <tr>
                 <th name="th_description" class="text-start"><span>DESCRIPCIÓN</span></th>
                 <th name="th_quantity" class="text-end"><span>CANT</span></th>
                 <th name="th_uom" class="text-center"><span>UD</span></th>
-                <th name="th_priceunit" class="text-end"><span>P. UNITARIO</span></th>
+                <th name="th_priceunit" class="text-end"><span>V. UNITARIO</span></th>
                 <th name="th_discount" t-if="display_discount" class="text-end"><span>DESC.%</span></th>
                 <th name="th_taxes" class="text-end"><span>IMP.</span></th>
                 <th name="th_subtotal" class="text-end"><span>IMPORTE</span></th>
             </tr>
         </xpath>
 
-        <!-- 4. Redibujamos las filas de producto: Cero referencias, cero variantes, columnas ordenadas -->
+        <!-- 3. Redibujamos las filas de producto: Cero referencias, cero variantes, orden correcto -->
         <xpath expr="//t[@name='account_invoice_line_accountable']" position="replace">
             <t t-if="line.display_type == 'product'" name="account_invoice_line_accountable">
                 <td name="account_invoice_line_name" class="text-start">
-                    <!-- Magia: Esto extrae solo el nombre, bloqueando la concatenación de Referencias y Variantes -->
                     <span t-if="line.product_id" t-field="line.product_id.name" t-options="{'widget': 'text'}"/>
                     <span t-else="" t-field="line.name" t-options="{'widget': 'text'}"/>
                 </td>
