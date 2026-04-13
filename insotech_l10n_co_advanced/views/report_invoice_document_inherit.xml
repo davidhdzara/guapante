@@ -2,9 +2,9 @@
 <odoo>
     <template id="report_invoice_document_inherit_insotech_advanced_table" inherit_id="account.report_invoice_document" priority="99999999">
         
-        <!-- 1. Color Corporativo de InSoTech en la Cabecera (#003498) -->
+        <!-- 1. Color Corporativo de Guapante en la Cabecera (Verde Oscuro #14532d) -->
         <xpath expr="//table[@name='invoice_line_table']/thead" position="attributes">
-            <attribute name="style">background-color: #003498; color: white;</attribute>
+            <attribute name="style">background-color: #14532d; color: white;</attribute>
         </xpath>
         
         <!-- 2. Bordes estrictos para toda la tabla (vibe similar a la CFDI) -->
@@ -12,12 +12,12 @@
             <attribute name="class">o_has_total_table table table-sm table-bordered o_main_table mb-0</attribute>
         </xpath>
 
-        <!-- 3. Redibujamos cabeceras limpias, destruyendo los parches de Studio -->
+        <!-- 3. Redibujamos cabeceras limpias, destruyendo los parches de Studio y usando el orden: DESC | CANT | UD -->
         <xpath expr="//table[@name='invoice_line_table']/thead/tr" position="replace">
             <tr>
+                <th name="th_description" class="text-start"><span>DESCRIPCIÓN</span></th>
                 <th name="th_quantity" class="text-end"><span>CANT</span></th>
                 <th name="th_uom" class="text-center"><span>UD</span></th>
-                <th name="th_description" class="text-start"><span>DESCRIPCIÓN</span></th>
                 <th name="th_priceunit" class="text-end"><span>P. UNITARIO</span></th>
                 <th name="th_discount" t-if="display_discount" class="text-end"><span>DESC.%</span></th>
                 <th name="th_taxes" class="text-end"><span>IMP.</span></th>
@@ -28,16 +28,16 @@
         <!-- 4. Redibujamos las filas de producto: Cero referencias, cero variantes, columnas ordenadas -->
         <xpath expr="//t[@name='account_invoice_line_accountable']" position="replace">
             <t t-if="line.display_type == 'product'" name="account_invoice_line_accountable">
+                <td name="account_invoice_line_name" class="text-start">
+                    <!-- Magia: Esto extrae solo el nombre, bloqueando la concatenación de Referencias y Variantes -->
+                    <span t-if="line.product_id" t-field="line.product_id.name" t-options="{'widget': 'text'}"/>
+                    <span t-else="" t-field="line.name" t-options="{'widget': 'text'}"/>
+                </td>
                 <td name="td_quantity" class="text-end">
                     <span t-field="line.quantity"/>
                 </td>
                 <td name="td_uom" class="text-center">
                     <span t-field="line.product_uom_id.name" groups="uom.group_uom"/>
-                </td>
-                <td name="account_invoice_line_name" class="text-start">
-                    <!-- Magia: Esto extrae solo el nombre, bloqueando la concatenación de Referencias y Variantes -->
-                    <span t-if="line.product_id" t-field="line.product_id.name" t-options="{'widget': 'text'}"/>
-                    <span t-else="" t-field="line.name" t-options="{'widget': 'text'}"/>
                 </td>
                 <td name="td_price_unit" class="text-end">
                     <span class="text-nowrap" t-field="line.price_unit"/>
