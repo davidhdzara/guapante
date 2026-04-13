@@ -15,16 +15,15 @@
                 #total table tr.o_total td, #total table tr.o_total strong { background-color: #14532d !important; color: white !important; font-size: 16px !important; font-weight: 800 !important; }
                 
                 /* ARQUITECTURA FANTASMA: Ocultamiento global de bloques nativos repetidos (Cero Daños XML) */
-                /* 1. Desaparece el bloque superior de Direcciones redundante que inyecta 'web.external_layout' */
-                .row.address { display: none !important; }
-                address { display: none !important; }
-                /* 2. Desaparece el Mega-Título verde redundante (FE955) de Odoo/DIAN */
+                /* 1. Como usaremos el layout "Light", ocultaremos TODO su Header nativo para tener 100% del control en el documento */
+                .header { display: none !important; }
+                /* 2. Desaparece el bloque de Direcciones que inyecta 'web.external_layout' */
+                .row.address, address { display: none !important; }
+                /* 3. Desaparece el Mega-Título verde redundante (FE955) de Odoo/DIAN */
                 .page h1, .page h2, .page h3 { display: none !important; }
                 h1, h2, h3 { display: none !important; }
-                /* 3. Desaparece "Dirección de envío:" y otros Strong huérfanos que deja el layout en esa zona */
+                /* 4. Desaparece "Dirección de envío:" y otros Strong huérfanos */
                 .address strong { display: none !important; }
-                /* 4. Asesinar el texto del viejo Header (y su Logo) para reinyectarlos estructuradamente en nuestro panel frontal */
-                .header ul, .header div[name="company_address"], .header .text-end, .header img { display: none !important; }
             </style>
         </xpath>
 
@@ -89,9 +88,25 @@
         <!-- 6. Inyectar DESPUES del div oculto todo nuestro diseño magistral de Cabecera y Receptor -->
         <xpath expr="//div[hasclass('row')][1]" position="after">
             
-            <!-- Inyección del Panel Auxiliar Superior Derecho (Fechas / Documento tipo SIIGO) -->
-            <div class="row mt-4 mb-2">
-                <div class="col-7"></div> <!-- Espaciado limpio debajo del logo de remitente -->
+            <!-- Inyección Frontal Premium: Logo + Remitente + Resumen Factura 100% Alineados -->
+            <div class="row pt-4 mb-2">
+                
+                <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico de Guapante -->
+                <div class="col-3 text-start">
+                    <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 90px; max-width: 100%; object-fit: contain;" alt="Logo de la Empresa"/>
+                </div>
+
+                <!-- Tarjeta Estructurada del Remitente Guapante -->
+                <div class="col-4 text-start pt-1">
+                    <h5 class="fw-bold mb-1" style="color: #14532d; font-size: 15px;"><span t-field="o.company_id.name"/></h5>
+                    <div style="color: #495057; font-size: 12px; line-height: 1.35;">
+                        <span class="fw-bold">NIT:</span> <span t-if="o.company_id.company_registry" t-field="o.company_id.company_registry"/><span t-else="" t-field="o.company_id.vat"/><br/>
+                        <span t-field="o.company_id.street"/><br/>
+                        <span t-field="o.company_id.city"/><span t-if="o.company_id.state_id">, <span t-field="o.company_id.state_id.name"/></span><br/>
+                        <span t-field="o.company_id.country_id.name"/>
+                    </div>
+                </div>
+
                 <div class="col-5">
                     <table class="table table-sm table-borderless mb-0" style="font-size: 13px; text-align: center; border: 1px solid #14532d;">
                         <thead style="background-color: #14532d; color: white;">
