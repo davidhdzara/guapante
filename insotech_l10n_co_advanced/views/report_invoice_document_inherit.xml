@@ -11,8 +11,8 @@
         <div class="header">
         </div>
 
-        <!-- CUERPO: El contenedor donde se dibuja la factura B2B, sin interferencias arriba -->
-        <div class="article o_report_layout_standard" t-att-data-oe-model="o and o._name" t-att-data-oe-id="o and o.id" t-att-data-oe-lang="o and o.env.context.get('lang')">
+        <!-- CUERPO: El contenedor donde se dibuja la factura B2B, sin interferencias arriba. Lo acercamos al borde superior -->
+        <div class="article o_report_layout_standard" t-att-data-oe-model="o and o._name" t-att-data-oe-id="o and o.id" t-att-data-oe-lang="o and o.env.context.get('lang')" style="margin-top: -60px;">
             <t t-out="0"/>
         </div>
 
@@ -141,9 +141,9 @@
                 <!-- Bloque CFDI / SIIGO de Resumen -->
                 <div class="col-5">
                     <table class="table table-sm table-borderless mb-0" style="font-size: 13px; text-align: center; border: 1px solid #14532d;">
-                        <thead style="background-color: #14532d; color: white;">
+                        <thead style="background-color: #14532d !important; color: white !important;">
                             <tr>
-                                <th class="p-1 fw-bold text-center" colspan="2">
+                                <th class="p-1 fw-bold text-center" colspan="2" style="color: white !important;">
                                     <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">FACTURA DE VENTA</span>
                                     <span t-if="o.move_type == 'out_invoice' and o.state == 'draft'">BORRADOR DE FACTURA</span>
                                     <span t-if="o.move_type == 'out_invoice' and o.state == 'cancel'">FACTURA CANCELADA</span>
@@ -154,7 +154,7 @@
                         <tbody>
                             <tr>
                                 <td class="p-1 fw-bold" style="background-color: #f8f9fa;">NÚMERO</td>
-                                <td class="p-1 text-danger fw-bold"><span t-if="o.name != '/'" t-field="o.name"/></td>
+                                <td class="p-1 fw-bold" style="color: #14532d;"><span t-if="o.name != '/'" t-field="o.name"/></td>
                             </tr>
                             <tr>
                                 <td class="p-1 fw-bold" style="background-color: #f8f9fa;">GENERACIÓN</td>
