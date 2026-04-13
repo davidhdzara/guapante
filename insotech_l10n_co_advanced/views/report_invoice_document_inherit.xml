@@ -82,5 +82,66 @@
             </t>
         </xpath>
         
+        <!-- 5. Rediseño Estructurado del Bloque del Receptor (Cliente) -->
+        <xpath expr="//div[hasclass('row')][1]" position="replace">
+            <!-- Contenedor general enmarcado con líneas superiores e inferiores -->
+            <div class="row mt-3 mb-4" style="border-top: 1px solid #14532d; border-bottom: 1px solid #14532d; padding: 12px 0;">
+                
+                <!-- Columna principal (Receptor) -->
+                <div class="col-7">
+                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; line-height: 1.2;">
+                        <tbody>
+                            <tr>
+                                <td class="p-0 fw-bold" style="width: 25%; color: #495057;">RECEPTOR:</td>
+                                <td class="p-0"><span t-field="o.partner_id.name" class="fw-bold"/></td>
+                            </tr>
+                            <tr t-if="o.partner_id.vat">
+                                <td class="p-0 fw-bold" style="color: #495057;">NIT CLIENTE:</td>
+                                <td class="p-0"><span t-field="o.partner_id.vat"/></td>
+                            </tr>
+                            <tr>
+                                <td class="p-0 fw-bold" style="color: #495057;">DIRECCIÓN:</td>
+                                <td class="p-0">
+                                    <span t-if="o.partner_id.street" t-field="o.partner_id.street"/>
+                                    <span t-if="o.partner_id.street2"> <span t-field="o.partner_id.street2"/></span>
+                                    <span t-if="o.partner_id.city">, <span t-field="o.partner_id.city"/></span>
+                                    <span t-if="o.partner_id.state_id">, <span t-field="o.partner_id.state_id.name"/></span>
+                                </td>
+                            </tr>
+                            <tr t-if="o.partner_id.phone or o.partner_id.mobile">
+                                <td class="p-0 fw-bold" style="color: #495057;">TELÉFONO:</td>
+                                <td class="p-0">
+                                    <span t-if="o.partner_id.phone" t-field="o.partner_id.phone"/>
+                                    <span t-if="o.partner_id.phone and o.partner_id.mobile"> / </span>
+                                    <span t-if="o.partner_id.mobile" t-field="o.partner_id.mobile"/>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Columna secundaria (Dirección de Envío, a la derecha) -->
+                <div class="col-5" t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
+                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; line-height: 1.2;">
+                        <tbody>
+                            <tr>
+                                <td class="p-0 fw-bold text-end" style="color: #495057;">DIRECCIÓN DE ENVÍO:</td>
+                            </tr>
+                            <tr>
+                                <td class="p-0 text-end"><span t-field="o.partner_shipping_id.name" class="fw-bold"/></td>
+                            </tr>
+                            <tr>
+                                <td class="p-0 text-end">
+                                    <span t-if="o.partner_shipping_id.street" t-field="o.partner_shipping_id.street"/>
+                                    <span t-if="o.partner_shipping_id.city">, <span t-field="o.partner_shipping_id.city"/></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+            </div>
+        </xpath>
+
     </template>
 </odoo>
