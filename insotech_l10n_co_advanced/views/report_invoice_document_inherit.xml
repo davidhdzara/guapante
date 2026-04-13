@@ -90,25 +90,8 @@
         <xpath expr="//div[hasclass('row')][1]" position="after">
             
             <!-- Inyección del Panel Auxiliar Superior Derecho (Fechas / Documento tipo SIIGO) -->
-            <!-- MARGEN NEGATIVO: Chupamos el bloque hacia arriba para reclamar el espacio perdido del Header -->
-            <div class="row mb-2" style="margin-top: -65px;">
-                
-                <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico (Se trae desde la BD evitando llamadas de red .url) -->
-                <div class="col-3 text-start">
-                    <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 80px; max-width: 100%;" alt="Logo de la Empresa"/>
-                </div>
-
-                <!-- Tarjeta Estructurada del Remitente Guapante (Reducida a col-4 para hacer espacio al logo) -->
-                <div class="col-4 text-start pt-1">
-                    <h5 class="fw-bold mb-1" style="color: #14532d; font-size: 15px;"><span t-field="o.company_id.name"/></h5>
-                    <div style="color: #495057; font-size: 12px; line-height: 1.35;">
-                        <span class="fw-bold">NIT:</span> <span t-if="o.company_id.company_registry" t-field="o.company_id.company_registry"/><span t-else="" t-field="o.company_id.vat"/><br/>
-                        <span t-field="o.company_id.street"/><br/>
-                        <span t-field="o.company_id.city"/><span t-if="o.company_id.state_id">, <span t-field="o.company_id.state_id.name"/></span><br/>
-                        <span t-field="o.company_id.country_id.name"/>
-                    </div>
-                </div>
-
+            <div class="row mt-4 mb-2">
+                <div class="col-7"></div> <!-- Espaciado limpio debajo del logo de remitente -->
                 <div class="col-5">
                     <table class="table table-sm table-borderless mb-0" style="font-size: 13px; text-align: center; border: 1px solid #14532d;">
                         <thead style="background-color: #14532d; color: white;">
