@@ -13,7 +13,16 @@
                 #total table tr { border-bottom: 1px solid #e0e0e0 !important; }
                 #total table td.text-start, #total table td:first-child { background-color: #f8f9fa !important; font-weight: bold !important; color: #495057 !important; padding-left: 10px !important; }
                 #total table tr.o_total td, #total table tr.o_total strong { background-color: #14532d !important; color: white !important; font-size: 16px !important; font-weight: 800 !important; }
-                .page h2 { display: none !important; }
+                
+                /* ARQUITECTURA FANTASMA: Ocultamiento global de bloques nativos repetidos (Cero Daños XML) */
+                /* 1. Desaparece el bloque superior de Direcciones redundante que inyecta 'web.external_layout' */
+                .row.address { display: none !important; }
+                address { display: none !important; }
+                /* 2. Desaparece el Mega-Título verde redundante (FE955) de Odoo/DIAN */
+                .page h1, .page h2, .page h3 { display: none !important; }
+                h1, h2, h3 { display: none !important; }
+                /* 3. Desaparece "Dirección de envío:" y otros Strong huérfanos que deja el layout en esa zona */
+                .address strong { display: none !important; }
             </style>
         </xpath>
 
