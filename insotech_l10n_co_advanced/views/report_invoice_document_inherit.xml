@@ -107,11 +107,16 @@
         </xpath>
         
         <!-- 5. Ocultar Mega Titulo y Píldora Gris Nativa Odoo -->
-        <xpath expr="//h2" position="replace">
-             <!-- Aniquilado el titulo gigante (Silencioso para no romper dependencias) -->
-             <h2 class="d-none"> <span t-if="o.name != '/'" t-field="o.name"/> </h2>
+        <!-- 5. Ocultar Píldora Gris Nativa Odoo y silenciar título mediante CSS (Seguro) -->
+        <xpath expr="//table[@name='invoice_line_table']" position="before">
+            <style type="text/css">
+                /* Ocultamos el título h2 gigante que inyecta el layout externo automáticamente */
+                .page h2 { display: none !important; }
+            </style>
         </xpath>
         <xpath expr="//div[@id='informations']" position="replace">
+             <!-- Aniquilado y removido el bloque gris flotante indeseado de fechas -->
+        </xpath>
              <!-- Aniquilado y removido el bloque gris flotante indeseado de fechas -->
         </xpath>
 
