@@ -117,8 +117,6 @@
         <xpath expr="//div[@id='informations']" position="replace">
              <!-- Aniquilado y removido el bloque gris flotante indeseado de fechas -->
         </xpath>
-             <!-- Aniquilado y removido el bloque gris flotante indeseado de fechas -->
-        </xpath>
 
         <!-- 6. Rediseño Estructurado del Bloque Superior (Fechas Derecha + Receptor Izquierda) -->
         <xpath expr="//div[hasclass('row')][1]" position="replace">
