@@ -2,10 +2,10 @@
 <odoo>
     <template id="report_invoice_document_inherit_insotech_advanced_table" inherit_id="account.report_invoice_document" priority="99999999">
         
-        <!-- 1. CSS Aislado Premium B2B (Anulando el borde negro grueso nativo) -->
+        <!-- 1. CSS Aislado Premium B2B -->
         <xpath expr="//table[@name='invoice_line_table']" position="before">
             <style type="text/css">
-                /* Suavizamos los bordes y mejoramos la legibilidad */
+                /* Suavizamos los bordes y mejoramos la legibilidad de la tabla general */
                 table[name="invoice_line_table"] {
                     border-collapse: collapse !important;
                     border: 1px solid #e0e0e0 !important;
@@ -15,7 +15,7 @@
                 table[name="invoice_line_table"] thead th {
                     background-color: #14532d !important; 
                     color: #ffffff !important;
-                    border: 1px solid #14532d !important; /* Mismo color de fondo para que no se vea una línea negra fea */
+                    border: 1px solid #14532d !important;
                     font-weight: 500 !important;
                     letter-spacing: 0.5px;
                     padding: 8px 10px !important;
@@ -23,24 +23,48 @@
                 }
 
                 table[name="invoice_line_table"] tbody td {
-                    border: 1px solid #e0e0e0 !important; /* Borde interior gris claro, NO negro */
+                    border: 1px solid #e0e0e0 !important; 
                     padding: 8px 10px !important;
                     vertical-align: middle !important;
-                    color: #212529 !important; /* Color texto oscuro de tu paleta */
+                    color: #212529 !important;
                 }
                 
-                table[name="invoice_line_table"] tbody tr:nth-child(even) {
-                    background-color: #f8f9fa; /* Zebra Striping muy sutil para facilitar la lectura */
+                /* Aniquilando las rayitas internas grises falsas de Odoo en la vista del receptor */
+                .res_partner_address_table td {
+                    border: none !important;
+                }
+
+                /* CSS Premium Estricto para el Cuadro de Totales (Bottom Right) */
+                #total table {
+                    border-collapse: collapse !important;
+                    border: 1px solid #14532d !important;
+                    border-radius: 4px; /* Un toque amigable si odoo lo acepta */
+                    margin-top: 15px;
+                }
+                #total table tr {
+                    border-bottom: 1px solid #e0e0e0 !important;
+                }
+                #total table td.text-start, #total table td:first-child {
+                    background-color: #f8f9fa !important;
+                    font-weight: bold !important;
+                    color: #495057 !important;
+                    padding-left: 10px !important;
+                }
+                #total table tr.o_total td, #total table tr.o_total strong {
+                    background-color: #14532d !important;
+                    color: white !important;
+                    font-size: 16px !important;
+                    font-weight: 800 !important;
                 }
             </style>
         </xpath>
 
-        <!-- Quitamos las clases bruscas nativas que ensucian -->
+        <!-- 2. Quitamos las clases bruscas nativas que ensucian la tabla de lineas -->
         <xpath expr="//table[@name='invoice_line_table']" position="attributes">
             <attribute name="class">table table-sm o_main_table mb-0</attribute>
         </xpath>
 
-        <!-- 2. Redibujamos cabeceras (Limpias) -->
+        <!-- 3. Redibujamos cabeceras (Limpias) -->
         <xpath expr="//table[@name='invoice_line_table']/thead/tr" position="replace">
             <tr>
                 <th name="th_description" class="text-start"><span>DESCRIPCIÓN</span></th>
@@ -53,7 +77,7 @@
             </tr>
         </xpath>
 
-        <!-- 3. Redibujamos las filas de producto: Cero referencias, cero variantes, orden correcto -->
+        <!-- 4. Redibujamos las filas de producto -->
         <xpath expr="//t[@name='account_invoice_line_accountable']" position="replace">
             <t t-if="line.display_type == 'product'" name="account_invoice_line_accountable">
                 <td name="account_invoice_line_name" class="text-start">
@@ -82,21 +106,67 @@
             </t>
         </xpath>
         
-        <!-- 5. Rediseño Estructurado del Bloque del Receptor (Cliente) -->
+        <!-- 5. Ocultar Mega Titulo y Píldora Gris Nativa Odoo -->
+        <xpath expr="//h2" position="replace">
+             <!-- Aniquilado el titulo gigante (Silencioso para no romper dependencias) -->
+             <h2 class="d-none"> <span t-if="o.name != '/'" t-field="o.name"/> </h2>
+        </xpath>
+        <xpath expr="//div[@id='informations']" position="replace">
+             <!-- Aniquilado y removido el bloque gris flotante indeseado de fechas -->
+        </xpath>
+
+        <!-- 6. Rediseño Estructurado del Bloque Superior (Fechas Derecha + Receptor Izquierda) -->
         <xpath expr="//div[hasclass('row')][1]" position="replace">
-            <!-- Contenedor general enmarcado con líneas superiores e inferiores -->
-            <div class="row mt-3 mb-4" style="border-top: 1px solid #14532d; border-bottom: 1px solid #14532d; padding: 12px 0;">
-                
-                <!-- Columna principal (Receptor) -->
-                <div class="col-7">
-                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; line-height: 1.2;">
+            
+            <!-- Inyección del Panel Auxiliar Superior Derecho (Fechas / Documento tipo SIIGO) -->
+            <div class="row mt-4 mb-2">
+                <div class="col-7"></div> <!-- Espaciado limpio debajo del logo de remitente -->
+                <div class="col-5">
+                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; text-align: center; border: 1px solid #14532d;">
+                        <thead style="background-color: #14532d; color: white;">
+                            <tr>
+                                <th class="p-1 fw-bold text-center" colspan="2">
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">FACTURA DE VENTA</span>
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'draft'">BORRADOR DE FACTURA</span>
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'cancel'">FACTURA CANCELADA</span>
+                                    <span t-if="o.move_type == 'out_refund'">NOTA DE CRÉDITO</span>
+                                </th>
+                            </tr>
+                        </thead>
                         <tbody>
                             <tr>
-                                <td class="p-0 fw-bold" style="width: 25%; color: #495057;">RECEPTOR:</td>
+                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">NÚMERO</td>
+                                <td class="p-1 text-danger fw-bold"><span t-if="o.name != '/'" t-field="o.name"/></td>
+                            </tr>
+                            <tr>
+                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">GENERACIÓN</td>
+                                <td class="p-1"><span t-field="o.invoice_date"/></td>
+                            </tr>
+                            <tr>
+                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">VENCIMIENTO</td>
+                                <td class="p-1"><span t-field="o.invoice_date_due"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Contenedor general enmarcado con líneas superiores e inferiores (CLIENTE) -->
+            <div class="row mt-2 mb-4" style="border-top: 1px solid #14532d; border-bottom: 1px solid #14532d; padding: 12px 0;">
+                
+                <!-- Columna principal (Receptor) -->
+                <div class="col-6">
+                    <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 13px; line-height: 1.2;">
+                        <tbody>
+                            <tr>
+                                <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 5px; margin-bottom: 5px;">DATOS DE FACTURACIÓN</td>
+                            </tr>
+                            <tr>
+                                <td class="p-0 fw-bold" style="width: 30%; color: #495057;">CLIENTE:</td>
                                 <td class="p-0"><span t-field="o.partner_id.name" class="fw-bold"/></td>
                             </tr>
                             <tr t-if="o.partner_id.vat">
-                                <td class="p-0 fw-bold" style="color: #495057;">NIT CLIENTE:</td>
+                                <td class="p-0 fw-bold" style="color: #495057;">NIT:</td>
                                 <td class="p-0"><span t-field="o.partner_id.vat"/></td>
                             </tr>
                             <tr>
@@ -120,21 +190,31 @@
                     </table>
                 </div>
 
-                <!-- Columna secundaria (Dirección de Envío, a la derecha) -->
-                <div class="col-5" t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
-                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; line-height: 1.2;">
+                <!-- Columna secundaria (Dirección de Envío / Complementos) -->
+                <div class="col-6" style="border-left: 1px dashed #e0e0e0;">
+                    <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 13px; line-height: 1.2;">
                         <tbody>
                             <tr>
-                                <td class="p-0 fw-bold text-end" style="color: #495057;">DIRECCIÓN DE ENVÍO:</td>
+                                <td colspan="2" class="fw-bold text-end" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 5px; margin-bottom: 5px;">DATOS DE ENTREGA Y COMERCIALES</td>
                             </tr>
-                            <tr>
+                            <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
+                                <td class="p-0 fw-bold text-end" style="width: 40%; color: #495057;">DESTINO:</td>
                                 <td class="p-0 text-end"><span t-field="o.partner_shipping_id.name" class="fw-bold"/></td>
                             </tr>
-                            <tr>
+                            <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
+                                <td class="p-0 fw-bold text-end" style="color: #495057;">DIRECCIÓN ENVÍO:</td>
                                 <td class="p-0 text-end">
                                     <span t-if="o.partner_shipping_id.street" t-field="o.partner_shipping_id.street"/>
                                     <span t-if="o.partner_shipping_id.city">, <span t-field="o.partner_shipping_id.city"/></span>
                                 </td>
+                            </tr>
+                            <tr t-if="o.ref">
+                                <td class="p-0 fw-bold text-end" style="color: #495057;">ORIGEN / REF:</td>
+                                <td class="p-0 text-end"><span t-field="o.ref"/></td>
+                            </tr>
+                            <tr t-if="o.invoice_payment_term_id">
+                                <td class="p-0 fw-bold text-end" style="color: #495057;">TÉRMINOS PAGO:</td>
+                                <td class="p-0 text-end"><span t-field="o.invoice_payment_term_id.name"/></td>
                             </tr>
                         </tbody>
                     </table>
