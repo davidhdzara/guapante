@@ -196,7 +196,7 @@
                                         </td>
                                     </tr>
                                     <!-- Campos rescatados -->
-                                    <tr t-if="getattr(o, 'invoice_origin', False)">
+                                    <tr t-if="'invoice_origin' in o and o.invoice_origin">
                                         <td class="p-0 fw-bold" style="color: #495057;">ORIGEN:</td>
                                         <td class="p-0"><span t-field="o.invoice_origin"/></td>
                                     </tr>
@@ -204,10 +204,11 @@
                                         <td class="p-0 fw-bold" style="color: #495057;">ORIGEN:</td>
                                         <td class="p-0"><span t-field="o.ref"/></td>
                                     </tr>
-                                    <tr t-if="getattr(o, 'delivery_date', False)">
+                                    <tr t-if="'delivery_date' in o and o.delivery_date">
                                         <td class="p-0 fw-bold" style="color: #495057;">F. ENTREGA:</td>
                                         <td class="p-0"><span t-field="o.delivery_date"/></td>
                                     </tr>
+
                                     <tr t-if="o.invoice_payment_term_id">
                                         <td class="p-0 fw-bold" style="color: #495057;">TÉRMINOS:</td>
                                         <td class="p-0"><span t-field="o.invoice_payment_term_id.name"/></td>
@@ -245,8 +246,9 @@
                                 <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date_due"/></td>
                             </tr>
                             <!-- Campos rescatados de Odoo DIAN (Métodos de Pago) -->
-                            <t t-if="getattr(o, 'l10n_co_edi_payment_option_id', False)">
+                            <t t-if="'l10n_co_edi_payment_option_id' in o and o.l10n_co_edi_payment_option_id">
                                 <tr>
+
                                     <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0; font-size: 11px;">MÉTODO PAGO</td>
                                     <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0; font-size: 11px; line-height: 1.1;"><span t-field="o.l10n_co_edi_payment_option_id.name"/></td>
                                 </tr>
