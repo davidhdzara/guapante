@@ -235,7 +235,8 @@
                         <!-- COLUMNA B: DATOS DE ENTREGA Y ORIGEN -->
                         <div class="col-6" style="padding-left: 15px;">
                             <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 12px; line-height: 1.2;">
-                                                              <tr>
+                                <tbody>
+                                    <tr>
                                         <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 4px; margin-bottom: 6px; font-size: 13px;">DATOS DE ENTREGA / COMERCIALES</td>
                                     </tr>
                                     <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
@@ -257,7 +258,7 @@
                                     <tr t-if="o.invoice_payment_term_id">
                                         <td class="p-0 fw-bold" style="color: #495057;">TÉRMINOS:</td>
                                         <td class="p-0"><span t-field="o.invoice_payment_term_id.name"/></td>
-                                    </tr>           </tr>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
