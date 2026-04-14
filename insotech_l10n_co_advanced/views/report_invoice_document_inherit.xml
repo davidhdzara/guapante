@@ -86,7 +86,7 @@
                 
                 <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico (Se trae desde la BD) o estático por defecto -->
                 <div class="col-3 text-start">
-                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 80px; max-width: 100%; object-fit: contain;" alt="Logo Guapante BD"/>
+                    <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 80px; max-width: 100%; object-fit: contain;" alt="Logo Guapante BD"/>
                     <img t-else="" src="/theme_guapante/static/src/img/logo_guapante.png" style="max-height: 80px; max-width: 100%; object-fit: contain;" alt="Logo Guapante Repo"/>
                 </div>
 
