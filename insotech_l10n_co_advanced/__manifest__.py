@@ -14,6 +14,7 @@
         'l10n_co_edi',
         'l10n_co_dian',
         'mail',
+        'web',
         'insotech_core',
     ],
     'data': [
