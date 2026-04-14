@@ -131,10 +131,12 @@
                             <field name="summary_ids" nolabel="1">
                                 <list string="Productos del día"
                                     decoration-success="stock_ok"
+                                    decoration-muted="packing_status == '3_done'"
                                     create="0" edit="0" open="0"
                                 >
                                     <field name="stock_ok" column_invisible="1"/>
                                     <field name="product_id" string="Producto"/>
+                                    <field name="packing_status" widget="badge" decoration-info="packing_status == '1_not_started'" decoration-warning="packing_status == '2_in_progress'" decoration-success="packing_status == '3_done'"/>
                                     <field name="order_count" string="Órdenes"/>
                                     <field name="total_estimated_kg" string="Total a preparar (kg)" digits="[10,3]"/>
                                     <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" optional="hide"/>
@@ -188,9 +190,10 @@
         <field name="name">guapante.preparation.day.summary.tree</field>
         <field name="model">guapante.preparation.day.summary</field>
         <field name="arch" type="xml">
-            <list string="Productos a preparar" decoration-success="stock_ok" create="0" edit="0" delete="0">
+            <list string="Productos a preparar" decoration-success="stock_ok" decoration-muted="packing_status == '3_done'" create="0" edit="0" delete="0">
                 <field name="stock_ok" column_invisible="1"/>
                 <field name="product_id" string="Producto"/>
+                <field name="packing_status" widget="badge" decoration-info="packing_status == '1_not_started'" decoration-warning="packing_status == '2_in_progress'" decoration-success="packing_status == '3_done'"/>
                 <field name="order_count" string="Órdenes"/>
                 <field name="total_estimated_kg" string="Total a preparar (kg)" digits="[10,3]"/>
                 <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" optional="hide"/>
@@ -213,6 +216,10 @@
         <field name="arch" type="xml">
             <search string="Buscar productos">
                 <field name="product_id" string="Producto"/>
+                <separator/>
+                <filter string="Sin iniciar" name="filter_not_started" domain="[('packing_status', '=', '1_not_started')]"/>
+                <filter string="En progreso" name="filter_in_progress" domain="[('packing_status', '=', '2_in_progress')]"/>
+                <filter string="Terminado" name="filter_done" domain="[('packing_status', '=', '3_done')]"/>
                 <separator/>
                 <filter string="Con Stock Suficiente" name="stock_ok" domain="[('stock_ok', '=', True)]"/>
                 <filter string="Sin Stock" name="no_stock" domain="[('stock_ok', '=', False)]"/>

@@ -819,7 +819,7 @@ class PreparationDaySummary(models.Model):
     """Aggregated view: one row per product variant showing totals."""
     _name = 'guapante.preparation.day.summary'
     _description = 'Resumen de Preparación por Producto'
-    _order = 'product_id'
+    _order = 'packing_status asc, product_id'
 
     wizard_id = fields.Many2one(
         'guapante.preparation.day',
@@ -847,10 +847,21 @@ class PreparationDaySummary(models.Model):
         readonly=True,
     )
     stock_ok = fields.Boolean(string='Stock OK', readonly=True)
+    packing_status = fields.Selection(
+        selection=[
+            ('1_not_started', 'Sin iniciar'),
+            ('2_in_progress', 'En progreso'),
+            ('3_done', 'Terminado'),
+        ],
+        string='Estado de empaque',
+        compute='_compute_progress_pct',
+        store=True,
+    )
     progress_pct = fields.Float(
         string='Progreso',
         compute='_compute_progress_pct',
         digits=(5, 1),
+        store=True,
     )
 
     @api.depends(
@@ -863,11 +874,17 @@ class PreparationDaySummary(models.Model):
                 lambda l: l.product_product_id == rec.product_id
             )
             DoneLines = AllLines.filtered(lambda l: l.is_done)
-            rec.progress_pct = (
-                (len(DoneLines) / len(AllLines) * 100.0)
-                if AllLines
-                else 0.0
-            )
+            if AllLines:
+                rec.progress_pct = (len(DoneLines) / len(AllLines) * 100.0)
+                if len(DoneLines) == 0:
+                    rec.packing_status = '1_not_started'
+                elif len(DoneLines) < len(AllLines):
+                    rec.packing_status = '2_in_progress'
+                else:
+                    rec.packing_status = '3_done'
+            else:
+                rec.progress_pct = 0.0
+                rec.packing_status = '1_not_started'
 
     def action_select_product(self) -> dict:
         """Abre un wizard transitorio aislado por usuario para empacar."""
