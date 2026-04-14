@@ -17,6 +17,8 @@
                 /* ARQUITECTURA FANTASMA: Ocultamiento direcciones base sustituidas */
                 .row.address, address { display: none !important; }
                 .address strong { display: none !important; }
+                .page h2, .page h3, h2, h3 { display: none !important; }
+                .page h2, .page h3, h2, h3 { display: none !important; }
             </style>
         </xpath>
 
@@ -67,31 +69,36 @@
             </t>
         </xpath>
         
-        <!-- 5. Ocultar bloque de dirección nativo original para inyectar nuestra versión mejorada -->
+        <!-- 5. Ocultar el bloque rústico de fechas y nombre del documento nativo (Se reemplazarán por caja verde) -->
+        <xpath expr="//div[@id='informations']" position="attributes">
+             <attribute name="class" add="d-none" separator=" "/>
+        </xpath>
+        
+        <!-- Ocultar bloque de dirección remita nativo en la línea 1 -->
         
         <xpath expr="//div[hasclass('row')][1]" position="attributes">
              <attribute name="class" add="d-none" separator=" "/>
         </xpath>
-
-        <!-- 6. Inyectar DESPUES de la dirección oculta todo nuestro diseño magistral del Receptor (Cliente) -->
+        
+        <!-- 6. EL ECOSISTEMA B2B: Datos del Receptor a la izquierda + Bloque de Factura a la derecha -->
         <xpath expr="//div[hasclass('row')][1]" position="after">
-
-            <!-- Contenedor general enmarcado con líneas superiores e inferiores (CLIENTE) -->
-            <div class="row mt-2 mb-4" style="border-top: 1px solid #14532d; border-bottom: 1px solid #14532d; padding: 12px 0;">
+            
+            <div class="row mt-3 mb-4" style="border-top: 2px solid #14532d; border-bottom: 2px solid #14532d; padding: 15px 0; background-color: #fbfbfc;">
                 
-                <!-- Columna principal (Receptor) -->
-                <div class="col-6">
+                <!-- IZQUIERDA (col-7): BATERIA DE DATOS DEL CLIENTE -->
+                <div class="col-7">
                     <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 13px; line-height: 1.2;">
                         <tbody>
+                            <!-- SECCIÓN: DATOS DE FACTURACIÓN -->
                             <tr>
-                                <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 5px; margin-bottom: 5px;">DATOS DE FACTURACIÓN</td>
+                                <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 4px; margin-bottom: 4px;">DATOS DE FACTURACIÓN (CLIENTE)</td>
                             </tr>
                             <tr>
-                                <td class="p-0 fw-bold" style="width: 30%; color: #495057;">CLIENTE:</td>
+                                <td class="p-0 fw-bold" style="width: 25%; color: #495057;">CLIENTE:</td>
                                 <td class="p-0"><span t-field="o.partner_id.name" class="fw-bold"/></td>
                             </tr>
                             <tr t-if="o.partner_id.vat">
-                                <td class="p-0 fw-bold" style="color: #495057;">NIT:</td>
+                                <td class="p-0 fw-bold" style="color: #495057;">NIT / RUT:</td>
                                 <td class="p-0"><span t-field="o.partner_id.vat"/></td>
                             </tr>
                             <tr>
@@ -111,39 +118,66 @@
                                     <span t-if="o.partner_id.mobile" t-field="o.partner_id.mobile"/>
                                 </td>
                             </tr>
+
+                            <!-- SECCIÓN: DATOS DE ENVÍO / COMERCIALES -->
+                            <t t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id) or o.ref">
+                                <tr>
+                                    <td colspan="2" class="fw-bold pt-3" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 4px; margin-bottom: 4px;">DATOS COMERCIALES</td>
+                                </tr>
+                                <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
+                                    <td class="p-0 fw-bold" style="color: #495057;">DESTINO:</td>
+                                    <td class="p-0"><span t-field="o.partner_shipping_id.name" class="fw-bold"/></td>
+                                </tr>
+                                <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
+                                    <td class="p-0 fw-bold" style="color: #495057;">DIR. ENVÍO:</td>
+                                    <td class="p-0">
+                                        <span t-if="o.partner_shipping_id.street" t-field="o.partner_shipping_id.street"/>
+                                        <span t-if="o.partner_shipping_id.city">, <span t-field="o.partner_shipping_id.city"/></span>
+                                    </td>
+                                </tr>
+                                <tr t-if="o.ref">
+                                    <td class="p-0 fw-bold" style="color: #495057;">ORDEN / REF:</td>
+                                    <td class="p-0"><span t-field="o.ref"/></td>
+                                </tr>
+                                <tr t-if="o.invoice_payment_term_id">
+                                    <td class="p-0 fw-bold" style="color: #495057;">TÉRMINOS:</td>
+                                    <td class="p-0"><span t-field="o.invoice_payment_term_id.name"/></td>
+                                </tr>
+                            </t>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- Columna secundaria (Dirección de Envío / Complementos) -->
-                <div class="col-6" style="border-left: 1px dashed #e0e0e0; padding-left: 15px;">
-                    <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 13px; line-height: 1.2;">
+                <!-- DERECHA (col-5): BLOQUE MAESTRO DE FACTURA DE VENTA -->
+                <div class="col-5">
+                    <table class="table table-sm table-borderless mb-0 h-100 shadow-sm" style="font-size: 14px; text-align: center; border: 2px solid #14532d; background-color: white;">
+                        <thead style="background-color: #14532d !important; color: white !important;">
+                            <tr>
+                                <th class="p-2 fw-bold text-center align-middle" colspan="2" style="color: white !important; font-size: 15px;">
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">FACTURA DE VENTA</span>
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'draft'">BORRADOR DE FACTURA</span>
+                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'cancel'">FACTURA CANCELADA</span>
+                                    <span t-if="o.move_type == 'out_refund'">NOTA DE CRÉDITO</span>
+                                </th>
+                            </tr>
+                        </thead>
                         <tbody>
                             <tr>
-                                <td colspan="2" class="fw-bold text-end" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 5px; margin-bottom: 5px;">DATOS COMERCIALES</td>
+                                <td class="p-2 fw-bold align-middle" style="background-color: #f8f9fa; width: 45%; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">NÚMERO</td>
+                                <td class="p-2 fw-bold align-middle" style="color: #14532d; font-size: 16px; border-bottom: 1px solid #e0e0e0;"><span t-if="o.name != '/'" t-field="o.name"/></td>
                             </tr>
-                            <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
-                                <td class="p-0 fw-bold text-end" style="width: 45%; color: #495057;">DESTINO:</td>
-                                <td class="p-0 text-end"><span t-field="o.partner_shipping_id.name" class="fw-bold"/></td>
+                            <tr>
+                                <td class="p-2 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">GENERACIÓN</td>
+                                <td class="p-2 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date"/></td>
                             </tr>
-                            <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
-                                <td class="p-0 fw-bold text-end" style="color: #495057;">DIRECCIÓN ENVÍO:</td>
-                                <td class="p-0 text-end">
-                                    <span t-if="o.partner_shipping_id.street" t-field="o.partner_shipping_id.street"/>
-                                    <span t-if="o.partner_shipping_id.city">, <span t-field="o.partner_shipping_id.city"/></span>
-                                </td>
-                            </tr>
-                            <tr t-if="o.ref">
-                                <td class="p-0 fw-bold text-end" style="color: #495057;">ORDEN / REF:</td>
-                                <td class="p-0 text-end"><span t-field="o.ref"/></td>
-                            </tr>
-                            <tr t-if="o.invoice_payment_term_id">
-                                <td class="p-0 fw-bold text-end" style="color: #495057;">TÉRMINOS PAGO:</td>
-                                <td class="p-0 text-end"><span t-field="o.invoice_payment_term_id.name"/></td>
+                            <tr>
+                                <td class="p-2 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0;">VENCIMIENTO</td>
+                                <td class="p-2 align-middle"><span t-field="o.invoice_date_due"/></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+
             </div>
         </xpath>
 
