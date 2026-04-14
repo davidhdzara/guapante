@@ -1,33 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-
-    <!-- INYECCIÓN ARQUITECTÓNICA "NINJA" (100% Cero Destructiva, Ocultamiento CSS) -->
-    <!-- Ingresamos directamente al "sandbox" de la cabecera en layouts validos para v18 y apagamos luces SÓLO si es Factura -->
-    <template id="hide_invoice_header_standard" inherit_id="web.external_layout_standard">
-        <xpath expr="//div[hasclass('header')]" position="inside">
-            <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
-                .header, .header > * { display: none !important; }
-            </style>
-        </xpath>
-    </template>
-
-    <template id="hide_invoice_header_bold" inherit_id="web.external_layout_bold">
-        <xpath expr="//div[hasclass('header')]" position="inside">
-            <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
-                .header, .header > * { display: none !important; }
-            </style>
-        </xpath>
-    </template>
-    
-    <template id="hide_invoice_header_boxed" inherit_id="web.external_layout_boxed">
-        <xpath expr="//div[hasclass('header')]" position="inside">
-            <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
-                .header, .header > * { display: none !important; }
-            </style>
-        </xpath>
-    </template>
-
-
     <template id="report_invoice_document_inherit_insotech_advanced_table" inherit_id="account.report_invoice_document" priority="99999999">
         
         <!-- 1. CSS Aislado Premium B2B -->
@@ -110,8 +82,7 @@
         <xpath expr="//div[hasclass('row')][1]" position="after">
             
             <!-- Inyección Frontal Premium: Logo + Remitente + Resumen Factura 100% Alineados -->
-            <!-- La cabecera arriba ahora es invisible gracias al ninja hide_invoice_header, subimos a reclamar el espacio libre -->
-            <div class="row mb-2 pt-2" style="margin-top: -65px;">
+            <div class="row mb-2 pt-2">
                 
                 <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico (Se trae desde la BD) o estático por defecto -->
                 <div class="col-3 text-start">
