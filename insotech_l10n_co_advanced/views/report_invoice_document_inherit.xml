@@ -18,7 +18,64 @@
                 .row.address, address { display: none !important; }
                 .address strong { display: none !important; }
                 .page h2, .page h3, h2, h3 { display: none !important; }
-                .page h2, .page h3, h2, h3 { display: none !important; }
+                
+                /* ========================================================
+                   ESTRATEGIA COMPACTADORA DIAN (Ahorro de Hojas y Diseño B2B)
+                   ======================================================== */
+                /* Envolver el bloque en un contenedor corporativo y compacto */
+                #complement { 
+                    font-size: 11px !important; 
+                    margin-top: 15px !important; 
+                    border: 1px solid #14532d !important; 
+                    padding: 10px 15px !important; 
+                    border-radius: 4px;
+                    background-color: #fcfcfd;
+                }
+                
+                /* Estrangular el QR (Anular el col-4 gordo nativo) */
+                #complement .row:first-child { align-items: center !important; }
+                #complement .col-4 { 
+                    width: 130px !important; 
+                    flex: 0 0 130px !important; 
+                    max-width: 130px !important; 
+                    padding-right: 0 !important; 
+                }
+                #complement img { 
+                    width: 110px !important; 
+                    max-width: 110px !important; 
+                    height: auto !important; 
+                    margin: 0 auto; 
+                }
+                
+                /* Expandir el área de texto con la masa recuperada del QR */
+                #complement .col-8 { 
+                    width: calc(100% - 130px) !important; 
+                    flex: 0 0 calc(100% - 130px) !important; 
+                    max-width: calc(100% - 130px) !important; 
+                    padding-left: 0 !important;
+                }
+                
+                /* Convertir aburridas listas verticales en un flujo horizontal con separadores rígidos */
+                #complement ul { 
+                    margin: 0 !important; 
+                    padding: 0 !important; 
+                }
+                #complement ul li { 
+                    display: inline-block !important; 
+                    padding-right: 8px !important; 
+                    margin-right: 4px !important; 
+                    border-right: 1px solid #14532d !important; 
+                    line-height: 1.35 !important; 
+                    margin-bottom: 2px !important; 
+                }
+                #complement ul li:last-child { 
+                    border-right: none !important; 
+                    margin-right: 0 !important; 
+                }
+                
+                /* Dominio total sobre la identidad y tamaño */
+                #complement ul li span { font-weight: bold !important; color: #14532d !important; word-break: break-all; }
+                #complement .row:last-child { margin-top: 6px !important; border-top: 1px dashed #d1d5db; padding-top: 8px; }
             </style>
         </xpath>
 
