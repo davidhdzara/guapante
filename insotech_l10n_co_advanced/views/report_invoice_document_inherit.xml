@@ -83,6 +83,7 @@
                 .row.address, address { display: none !important; }
                 .address strong { display: none !important; }
                 .page h2, .page h3, h2, h3 { display: none !important; }
+                p[name="payment_term"], div[name="payment_term"], #payment_term { display: none !important; }
                 
                 /* ========================================================
                    ESTRATEGIA COMPACTADORA DIAN (Ahorro de Hojas y Diseño B2B)
