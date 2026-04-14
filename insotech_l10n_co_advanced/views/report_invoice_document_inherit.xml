@@ -14,10 +14,8 @@
                 #total table td.text-start, #total table td:first-child { background-color: #f8f9fa !important; font-weight: bold !important; color: #495057 !important; padding-left: 10px !important; }
                 #total table tr.o_total td, #total table tr.o_total strong { background-color: #14532d !important; color: white !important; font-size: 16px !important; font-weight: 800 !important; }
                 
-                /* ARQUITECTURA FANTASMA: Ocultamiento global de bloques nativos repetidos (Cero Daños XML) */
+                /* ARQUITECTURA FANTASMA: Ocultamiento direcciones base sustituidas */
                 .row.address, address { display: none !important; }
-                .page h1, .page h2, .page h3 { display: none !important; }
-                h1, h2, h3 { display: none !important; }
                 .address strong { display: none !important; }
             </style>
         </xpath>
@@ -69,68 +67,14 @@
             </t>
         </xpath>
         
-        <!-- 5. ARQUITECTURA CERO DESTRUCTIVA (Ocultar en lugar de Borrar) -->
-        <xpath expr="//div[@id='informations']" position="attributes">
-             <attribute name="class" add="d-none" separator=" "/>
-        </xpath>
+        <!-- 5. Ocultar bloque de dirección nativo original para inyectar nuestra versión mejorada -->
         
         <xpath expr="//div[hasclass('row')][1]" position="attributes">
              <attribute name="class" add="d-none" separator=" "/>
         </xpath>
 
-        <!-- 6. Inyectar DESPUES del div oculto todo nuestro diseño magistral de Cabecera y Receptor -->
+        <!-- 6. Inyectar DESPUES de la dirección oculta todo nuestro diseño magistral del Receptor (Cliente) -->
         <xpath expr="//div[hasclass('row')][1]" position="after">
-            
-            <!-- Inyección Frontal Premium: Logo + Remitente + Resumen Factura 100% Alineados -->
-            <div class="row mb-2 pt-2">
-                
-                <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico (Se trae desde la BD) o estático por defecto -->
-                <div class="col-3 text-start">
-                    <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 80px; max-width: 100%; object-fit: contain;" alt="Logo Guapante BD"/>
-                    <img t-else="" src="/theme_guapante/static/src/img/logo_guapante.png" style="max-height: 80px; max-width: 100%; object-fit: contain;" alt="Logo Guapante Repo"/>
-                </div>
-
-                <!-- Tarjeta Estructurada del Remitente Guapante -->
-                <div class="col-4 text-start pt-1">
-                    <h5 class="fw-bold mb-1" style="color: #14532d; font-size: 15px;"><span t-field="o.company_id.name"/></h5>
-                    <div style="color: #495057; font-size: 12px; line-height: 1.35;">
-                        <span class="fw-bold">NIT:</span> <span t-if="o.company_id.company_registry" t-field="o.company_id.company_registry"/><span t-else="" t-field="o.company_id.vat"/><br/>
-                        <span t-field="o.company_id.street"/><br/>
-                        <span t-field="o.company_id.city"/><span t-if="o.company_id.state_id">, <span t-field="o.company_id.state_id.name"/></span><br/>
-                        <span t-field="o.company_id.country_id.name"/>
-                    </div>
-                </div>
-
-                <!-- Bloque CFDI / SIIGO de Resumen -->
-                <div class="col-5">
-                    <table class="table table-sm table-borderless mb-0" style="font-size: 13px; text-align: center; border: 1px solid #14532d;">
-                        <thead style="background-color: #14532d !important; color: white !important;">
-                            <tr>
-                                <th class="p-1 fw-bold text-center" colspan="2" style="color: white !important;">
-                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">FACTURA DE VENTA</span>
-                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'draft'">BORRADOR DE FACTURA</span>
-                                    <span t-if="o.move_type == 'out_invoice' and o.state == 'cancel'">FACTURA CANCELADA</span>
-                                    <span t-if="o.move_type == 'out_refund'">NOTA DE CRÉDITO</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">NÚMERO</td>
-                                <td class="p-1 fw-bold" style="color: #14532d;"><span t-if="o.name != '/'" t-field="o.name"/></td>
-                            </tr>
-                            <tr>
-                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">GENERACIÓN</td>
-                                <td class="p-1"><span t-field="o.invoice_date"/></td>
-                            </tr>
-                            <tr>
-                                <td class="p-1 fw-bold" style="background-color: #f8f9fa;">VENCIMIENTO</td>
-                                <td class="p-1"><span t-field="o.invoice_date_due"/></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
 
             <!-- Contenedor general enmarcado con líneas superiores e inferiores (CLIENTE) -->
             <div class="row mt-2 mb-4" style="border-top: 1px solid #14532d; border-bottom: 1px solid #14532d; padding: 12px 0;">
