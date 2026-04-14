@@ -1,20 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- INYECCIÓN DINÁMICA DE INVISIBILIDAD EN LAYOUTS NATIVOS (100% Seguro) -->
-    <!-- Apagamos la cabecera genérica exclusivamente cuando se imprime una factura, evitando sobreposición en wkhtmltopdf -->
-    <template id="hide_header_in_light" inherit_id="web.external_layout_light">
-        <xpath expr="//div[hasclass('header')]" position="attributes">
-            <attribute name="t-attf-class">header o_company_#{company.id}_layout {{ 'd-none' if o and o._name == 'account.move' else '' }}</attribute>
-        </xpath>
-    </template>
-    
-    <template id="hide_header_in_standard" inherit_id="web.external_layout_standard">
-        <xpath expr="//div[hasclass('header')]" position="attributes">
-            <attribute name="t-attf-class">header o_company_#{company.id}_layout {{ 'd-none' if o and o._name == 'account.move' else '' }}</attribute>
-        </xpath>
-    </template>
-
     <template id="report_invoice_document_inherit_insotech_advanced_table" inherit_id="account.report_invoice_document" priority="99999999">
         
         <!-- 1. CSS Aislado Premium B2B -->
@@ -97,8 +83,7 @@
         <xpath expr="//div[hasclass('row')][1]" position="after">
             
             <!-- Inyección Frontal Premium: Logo + Remitente + Resumen Factura 100% Alineados -->
-            <!-- Al apagar el header mediante clase d-none desde el inherit, la cabecera queda vacía y podemos subir -->
-            <div class="row mb-2" style="margin-top: -60px;">
+            <div class="row mb-2 pt-2">
                 
                 <!-- INYECCIÓN BASE64 NATIVA: Logo dinámico (Se trae desde la BD) o estático por defecto -->
                 <div class="col-3 text-start">
