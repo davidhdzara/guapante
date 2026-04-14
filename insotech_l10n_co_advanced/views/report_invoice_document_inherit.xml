@@ -180,9 +180,8 @@
                         <!-- COLUMNA B: DATOS DE ENTREGA Y ORIGEN -->
                         <div class="col-6" style="padding-left: 15px;">
                             <table class="table table-sm table-borderless mb-0 res_partner_address_table" style="font-size: 12px; line-height: 1.2;">
-                                <tbody>
-                                    <tr>
-                                        <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 4px; margin-bottom: 6px; font-size: 13px;">DATOS DE ENTREGA Y ORIGEN</td>
+                                                              <tr>
+                                        <td colspan="2" class="fw-bold" style="color: #14532d; border-bottom: 1px solid #14532d !important; padding-bottom: 4px; margin-bottom: 6px; font-size: 13px;">DATOS DE ENTREGA / COMERCIALES</td>
                                     </tr>
                                     <tr t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
                                         <td class="p-0 fw-bold" style="width: 38%; color: #495057;">DESTINO:</td>
@@ -196,23 +195,14 @@
                                         </td>
                                     </tr>
                                     <!-- Campos rescatados -->
-                                    <tr t-if="'invoice_origin' in o and o.invoice_origin">
-                                        <td class="p-0 fw-bold" style="color: #495057;">ORIGEN:</td>
-                                        <td class="p-0"><span t-field="o.invoice_origin"/></td>
-                                    </tr>
-                                    <tr t-elif="o.ref">
-                                        <td class="p-0 fw-bold" style="color: #495057;">ORIGEN:</td>
-                                        <td class="p-0"><span t-field="o.ref"/></td>
-                                    </tr>
                                     <tr t-if="'delivery_date' in o and o.delivery_date">
                                         <td class="p-0 fw-bold" style="color: #495057;">F. ENTREGA:</td>
                                         <td class="p-0"><span t-field="o.delivery_date"/></td>
                                     </tr>
-
                                     <tr t-if="o.invoice_payment_term_id">
                                         <td class="p-0 fw-bold" style="color: #495057;">TÉRMINOS:</td>
                                         <td class="p-0"><span t-field="o.invoice_payment_term_id.name"/></td>
-                                    </tr>
+                                    </tr>           </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -238,28 +228,35 @@
                                 <td class="p-1 fw-bold align-middle" style="color: #14532d; font-size: 15px; border-bottom: 1px solid #e0e0e0;"><span t-if="o.name != '/'" t-field="o.name"/></td>
                             </tr>
                             <tr>
-                                <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">GENERACIÓN</td>
-                                <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date"/></td>
-                            </tr>
-                            <tr>
-                                <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">VENCIMIENTO</td>
-                                <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date_due"/></td>
-                            </tr>
-                            <!-- Campos rescatados de Odoo DIAN (Métodos de Pago) -->
-                            <t t-if="'l10n_co_edi_payment_option_id' in o and o.l10n_co_edi_payment_option_id">
-                                <tr>
-
-                                    <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0; font-size: 11px;">MÉTODO PAGO</td>
-                                    <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0; font-size: 11px; line-height: 1.1;"><span t-field="o.l10n_co_edi_payment_option_id.name"/></td>
-                                </tr>
-                                <tr t-if="o.l10n_co_edi_payment_option_id.code in ('1', '2')">
-                                    <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; font-size: 11px;">TIPO PAGO</td>
-                                    <td class="p-1 align-middle" style="font-size: 11px;">
-                                        <span t-if="o.l10n_co_edi_is_direct_payment">Contado</span>
-                                        <span t-else="">Crédito</span>
-                                    </td>
-                                </tr>
-                            </t>
+                                        <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">GENERACIÓN</td>
+                                        <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">VENCIMIENTO</td>
+                                        <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_date_due"/></td>
+                                    </tr>
+                                    <tr t-if="'invoice_origin' in o and o.invoice_origin">
+                                        <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">ORDEN / REF</td>
+                                        <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.invoice_origin"/></td>
+                                    </tr>
+                                    <tr t-elif="o.ref">
+                                        <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">ORDEN / REF</td>
+                                        <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0;"><span t-field="o.ref"/></td>
+                                    </tr>
+                                    <!-- Campos rescatados de Odoo DIAN (Métodos de Pago) -->
+                                    <t t-if="'l10n_co_edi_payment_option_id' in o and o.l10n_co_edi_payment_option_id">
+                                        <tr>
+                                            <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">MÉTODO PAGO</td>
+                                            <td class="p-1 align-middle" style="border-bottom: 1px solid #e0e0e0; line-height: 1.1;"><span t-field="o.l10n_co_edi_payment_option_id.name"/></td>
+                                        </tr>
+                                        <tr t-if="o.l10n_co_edi_payment_option_id.code in ('1', '2')">
+                                            <td class="p-1 fw-bold align-middle" style="background-color: #f8f9fa; border-right: 1px solid #e0e0e0;">TIPO PAGO</td>
+                                            <td class="p-1 align-middle">
+                                                <span t-if="o.l10n_co_edi_is_direct_payment">Contado</span>
+                                                <span t-else="">Crédito</span>
+                                            </td>
+                                        </tr>
+                                    </t>
                         </tbody>
                     </table>
                 </div>
