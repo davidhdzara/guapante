@@ -148,7 +148,12 @@
             <attribute name="class">table table-sm o_main_table mb-0</attribute>
         </xpath>
 
-        <!-- 3. Cabeceras Limpias -->
+        <!-- 3. Orden Alfabético Automático -->
+        <xpath expr="//table[@name='invoice_line_table']/tbody" position="before">
+            <t t-set="lines" t-value="lines.sorted(key=lambda l: (l.product_id.name or '') if l.display_type == 'product' else '')"/>
+        </xpath>
+
+        <!-- 4. Cabeceras Limpias -->
         <xpath expr="//table[@name='invoice_line_table']/thead/tr" position="replace">
             <tr>
                 <th name="th_description" class="text-start"><span>DESCRIPCIÓN</span></th>
