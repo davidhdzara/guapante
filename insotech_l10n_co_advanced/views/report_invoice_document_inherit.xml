@@ -2,8 +2,16 @@
 <odoo>
 
     <!-- INYECCIÓN ARQUITECTÓNICA "NINJA" (100% Cero Destructiva, Ocultamiento CSS) -->
-    <!-- Ingresamos directamente al "sandbox" de la cabecera y le apagamos las luces SÓLO si es Factura -->
-    <template id="hide_invoice_header_light" inherit_id="web.external_layout_light">
+    <!-- Ingresamos directamente al "sandbox" de la cabecera en layouts validos para v18 y apagamos luces SÓLO si es Factura -->
+    <template id="hide_invoice_header_standard" inherit_id="web.external_layout_standard">
+        <xpath expr="//div[hasclass('header')]" position="inside">
+            <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
+                .header, .header > * { display: none !important; }
+            </style>
+        </xpath>
+    </template>
+
+    <template id="hide_invoice_header_bold" inherit_id="web.external_layout_bold">
         <xpath expr="//div[hasclass('header')]" position="inside">
             <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
                 .header, .header > * { display: none !important; }
@@ -11,7 +19,7 @@
         </xpath>
     </template>
     
-    <template id="hide_invoice_header_standard" inherit_id="web.external_layout_standard">
+    <template id="hide_invoice_header_boxed" inherit_id="web.external_layout_boxed">
         <xpath expr="//div[hasclass('header')]" position="inside">
             <style t-if="o and getattr(o, '_name', '') == 'account.move'" type="text/css">
                 .header, .header > * { display: none !important; }
