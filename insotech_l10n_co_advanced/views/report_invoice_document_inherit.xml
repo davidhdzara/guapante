@@ -9,7 +9,7 @@
             <div t-attf-class="header o_company_#{company.id}_layout" t-att-style="report_header_style">
                 <div class="row align-items-center" style="margin-top: 15px;">
                     <div class="col-5">
-                        <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 85px; max-width: 100%; object-fit: contain;" alt="Logo InSoTech"/>
+                        <img t-if="o.company_id.logo" t-att-src="image_data_uri(o.company_id.logo)" style="max-height: 130px; max-width: 100%; object-fit: contain;" alt="Logo InSoTech"/>
                     </div>
                     <div class="col-7 text-end" style="color: #495057; font-size: 13px; line-height: 1.3;">
                         <div name="company_address">
@@ -200,7 +200,8 @@
         <!-- 6. EL ECOSISTEMA B2B: Datos del Receptor subdivididos (Izquierda) + Bloque de Factura Extendido (Derecha) -->
         <xpath expr="//div[hasclass('row')][1]" position="after">
             
-            <div class="row mt-3 mb-4" style="border-top: 2px solid #14532d; border-bottom: 2px solid #14532d; padding: 15px 0; background-color: #fbfbfc;">
+            <!-- CONTENEDOR LOGÍSTICO (Sin border-top para que encaje con el borde inferior del header base y no dublicar línea) -->
+            <div class="row pt-4 pb-3 mb-4" style="border-bottom: 2px solid #14532d; background-color: #fbfbfc;">
                 
                 <!-- IZQUIERDA (col-7): BATERIA DE DATOS LÓGICOS SUBCATEGORIZADOS -->
                 <div class="col-7">
