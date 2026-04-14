@@ -62,16 +62,11 @@
                 }
                 #complement ul li { 
                     display: inline-block !important; 
-                    padding-right: 8px !important; 
-                    margin-right: 4px !important; 
-                    border-right: 1px solid #14532d !important; 
+                    padding-right: 15px !important; 
                     line-height: 1.35 !important; 
-                    margin-bottom: 2px !important; 
+                    margin-bottom: 5px !important; 
                 }
-                #complement ul li:last-child { 
-                    border-right: none !important; 
-                    margin-right: 0 !important; 
-                }
+
                 
                 /* Dominio total sobre la identidad y tamaño */
                 #complement ul li span { font-weight: bold !important; color: #14532d !important; word-break: break-all; }
