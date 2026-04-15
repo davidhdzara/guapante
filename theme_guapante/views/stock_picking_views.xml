@@ -46,4 +46,14 @@
             </xpath>
         </field>
     </record>
+
+    <!-- Acción de servidor: Resetear Cajas (menú contextual de pickings) -->
+    <record id="action_reset_daily_sequence" model="ir.actions.server">
+        <field name="name">Resetear # de Cajas</field>
+        <field name="model_id" ref="stock.model_stock_picking"/>
+        <field name="binding_model_id" ref="stock.model_stock_picking"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">action = records.action_reset_daily_sequence()</field>
+    </record>
 </odoo>
