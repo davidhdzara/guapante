@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import math
+import datetime
 from datetime import timedelta
 
 import pytz
@@ -39,6 +40,31 @@ class SaleOrder(models.Model):
             )
 
     def action_confirm(self):
+        # Odoo por defecto confirma la orden y crea los stock.picking.
+        # Intervenimos antes del super() para asentar la fecha prometida.
+        bogota_tz = pytz.timezone('America/Bogota')
+        
+        for order in self:
+            # 1. Obtenemos hora actual del servidor en la ZH de Colombia
+            hora_co = fields.Datetime.now().astimezone(bogota_tz)
+            
+            # 2. Regla de negocio: Si >= 00:30 pierde el corte hoy.
+            if hora_co.time() >= datetime.time(0, 30):
+                dia_ejecucion = hora_co.date() + datetime.timedelta(days=1)
+            else:
+                dia_ejecucion = hora_co.date()
+                
+            # 3. Forzar `commitment_date` a la media noche (00:00:00) 
+            # del día de ejecución correspondiente, devolviéndolo a UTC para BD.
+            expected_local = bogota_tz.localize(
+                 datetime.datetime.combine(dia_ejecucion, datetime.time(0, 0))
+            )
+            expected_utc = expected_local.astimezone(pytz.utc).replace(tzinfo=None)
+            
+            # Al modificar commitment_date antes del super, Odoo propaga
+            # esta fecha exacta a la fecha programada (scheduled_date) de los Pickings.
+            order.commitment_date = expected_utc
+
         return super().action_confirm()
 
     @api.depends('state', 'order_line.invoice_status')
