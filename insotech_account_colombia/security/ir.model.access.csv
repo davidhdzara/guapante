@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_insotech_uvt,insotech.uvt,model_insotech_uvt,account.group_account_user,1,1,1,1
+access_insotech_retention_concept,insotech.retention.concept,model_insotech_retention_concept,account.group_account_user,1,1,1,1
