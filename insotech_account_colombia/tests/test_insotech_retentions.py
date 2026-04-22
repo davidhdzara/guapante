@@ -14,7 +14,7 @@ class TestInsotechRetentions(TransactionCase):
         
         # Aseguramos que haya una cuenta contable disponible
         cls.test_account = cls.env['account.account'].search([
-            ('company_id', '=', cls.company.id),
+            ('company_ids', 'in', cls.company.id),
             ('deprecated', '=', False)
         ], limit=1)
         
@@ -24,7 +24,7 @@ class TestInsotechRetentions(TransactionCase):
                 'code': '135599',
                 'name': 'Cuenta Test Retenciones',
                 'account_type': 'asset_current',
-                'company_id': cls.company.id,
+                'company_ids': [(4, cls.company.id)],
             })
 
         # Creamos una UVT de prueba
