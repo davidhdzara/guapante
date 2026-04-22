@@ -168,8 +168,14 @@ class TestPreparationDay(TransactionCase):
         session.action_load()
         self.assertTrue(len(session.line_ids) > 0)
 
-        # Cancelar la orden
+        # Cancelar la orden y sus movimientos
         order.action_cancel()
+        if order.state != 'cancel':
+            order.write({'state': 'cancel'})
+        for picking in order.picking_ids:
+            if picking.state != 'cancel':
+                picking.action_cancel()
+
         session.action_load()
 
         pending_from_cancelled = session.line_ids.filtered(

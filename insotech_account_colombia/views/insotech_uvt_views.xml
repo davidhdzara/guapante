@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_insotech_uvt_tree" model="ir.ui.view">
+        <field name="name">insotech.uvt.tree</field>
+        <field name="model">insotech.uvt</field>
+        <field name="arch" type="xml">
+            <list string="Histórico de UVT" editable="bottom">
+                <field name="year"/>
+                <field name="value" widget="monetary"/>
+                <field name="currency_id" invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_insotech_uvt" model="ir.actions.act_window">
+        <field name="name">Histórico UVT Colombia</field>
+        <field name="res_model">insotech.uvt</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Registra el primer valor de la UVT
+            </p>
+            <p>
+                Este valor se usará como base inmutable para calcular los topes de retención del año correspondiente.
+            </p>
+        </field>
+    </record>
+</odoo>

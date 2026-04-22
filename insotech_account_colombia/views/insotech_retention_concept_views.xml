@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_insotech_retention_concept_tree" model="ir.ui.view">
+        <field name="name">insotech.retention.concept.tree</field>
+        <field name="model">insotech.retention.concept</field>
+        <field name="arch" type="xml">
+            <list string="Conceptos de Retención">
+                <field name="name"/>
+                <field name="type"/>
+                <field name="base_uvt"/>
+                <field name="percentage"/>
+                <field name="account_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_insotech_retention_concept_form" model="ir.ui.view">
+        <field name="name">insotech.retention.concept.form</field>
+        <field name="model">insotech.retention.concept</field>
+        <field name="arch" type="xml">
+            <form string="Concepto de Retención">
+                <sheet>
+                    <widget name="web_ribbon" title="Archivado" bg_color="bg-danger" invisible="active"/>
+                    <field name="active" invisible="1"/>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Ej. Retención Compras Agrícolas"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Clasificación">
+                            <field name="type"/>
+                            <field name="city_name" invisible="type != 'reteica'"/>
+                        </group>
+                        <group string="Cálculo Legal">
+                            <field name="base_uvt"/>
+                            <field name="percentage" widget="percentage"/>
+                        </group>
+                    </group>
+                    <group string="Contabilidad">
+                        <group>
+                            <field name="account_id"/>
+                            <field name="tax_id"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_insotech_retention_concept" model="ir.actions.act_window">
+        <field name="name">Conceptos de Retención</field>
+        <field name="res_model">insotech.retention.concept</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crea tu primer Concepto de Retención
+            </p>
+            <p>
+                Define las bases en UVT y la cuenta PUC exacta. El sistema usará esto para automatizar los descuentos.
+            </p>
+        </field>
+    </record>
+</odoo>
