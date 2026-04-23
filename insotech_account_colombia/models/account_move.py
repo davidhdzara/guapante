@@ -82,27 +82,34 @@ class AccountMove(models.Model):
         # ── 5. Aplicar retenciones ──
         applied = []
         existing_tax_ids = set()
-        for line in self.invoice_line_ids:
+        product_lines = self.invoice_line_ids.filtered(
+            lambda ln: ln.display_type not in (
+                'line_section', 'line_note',
+            )
+        )
+        for line in product_lines:
             existing_tax_ids.update(line.tax_ids.ids)
 
+        taxes_to_add = self.env['account.tax']
         for concept in concepts:
             if concept.purchase_tax_id.id in existing_tax_ids:
                 continue
             if base_en_uvt < concept.base_uvt:
                 continue
-
-            for line in self.invoice_line_ids.filtered(
-                lambda ln: ln.display_type not in (
-                    'line_section', 'line_note',
-                )
-            ):
-                line.tax_ids = [
-                    fields.Command.link(concept.purchase_tax_id.id),
-                ]
+            taxes_to_add |= concept.purchase_tax_id
             applied.append(
                 f"• {concept.name}: {concept.percentage}%"
                 f" ({concept.purchase_tax_id.name})"
             )
+
+        if taxes_to_add:
+            for line in product_lines:
+                line.write({
+                    'tax_ids': [
+                        fields.Command.link(tax.id)
+                        for tax in taxes_to_add
+                    ],
+                })
 
         if applied:
             self.insotech_retention_calculated = True
