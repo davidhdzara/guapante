@@ -113,12 +113,17 @@ class AccountMove(models.Model):
 
         if applied:
             self.insotech_retention_calculated = True
-            return self._insotech_notify(
-                _("Retenciones aplicadas (%s):\n%s")
-                % (len(applied), "\n".join(applied)),
-                notify_type='success',
-                sticky=True,
-            )
+            body = _(
+                "<b>Retenciones DIAN aplicadas (%s):</b><br/>%s"
+            ) % (len(applied), "<br/>".join(applied))
+            self.message_post(body=body)
+            return {
+                'type': 'ir.actions.act_window',
+                'res_model': self._name,
+                'res_id': self.id,
+                'views': [(False, 'form')],
+                'target': 'current',
+            }
         return self._insotech_notify(
             _("No se aplicaron retenciones. La base (%.1f UVT) "
               "no supera los mínimos de los conceptos configurados, "
@@ -142,3 +147,4 @@ class AccountMove(models.Model):
                 'sticky': sticky,
             },
         }
+
