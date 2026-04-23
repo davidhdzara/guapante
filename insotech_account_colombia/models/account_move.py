@@ -79,35 +79,64 @@ class AccountMove(models.Model):
                 sticky=True,
             )
 
-        # ── 5. Aplicar retenciones ──
+        # ── 5. Aplicar retenciones (Nivel 1: Proveedor) ──
         applied = []
-        existing_tax_ids = set()
         product_lines = self.invoice_line_ids.filtered(
             lambda ln: ln.display_type not in (
                 'line_section', 'line_note',
             )
         )
-        for line in product_lines:
-            existing_tax_ids.update(line.tax_ids.ids)
 
-        taxes_to_add = self.env['account.tax']
+        vendor_taxes = self.env['account.tax']
         for concept in concepts:
-            if concept.purchase_tax_id.id in existing_tax_ids:
-                continue
             if base_en_uvt < concept.base_uvt:
                 continue
-            taxes_to_add |= concept.purchase_tax_id
+            vendor_taxes |= concept.purchase_tax_id
             applied.append(
                 f"• {concept.name}: {concept.percentage}%"
                 f" ({concept.purchase_tax_id.name})"
             )
 
-        if taxes_to_add:
-            for line in product_lines:
+        # ── 6. Aplicar parafiscales (Nivel 2: Producto) ──
+        line_parafiscals = {}
+        for line in product_lines:
+            product = line.product_id
+            if not product:
+                continue
+            template = product.product_tmpl_id
+            parafiscal = template.insotech_parafiscal_concept_id
+            if (
+                parafiscal
+                and parafiscal.purchase_tax_id
+                and base_en_uvt >= parafiscal.base_uvt
+            ):
+                line_parafiscals[line.id] = parafiscal
+
+        # ── 7. Escribir taxes sin duplicar ──
+        for line in product_lines:
+            existing_ids = set(line.tax_ids.ids)
+            taxes_for_line = self.env['account.tax']
+
+            for tax in vendor_taxes:
+                if tax.id not in existing_ids:
+                    taxes_for_line |= tax
+
+            parafiscal = line_parafiscals.get(line.id)
+            if parafiscal and parafiscal.purchase_tax_id.id not in existing_ids:
+                taxes_for_line |= parafiscal.purchase_tax_id
+                pf_label = (
+                    f"• {parafiscal.name}: {parafiscal.percentage}%"
+                    f" ({parafiscal.purchase_tax_id.name})"
+                    f" [{line.product_id.name}]"
+                )
+                if pf_label not in applied:
+                    applied.append(pf_label)
+
+            if taxes_for_line:
                 line.write({
                     'tax_ids': [
                         fields.Command.link(tax.id)
-                        for tax in taxes_to_add
+                        for tax in taxes_for_line
                     ],
                 })
 
