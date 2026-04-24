@@ -11,6 +11,51 @@ class AccountMove(models.Model):
         copy=False,
     )
 
+    # ──────────────────────────────────────────────────
+    #  Auto-cálculo: al cambiar proveedor o líneas
+    # ──────────────────────────────────────────────────
+
+    @api.onchange('partner_id')
+    def _onchange_partner_apply_retentions(self) -> None:
+        """Al seleccionar proveedor en factura de compra,
+        inyecta automáticamente los taxes de retención del
+        proveedor en las líneas existentes.
+        """
+        if (
+            self.move_type not in ('in_invoice', 'in_refund')
+            or not self.partner_id
+        ):
+            return
+
+        partner = self.partner_id
+        obligations = partner.l10n_co_edi_obligation_type_ids.mapped('name')
+        if 'O-15' in obligations or 'O-47' in obligations:
+            return
+
+        concepts = partner.insotech_retention_concept_ids.filtered(
+            lambda c: c.direction in ('purchase', 'both')
+            and c.purchase_tax_id
+        )
+        if not concepts:
+            return
+
+        vendor_taxes = concepts.mapped('purchase_tax_id')
+        for line in self.invoice_line_ids.filtered(
+            lambda ln: ln.display_type not in (
+                'line_section', 'line_note',
+            )
+        ):
+            existing_ids = set(line.tax_ids.ids)
+            new_taxes = vendor_taxes.filtered(
+                lambda t: t.id not in existing_ids
+            )
+            if new_taxes:
+                line.tax_ids |= new_taxes
+
+    # ──────────────────────────────────────────────────
+    #  Botón manual (respaldo / recalcular)
+    # ──────────────────────────────────────────────────
+
     def action_calculate_retentions(self) -> None:
         """Botón principal: Calcula y aplica retenciones DIAN
         en facturas de proveedor según UVT, obligaciones
@@ -79,7 +124,7 @@ class AccountMove(models.Model):
                 sticky=True,
             )
 
-        # ── 5. Aplicar retenciones (Nivel 1: Proveedor) ──
+        # ── 5. Retenciones del proveedor (Nivel 1) ──
         applied = []
         product_lines = self.invoice_line_ids.filtered(
             lambda ln: ln.display_type not in (
@@ -97,7 +142,7 @@ class AccountMove(models.Model):
                 f" ({concept.purchase_tax_id.name})"
             )
 
-        # ── 6. Aplicar parafiscales (Nivel 2: Producto) ──
+        # ── 6. Parafiscales del producto (Nivel 2) ──
         line_parafiscals = {}
         for line in product_lines:
             product = line.product_id
@@ -177,3 +222,44 @@ class AccountMove(models.Model):
             },
         }
 
+
+class AccountMoveLine(models.Model):
+    _inherit = 'account.move.line'
+
+    @api.onchange('product_id')
+    def _onchange_product_parafiscal(self) -> None:
+        """Al seleccionar un producto en una línea de factura
+        de compra, inyecta automáticamente el tax parafiscal
+        del producto si está configurado.
+        """
+        if (
+            not self.product_id
+            or not self.move_id
+            or self.move_id.move_type not in ('in_invoice', 'in_refund')
+        ):
+            return
+
+        template = self.product_id.product_tmpl_id
+        parafiscal = template.insotech_parafiscal_concept_id
+        if (
+            parafiscal
+            and parafiscal.purchase_tax_id
+            and parafiscal.purchase_tax_id.id not in self.tax_ids.ids
+        ):
+            self.tax_ids |= parafiscal.purchase_tax_id
+
+        # También inyectar retenciones del proveedor
+        partner = self.move_id.partner_id
+        if not partner:
+            return
+        obligations = partner.l10n_co_edi_obligation_type_ids.mapped('name')
+        if 'O-15' in obligations or 'O-47' in obligations:
+            return
+
+        concepts = partner.insotech_retention_concept_ids.filtered(
+            lambda c: c.direction in ('purchase', 'both')
+            and c.purchase_tax_id
+        )
+        for concept in concepts:
+            if concept.purchase_tax_id.id not in self.tax_ids.ids:
+                self.tax_ids |= concept.purchase_tax_id
