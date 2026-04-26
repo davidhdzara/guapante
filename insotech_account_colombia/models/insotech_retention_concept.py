@@ -68,6 +68,12 @@ class InsotechRetentionConcept(models.Model):
         help='Impuesto negativo que se inyecta en facturas de proveedor',
     )
 
+    accumulate_monthly = fields.Boolean(
+        string='Topes Acumulados Mensuales',
+        default=False,
+        help='Si se marca, el tope UVT se evalúa sumando todas las facturas del mes.',
+    )
+
     active = fields.Boolean(default=True)
 
     @api.model
@@ -107,8 +113,8 @@ class InsotechRetentionConcept(models.Model):
             ('RteICA Alimentos', 'reteica', 'sale', 0.0, 0.414, '13551001'),
             ('RteICA Comercio', 'reteica', 'sale', 0.0, 0.966, '13551001'),
             
-            ('RteIVA (15% s/ 19%)', 'reteiva', 'sale', 27.0, 15.0, '135517'),
-            ('RteIVA (15% s/ 5%)', 'reteiva', 'sale', 27.0, 15.0, '135517'),
+            ('RteIVA (15% s/ 19%)', 'reteiva', 'both', 27.0, 2.85, '135517'),
+            ('RteIVA (15% s/ 5%)', 'reteiva', 'both', 27.0, 0.75, '135517'),
         ]
 
         created_count = 0
@@ -137,20 +143,54 @@ class InsotechRetentionConcept(models.Model):
 
                 if not tax:
                     # Crear el impuesto con líneas de repartición (Base y Tax con la cuenta PUC)
-                    tax_vals = {
-                        'name': name,
-                        'amount_type': 'percent',
-                        'amount': -abs(pct),
-                        'type_tax_use': 'purchase',
-                        'company_id': company.id,
-                        # Para retenciones se suele omitir en base imponible adicional
-                        'include_base_amount': False, 
-                    }
-                    tax = tax_model.create(tax_vals)
-                    # Asignar la cuenta PUC a la línea de tipo 'tax'
-                    for rep_line in tax.invoice_repartition_line_ids + tax.refund_repartition_line_ids:
-                        if rep_line.repartition_type == 'tax':
-                            rep_line.account_id = account.id
+                    if 'Autorretención' in name:
+                        # Crear impuesto agrupado (positivo y negativo)
+                        tax_pos = tax_model.create({
+                            'name': f"{name} (Débito)",
+                            'amount_type': 'percent',
+                            'amount': abs(pct),
+                            'type_tax_use': 'purchase',
+                            'company_id': company.id,
+                        })
+                        for rep_line in tax_pos.invoice_repartition_line_ids + tax_pos.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = account.id
+                                
+                        # Buscar cuenta 236575 para el crédito
+                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_id', '=', company.id)], limit=1)
+                        tax_neg = tax_model.create({
+                            'name': f"{name} (Crédito)",
+                            'amount_type': 'percent',
+                            'amount': -abs(pct),
+                            'type_tax_use': 'purchase',
+                            'company_id': company.id,
+                        })
+                        for rep_line in tax_neg.invoice_repartition_line_ids + tax_neg.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = acc_cred.id if acc_cred else account.id
+
+                        tax_vals = {
+                            'name': name,
+                            'amount_type': 'group',
+                            'amount': 0.0,
+                            'type_tax_use': 'purchase',
+                            'company_id': company.id,
+                            'children_tax_ids': [(6, 0, [tax_pos.id, tax_neg.id])],
+                        }
+                        tax = tax_model.create(tax_vals)
+                    else:
+                        tax_vals = {
+                            'name': name,
+                            'amount_type': 'percent',
+                            'amount': -abs(pct),
+                            'type_tax_use': 'purchase',
+                            'company_id': company.id,
+                            'include_base_amount': False, 
+                        }
+                        tax = tax_model.create(tax_vals)
+                        for rep_line in tax.invoice_repartition_line_ids + tax.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = account.id
 
                 purchase_tax_id = tax.id
 
@@ -166,19 +206,52 @@ class InsotechRetentionConcept(models.Model):
 
                 if not tax:
                     # Crear el impuesto con líneas de repartición
-                    tax_vals = {
-                        'name': name,
-                        'amount_type': 'percent',
-                        'amount': -abs(pct),
-                        'type_tax_use': 'sale',
-                        'company_id': company.id,
-                        'include_base_amount': False, 
-                    }
-                    tax = tax_model.create(tax_vals)
-                    # Asignar la cuenta PUC a la línea de tipo 'tax'
-                    for rep_line in tax.invoice_repartition_line_ids + tax.refund_repartition_line_ids:
-                        if rep_line.repartition_type == 'tax':
-                            rep_line.account_id = account.id
+                    if 'Autorretención' in name:
+                        tax_pos = tax_model.create({
+                            'name': f"{name} (Débito)",
+                            'amount_type': 'percent',
+                            'amount': abs(pct),
+                            'type_tax_use': 'sale',
+                            'company_id': company.id,
+                        })
+                        for rep_line in tax_pos.invoice_repartition_line_ids + tax_pos.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = account.id
+                                
+                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_id', '=', company.id)], limit=1)
+                        tax_neg = tax_model.create({
+                            'name': f"{name} (Crédito)",
+                            'amount_type': 'percent',
+                            'amount': -abs(pct),
+                            'type_tax_use': 'sale',
+                            'company_id': company.id,
+                        })
+                        for rep_line in tax_neg.invoice_repartition_line_ids + tax_neg.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = acc_cred.id if acc_cred else account.id
+
+                        tax_vals = {
+                            'name': name,
+                            'amount_type': 'group',
+                            'amount': 0.0,
+                            'type_tax_use': 'sale',
+                            'company_id': company.id,
+                            'children_tax_ids': [(6, 0, [tax_pos.id, tax_neg.id])],
+                        }
+                        tax = tax_model.create(tax_vals)
+                    else:
+                        tax_vals = {
+                            'name': name,
+                            'amount_type': 'percent',
+                            'amount': -abs(pct),
+                            'type_tax_use': 'sale',
+                            'company_id': company.id,
+                            'include_base_amount': False, 
+                        }
+                        tax = tax_model.create(tax_vals)
+                        for rep_line in tax.invoice_repartition_line_ids + tax.refund_repartition_line_ids:
+                            if rep_line.repartition_type == 'tax':
+                                rep_line.account_id = account.id
 
                 tax_id_val = tax.id
 

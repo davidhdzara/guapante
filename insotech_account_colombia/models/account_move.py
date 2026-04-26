@@ -118,13 +118,39 @@ class AccountMove(models.Model):
                   "y registre el valor.") % invoice_year
             )
 
-        # ── 3. Calcular base en UVT ──
-        base_amount = self.amount_untaxed
-        if not base_amount:
+        # ── 3. Calcular base en UVT (Multi-moneda y Acumulados) ──
+        # Convertir a moneda base si aplica
+        company_currency = self.company_id.currency_id
+        if self.currency_id and self.currency_id != company_currency:
+            base_amount_cop = self.currency_id._convert(
+                self.amount_untaxed, company_currency, self.company_id, self.invoice_date or fields.Date.today()
+            )
+        else:
+            base_amount_cop = self.amount_untaxed
+
+        if not base_amount_cop:
             return self._insotech_notify(
                 _("La factura no tiene monto base para calcular."),
             )
-        base_en_uvt = base_amount / uvt.value
+            
+        # Calcular histórico del mes para topes acumulados
+        first_day = (self.invoice_date or fields.Date.today()).replace(day=1)
+        domain = [
+            ('partner_id', '=', partner.id),
+            ('move_type', '=', self.move_type),
+            ('state', 'in', ('posted', 'draft')),
+            ('invoice_date', '>=', first_day),
+            ('id', '!=', self.id)
+        ]
+        month_moves = self.search(domain)
+        accumulated_cop = sum(
+            m.currency_id._convert(m.amount_untaxed, company_currency, m.company_id, m.invoice_date or fields.Date.today())
+            if m.currency_id != company_currency else m.amount_untaxed
+            for m in month_moves
+        )
+        
+        base_en_uvt = base_amount_cop / uvt.value
+        accumulated_uvt = (base_amount_cop + accumulated_cop) / uvt.value
 
         # ── 4. Obtener conceptos aplicables ──
         concepts = partner.insotech_retention_concept_ids.filtered(
@@ -148,11 +174,18 @@ class AccountMove(models.Model):
         )
 
         vendor_taxes = self.env['account.tax']
+        fiscal_position = self.fiscal_position_id
         for concept in concepts:
-            if base_en_uvt < concept.base_uvt:
+            # Evaluar UVT (individual o acumulada)
+            effective_uvt = accumulated_uvt if concept.accumulate_monthly else base_en_uvt
+            if effective_uvt < concept.base_uvt:
                 continue
+                
             target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
-            vendor_taxes |= target_tax
+            if fiscal_position and target_tax:
+                target_tax = fiscal_position.map_tax(target_tax)
+            if target_tax:
+                vendor_taxes |= target_tax
             applied.append(
                 f"• {concept.name}: {concept.percentage}%"
                 f" ({target_tax.name})"
@@ -167,17 +200,22 @@ class AccountMove(models.Model):
             template = product.product_tmpl_id
             parafiscal = template.insotech_parafiscal_concept_id
             target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
-            if (
-                parafiscal
-                and target_pf_tax
-                and base_en_uvt >= parafiscal.base_uvt
-            ):
-                line_parafiscals[line.id] = parafiscal
+            if parafiscal and target_pf_tax:
+                effective_uvt = accumulated_uvt if parafiscal.accumulate_monthly else base_en_uvt
+                if effective_uvt >= parafiscal.base_uvt:
+                    line_parafiscals[line.id] = parafiscal
 
-        # ── 7. Escribir taxes sin duplicar ──
+        # ── 7. Limpiar impuestos de retención previos e inyectar nuevos ──
+        # Identificar todos los posibles impuestos generados por conceptos
+        all_retention_taxes = concepts.mapped('purchase_tax_id') | concepts.mapped('tax_id')
+        all_retention_taxes |= self.env['insotech.retention.concept'].search([('type', '=', 'parafiscal')]).mapped('purchase_tax_id')
+        all_retention_taxes |= self.env['insotech.retention.concept'].search([('type', '=', 'parafiscal')]).mapped('tax_id')
+        
         for line in product_lines:
-            existing_ids = set(line.tax_ids.ids)
-            taxes_for_line = self.env['account.tax']
+            # Remover impuestos de retención previos para no dejar impuestos "pegajosos"
+            current_taxes = line.tax_ids - all_retention_taxes
+            taxes_for_line = current_taxes
+            existing_ids = set(current_taxes.ids)
 
             for tax in vendor_taxes:
                 if tax.id not in existing_ids:
@@ -196,12 +234,9 @@ class AccountMove(models.Model):
                 if pf_label not in applied:
                     applied.append(pf_label)
 
-            if taxes_for_line:
+            if taxes_for_line != line.tax_ids:
                 line.write({
-                    'tax_ids': [
-                        fields.Command.link(tax.id)
-                        for tax in taxes_for_line
-                    ],
+                    'tax_ids': [fields.Command.set(taxes_for_line.ids)],
                 })
 
         if applied:
@@ -260,26 +295,8 @@ class AccountMoveLine(models.Model):
             
         direction = 'purchase' if self.move_id.move_type in ('in_invoice', 'in_refund') else 'sale'
 
-        template = self.product_id.product_tmpl_id
-        parafiscal = template.insotech_parafiscal_concept_id
-        if parafiscal:
-            target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
-            if target_pf_tax and target_pf_tax.id not in self.tax_ids.ids:
-                self.tax_ids |= target_pf_tax
-
-        # También inyectar retenciones del proveedor
-        partner = self.move_id.partner_id
-        if not partner:
-            return
-        obligations = partner.l10n_co_edi_obligation_type_ids.mapped('name')
-        if 'O-15' in obligations or 'O-47' in obligations:
-            return
-
-        concepts = partner.insotech_retention_concept_ids.filtered(
-            lambda c: c.direction in (direction, 'both')
-            and (c.purchase_tax_id if direction == 'purchase' else c.tax_id)
-        )
-        for concept in concepts:
-            target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
-            if target_tax and target_tax.id not in self.tax_ids.ids:
-                self.tax_ids |= target_tax
+        # La inyección ciega se ha suprimido. 
+        # Los impuestos de retención ahora se calculan mediante el botón 'action_calculate_retentions'
+        # o mediante validaciones al guardar, para garantizar el respeto a las Posiciones Fiscales
+        # y los Topes UVT (Multi-moneda).
+        pass
