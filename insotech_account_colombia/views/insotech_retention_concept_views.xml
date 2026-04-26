@@ -37,7 +37,15 @@
                     </div>
                     <group>
                         <group string="Clasificación">
-                            <field name="category_id"/>
+                            <field name="ui_filter_group_id" domain="[('parent_id', '=', False)]" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="ui_filter_state_id" 
+                                   domain="[('parent_id', '=', ui_filter_group_id)]" 
+                                   invisible="not ui_filter_group_id"
+                                   options="{'no_create': True, 'no_open': True}"/>
+                            <field name="category_id" 
+                                   domain="[('id', 'child_of', ui_filter_state_id or ui_filter_group_id)]"
+                                   options="{'no_create': True, 'no_open': True}"
+                                   string="Destino Final"/>
                             <field name="type"/>
                             <field name="direction"/>
                             <field name="city_name"

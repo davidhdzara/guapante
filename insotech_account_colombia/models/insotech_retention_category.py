@@ -6,7 +6,7 @@ class InsotechRetentionCategory(models.Model):
     _description = 'Categorías de Retención'
     _parent_name = 'parent_id'
     _parent_store = True
-    _rec_name = 'complete_name'
+    _rec_name = 'name'
     _order = 'complete_name'
 
     name = fields.Char('Nombre de Categoría', required=True, translate=True)
