@@ -13,13 +13,13 @@
                         string="Calcular Retenciones DIAN"
                         class="btn-secondary"
                         icon="fa-calculator"
-                        invisible="move_type not in ('in_invoice', 'in_refund') or state != 'draft'"/>
+                        invisible="move_type not in ('in_invoice', 'in_refund', 'out_invoice', 'out_refund') or state != 'draft'"/>
             </xpath>
             <!-- Badge visual cuando ya se calcularon -->
             <xpath expr="//div[hasclass('oe_title')]" position="after">
                 <div class="alert alert-success text-center"
                      role="alert"
-                     invisible="not insotech_retention_calculated or move_type not in ('in_invoice', 'in_refund')">
+                     invisible="not insotech_retention_calculated or move_type not in ('in_invoice', 'in_refund', 'out_invoice', 'out_refund')">
                     <strong>
                         <i class="fa fa-check-circle"/> Retenciones DIAN calculadas
                     </strong>
