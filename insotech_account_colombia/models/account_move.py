@@ -225,7 +225,11 @@ class AccountMove(models.Model):
             taxes_for_line = current_taxes
             existing_ids = set(current_taxes.ids)
 
-            has_iva = any(t.amount > 0 and t.amount_type == 'percent' for t in line.tax_ids)
+            has_iva = any(
+                t.amount > 0 and t.amount_type == 'percent' 
+                and ('iva' in t.name.lower() or 'vat' in t.name.lower())
+                for t in line.tax_ids
+            )
             for tax in vendor_taxes:
                 # Prevenir inyección de ReteIVA en líneas Exentas de IVA
                 if tax in reteiva_taxes and not has_iva:
@@ -236,6 +240,8 @@ class AccountMove(models.Model):
             parafiscal = line_parafiscals.get(line.id)
             if parafiscal:
                 target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
+                if fiscal_position and target_pf_tax:
+                    target_pf_tax = fiscal_position.map_tax(target_pf_tax)
                 if target_pf_tax and target_pf_tax.id not in existing_ids:
                     taxes_for_line |= target_pf_tax
                     pf_label = (
