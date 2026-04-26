@@ -10,6 +10,7 @@
                    position="after">
                 <group string="Retenciones InSoTech" name="insotech_product_retention">
                     <field name="insotech_parafiscal_concept_id"
+                           domain="[('type', '=', 'parafiscal')]"
                            options="{'no_create': True}"/>
                 </group>
             </xpath>

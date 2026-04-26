@@ -11,6 +11,7 @@
                 <group string="Retenciones InSoTech" name="insotech_retentions">
                     <field name="insotech_retention_concept_ids"
                            widget="many2many_tags"
+                           domain="[('type', '!=', 'parafiscal')]"
                            nolabel="1"
                            colspan="2"
                            placeholder="Conceptos de retención por defecto..."/>
