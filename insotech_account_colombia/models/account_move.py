@@ -33,8 +33,8 @@ class AccountMove(models.Model):
             return
 
         concepts = partner.insotech_retention_concept_ids.filtered(
-            lambda c: c.direction in ('purchase', 'both')
-            and c.purchase_tax_id
+            lambda c: c.direction in (direction, 'both')
+            and (c.purchase_tax_id if direction == 'purchase' else c.tax_id)
         )
         if not concepts:
             return
@@ -63,10 +63,12 @@ class AccountMove(models.Model):
         """
         self.ensure_one()
 
-        if self.move_type not in ('in_invoice', 'in_refund'):
+        if self.move_type not in ('in_invoice', 'in_refund', 'out_invoice', 'out_refund'):
             raise UserError(
-                _("Esta acción solo aplica a facturas de proveedor.")
+                _("Esta acción solo aplica a facturas de proveedor y cliente.")
             )
+        
+        direction = 'purchase' if self.move_type in ('in_invoice', 'in_refund') else 'sale'
         if self.state != 'draft':
             raise UserError(
                 _("Solo puede calcular retenciones en facturas borrador.")
@@ -79,17 +81,30 @@ class AccountMove(models.Model):
         # ── 1. Validar obligaciones DIAN del proveedor ──
         obligations = partner.l10n_co_edi_obligation_type_ids.mapped('name')
         if 'O-15' in obligations:
-            return self._insotech_notify(
-                _("Proveedor '%s' es Autorretenedor (O-15). "
-                  "No se practican retenciones.") % partner.name,
-                sticky=True,
-            )
+            # Si es compra y el proveedor es O-15, no le retenemos.
+            # Si es venta y el cliente es O-15, igual nosotros le podemos facturar la retención si NO somos O-15,
+            # pero en Colombia, si el cliente es O-15 (Gran Contribuyente/Autorretenedor), él nos va a retener.
+            # En ventas, la inyección es una "Anticipación" de lo que el cliente nos retendrá.
+            pass  # En ventas, el cliente O-15 SI nos retiene, así que procedemos normal. En compras, no le retenemos.
+            if direction == 'purchase':
+                return self._insotech_notify(
+                    _("Proveedor '%s' es Autorretenedor (O-15). "
+                      "No se practican retenciones.") % partner.name,
+                    sticky=True,
+                )
         if 'O-47' in obligations:
-            return self._insotech_notify(
-                _("Proveedor '%s' pertenece al Régimen Simple (O-47). "
-                  "No se practican retenciones.") % partner.name,
-                sticky=True,
-            )
+            if direction == 'purchase':
+                return self._insotech_notify(
+                    _("Proveedor '%s' pertenece al Régimen Simple (O-47). "
+                      "No se practican retenciones.") % partner.name,
+                    sticky=True,
+                )
+            else:
+                return self._insotech_notify(
+                    _("Cliente '%s' pertenece al Régimen Simple (O-47). "
+                      "No nos practica retenciones.") % partner.name,
+                    sticky=True,
+                )
 
         # ── 2. Obtener UVT del año de la factura ──
         invoice_year = (self.invoice_date or fields.Date.today()).year
@@ -113,8 +128,8 @@ class AccountMove(models.Model):
 
         # ── 4. Obtener conceptos aplicables ──
         concepts = partner.insotech_retention_concept_ids.filtered(
-            lambda c: c.direction in ('purchase', 'both')
-            and c.purchase_tax_id
+            lambda c: c.direction in (direction, 'both')
+            and (c.purchase_tax_id if direction == 'purchase' else c.tax_id)
         )
         if not concepts:
             return self._insotech_notify(
@@ -136,10 +151,11 @@ class AccountMove(models.Model):
         for concept in concepts:
             if base_en_uvt < concept.base_uvt:
                 continue
-            vendor_taxes |= concept.purchase_tax_id
+            target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
+            vendor_taxes |= target_tax
             applied.append(
                 f"• {concept.name}: {concept.percentage}%"
-                f" ({concept.purchase_tax_id.name})"
+                f" ({target_tax.name})"
             )
 
         # ── 6. Parafiscales del producto (Nivel 2) ──
@@ -150,9 +166,10 @@ class AccountMove(models.Model):
                 continue
             template = product.product_tmpl_id
             parafiscal = template.insotech_parafiscal_concept_id
+            target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
             if (
                 parafiscal
-                and parafiscal.purchase_tax_id
+                and target_pf_tax
                 and base_en_uvt >= parafiscal.base_uvt
             ):
                 line_parafiscals[line.id] = parafiscal
@@ -167,13 +184,15 @@ class AccountMove(models.Model):
                     taxes_for_line |= tax
 
             parafiscal = line_parafiscals.get(line.id)
-            if parafiscal and parafiscal.purchase_tax_id.id not in existing_ids:
-                taxes_for_line |= parafiscal.purchase_tax_id
-                pf_label = (
-                    f"• {parafiscal.name}: {parafiscal.percentage}%"
-                    f" ({parafiscal.purchase_tax_id.name})"
-                    f" [{line.product_id.name}]"
-                )
+            if parafiscal:
+                target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
+                if target_pf_tax and target_pf_tax.id not in existing_ids:
+                    taxes_for_line |= target_pf_tax
+                    pf_label = (
+                        f"• {parafiscal.name}: {parafiscal.percentage}%"
+                        f" ({target_pf_tax.name})"
+                        f" [{line.product_id.name}]"
+                    )
                 if pf_label not in applied:
                     applied.append(pf_label)
 
@@ -235,18 +254,18 @@ class AccountMoveLine(models.Model):
         if (
             not self.product_id
             or not self.move_id
-            or self.move_id.move_type not in ('in_invoice', 'in_refund')
+            or self.move_id.move_type not in ('in_invoice', 'in_refund', 'out_invoice', 'out_refund')
         ):
             return
+            
+        direction = 'purchase' if self.move_id.move_type in ('in_invoice', 'in_refund') else 'sale'
 
         template = self.product_id.product_tmpl_id
         parafiscal = template.insotech_parafiscal_concept_id
-        if (
-            parafiscal
-            and parafiscal.purchase_tax_id
-            and parafiscal.purchase_tax_id.id not in self.tax_ids.ids
-        ):
-            self.tax_ids |= parafiscal.purchase_tax_id
+        if parafiscal:
+            target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
+            if target_pf_tax and target_pf_tax.id not in self.tax_ids.ids:
+                self.tax_ids |= target_pf_tax
 
         # También inyectar retenciones del proveedor
         partner = self.move_id.partner_id
@@ -257,9 +276,10 @@ class AccountMoveLine(models.Model):
             return
 
         concepts = partner.insotech_retention_concept_ids.filtered(
-            lambda c: c.direction in ('purchase', 'both')
-            and c.purchase_tax_id
+            lambda c: c.direction in (direction, 'both')
+            and (c.purchase_tax_id if direction == 'purchase' else c.tax_id)
         )
         for concept in concepts:
-            if concept.purchase_tax_id.id not in self.tax_ids.ids:
-                self.tax_ids |= concept.purchase_tax_id
+            target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
+            if target_tax and target_tax.id not in self.tax_ids.ids:
+                self.tax_ids |= target_tax
