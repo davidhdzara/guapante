@@ -23,6 +23,7 @@ Características:
         'views/product_template_views.xml',
         'views/menuitems.xml',
         'data/insotech_retention_server_actions.xml',
+        'views/account_payment_register_views.xml',
     ],
     'installable': True,
     'application': False,

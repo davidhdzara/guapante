@@ -154,7 +154,35 @@ class InsotechRetentionConcept(models.Model):
 
                 purchase_tax_id = tax.id
 
-            # 3. Crear o actualizar el Concepto
+            # 3. Gestionar el Impuesto de Venta (Solo si aplica para ventas)
+            tax_id_val = False
+            if direction in ('sale', 'both'):
+                # Verificamos si ya existe el impuesto
+                tax = tax_model.search([
+                    ('name', '=', name),
+                    ('type_tax_use', '=', 'sale'),
+                    ('company_id', '=', company.id)
+                ], limit=1)
+
+                if not tax:
+                    # Crear el impuesto con líneas de repartición
+                    tax_vals = {
+                        'name': name,
+                        'amount_type': 'percent',
+                        'amount': -abs(pct),
+                        'type_tax_use': 'sale',
+                        'company_id': company.id,
+                        'include_base_amount': False, 
+                    }
+                    tax = tax_model.create(tax_vals)
+                    # Asignar la cuenta PUC a la línea de tipo 'tax'
+                    for rep_line in tax.invoice_repartition_line_ids + tax.refund_repartition_line_ids:
+                        if rep_line.repartition_type == 'tax':
+                            rep_line.account_id = account.id
+
+                tax_id_val = tax.id
+
+            # 4. Crear o actualizar el Concepto
             existing = self.search([('name', '=', name)], limit=1)
             vals = {
                 'name': name,
@@ -164,6 +192,7 @@ class InsotechRetentionConcept(models.Model):
                 'percentage': pct,
                 'account_id': account.id,
                 'purchase_tax_id': purchase_tax_id,
+                'tax_id': tax_id_val,
                 'active': True
             }
 
