@@ -33,10 +33,10 @@
             <field name="name">insotech.retention.category.tree</field>
             <field name="model">insotech.retention.category</field>
             <field name="arch" type="xml">
-                <tree string="Categorías de Retención">
+                <list string="Categorías de Retención">
                     <field name="complete_name" string="Categoría"/>
                     <field name="concept_count" string="Nº Conceptos"/>
-                </tree>
+                </list>
             </field>
         </record>
 
