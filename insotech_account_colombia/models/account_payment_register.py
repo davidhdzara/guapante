@@ -1,5 +1,4 @@
-from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo import models, fields, api
 
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
@@ -15,11 +14,11 @@ class AccountPaymentRegister(models.TransientModel):
     )
 
     @api.depends('insotech_retention_line_ids.amount')
-    def _compute_insotech_total_retentions(self):
+    def _compute_insotech_total_retentions(self) -> None:
         for wizard in self:
             wizard.insotech_total_retentions = sum(wizard.insotech_retention_line_ids.mapped('amount'))
 
-    def action_create_payments(self):
+    def action_create_payments(self) -> dict:
         # Capturamos las retenciones antes de que el wizard se consuma
         retention_data = []
         for line in self.insotech_retention_line_ids:
@@ -44,7 +43,7 @@ class AccountPaymentRegister(models.TransientModel):
             
         return res
 
-    def _create_insotech_retention_adjustments(self, retention_data):
+    def _create_insotech_retention_adjustments(self, retention_data: list) -> None:
         move_model = self.env['account.move']
         
         for wizard in self:
@@ -113,7 +112,9 @@ class AccountPaymentRegister(models.TransientModel):
             
             # Conciliamos la línea de contrapartida con las líneas de la factura original
             # Esto es clave para que la factura pase a estado 'Pagado'
-            cp_line = adjustment_move.line_ids.filtered(lambda l: l.account_id.id == account_receivable_payable.id)
+            cp_line = adjustment_move.line_ids.filtered(
+                lambda l: l.account_id.id == account_receivable_payable.id
+            )
             if cp_line:
                 (lines + cp_line).reconcile()
 
