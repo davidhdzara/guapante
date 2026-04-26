@@ -12,6 +12,7 @@
                 <field name="percentage"/>
                 <field name="account_id"/>
                 <field name="purchase_tax_id" optional="show"/>
+                <field name="active" widget="boolean_toggle"/>
             </list>
         </field>
     </record>
