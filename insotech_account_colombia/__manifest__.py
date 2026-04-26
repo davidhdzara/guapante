@@ -13,7 +13,7 @@ Características:
 - (Fase 3) Asistente nativo para cruce en pagos.
     """,
     'author': 'InSoTech / Antigravity',
-    'depends': ['account', 'l10n_co', 'l10n_co_edi', 'product'],
+    'depends': ['account', 'l10n_co', 'l10n_co_edi', 'product', 'base_address_extended'],
     'data': [
         'security/ir.model.access.csv',
         'views/insotech_uvt_views.xml',
