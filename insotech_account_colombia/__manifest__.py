@@ -22,6 +22,7 @@ Características:
         'views/res_partner_views.xml',
         'views/product_template_views.xml',
         'views/menuitems.xml',
+        'data/insotech_retention_server_actions.xml',
     ],
     'installable': True,
     'application': False,
