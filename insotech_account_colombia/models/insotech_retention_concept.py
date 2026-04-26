@@ -81,6 +81,34 @@ class InsotechRetentionConcept(models.Model):
         string='Categoría',
         help='Permite agrupar las retenciones en el árbol visual (Ej. Municipales / Bogotá)',
     )
+
+    # Helper fields para UI
+    ui_filter_group_id = fields.Many2one(
+        'insotech.retention.category', 
+        string='Grupo de Retención', 
+        store=False,
+        help="Filtro visual para encontrar la categoría"
+    )
+    ui_filter_state_id = fields.Many2one(
+        'insotech.retention.category', 
+        string='Departamento (Filtro)', 
+        store=False,
+        help="Filtro visual por departamento"
+    )
+
+    @api.onchange('ui_filter_group_id')
+    def _onchange_ui_filter_group(self):
+        self.ui_filter_state_id = False
+        if self.ui_filter_group_id:
+            # Si el grupo no tiene hijos (ej. Nacionales), autoseleccionar
+            children = self.env['insotech.retention.category'].search_count([('parent_id', '=', self.ui_filter_group_id.id)])
+            if children == 0:
+                self.category_id = self.ui_filter_group_id
+
+    @api.onchange('ui_filter_state_id')
+    def _onchange_ui_filter_state(self):
+        if self.ui_filter_state_id:
+            self.category_id = False
     
     # ─── PREPARACIÓN PARA MÓDULO EXÓGENA ───
     dian_format = fields.Char(
