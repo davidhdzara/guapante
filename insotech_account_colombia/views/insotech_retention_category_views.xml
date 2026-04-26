@@ -57,7 +57,7 @@
         <!-- Menu Item -->
         <menuitem id="menu_insotech_retention_category" 
                   name="Categorías de Retención" 
-                  parent="menu_insotech_retention_config_root" 
+                  parent="menu_insotech_colombia_root" 
                   action="action_insotech_retention_category" 
                   sequence="15"/>
     </data>
