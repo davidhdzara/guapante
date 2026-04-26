@@ -2,3 +2,4 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_insotech_uvt,insotech.uvt,model_insotech_uvt,account.group_account_user,1,1,1,1
 access_insotech_retention_concept,insotech.retention.concept,model_insotech_retention_concept,account.group_account_user,1,1,1,1
 access_insotech_payment_retention_line,insotech.payment.retention.line,model_insotech_payment_retention_line,account.group_account_user,1,1,1,1
+access_insotech_retention_category,insotech.retention.category,model_insotech_retention_category,account.group_account_user,1,1,1,1

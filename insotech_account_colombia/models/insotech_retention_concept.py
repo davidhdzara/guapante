@@ -76,6 +76,22 @@ class InsotechRetentionConcept(models.Model):
 
     active = fields.Boolean(default=True)
 
+    category_id = fields.Many2one(
+        'insotech.retention.category',
+        string='Categoría',
+        help='Permite agrupar las retenciones en el árbol visual (Ej. Municipales / Bogotá)',
+    )
+    
+    # ─── PREPARACIÓN PARA MÓDULO EXÓGENA ───
+    dian_format = fields.Char(
+        string='Formato DIAN',
+        help='Ej. 1001 (Pagos o abonos en cuenta y retenciones). Dejar listo para el módulo de Exógena.',
+    )
+    dian_concept_code = fields.Char(
+        string='Concepto DIAN',
+        help='Ej. 5019 (Honorarios). Se usará para la consolidación automática en Medios Magnéticos.',
+    )
+
     @api.model
     def init_default_concepts(self):
         """
@@ -87,40 +103,45 @@ class InsotechRetentionConcept(models.Model):
         account_model = self.env['account.account']
         tax_model = self.env['account.tax']
         
-        # (Nombre Corto, Tipo, Dirección, Base UVT, %, Cuenta PUC)
+        category_model = self.env['insotech.retention.category']
+        cat_nac = category_model.search([('name', '=', 'Nacionales')], limit=1) or category_model.create({'name': 'Nacionales'})
+        cat_mun = category_model.search([('name', '=', 'Municipales')], limit=1) or category_model.create({'name': 'Municipales'})
+        cat_par = category_model.search([('name', '=', 'Parafiscales')], limit=1) or category_model.create({'name': 'Parafiscales'})
+        
+        # (Nombre Corto, Tipo, Dirección, Base UVT, %, Cuenta PUC, Categoría, Formato DIAN, Concepto DIAN)
         # Nota: Por defecto, si el tipo es diferente a retefuente venta, 
         # intentaremos crear un impuesto de compra si es compras o ambos.
         default_concepts = [
-            ('Rte Paraf Asohofrucol', 'parafiscal', 'both', 0.0, 1.0, '52155001'),
-            ('Rte Paraf Cereales', 'parafiscal', 'both', 0.0, 1.0, '52155005'),
-            ('Rte Paraf Fedepapa', 'parafiscal', 'both', 0.0, 1.0, '52155003'),
-            ('Rte Paraf Leguminosas', 'parafiscal', 'both', 0.0, 1.0, '52155007'),
-            ('Rte Paraf Soya', 'parafiscal', 'both', 0.0, 1.0, '52155009'),
+            ('Rte Paraf Asohofrucol', 'parafiscal', 'both', 0.0, 1.0, '52155001', cat_par.id, '', ''),
+            ('Rte Paraf Cereales', 'parafiscal', 'both', 0.0, 1.0, '52155005', cat_par.id, '', ''),
+            ('Rte Paraf Fedepapa', 'parafiscal', 'both', 0.0, 1.0, '52155003', cat_par.id, '', ''),
+            ('Rte Paraf Leguminosas', 'parafiscal', 'both', 0.0, 1.0, '52155007', cat_par.id, '', ''),
+            ('Rte Paraf Soya', 'parafiscal', 'both', 0.0, 1.0, '52155009', cat_par.id, '', ''),
             
-            ('Autorretención Especial', 'retefuente', 'sale', 0.0, 1.2, '13551519'),
-            ('RteFte General (1%)', 'retefuente', 'sale', 27.0, 1.0, '13551517'),
-            ('RteFte No Producidos', 'retefuente', 'sale', 70.0, 1.5, '13551520'),
-            ('RteFte Honorarios (10%)', 'retefuente', 'sale', 4.0, 10.0, '13551507'),
-            ('RteFte Honorarios (11%)', 'retefuente', 'sale', 4.0, 11.0, '13551509'),
-            ('RteFte Servicios (2%)', 'retefuente', 'sale', 27.0, 2.0, '13551515'),
-            ('RteFte Compras', 'retefuente', 'sale', 27.0, 2.5, '13551501'),
-            ('RteFte Arrendamiento', 'retefuente', 'both', 27.0, 3.5, '13551513'),
-            ('RteFte Servicios (4%)', 'retefuente', 'sale', 27.0, 4.0, '13551503'),
-            ('RteFte Servicios (6%)', 'retefuente', 'sale', 27.0, 6.0, '13551505'),
-            ('RteFte General (7%)', 'retefuente', 'sale', 27.0, 7.0, '13551511'),
-            ('RteFte Agrícola', 'retefuente', 'both', 92.0, 1.5, '13551520'),
+            ('Autorretención Especial', 'retefuente', 'sale', 0.0, 1.2, '13551519', cat_nac.id, '', ''),
+            ('RteFte General (1%)', 'retefuente', 'sale', 27.0, 1.0, '13551517', cat_nac.id, '1001', '5002'),
+            ('RteFte No Producidos', 'retefuente', 'sale', 70.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
+            ('RteFte Honorarios (10%)', 'retefuente', 'sale', 4.0, 10.0, '13551507', cat_nac.id, '1001', '5019'),
+            ('RteFte Honorarios (11%)', 'retefuente', 'sale', 4.0, 11.0, '13551509', cat_nac.id, '1001', '5019'),
+            ('RteFte Servicios (2%)', 'retefuente', 'sale', 27.0, 2.0, '13551515', cat_nac.id, '1001', '5016'),
+            ('RteFte Compras', 'retefuente', 'sale', 27.0, 2.5, '13551501', cat_nac.id, '1001', '5002'),
+            ('RteFte Arrendamiento', 'retefuente', 'both', 27.0, 3.5, '13551513', cat_nac.id, '1001', '5013'),
+            ('RteFte Servicios (4%)', 'retefuente', 'sale', 27.0, 4.0, '13551503', cat_nac.id, '1001', '5016'),
+            ('RteFte Servicios (6%)', 'retefuente', 'sale', 27.0, 6.0, '13551505', cat_nac.id, '1001', '5016'),
+            ('RteFte General (7%)', 'retefuente', 'sale', 27.0, 7.0, '13551511', cat_nac.id, '1001', '5002'),
+            ('RteFte Agrícola', 'retefuente', 'both', 92.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
             
-            ('RteICA Alimentos', 'reteica', 'sale', 0.0, 0.414, '13551001'),
-            ('RteICA Comercio', 'reteica', 'sale', 0.0, 0.966, '13551001'),
+            ('RteICA Alimentos', 'reteica', 'sale', 0.0, 0.414, '13551001', cat_mun.id, '1001', '5016'),
+            ('RteICA Comercio', 'reteica', 'sale', 0.0, 0.966, '13551001', cat_mun.id, '1001', '5002'),
             
-            ('RteIVA (15% s/ 19%)', 'reteiva', 'both', 27.0, 2.85, '135517'),
-            ('RteIVA (15% s/ 5%)', 'reteiva', 'both', 27.0, 0.75, '135517'),
+            ('RteIVA (15% s/ 19%)', 'reteiva', 'both', 27.0, 2.85, '135517', cat_nac.id, '1001', '5016'),
+            ('RteIVA (15% s/ 5%)', 'reteiva', 'both', 27.0, 0.75, '135517', cat_nac.id, '1001', '5016'),
         ]
 
         created_count = 0
         updated_count = 0
 
-        for name, r_type, direction, uvt, pct, acc_code in default_concepts:
+        for name, r_type, direction, uvt, pct, acc_code, cat_id, fmt, code in default_concepts:
             # 1. Buscar la cuenta PUC en la compañía actual
             account = account_model.search([
                 ('code', '=', acc_code), 
@@ -266,7 +287,10 @@ class InsotechRetentionConcept(models.Model):
                 'account_id': account.id,
                 'purchase_tax_id': purchase_tax_id,
                 'tax_id': tax_id_val,
-                'active': True
+                'active': True,
+                'category_id': cat_id,
+                'dian_format': fmt,
+                'dian_concept_code': code,
             }
 
             if existing:

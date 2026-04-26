@@ -17,6 +17,7 @@ Características:
     'data': [
         'security/ir.model.access.csv',
         'views/insotech_uvt_views.xml',
+        'views/insotech_retention_category_views.xml',
         'views/insotech_retention_concept_views.xml',
         'views/account_move_views.xml',
         'views/res_partner_views.xml',
