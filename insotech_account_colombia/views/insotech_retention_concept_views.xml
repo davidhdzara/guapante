@@ -91,7 +91,7 @@
                     <filter string="Cuenta PUC" name="groupby_account" context="{'group_by': 'account_id'}"/>
                 </group>
                 <searchpanel>
-                    <field name="category_id" icon="fa-folder" enable_counters="1"/>
+                    <field name="category_id" icon="fa-folder" enable_counters="1" hierarchize="1"/>
                 </searchpanel>
             </search>
         </field>
