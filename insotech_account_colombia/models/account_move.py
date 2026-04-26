@@ -174,18 +174,26 @@ class AccountMove(models.Model):
         )
 
         vendor_taxes = self.env['account.tax']
+        reteiva_taxes = self.env['account.tax']
         fiscal_position = self.fiscal_position_id
+        accumulated_warning = False
+        
         for concept in concepts:
             # Evaluar UVT (individual o acumulada)
             effective_uvt = accumulated_uvt if concept.accumulate_monthly else base_en_uvt
             if effective_uvt < concept.base_uvt:
                 continue
                 
+            if concept.accumulate_monthly and base_en_uvt < concept.base_uvt:
+                accumulated_warning = True
+                
             target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
             if fiscal_position and target_tax:
                 target_tax = fiscal_position.map_tax(target_tax)
             if target_tax:
                 vendor_taxes |= target_tax
+                if concept.type == 'reteiva':
+                    reteiva_taxes |= target_tax
             applied.append(
                 f"• {concept.name}: {concept.percentage}%"
                 f" ({target_tax.name})"
@@ -217,7 +225,11 @@ class AccountMove(models.Model):
             taxes_for_line = current_taxes
             existing_ids = set(current_taxes.ids)
 
+            has_iva = any(t.amount > 0 and t.amount_type == 'percent' for t in line.tax_ids)
             for tax in vendor_taxes:
+                # Prevenir inyección de ReteIVA en líneas Exentas de IVA
+                if tax in reteiva_taxes and not has_iva:
+                    continue
                 if tax.id not in existing_ids:
                     taxes_for_line |= tax
 
@@ -244,6 +256,10 @@ class AccountMove(models.Model):
             body = _(
                 "<b>Retenciones DIAN aplicadas (%s):</b><br/>%s"
             ) % (len(applied), "<br/>".join(applied))
+            
+            if accumulated_warning:
+                body += _("<br/><br/>⚠️ <b>Aviso de Acumulación Mensual:</b> Se superó el tope UVT por acumulación de facturas anteriores en este mes. Odoo ha calculado la retención solo sobre el valor de esta factura (para cumplir matemáticamente con la DIAN). Deberá emitir una Nota Débito manual al proveedor por el valor retroactivo no retenido en las facturas previas.")
+                
             self.message_post(body=body)
             return {
                 'type': 'ir.actions.act_window',
