@@ -159,7 +159,7 @@ class InsotechRetentionConcept(models.Model):
             # 1. Buscar la cuenta PUC en la compañía actual
             account = account_model.search([
                 ('code', '=', acc_code), 
-                ('company_id', '=', company.id),
+                ('company_ids', 'in', company.id),
                 ('deprecated', '=', False)
             ], limit=1)
 
@@ -192,7 +192,7 @@ class InsotechRetentionConcept(models.Model):
                                 rep_line.account_id = account.id
                                 
                         # Buscar cuenta 236575 para el crédito
-                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_id', '=', company.id)], limit=1)
+                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_ids', 'in', company.id)], limit=1)
                         tax_neg = tax_model.create({
                             'name': f"{name} (Crédito)",
                             'amount_type': 'percent',
@@ -253,7 +253,7 @@ class InsotechRetentionConcept(models.Model):
                             if rep_line.repartition_type == 'tax':
                                 rep_line.account_id = account.id
                                 
-                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_id', '=', company.id)], limit=1)
+                        acc_cred = account_model.search([('code', 'like', '236575%'), ('company_ids', 'in', company.id)], limit=1)
                         tax_neg = tax_model.create({
                             'name': f"{name} (Crédito)",
                             'amount_type': 'percent',
