@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- 
+            Llamada a la función para autogenerar la jerarquía DANE
+            durante la instalación o actualización del módulo.
+        -->
+        <function model="insotech.retention.category" name="auto_generate_colombian_dane_categories"/>
+    </data>
+</odoo>

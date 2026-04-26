@@ -112,14 +112,14 @@ class InsotechRetentionConcept(models.Model):
         cat_dep = category_model.search([('name', '=', 'Departamentales')], limit=1) or category_model.create({'name': 'Departamentales'})
         
         # 3. Departamentos (Hijos)
-        cat_ant = category_model.search([('name', '=', 'Antioquia'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Antioquia', 'parent_id': cat_dep.id})
-        cat_cun = category_model.search([('name', '=', 'Cundinamarca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Cundinamarca', 'parent_id': cat_dep.id})
-        cat_val = category_model.search([('name', '=', 'Valle del Cauca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Valle del Cauca', 'parent_id': cat_dep.id})
+        cat_ant = category_model.search([('name', 'ilike', 'Antioquia'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Antioquia', 'parent_id': cat_dep.id})
+        cat_cun = category_model.search([('name', 'ilike', 'Cundinamarca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Cundinamarca', 'parent_id': cat_dep.id})
+        cat_val = category_model.search([('name', 'ilike', 'Valle del Cauca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Valle del Cauca', 'parent_id': cat_dep.id})
 
         # 4. Municipios (Nietos)
-        cat_med = category_model.search([('name', '=', 'Medellín'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Medellín', 'parent_id': cat_ant.id})
-        cat_bog = category_model.search([('name', '=', 'Bogotá D.C.'), ('parent_id', '=', cat_cun.id)], limit=1) or category_model.create({'name': 'Bogotá D.C.', 'parent_id': cat_cun.id})
-        cat_cal = category_model.search([('name', '=', 'Cali'), ('parent_id', '=', cat_val.id)], limit=1) or category_model.create({'name': 'Cali', 'parent_id': cat_val.id})
+        cat_med = category_model.search([('name', 'ilike', 'Medellín'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Medellín', 'parent_id': cat_ant.id})
+        cat_bog = category_model.search([('name', 'ilike', 'Bogot'), ('parent_id', '=', cat_cun.id)], limit=1) or category_model.create({'name': 'Bogotá D.C.', 'parent_id': cat_cun.id})
+        cat_cal = category_model.search([('name', 'ilike', 'Cali'), ('parent_id', '=', cat_val.id)], limit=1) or category_model.create({'name': 'Cali', 'parent_id': cat_val.id})
         
         # (Nombre Corto, Tipo, Dirección, Base UVT, %, Cuenta PUC, Categoría, Formato DIAN, Concepto DIAN)
         # Nota: Por defecto, si el tipo es diferente a retefuente venta, 
