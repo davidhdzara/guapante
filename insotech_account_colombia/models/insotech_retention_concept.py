@@ -144,37 +144,59 @@ class InsotechRetentionConcept(models.Model):
         cat_cun = category_model.search([('name', 'ilike', 'Cundinamarca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Cundinamarca', 'parent_id': cat_dep.id})
         cat_val = category_model.search([('name', 'ilike', 'Valle del Cauca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Valle del Cauca', 'parent_id': cat_dep.id})
 
-        # 4. Municipios (Nietos)
+        # 4. Municipios (Nietos) - Antioquia
         cat_med = category_model.search([('name', 'ilike', 'Medellín'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Medellín', 'parent_id': cat_ant.id})
+        cat_ita = category_model.search([('name', 'ilike', 'Itagüí'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Itagüí', 'parent_id': cat_ant.id})
+        cat_ret = category_model.search([('name', 'ilike', 'Retiro'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'El Retiro', 'parent_id': cat_ant.id})
+        cat_sab = category_model.search([('name', 'ilike', 'Sabaneta'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Sabaneta', 'parent_id': cat_ant.id})
+
+        # Municipios (Nietos) - Otros
         cat_bog = category_model.search([('name', 'ilike', 'Bogot'), ('parent_id', '=', cat_cun.id)], limit=1) or category_model.create({'name': 'Bogotá D.C.', 'parent_id': cat_cun.id})
         cat_cal = category_model.search([('name', 'ilike', 'Cali'), ('parent_id', '=', cat_val.id)], limit=1) or category_model.create({'name': 'Cali', 'parent_id': cat_val.id})
         
         # (Nombre Corto, Tipo, Dirección, Base UVT, %, Cuenta PUC, Categoría, Formato DIAN, Concepto DIAN)
-        # Nota: Por defecto, si el tipo es diferente a retefuente venta, 
-        # intentaremos crear un impuesto de compra si es compras o ambos.
         default_concepts = [
+            # --- PARAFISCALES ---
             ('Rte Paraf Asohofrucol', 'parafiscal', 'both', 0.0, 1.0, '52155001', cat_par.id, '', ''),
             ('Rte Paraf Cereales', 'parafiscal', 'both', 0.0, 1.0, '52155005', cat_par.id, '', ''),
             ('Rte Paraf Fedepapa', 'parafiscal', 'both', 0.0, 1.0, '52155003', cat_par.id, '', ''),
             ('Rte Paraf Leguminosas', 'parafiscal', 'both', 0.0, 1.0, '52155007', cat_par.id, '', ''),
             ('Rte Paraf Soya', 'parafiscal', 'both', 0.0, 1.0, '52155009', cat_par.id, '', ''),
             
+            # --- NACIONALES (ReteFuente) ---
             ('Autorretención Especial', 'retefuente', 'sale', 0.0, 1.2, '13551519', cat_nac.id, '', ''),
             ('RteFte General (1%)', 'retefuente', 'sale', 27.0, 1.0, '13551517', cat_nac.id, '1001', '5002'),
             ('RteFte No Producidos', 'retefuente', 'sale', 70.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
             ('RteFte Honorarios (10%)', 'retefuente', 'sale', 4.0, 10.0, '13551507', cat_nac.id, '1001', '5019'),
             ('RteFte Honorarios (11%)', 'retefuente', 'sale', 4.0, 11.0, '13551509', cat_nac.id, '1001', '5019'),
             ('RteFte Servicios (2%)', 'retefuente', 'sale', 27.0, 2.0, '13551515', cat_nac.id, '1001', '5016'),
-            ('RteFte Compras', 'retefuente', 'sale', 27.0, 2.5, '13551501', cat_nac.id, '1001', '5002'),
-            ('RteFte Arrendamiento', 'retefuente', 'both', 27.0, 3.5, '13551513', cat_nac.id, '1001', '5013'),
+            ('RteFte Compras (2.5%)', 'retefuente', 'sale', 27.0, 2.5, '13551501', cat_nac.id, '1001', '5002'),
+            ('RteFte Arrendamiento (3.5%)', 'retefuente', 'both', 27.0, 3.5, '13551513', cat_nac.id, '1001', '5013'),
             ('RteFte Servicios (4%)', 'retefuente', 'sale', 27.0, 4.0, '13551503', cat_nac.id, '1001', '5016'),
             ('RteFte Servicios (6%)', 'retefuente', 'sale', 27.0, 6.0, '13551505', cat_nac.id, '1001', '5016'),
-            ('RteFte General (7%)', 'retefuente', 'sale', 27.0, 7.0, '13551511', cat_nac.id, '1001', '5002'),
-            ('RteFte Agrícola', 'retefuente', 'both', 92.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
+            ('RteFte Compras (7%)', 'retefuente', 'sale', 27.0, 7.0, '13551511', cat_nac.id, '1001', '5002'),
+            ('RteFte Agrícola (1.5%)', 'retefuente', 'both', 92.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
             
-            ('RteICA Alimentos (Medellín)', 'reteica', 'sale', 0.0, 0.414, '13551001', cat_med.id, '1001', '5016'),
-            ('RteICA Comercio (Bogotá D.C.)', 'reteica', 'sale', 0.0, 0.966, '13551001', cat_bog.id, '1001', '5002'),
-            ('RteICA Servicios (Cali)', 'reteica', 'sale', 0.0, 0.69, '13551001', cat_cal.id, '1001', '5016'),
+            # --- MUNICIPALES (ReteICA) - MEDELLÍN ---
+            ('RteICA Ind. Alimentos Medellín (4.14x1000)', 'reteica', 'both', 27.0, 0.414, '13551001', cat_med.id, '1001', '5016'),
+            ('RteICA Industrial Medellín (7x1000)', 'reteica', 'both', 27.0, 0.7, '13551001', cat_med.id, '1001', '5016'),
+            ('RteICA Com. y Serv. Medellín (10x1000)', 'reteica', 'both', 27.0, 1.0, '13551001', cat_med.id, '1001', '5016'),
+            ('RteICA Financiero Medellín (14x1000)', 'reteica', 'both', 0.0, 1.4, '13551001', cat_med.id, '1001', '5016'),
+
+            # --- MUNICIPALES (ReteICA) - ITAGÜÍ ---
+            ('RteICA Com. Alimentos Itagüí (2.5x1000)', 'reteica', 'both', 27.0, 0.25, '13551001', cat_ita.id, '1001', '5002'),
+            ('RteICA Ind. Químicos Itagüí (4x1000)', 'reteica', 'both', 27.0, 0.4, '13551001', cat_ita.id, '1001', '5016'),
+            ('RteICA Ind. Textiles Itagüí (5x1000)', 'reteica', 'both', 27.0, 0.5, '13551001', cat_ita.id, '1001', '5016'),
+            ('RteICA Servicios Itagüí (10x1000)', 'reteica', 'both', 4.0, 1.0, '13551001', cat_ita.id, '1001', '5016'),
+
+            # --- MUNICIPALES (ReteICA) - EL RETIRO ---
+            ('RteICA Industrial El Retiro (4x1000)', 'reteica', 'both', 27.0, 0.4, '13551001', cat_ret.id, '1001', '5016'),
+            ('RteICA Comercial El Retiro (7x1000)', 'reteica', 'both', 27.0, 0.7, '13551001', cat_ret.id, '1001', '5002'),
+            ('RteICA Servicios El Retiro (9x1000)', 'reteica', 'both', 4.0, 0.9, '13551001', cat_ret.id, '1001', '5016'),
+
+            # --- MUNICIPALES (ReteICA) - OTRAS CIUDADES ---
+            ('RteICA Comercio Bogotá (9.66x1000)', 'reteica', 'both', 27.0, 0.966, '13551001', cat_bog.id, '1001', '5002'),
+            ('RteICA Servicios Cali (6.9x1000)', 'reteica', 'both', 27.0, 0.69, '13551001', cat_cal.id, '1001', '5016'),
             
             ('RteIVA (15% s/ 19%)', 'reteiva', 'both', 27.0, 2.85, '135517', cat_nac.id, '1001', '5016'),
             ('RteIVA (15% s/ 5%)', 'reteiva', 'both', 27.0, 0.75, '135517', cat_nac.id, '1001', '5016'),
