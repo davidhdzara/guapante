@@ -104,9 +104,22 @@ class InsotechRetentionConcept(models.Model):
         tax_model = self.env['account.tax']
         
         category_model = self.env['insotech.retention.category']
+        # 1. Nacionales y Parafiscales
         cat_nac = category_model.search([('name', '=', 'Nacionales')], limit=1) or category_model.create({'name': 'Nacionales'})
-        cat_mun = category_model.search([('name', '=', 'Municipales')], limit=1) or category_model.create({'name': 'Municipales'})
         cat_par = category_model.search([('name', '=', 'Parafiscales')], limit=1) or category_model.create({'name': 'Parafiscales'})
+        
+        # 2. Departamentales (Padres)
+        cat_dep = category_model.search([('name', '=', 'Departamentales')], limit=1) or category_model.create({'name': 'Departamentales'})
+        
+        # 3. Departamentos (Hijos)
+        cat_ant = category_model.search([('name', '=', 'Antioquia'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Antioquia', 'parent_id': cat_dep.id})
+        cat_cun = category_model.search([('name', '=', 'Cundinamarca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Cundinamarca', 'parent_id': cat_dep.id})
+        cat_val = category_model.search([('name', '=', 'Valle del Cauca'), ('parent_id', '=', cat_dep.id)], limit=1) or category_model.create({'name': 'Valle del Cauca', 'parent_id': cat_dep.id})
+
+        # 4. Municipios (Nietos)
+        cat_med = category_model.search([('name', '=', 'Medellín'), ('parent_id', '=', cat_ant.id)], limit=1) or category_model.create({'name': 'Medellín', 'parent_id': cat_ant.id})
+        cat_bog = category_model.search([('name', '=', 'Bogotá D.C.'), ('parent_id', '=', cat_cun.id)], limit=1) or category_model.create({'name': 'Bogotá D.C.', 'parent_id': cat_cun.id})
+        cat_cal = category_model.search([('name', '=', 'Cali'), ('parent_id', '=', cat_val.id)], limit=1) or category_model.create({'name': 'Cali', 'parent_id': cat_val.id})
         
         # (Nombre Corto, Tipo, Dirección, Base UVT, %, Cuenta PUC, Categoría, Formato DIAN, Concepto DIAN)
         # Nota: Por defecto, si el tipo es diferente a retefuente venta, 
@@ -131,8 +144,9 @@ class InsotechRetentionConcept(models.Model):
             ('RteFte General (7%)', 'retefuente', 'sale', 27.0, 7.0, '13551511', cat_nac.id, '1001', '5002'),
             ('RteFte Agrícola', 'retefuente', 'both', 92.0, 1.5, '13551520', cat_nac.id, '1001', '5002'),
             
-            ('RteICA Alimentos', 'reteica', 'sale', 0.0, 0.414, '13551001', cat_mun.id, '1001', '5016'),
-            ('RteICA Comercio', 'reteica', 'sale', 0.0, 0.966, '13551001', cat_mun.id, '1001', '5002'),
+            ('RteICA Alimentos (Medellín)', 'reteica', 'sale', 0.0, 0.414, '13551001', cat_med.id, '1001', '5016'),
+            ('RteICA Comercio (Bogotá D.C.)', 'reteica', 'sale', 0.0, 0.966, '13551001', cat_bog.id, '1001', '5002'),
+            ('RteICA Servicios (Cali)', 'reteica', 'sale', 0.0, 0.69, '13551001', cat_cal.id, '1001', '5016'),
             
             ('RteIVA (15% s/ 19%)', 'reteiva', 'both', 27.0, 2.85, '135517', cat_nac.id, '1001', '5016'),
             ('RteIVA (15% s/ 5%)', 'reteiva', 'both', 27.0, 0.75, '135517', cat_nac.id, '1001', '5016'),
