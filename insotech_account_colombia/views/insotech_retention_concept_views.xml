@@ -60,10 +60,38 @@
         </field>
     </record>
 
+    <record id="view_insotech_retention_concept_search" model="ir.ui.view">
+        <field name="name">insotech.retention.concept.search</field>
+        <field name="model">insotech.retention.concept</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Conceptos de Retención">
+                <field name="name" string="Nombre del Concepto"/>
+                <field name="account_id" string="Cuenta PUC"/>
+                <field name="purchase_tax_id" string="Impuesto de Compra"/>
+                <separator/>
+                <filter string="Ventas" name="sales" domain="[('direction', 'in', ('sale', 'both'))]"/>
+                <filter string="Compras" name="purchases" domain="[('direction', 'in', ('purchase', 'both'))]"/>
+                <separator/>
+                <filter string="ReteFuente" name="type_retefuente" domain="[('type', '=', 'retefuente')]"/>
+                <filter string="ReteICA" name="type_reteica" domain="[('type', '=', 'reteica')]"/>
+                <filter string="ReteIVA" name="type_reteiva" domain="[('type', '=', 'reteiva')]"/>
+                <filter string="Parafiscales" name="type_parafiscal" domain="[('type', '=', 'parafiscal')]"/>
+                <separator/>
+                <filter string="Archivado" name="inactive" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Tipo de Retención" name="groupby_type" context="{'group_by': 'type'}"/>
+                    <filter string="Ámbito" name="groupby_direction" context="{'group_by': 'direction'}"/>
+                    <filter string="Cuenta PUC" name="groupby_account" context="{'group_by': 'account_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_insotech_retention_concept" model="ir.actions.act_window">
         <field name="name">Conceptos de Retención</field>
         <field name="res_model">insotech.retention.concept</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_insotech_retention_concept_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Crea tu primer Concepto de Retención
