@@ -212,6 +212,49 @@ La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-
 
 ---
 
+## 7. 🚨 create() del ORM NO ejecuta onchange
+
+Cuando el eCommerce crea una `sale.order` via ORM (`OdooBot`), los `@api.onchange` **NO se ejecutan**. Esto significa que cualquier campo que se llene por onchange en la UI (como `payment_term_id` del partner) se pierde.
+
+**Override obligatorio en `create()`:**
+
+```python
+@api.model_create_multi
+def create(self, vals_list):
+    for vals in vals_list:
+        if vals.get('payment_term_id'):
+            continue
+        partner = self.env['res.partner'].browse(vals.get('partner_id'))
+        commercial = partner.commercial_partner_id or partner
+        term = commercial.property_payment_term_id
+        if term:
+            vals['payment_term_id'] = term.id
+    return super().create(vals_list)
+```
+
+**Regla:** Siempre usar `commercial_partner_id` (empresa padre), no `partner_id` directo (puede ser hijo tipo delivery).
+
+---
+
+## 8. Pricelist en Órdenes Confirmadas
+
+El nativo de Odoo bloquea cambiar `pricelist_id` en estado `sale` desde Python (`write()`) y XML (`readonly`). Guapante lo desbloquea porque las órdenes llegan confirmadas del eCommerce.
+
+**Safety:** El `write()` override permite el cambio solo si la orden NO tiene facturas emitidas (posted). Si tiene → error claro.
+
+**Botón nativo:** El botón "🔄 Update Prices" (`action_update_prices`) existe en v18 pero está oculto en estado `sale`. La vista lo hace visible.
+
+**Técnica de bypass:** Strip `pricelist_id` de vals antes de `super().write()`, luego escribirlo via `models.Model.write()` para evitar el check nativo.
+
+---
+
+## 9. Referencias Adicionales de Aprendizajes
+
+- `orm-create-no-ejecuta-onchange-payment-terms.md` — Cómo el ORM create() pierde campos de onchange
+- `pricelist-desbloqueo-ordenes-confirmadas.md` — Patrón de desbloqueo de pricelist en órdenes confirmadas
+
+---
+
 ## Directiva de Acción
 
 1. **Antes de modificar el carrito:** Verificar si el cambio afecta a `unit_selector.js`, `shop.py` o `sale_order.py`. Si afecta JS, revisar que no se creen nuevos bindings duplicados para el mismo evento.
@@ -223,3 +266,6 @@ La base de conocimiento tiene documentos detallados bajo `.agent/skills/base-de-
 4. **Si hay cantidades fraccionarias involucradas (`_cart_update`):** Siempre usar `ceil()` en la llamada a `super()` y corregir el quantity exacto después via `line.sudo().product_uom_qty = desired_qty`.
 
 5. **Para toda modificación de backend:** Verificar que el método llamado en Odoo 18 siga existiendo con el mismo nombre (ej. `_cart_update` sí existe en Odoo 18; `_cart_add` es solo Odoo 19+).
+
+6. **Si un campo se llena por onchange en la UI:** Verificar que también se llene en `create()` por ORM (eCommerce). Si no → agregar override de `create()`.
+
