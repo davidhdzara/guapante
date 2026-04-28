@@ -39,6 +39,36 @@ class SaleOrder(models.Model):
                 order.order_line.filtered(lambda l: not l.display_type)
             )
 
+    # ── Payment Term Injection (eCommerce fix) ────────────────────
+    #
+    # When the eCommerce creates a sale.order via ORM create(),
+    # the onchange for partner_id does NOT fire, so the partner's
+    # payment term is lost.  This override ensures the commercial
+    # partner's payment_term_id is always applied.
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Inject partner's payment term when not explicitly set.
+
+        The eCommerce (website_sale) creates orders via ORM, bypassing
+        the ``partner_id`` onchange that would normally copy
+        ``partner.property_payment_term_id``. We fix this by looking
+        up the commercial partner's term and applying it.
+        """
+        Partner = self.env['res.partner']
+        for vals in vals_list:
+            if vals.get('payment_term_id'):
+                continue  # Explicitly set — respect it
+            partner_id = vals.get('partner_id')
+            if not partner_id:
+                continue
+            partner = Partner.browse(partner_id)
+            commercial = partner.commercial_partner_id or partner
+            term = commercial.property_payment_term_id
+            if term:
+                vals['payment_term_id'] = term.id
+        return super().create(vals_list)
+
     def action_confirm(self):
         # Odoo por defecto confirma la orden y crea los stock.picking.
         # Intervenimos antes del super() para asentar la fecha prometida.
