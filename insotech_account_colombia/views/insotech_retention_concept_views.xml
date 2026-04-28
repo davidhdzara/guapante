@@ -120,4 +120,11 @@
             </p>
         </field>
     </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_insotech_retention_concept" 
+              name="Conceptos de Retención" 
+              parent="menu_insotech_colombia_root" 
+              action="action_insotech_retention_concept" 
+              sequence="10"/>
 </odoo>
