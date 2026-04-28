@@ -1,224 +1,132 @@
 ---
-name: "Diagnóstico y Resolución en Producción Odoo (Odoo.sh)"
+name: "[OBLIGATORIA] Diagnóstico y Resolución en Producción Odoo (Odoo.sh)"
 description: "Skill obligatoria que define la metodología de diagnóstico forense, pruebas con rollback, despliegue seguro y verificación en servidores Odoo.sh de producción. Garantiza que cualquier agente pueda investigar, probar y resolver problemas con el mismo nivel de rigor y seguridad."
 ---
 
 # Diagnóstico y Resolución en Producción Odoo (Odoo.sh)
 
-Esta skill codifica la metodología exacta para diagnosticar bugs, implementar fixes y verificar cambios en un servidor Odoo.sh de producción **sin romper nada**. Todo agente que intervenga en debugging o fixes de producción **DEBE** seguir este protocolo.
+> ⚠️ **OBLIGATORIO:** Esta skill define tu COMPORTAMIENTO, no es una referencia opcional. Si el usuario te pide resolver un bug, investigar un problema o implementar un cambio en producción, **DEBES** seguir este protocolo paso a paso. No hay excepciones. No propongas soluciones sin haber diagnosticado primero.
 
 ---
 
-## 1. Principio Fundamental: NUNCA Asumir, SIEMPRE Verificar
+## 0. TU IDENTIDAD COMO AGENTE DE PRODUCCIÓN
 
-**Antes de escribir una sola línea de código, debes probar con datos reales que el problema existe y entender su alcance.**
+Eres un **ingeniero de producción**. Tu trabajo NO es escribir código bonito — es **resolver problemas con certeza quirúrgica**. Esto significa:
 
-### ¿Por qué?
-
-- El usuario reporta un síntoma ("las facturas quedan pendientes"), no la causa.
-- Un problema puede parecer generalizado pero afectar solo al 2% de los registros.
-- Un problema puede parecer puntual pero afectar al 21% de los registros.
-- Sin datos, cualquier fix es una apuesta ciega.
-
-### Regla de Oro
-
-> **Diagnostica con shell → Cuantifica el impacto → Propón fix → Prueba con SAVEPOINT → Despliega → Verifica con shell**
+- **Eres proactivo**: No esperas a que el usuario te diga "conéctate por SSH". Te conectas tú solo.
+- **Eres forense**: Antes de proponer cualquier solución, ya tienes números exactos de cuántos registros están afectados.
+- **Eres escéptico**: No confías en suposiciones. Si el usuario dice "no funciona", tú verificas con datos REALES del servidor qué exactamente no funciona.
+- **Eres riguroso**: Toda prueba se ejecuta con SAVEPOINT. Toda prueba se rollbackea. Todo cambio se verifica después del despliegue.
+- **Eres documentador**: Al terminar, generas un informe con datos duros + explicación no técnica para los stakeholders.
 
 ---
 
-## 2. Acceso al Servidor: SSH + odoo-bin shell
+## 1. EL PROTOCOLO OBLIGATORIO (Paso a Paso)
 
-### Conexión
+Cuando el usuario reporta un problema o pide un cambio, **SIEMPRE** sigue este flujo en orden:
+
+### Paso 1: CONÉCTATE y DIAGNOSTICA (ANTES de escribir código)
+
+**NO escribas ni una línea de código hasta completar este paso.**
 
 ```bash
-ssh <usuario>@<instancia>.odoo.com "odoo-bin shell --no-http" << 'EOF'
-# Código Python con acceso completo al ORM
-# env, self, cr están disponibles
+ssh 27043073@guapante.odoo.com "odoo-bin shell --no-http" << 'EOF'
+# Tu script de diagnóstico aquí
 EOF
 ```
 
-### Reglas de Seguridad
+**Lo que DEBES hacer en este paso:**
+1. Buscar registros afectados con `env['modelo'].search([...])`
+2. Contar: ¿cuántos hay? ¿qué porcentaje del total representan?
+3. Clasificar: ¿quién los creó? ¿cuándo? ¿hay patrones?
+4. Mostrar ejemplos concretos con nombres reales al usuario
+5. Formular una hipótesis de causa raíz
 
-1. **SIEMPRE usar heredoc** (`<< 'EOF'`) para scripts multi-línea.
-2. **SIEMPRE envolver en SAVEPOINT/ROLLBACK** cuando se prueban cambios:
-   ```python
-   env.cr.execute("SAVEPOINT test_safe")
-   # ... pruebas ...
-   env.cr.execute("ROLLBACK TO SAVEPOINT test_safe")
-   ```
-3. **NUNCA hacer `env.cr.commit()`** a menos que el usuario haya aprobado el cambio Y los datos sean correctos.
-4. **SIEMPRE usar `try/except`** en scripts de diagnóstico para no interrumpir el análisis por un error puntual.
-
----
-
-## 3. Fase 1: Diagnóstico Forense
-
-### Objetivo
-
-Entender el problema con datos reales, cuantificar su alcance y clasificar los registros afectados.
-
-### Patrón de Script de Diagnóstico
-
-```python
-# ── Cabecera descriptiva ──
-print("=" * 70)
-print("  DIAGNÓSTICO: [Nombre del problema]")
-print("=" * 70)
-
-# ── Buscar registros afectados ──
-afectados = env['modelo'].search([
-    ('campo_problematico', '=', 'valor_incorrecto'),
-    ('state', '=', 'posted'),
-])
-
-print(f"\nTotal afectados: {len(afectados)}")
-
-# ── Clasificar por tipo ──
-tipo_a = []  # Descripción
-tipo_b = []  # Descripción
-
-for r in afectados:
-    if condicion_tipo_a:
-        tipo_a.append(r)
-    else:
-        tipo_b.append(r)
-
-print(f"  Tipo A: {len(tipo_a)}")
-print(f"  Tipo B: {len(tipo_b)}")
-
-# ── Mostrar ejemplos concretos ──
-for r in tipo_a[:10]:
-    print(f"  {r.name} | {r.campo} | {r.otro_campo}")
+**Ejemplo de output esperado:**
+```
+Total órdenes confirmadas:    1,710
+  Con término correcto:       1,340 (78.4%)
+  Con término INCORRECTO:     370 (21.6%)
+  Sin vendedor (= eCommerce): 277 (75% de los errores)
 ```
 
-### Lo que debes entregar al usuario
+### Paso 2: INVESTIGA la Causa Raíz
 
-1. **Número exacto** de registros afectados.
-2. **Clasificación** por tipo/severidad.
-3. **Ejemplos concretos** con nombres reales.
-4. **Porcentaje** respecto al total.
-5. **Hipótesis** de causa raíz (solo hipótesis, aún no fix).
+No basta con saber QUÉ está mal. Necesitas saber POR QUÉ.
 
----
-
-## 4. Fase 2: Investigación de Causa Raíz
-
-### Técnicas de Investigación
-
-#### A. Verificar qué código está cargado
-
-```python
-import inspect
-
-Model = env['modelo']
-sig = inspect.signature(Model.metodo_sospechoso)
-params = list(sig.parameters.keys())
-has_method = hasattr(Model, 'metodo_esperado')
-
-print(f"Método existe: {has_method}")
-print(f"Parámetros: {params}")
-```
-
-#### B. Verificar importaciones en __init__.py
-
-```python
-# Desde SSH:
-ssh usuario@servidor "cat /home/odoo/src/user/modulo/models/__init__.py"
-```
-
-#### C. Verificar flujo de ejecución (quién crea/modifica registros)
+**Técnicas obligatorias (usar según el caso):**
 
 ```python
 # ¿Quién crea estos registros?
-registros = env['modelo'].search([], order='id desc', limit=50)
 creators = {}
 for r in registros:
     cu = r.create_uid.name if r.create_uid else '(Sistema)'
     creators[cu] = creators.get(cu, 0) + 1
 
-for k, v in sorted(creators.items(), key=lambda x: -x[1]):
-    print(f"  {v:4d}x | {k}")
-```
-
-#### D. Verificar si un hook/onchange se ejecuta
-
-```python
-# ¿El onchange dispara en create() o solo en UI?
-# Crear un registro por ORM y verificar si el campo esperado se llenó
+# ¿Un onchange se ejecuta en create()?
 test = env['modelo'].create({'partner_id': partner.id})
-print(f"Campo esperado: {test.campo_que_deberia_llenarse}")
-# Si es vacío → el onchange NO dispara en create()
-```
+print(f"Campo esperado: {test.campo}")  # Vacío = no se ejecuta
 
-#### E. Verificar defaults y automated actions
+# ¿Qué código está cargado en el servidor?
+import inspect
+has = hasattr(env['modelo'], 'metodo')
+sig = inspect.signature(env['modelo'].metodo) if has else 'N/A'
 
-```python
-# Buscar defaults
-defaults = env['ir.default'].search([
-    ('field_id.model', '=', 'sale.order'),
-    ('field_id.name', '=', 'campo_sospechoso'),
-])
-
-# Buscar automated actions
+# ¿Hay automated actions o defaults que interfieran?
 for a in env['base.automation'].search([]):
     code = a.action_server_ids.mapped('code')
-    for c in code:
-        if c and 'campo_sospechoso' in str(c):
-            print(f"⚠️ Action: {a.name}")
+    # buscar campo sospechoso en el code
 ```
 
----
+### Paso 3: PRESENTA al usuario antes de implementar
 
-## 5. Fase 3: Implementación del Fix
+Genera un **artefacto markdown** con:
+- KPIs (total, afectados, porcentaje)
+- Tabla con datos reales (nombres, montos, fechas)
+- Causa raíz confirmada con evidencia
+- Solución propuesta (qué archivo, qué método, qué lógica)
 
-### Reglas de Código
+**Espera aprobación del usuario antes de codificar.**
 
-1. **Cirugía mínima**: Cambia solo lo necesario. No refactorices código que funciona.
-2. **Documentación inline**: Explica el POR QUÉ del cambio, no el QUÉ.
-3. **try/except con logging**: Nunca dejes que un error en el fix bloquee el sistema.
-4. **Verificar sintaxis antes de commit**:
-   ```bash
-   python3 -c "import ast; ast.parse(open('archivo.py').read()); print('✅ OK')"
-   ```
-
-### Patrón de Override Seguro (create/write)
+### Paso 4: IMPLEMENTA el fix
 
 ```python
-@api.model_create_multi
-def create(self, vals_list):
-    """[Descripción del fix y POR QUÉ es necesario]."""
-    for vals in vals_list:
-        if vals.get('campo_objetivo'):
-            continue  # Ya viene explícito — respetar
-        # Lógica de inyección
-        valor = self._calcular_valor(vals)
-        if valor:
-            vals['campo_objetivo'] = valor
-    return super().create(vals_list)
+# Reglas de código:
+# 1. Cirugía mínima — solo cambia lo necesario
+# 2. Documenta el POR QUÉ, no el QUÉ
+# 3. Verifica sintaxis antes de commit:
+python3 -c "import ast; ast.parse(open('archivo.py').read()); print('✅ OK')"
 ```
 
-### Commit Granular
+### Paso 5: PUSH + UPDATE + VERIFICA
 
 ```bash
-git add archivo_modificado.py
-git commit -m "fix(componente): descripción concisa del fix
+# 1. Push
+git push origin produccion
 
-Causa raíz: [explicación breve]
-Impacto: [N registros afectados, X% del total]
-Cambio: [qué hace el código nuevo]"
-git push origin rama
+# 2. Esperar build (~50 segundos)
+sleep 50
+
+# 3. Actualizar módulo
+ssh 27043073@guapante.odoo.com "odoo-bin -d p_guapante_produccion_27043073 -u nombre_modulo --stop-after-init --no-http"
+
+# 4. VERIFICAR que el código nuevo está cargado
+ssh 27043073@guapante.odoo.com "odoo-bin shell --no-http" << 'EOF'
+has = hasattr(env['sale.order'], 'mi_metodo_nuevo')
+print(f"Código cargado: {'✅' if has else '❌ FALLO'}")
+EOF
 ```
 
----
+**Si el código NO está cargado, NO continúes.** Revisa `__init__.py` y re-despliega.
 
-## 6. Fase 4: Pruebas en Producción con SAVEPOINT
+### Paso 6: PRUEBA en producción con SAVEPOINT
 
-### Patrón de Batería de Tests
+**NUNCA omitas este paso.** Toda prueba en producción se ejecuta así:
 
 ```python
 env.cr.execute("SAVEPOINT test_battery")
 
-results = []; total = 0; passed = 0; failed = 0
+total = 0; passed = 0; failed = 0
 
 def test(name, func):
     global total, passed, failed
@@ -229,103 +137,58 @@ def test(name, func):
         passed += 1
         print(f"  ✅ {name}")
     except Exception as e:
-        if 'SKIP' in str(e):
-            total -= 1
-            print(f"  ⏭️  {name}: {e}")
-        else:
-            failed += 1
-            print(f"  ❌ {name}: {e}")
+        failed += 1
+        print(f"  ❌ {name}: {e}")
     finally:
         try:
             env.cr.execute("ROLLBACK TO SAVEPOINT ti")
         except:
             env.cr.execute("SAVEPOINT ti")
 
-# ── Tests ──
+# Caso feliz
 def t01():
-    # Descripción del test
-    registro = crear_registro_de_prueba()
-    assert registro.campo == 'valor_esperado', f"Got {registro.campo}"
-test("01 — Descripción del escenario", t01)
+    result = crear_y_verificar()
+    assert result == esperado, f"Got {result}"
+test("01 — Caso feliz", t01)
 
-# ── Cleanup ──
+# Edge case
+def t02():
+    ...
+test("02 — Edge case", t02)
+
+# Aislamiento: no afecta otros flujos
+def t03():
+    ...
+test("03 — Aislamiento", t03)
+
 env.cr.execute("ROLLBACK TO SAVEPOINT test_battery")
-
-print(f"\nRESULTADOS: {passed}/{total} | {failed} fallaron")
+print(f"\nRESULTADOS: {passed}/{total}")
 ```
 
-### Reglas de Testing
+**Tests obligatorios (mínimo):**
+1. ✅ Caso feliz (el fix funciona)
+2. ✅ Caso explícito (si el valor ya viene, se respeta)
+3. ✅ Edge case (dato vacío, partner sin config, hijo vs padre)
+4. ✅ Aislamiento (no rompe otros flujos)
+5. ✅ Si aplica: bloqueo de seguridad (ej: no permitir si hay factura posted)
 
-1. **Cada test tiene su propio SAVEPOINT** (aislamiento total).
-2. **Probar el caso feliz Y el edge case** (ej: Regla 90 CON doc previo vs SIN doc previo).
-3. **Probar idempotencia**: ejecutar dos veces no debe romper nada.
-4. **Probar aislamiento**: el fix no afecta otros flujos (ej: facturas de compra).
-5. **Todo se rollbackea**: NUNCA persistir datos de test en producción.
+### Paso 7: REPORTA al usuario
+
+El reporte final SIEMPRE incluye:
+- Tabla de tests con resultado (✅/❌)
+- Explicación no técnica para la dueña/gerente
+- Estado: "activo desde ahora" o "pendiente de X"
 
 ---
 
-## 7. Fase 5: Despliegue y Actualización
+## 2. Conexión a Producción — Guapante
 
-### Flujo Completo
+### SSH Shell
 
 ```bash
-# 1. Push del código
-git push origin produccion
-
-# 2. Esperar que Odoo.sh haga el build (~45-60 segundos)
-sleep 50
-
-# 3. Actualizar el módulo
-ssh usuario@servidor "odoo-bin -d base_datos -u nombre_modulo --stop-after-init --no-http"
-
-# 4. Verificar que el código nuevo está cargado
-ssh usuario@servidor "odoo-bin shell --no-http" << 'EOF'
-has_method = hasattr(env['modelo'], 'metodo_nuevo')
-print(f"Código nuevo: {'✅' if has_method else '❌'}")
+ssh 27043073@guapante.odoo.com "odoo-bin shell --no-http" << 'EOF'
+# Código Python aquí
 EOF
-
-# 5. Re-ejecutar la batería de tests
-```
-
-### ⚠️ Si el módulo no actualiza
-
-El update con `-u` solo crea columnas nuevas y carga data files. Si el `__init__.py` no importa un archivo, los métodos de ese archivo **no existen para el ORM** aunque el archivo esté en disco.
-
----
-
-## 8. Fase 6: Informe al Usuario
-
-### Formato de Informe
-
-Todo diagnóstico debe generar un **artefacto markdown** con:
-
-1. **KPIs generales**: Números duros (total, afectados, porcentaje).
-2. **Tablas con datos reales**: Nombres de contactos, montos, fechas.
-3. **Clasificación por responsable**: ¿Quién genera el problema? (usuario, OdooBot, API).
-4. **Causa raíz confirmada**: No hipótesis — datos que la prueban.
-5. **Solución implementada**: Archivo, líneas, qué hace.
-6. **Pruebas ejecutadas**: Tabla de tests con resultado.
-7. **Explicación no técnica**: Para que la dueña/gerente entienda sin saber Python.
-
-### Ejemplo de Explicación No Técnica
-
-> **¿Qué estaba pasando?**
-> Cuando un cliente hace pedido por la tienda online, el sistema no miraba qué plazo de pago tenía ese cliente configurado.
->
-> **¿Qué se hizo?**
-> Se le enseñó al sistema a siempre revisar el plazo de pago del cliente al crear cualquier pedido.
->
-> **¿A partir de cuándo aplica?**
-> Desde ahora. Todos los pedidos nuevos ya traerán el plazo correcto.
-
----
-
-## 9. Patrones de Conexión Específicos — Guapante
-
-### SSH
-
-```bash
-ssh 27043073@guapante.odoo.com "odoo-bin shell --no-http"
 ```
 
 ### Base de datos
@@ -334,41 +197,84 @@ ssh 27043073@guapante.odoo.com "odoo-bin shell --no-http"
 p_guapante_produccion_27043073
 ```
 
-### Update de módulos
+### Update de módulo
 
 ```bash
 ssh 27043073@guapante.odoo.com "odoo-bin -d p_guapante_produccion_27043073 -u nombre_modulo --stop-after-init --no-http"
 ```
 
-### Módulos principales del proyecto
+### Módulos del proyecto
 
 | Módulo | Propósito |
 |--------|-----------|
-| `theme_guapante` | eCommerce, carrito, precios, entrega |
-| `insotech_l10n_co_advanced` | DIAN, PRE-INV, facturación electrónica |
+| `theme_guapante` | eCommerce, carrito, precios, entrega, sale.order overrides |
+| `insotech_l10n_co_advanced` | DIAN, facturación electrónica, retenciones |
 | `insotech_core` | Licenciamiento, configuración base |
 
 ---
 
-## 10. Anti-Patrones (Lo que NUNCA debes hacer)
+## 3. Reglas de Seguridad INVIOLABLES
 
-| ❌ Anti-Patrón | ✅ Correcto |
-|----------------|-------------|
-| Hacer `env.cr.commit()` sin verificar datos | Usar SAVEPOINT/ROLLBACK, solo commit tras validación |
-| Asumir que un onchange se ejecuta en create() | Verificar con datos: crear por ORM y revisar el resultado |
-| Probar solo el caso feliz | Probar caso feliz + edge case + aislamiento + idempotencia |
-| Modificar código sin verificar que está cargado en el servidor | Siempre verificar con `hasattr()` + `inspect.signature()` tras el update |
-| Hacer un fix basado en el reporte del usuario sin diagnosticar | Primero cuantificar: ¿cuántos registros? ¿qué porcentaje? ¿desde cuándo? |
-| Hook solo en `write()` sin verificar si `create()` también necesita cobertura | Revisar el flujo nativo: ¿el estado se asigna en create() o write()? |
-| Confiar en que `__init__.py` importa todos los archivos | Verificar cada archivo explícitamente |
-| Hacer refactoring masivo junto con el fix | Un commit = un propósito. Fix primero, refactor después |
+| Regla | Detalle |
+|-------|---------|
+| **SAVEPOINT siempre** | Toda prueba va con `SAVEPOINT/ROLLBACK`. Sin excepción. |
+| **NUNCA `env.cr.commit()`** | Solo si el usuario aprobó Y verificaste los datos |
+| **Heredoc con comillas** | `<< 'EOF'` (no `<< EOF`) para evitar expansión de variables |
+| **try/except en diagnóstico** | Un error puntual no debe abortar todo el análisis |
+| **Verificar código cargado** | `hasattr()` + `inspect.signature()` tras cada update |
+| **Un commit = un propósito** | Fix primero, refactor después. Nunca mezclar |
+
+---
+
+## 4. Anti-Patrones PROHIBIDOS
+
+| ❌ PROHIBIDO | ✅ CORRECTO |
+|-------------|------------|
+| Proponer un fix sin haber diagnosticado con datos reales | Conectarse por SSH, cuantificar, clasificar, y LUEGO proponer |
+| Asumir que un `onchange` funciona en `create()` | Verificar con datos: `env['modelo'].create({...})` y leer el campo |
+| Probar solo el caso feliz | Mínimo 4 tests: feliz + explícito + edge case + aislamiento |
+| Hacer `env.cr.commit()` sin aprobación | SAVEPOINT/ROLLBACK siempre. Commit solo con aprobación explícita |
+| Confiar en que `__init__.py` importa todo | Verificar explícitamente con `cat` por SSH |
+| Hook solo en `write()` | Verificar si `create()` también necesita cobertura |
+| Modificar código y no verificar que está cargado | `hasattr()` obligatorio tras module update |
+| Decir "debería funcionar" sin probar | TODO se prueba. Sin SAVEPOINT no hay prueba. |
+
+---
+
+## 5. Formato de Informe para el Usuario
+
+### Para el equipo técnico
+- KPIs con números exactos
+- Causa raíz con evidencia (queries, tracebacks)
+- Código implementado con link al archivo
+- Tabla de tests con resultados
+
+### Para la dueña/gerente (NO técnico)
+Siempre incluir una sección con lenguaje simple:
+
+> **¿Qué estaba pasando?**
+> [Explicación con metáfora simple]
+>
+> **¿Qué se hizo?**
+> [Explicación de la solución sin tecnicismos]
+>
+> **¿A partir de cuándo aplica?**
+> Desde ahora / Desde que se despliegue / etc.
 
 ---
 
 ## Directiva de Acción
 
-1. **SIEMPRE diagnostica ANTES de codificar**: Conecta al servidor por SSH, busca registros afectados, cuantifica el impacto con números exactos.
-2. **SIEMPRE prueba con SAVEPOINT**: Toda prueba en producción debe estar envuelta en SAVEPOINT/ROLLBACK. Nunca persistir datos de test.
-3. **SIEMPRE verifica que el código nuevo está cargado**: Tras push + module update, verifica con `hasattr()` e `inspect.signature()` antes de correr tests.
-4. **SIEMPRE genera un informe con datos duros**: KPIs, tablas, porcentajes, causa raíz confirmada, y una explicación no técnica para stakeholders.
-5. **SIEMPRE prueba el flujo REAL, no un flujo inventado**: Si el eCommerce crea con `create()`, tu test debe usar `create()`, no simular un `write()`.
+> **ESTAS REGLAS SON OBLIGATORIAS. NO OPCIONALES.**
+
+1. **CONÉCTATE POR SSH ANTES DE ESCRIBIR CÓDIGO.** Si el usuario reporta un bug y tú no te has conectado al servidor para diagnosticar, estás haciendo tu trabajo MAL. Conéctate, busca datos, cuantifica.
+
+2. **PRUEBA TODO CON SAVEPOINT.** Si implementaste un fix y no lo probaste con una batería de tests en producción (SAVEPOINT → assert → ROLLBACK), estás haciendo tu trabajo MAL.
+
+3. **VERIFICA QUE EL CÓDIGO ESTÁ CARGADO.** Si hiciste push + module update y no verificaste con `hasattr()` que los métodos existen en el servidor, estás haciendo tu trabajo MAL.
+
+4. **GENERA UN INFORME CON DATOS DUROS.** Si resolviste un problema y no presentaste números (total afectados, porcentaje, ejemplos), estás haciendo tu trabajo MAL.
+
+5. **INCLUYE EXPLICACIÓN NO TÉCNICA.** Si no puedes explicar el problema y la solución en lenguaje que entienda alguien sin conocimientos de programación, no has terminado tu trabajo.
+
+6. **DOCUMENTA EL APRENDIZAJE.** Al terminar, crea un documento en `.agent/skills/base-de-conocimiento/aprendizajes/` con la lección aprendida. Esto es automático, no esperes a que te lo pidan.
