@@ -69,6 +69,123 @@ class SaleOrder(models.Model):
                 vals['payment_term_id'] = term.id
         return super().create(vals_list)
 
+    # ── Pricelist Change on Confirmed Orders ──────────────────────
+    #
+    # Odoo blocks pricelist changes on confirmed orders (state=sale).
+    # Guapante needs this because most orders arrive from eCommerce
+    # already confirmed, and the owner needs to switch pricelists
+    # without cancelling and re-confirming.
+    #
+    # Safety: Only allowed when the order has NO posted invoices.
+
+    def write(self, vals):
+        """Allow pricelist change on confirmed orders without invoices.
+
+        The native ``sale.order.write()`` raises ``UserError`` if
+        ``pricelist_id`` is changed on a confirmed order. We intercept
+        this case and allow it when the order has no posted invoices,
+        then recalculate all line prices with the new pricelist.
+        """
+        if 'pricelist_id' not in vals:
+            return super().write(vals)
+
+        # Separate orders that need special handling
+        confirmed_orders = self.filtered(lambda so: so.state == 'sale')
+        other_orders = self - confirmed_orders
+
+        if confirmed_orders:
+            # Safety check: block if any have posted invoices
+            for so in confirmed_orders:
+                posted = so.invoice_ids.filtered(
+                    lambda inv: inv.state == 'posted'
+                )
+                if posted:
+                    raise UserError(
+                        'No se puede cambiar la lista de precios de '
+                        '"%s" porque ya tiene facturas emitidas '
+                        '(%s). Debe anularlas primero.'
+                        % (so.name, ', '.join(posted.mapped('name')))
+                    )
+
+            old_pricelists = {
+                so.id: so.pricelist_id for so in confirmed_orders
+            }
+
+            # Strip pricelist_id from vals to bypass native check,
+            # then write remaining vals through normal chain.
+            pricelist_val = vals.pop('pricelist_id')
+            if vals:
+                super(SaleOrder, confirmed_orders).write(vals)
+
+            # Write pricelist directly via base Model.write()
+            # to bypass the native sale.order.write() block.
+            models.Model.write(confirmed_orders, {
+                'pricelist_id': pricelist_val,
+            })
+            confirmed_orders.invalidate_recordset(['pricelist_id'])
+
+            # Recalculate prices on affected lines
+            new_pricelist = self.env['product.pricelist'].browse(
+                pricelist_val
+            )
+            for so in confirmed_orders:
+                old_pl = old_pricelists[so.id]
+                if old_pl.id == new_pricelist.id:
+                    continue
+                so._guapante_recalculate_prices(new_pricelist)
+                _logger.info(
+                    'Guapante: pricelist changed on %s: '
+                    '%s → %s. Prices recalculated.',
+                    so.name, old_pl.name, new_pricelist.name,
+                )
+
+            # Restore pricelist_id in vals for other_orders
+            vals['pricelist_id'] = pricelist_val
+
+        # Write normally for non-confirmed orders
+        if other_orders:
+            super(SaleOrder, other_orders).write(vals)
+
+        return True
+
+    def _guapante_recalculate_prices(self, pricelist):
+        """Recalculate all line prices using the new pricelist.
+
+        Called after a pricelist change on a confirmed order.
+        Only updates lines with products (skips sections/notes).
+        """
+        self.ensure_one()
+        for line in self.order_line:
+            if line.display_type or not line.product_id:
+                continue
+
+            product = line.product_id.with_context(
+                partner=self.partner_id.id,
+                quantity=line.product_uom_qty,
+                date=fields.Date.today(),
+                pricelist=pricelist.id,
+                uom=line.product_uom.id,
+            )
+            new_price = pricelist._get_product_price(
+                product,
+                line.product_uom_qty,
+                currency=self.currency_id,
+                date=fields.Date.today(),
+            )
+
+            if new_price and round(new_price, 2) != round(
+                line.price_unit, 2
+            ):
+                old_price = line.price_unit
+                line.price_unit = new_price
+                _logger.info(
+                    'Guapante Pricelist: %s | %s | $%.2f → $%.2f',
+                    self.name,
+                    line.product_id.name,
+                    old_price,
+                    new_price,
+                )
+
     def action_confirm(self):
         # Odoo por defecto confirma la orden y crea los stock.picking.
         # Intervenimos antes del super() para asentar la fecha prometida.
