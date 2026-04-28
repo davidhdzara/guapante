@@ -514,42 +514,35 @@ class AccountMoveDian(models.Model):
     # Odoo 18: uses _l10n_co_dian_send_invoice_xml (not _l10n_co_dian_post)
     # -------------------------------------------------------------------------
 
-    def _l10n_co_dian_send_invoice_xml(self, *args, **kwargs):
-        """Override l10n_co_dian's invoice XML sending method (Odoo 18)."""
-        self._insotech_validate_license_before_dian()
-        self._insotech_swap_to_dian_name()
-        try:
-            if hasattr(super(), '_l10n_co_dian_send_invoice_xml'):
-                return super()._l10n_co_dian_send_invoice_xml(
-                    *args, **kwargs
-                )
-        except Exception:
-            self._insotech_swap_to_pre_inv_name()
-            raise
-        return True
+    def _l10n_co_dian_send_invoice_xml(self, xml: bytes):
+        """Override l10n_co_dian's invoice XML sending method.
 
-    def _hook_invoice_document_before_pdf(self, *args, **kwargs):
-        """Override the Print & Send hook for DIAN processing."""
+        Injects license validation and name swap before the native
+        DIAN submission. On failure, restores the PRE-INV name.
+
+        :param xml: The UBL XML bytes to send to DIAN.
+        :returns: l10n_co_dian.document record.
+        """
         self._insotech_validate_license_before_dian()
         self._insotech_swap_to_dian_name()
         try:
-            if hasattr(
-                super(), '_hook_invoice_document_before_pdf'
-            ):
-                return super()._hook_invoice_document_before_pdf(
-                    *args, **kwargs
-                )
+            return super()._l10n_co_dian_send_invoice_xml(xml)
         except Exception:
             self._insotech_swap_to_pre_inv_name()
             raise
-        return True
 
     # -------------------------------------------------------------------------
     # MAIN INTERCEPTION — action_send_and_print (Odoo 18/19)
     # -------------------------------------------------------------------------
 
     def action_send_and_print(self, **kwargs):
-        """Override the Send & Print action to swap name first."""
+        """Pre-validate before opening the Send & Print wizard.
+
+        Note: ``super().action_send_and_print()`` only returns a dict
+        to open the wizard — no DIAN call happens here. The actual
+        submission occurs inside ``account.move.send`` which calls
+        ``_l10n_co_dian_send_invoice_xml()`` (hooked above).
+        """
         self._insotech_validate_license_before_dian()
         self._insotech_check_duplicate_consecutive()
         self._insotech_pre_validate_partner_for_dian()
@@ -557,37 +550,10 @@ class AccountMoveDian(models.Model):
 
         self._insotech_swap_to_dian_name()
         try:
-            result = super().action_send_and_print(**kwargs)
+            return super().action_send_and_print(**kwargs)
         except Exception:
             self._insotech_swap_to_pre_inv_name()
             raise
-
-        # POST-SEND: Check if DIAN accepted during this call
-        for move in self:
-            if move.insotech_dian_status != 'pending':
-                continue
-            try:
-                move.invalidate_recordset(
-                    ['l10n_co_edi_cufe_cude_ref', 'name']
-                )
-                cufe = getattr(
-                    move, 'l10n_co_edi_cufe_cude_ref', None
-                )
-                if cufe:
-                    _logger.info(
-                        "Insotech: Post-send DIAN acceptance "
-                        "detected for move %s (CUFE: %s...)",
-                        move.id, str(cufe)[:20],
-                    )
-                    move._insotech_process_dian_acceptance()
-            except Exception as e:
-                _logger.warning(
-                    "Insotech: Post-send acceptance check "
-                    "failed for move %s: %s (non-blocking)",
-                    move.id, str(e),
-                )
-
-        return result
 
     # -------------------------------------------------------------------------
     # USER ACTIONS

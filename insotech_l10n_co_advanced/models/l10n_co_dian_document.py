@@ -59,6 +59,189 @@ class L10nCoDianDocument(models.Model):
     )
 
     # -----------------------------------------------------------------
+    # DIAN STATE DETECTION — Hook into write() for acceptance/rejection
+    # -----------------------------------------------------------------
+
+    def write(self, vals):
+        """Detect DIAN acceptance/rejection to trigger name mutation.
+
+        When l10n_co_dian processes the DIAN's ApplicationResponse,
+        it updates this document's ``state`` field. We detect:
+
+        1. ``state`` → ``invoice_accepted``: trigger PRE-INV → FE
+        2. ``state`` → ``invoice_rejected``: log error, keep PRE-INV
+        3. ``invoice_rejected`` with Regla 90: attempt recovery from
+           a previously accepted document for the same invoice.
+        """
+        # Collect moves BEFORE write (to compare old vs new state)
+        moves_to_accept = self.env['account.move']
+        moves_to_reject = self.env['account.move']
+        reject_messages = {}
+
+        if 'state' in vals:
+            new_state = vals['state']
+            for doc in self:
+                move = doc.move_id
+                if not move:
+                    continue
+                if not hasattr(move, 'insotech_dian_status'):
+                    continue
+                if move.insotech_dian_status != 'pending':
+                    continue
+
+                old_state = doc.state
+                if (new_state == 'invoice_accepted'
+                        and old_state != 'invoice_accepted'):
+                    moves_to_accept |= move
+                elif (new_state == 'invoice_rejected'
+                        and old_state != 'invoice_rejected'):
+                    moves_to_reject |= move
+                    reject_messages[move.id] = str(
+                        vals.get('message', '')
+                        or getattr(doc, 'message', '') or ''
+                    )
+
+        result = super().write(vals)
+
+        # ── Process acceptances ──
+        for move in moves_to_accept:
+            try:
+                _logger.info(
+                    "Insotech: DIAN acceptance detected via "
+                    "l10n_co_dian.document for move %s (%s).",
+                    move.id, move.name,
+                )
+                move._insotech_process_dian_acceptance()
+            except Exception as e:
+                _logger.error(
+                    "Insotech: Error processing DIAN acceptance "
+                    "for move %s: %s",
+                    move.id, str(e),
+                )
+
+        # ── Process rejections (with Regla 90 recovery) ──
+        for move in moves_to_reject:
+            try:
+                msg = reject_messages.get(move.id, '')
+                if self._is_regla_90(msg):
+                    recovered = self._recover_from_regla_90(move)
+                    if recovered:
+                        continue  # Skip rejection, was recovered
+
+                _logger.warning(
+                    "Insotech: DIAN rejection detected via "
+                    "l10n_co_dian.document for move %s (%s).",
+                    move.id, move.name,
+                )
+                from ..services.dian_error_translator import (
+                    sanitize_dian_error,
+                )
+                clean_error = sanitize_dian_error(msg)
+                move._insotech_process_dian_rejection(
+                    error_message=clean_error,
+                )
+            except Exception as e:
+                _logger.error(
+                    "Insotech: Error processing DIAN rejection "
+                    "for move %s: %s",
+                    move.id, str(e),
+                )
+
+        return result
+
+    @staticmethod
+    def _is_regla_90(message: str) -> bool:
+        """Check if a DIAN error message is Regla 90 (duplicate)."""
+        if not message:
+            return False
+        msg_lower = message.lower()
+        return (
+            'regla: 90' in msg_lower
+            or 'procesado anteriormente' in msg_lower
+        )
+
+    def _recover_from_regla_90(self, move) -> bool:
+        """Attempt to recover from Regla 90 using a prior accepted doc.
+
+        When DIAN returns "Documento procesado anteriormente", it means
+        a previous submission was accepted. We look for that accepted
+        document and rescue the CUFE from it.
+
+        :param move: the account.move stuck in limbo
+        :returns: True if recovery succeeded, False otherwise
+        """
+        accepted_doc = self.search([
+            ('move_id', '=', move.id),
+            ('state', '=', 'invoice_accepted'),
+        ], limit=1, order='id desc')
+
+        if not accepted_doc:
+            _logger.warning(
+                "Insotech Regla 90: No prior accepted document "
+                "found for move %s. Cannot recover.",
+                move.name,
+            )
+            return False
+
+        identifier = accepted_doc.identifier
+        if not identifier:
+            _logger.warning(
+                "Insotech Regla 90: Accepted doc %d for move %s "
+                "has no identifier. Cannot recover.",
+                accepted_doc.id, move.name,
+            )
+            return False
+
+        _logger.info(
+            "Insotech Regla 90: RECOVERY for move %s — "
+            "rescued CUFE %s... from doc %d.",
+            move.name, identifier[:20], accepted_doc.id,
+        )
+
+        # Write the CUFE to the invoice
+        if hasattr(move, 'l10n_co_edi_cufe_cude_ref'):
+            move.with_context(
+                skip_account_move_synchronization=True,
+            ).write({
+                'l10n_co_edi_cufe_cude_ref': identifier,
+            })
+
+        # Remove the rejected duplicate documents
+        rejected_docs = self.search([
+            ('move_id', '=', move.id),
+            ('state', '=', 'invoice_rejected'),
+        ])
+        if rejected_docs:
+            _logger.info(
+                "Insotech Regla 90: Cleaning %d rejected "
+                "docs for move %s.",
+                len(rejected_docs), move.name,
+            )
+            rejected_docs.unlink()
+
+        # Trigger the standard acceptance flow
+        move._insotech_process_dian_acceptance()
+
+        # Log recovery in chatter
+        try:
+            from markupsafe import Markup
+            move.message_post(
+                body=Markup(
+                    '🔄 <b>Regla 90 Recuperada</b>'
+                    '<br/>La DIAN indicó que esta factura ya '
+                    'fue procesada anteriormente.'
+                    '<br/>Se rescató el CUFE del envío '
+                    'original: <code>%s</code>'
+                ) % identifier[:30],
+                message_type='notification',
+                subtype_xmlid='mail.mt_note',
+            )
+        except Exception:
+            pass
+
+        return True
+
+    # -----------------------------------------------------------------
     # CRON: RETRY FAILED SUBMISSIONS
     # -----------------------------------------------------------------
 
