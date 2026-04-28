@@ -148,8 +148,8 @@
             <attribute name="class">table table-sm o_main_table mb-0</attribute>
         </xpath>
 
-        <!-- 3. Orden Alfabético Automático -->
-        <xpath expr="//table[@name='invoice_line_table']/tbody" position="before">
+        <!-- 3. Orden Alfabético Automático (DEBE ir DESPUÉS de t-set="lines" nativo) -->
+        <xpath expr="//table[@name='invoice_line_table']/tbody//t[@t-set='lines']" position="after">
             <t t-set="lines" t-value="lines.sorted(key=lambda l: (l.product_id.name or '') if l.display_type == 'product' else '')"/>
         </xpath>
 
