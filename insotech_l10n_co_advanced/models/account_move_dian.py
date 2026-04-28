@@ -482,7 +482,7 @@ class AccountMoveDian(models.Model):
                     if re.search(r'(\d+)\s*$', m.name or '')
                     and int(
                         re.search(r'(\d+)\s*$', m.name).group(1)
-                    ) >= dian_num
+                    ) == dian_num
                 )
                 if not has_cufe:
                     _logger.info(
