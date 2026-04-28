@@ -59,95 +59,135 @@ class L10nCoDianDocument(models.Model):
     )
 
     # -----------------------------------------------------------------
-    # DIAN STATE DETECTION — Hook into write() for acceptance/rejection
+    # DIAN STATE DETECTION — Hook into create() AND write()
+    #
+    # The synchronous flow (SendBillSync) creates the document with
+    # the final state directly via create(). The async flow
+    # (SendTestSetAsync) updates the state later via write() when
+    # _get_status_zip() is called. We need BOTH hooks.
     # -----------------------------------------------------------------
 
-    def write(self, vals):
-        """Detect DIAN acceptance/rejection to trigger name mutation.
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Detect DIAN acceptance/rejection at creation time.
 
-        When l10n_co_dian processes the DIAN's ApplicationResponse,
-        it updates this document's ``state`` field. We detect:
-
-        1. ``state`` → ``invoice_accepted``: trigger PRE-INV → FE
-        2. ``state`` → ``invoice_rejected``: log error, keep PRE-INV
-        3. ``invoice_rejected`` with Regla 90: attempt recovery from
-           a previously accepted document for the same invoice.
+        The synchronous DIAN flow (``SendBillSync``) creates the
+        ``l10n_co_dian.document`` with the final ``state`` directly.
+        We must detect acceptance/rejection here, not only in write().
         """
-        # Collect moves BEFORE write (to compare old vs new state)
-        moves_to_accept = self.env['account.move']
-        moves_to_reject = self.env['account.move']
-        reject_messages = {}
+        records = super().create(vals_list)
+        self._process_state_changes(records)
+        return records
 
-        if 'state' in vals:
-            new_state = vals['state']
-            for doc in self:
-                move = doc.move_id
-                if not move:
-                    continue
-                if not hasattr(move, 'insotech_dian_status'):
-                    continue
-                if move.insotech_dian_status != 'pending':
-                    continue
+    def write(self, vals):
+        """Detect DIAN state changes on existing documents.
 
-                old_state = doc.state
-                if (new_state == 'invoice_accepted'
-                        and old_state != 'invoice_accepted'):
-                    moves_to_accept |= move
-                elif (new_state == 'invoice_rejected'
-                        and old_state != 'invoice_rejected'):
-                    moves_to_reject |= move
-                    reject_messages[move.id] = str(
-                        vals.get('message', '')
-                        or getattr(doc, 'message', '') or ''
-                    )
+        Covers the async flow (``SendTestSetAsync``) where
+        ``_get_status_zip()`` updates the state after creation,
+        and manual state changes via the UI.
+        """
+        # Only process if state is actually changing
+        if 'state' not in vals:
+            return super().write(vals)
+
+        # Snapshot which docs are transitioning
+        new_state = vals['state']
+        docs_changing = self.filtered(
+            lambda d: d.state != new_state
+        )
 
         result = super().write(vals)
 
-        # ── Process acceptances ──
-        for move in moves_to_accept:
-            try:
-                _logger.info(
-                    "Insotech: DIAN acceptance detected via "
-                    "l10n_co_dian.document for move %s (%s).",
-                    move.id, move.name,
-                )
-                move._insotech_process_dian_acceptance()
-            except Exception as e:
-                _logger.error(
-                    "Insotech: Error processing DIAN acceptance "
-                    "for move %s: %s",
-                    move.id, str(e),
-                )
-
-        # ── Process rejections (with Regla 90 recovery) ──
-        for move in moves_to_reject:
-            try:
-                msg = reject_messages.get(move.id, '')
-                if self._is_regla_90(msg):
-                    recovered = self._recover_from_regla_90(move)
-                    if recovered:
-                        continue  # Skip rejection, was recovered
-
-                _logger.warning(
-                    "Insotech: DIAN rejection detected via "
-                    "l10n_co_dian.document for move %s (%s).",
-                    move.id, move.name,
-                )
-                from ..services.dian_error_translator import (
-                    sanitize_dian_error,
-                )
-                clean_error = sanitize_dian_error(msg)
-                move._insotech_process_dian_rejection(
-                    error_message=clean_error,
-                )
-            except Exception as e:
-                _logger.error(
-                    "Insotech: Error processing DIAN rejection "
-                    "for move %s: %s",
-                    move.id, str(e),
-                )
+        if docs_changing:
+            self._process_state_changes(docs_changing)
 
         return result
+
+    def _process_state_changes(self, docs):
+        """Shared logic for create() and write() hooks.
+
+        Detects acceptance, rejection, and Regla 90 scenarios,
+        then triggers the appropriate Insotech flow.
+
+        :param docs: l10n_co_dian.document recordset to process
+        """
+        for doc in docs:
+            move = doc.move_id
+            if not move:
+                continue
+            if not hasattr(move, 'insotech_dian_status'):
+                continue
+            if move.insotech_dian_status != 'pending':
+                continue
+
+            state = doc.state
+
+            if state == 'invoice_accepted':
+                try:
+                    _logger.info(
+                        "Insotech: DIAN acceptance detected for "
+                        "move %s (%s) via l10n_co_dian.document.",
+                        move.id, move.name,
+                    )
+                    move._insotech_process_dian_acceptance()
+                except Exception as e:
+                    _logger.error(
+                        "Insotech: Error processing acceptance "
+                        "for move %s: %s", move.id, str(e),
+                    )
+
+            elif state == 'invoice_rejected':
+                try:
+                    msg = self._extract_error_message(doc)
+
+                    if self._is_regla_90(msg):
+                        if self._recover_from_regla_90(move):
+                            continue
+
+                    _logger.warning(
+                        "Insotech: DIAN rejection for move %s "
+                        "(%s): %s", move.id, move.name, msg,
+                    )
+                    try:
+                        from ..services.dian_error_translator import (
+                            sanitize_dian_error,
+                        )
+                        msg = sanitize_dian_error(msg)
+                    except ImportError:
+                        pass
+                    move._insotech_process_dian_rejection(
+                        error_message=msg,
+                    )
+                except Exception as e:
+                    _logger.error(
+                        "Insotech: Error processing rejection "
+                        "for move %s: %s", move.id, str(e),
+                    )
+
+    @staticmethod
+    def _extract_error_message(doc) -> str:
+        """Extract readable error message from a DIAN document.
+
+        The native code stores errors in ``message_json`` (a dict)
+        with key ``errors`` (list of strings) or ``status`` (string).
+        Older flows may use a plain ``message`` text field.
+        """
+        # Try message_json first (native Odoo 18 format)
+        msg_json = getattr(doc, 'message_json', None)
+        if msg_json and isinstance(msg_json, dict):
+            errors = msg_json.get('errors', [])
+            if errors:
+                return ' | '.join(str(e) for e in errors)
+            status = msg_json.get('status', '')
+            if status:
+                return str(status)
+
+        # Fallback to plain message field
+        msg = getattr(doc, 'message', None)
+        if msg:
+            return str(msg)
+
+        return ''
 
     @staticmethod
     def _is_regla_90(message: str) -> bool:
