@@ -32,12 +32,17 @@
                     <field name="guapante_product_line_count" nolabel="1" readonly="1" class="text-end fw-medium"/>
                 </div>
             </xpath>
-            <!-- Permitir cambiar lista de precios en órdenes confirmadas.
-                 El nativo tiene: readonly="state in ['cancel', 'sale']"
-                 Nosotros permitimos editar en 'sale' (el Python bloquea
-                 si ya hay facturas emitidas). -->
+            <!-- ── Pricelist editable en órdenes confirmadas ──────────
+                 Nativo: pricelist_id readonly en state=sale/cancel
+                 Nativo: botón "Update Prices" invisible en state=sale/cancel
+                 Guapante: permitir ambos en state=sale para que la dueña
+                 pueda cambiar la lista y recalcular precios sin cancelar.
+                 El Python write() bloquea si hay facturas emitidas. -->
             <xpath expr="//field[@name='pricelist_id'][not(ancestor::field[@name='order_line'])]" position="attributes">
                 <attribute name="readonly">state == 'cancel'</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_update_prices']" position="attributes">
+                <attribute name="invisible">not show_update_pricelist or state == 'cancel'</attribute>
             </xpath>
 
         </field>
