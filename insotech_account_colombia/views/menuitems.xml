@@ -5,16 +5,4 @@
               name="Localización InSoTech" 
               parent="account.menu_finance_configuration" 
               sequence="100"/>
-
-    <menuitem id="menu_insotech_retention_concept" 
-              name="Conceptos de Retención" 
-              parent="menu_insotech_colombia_root" 
-              action="action_insotech_retention_concept" 
-              sequence="10"/>
-
-    <menuitem id="menu_insotech_uvt" 
-              name="Tabla UVT Colombia" 
-              parent="menu_insotech_colombia_root" 
-              action="action_insotech_uvt" 
-              sequence="20"/>
 </odoo>
