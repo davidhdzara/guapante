@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Campo "Conceptos de Retención" en la ficha del contacto -->
+    <record id="view_partner_form_inherit_insotech_retention" model="ir.ui.view">
+        <field name="name">res.partner.form.insotech.retention</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="account.view_partner_property_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='property_account_payable_id']/.."
+                   position="after">
+                <group string="Retenciones InSoTech" name="insotech_retentions">
+                    <field name="insotech_retention_concept_ids"
+                           widget="many2many_tags"
+                           domain="[('type', '!=', 'parafiscal')]"
+                           nolabel="1"
+                           colspan="2"
+                           placeholder="Conceptos de retención por defecto..."/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

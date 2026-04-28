@@ -108,13 +108,15 @@ class TestPurchaseDemandRefresh(TransactionCase):
         })
 
     def _create_confirmed_order(
-        self, product, qty, attr_values=None,
+        self, product, qty, attr_values=None, uom_mode=None
     ):
         """Helper: create and confirm a sale order."""
         line_vals = {
             'product_id': product.id,
             'product_uom_qty': qty,
         }
+        if uom_mode:
+            line_vals['uom_mode'] = uom_mode
         if attr_values:
             line_vals['product_no_variant_attribute_value_ids'] = [
                 (6, 0, attr_values.ids),
@@ -231,8 +233,8 @@ class TestPurchaseDemandRefresh(TransactionCase):
 
     def test_uom_mode_weight_vs_unit(self):
         """Weight products get uom_mode='kg', unit products get 'unit'."""
-        self._create_confirmed_order(self.product_fruit, 10.0)
-        self._create_confirmed_order(self.product_unit, 5.0)
+        self._create_confirmed_order(self.product_fruit, 10.0, uom_mode='kg')
+        self._create_confirmed_order(self.product_unit, 5.0, uom_mode='unit')
 
         session = self.env['guapante.purchase.demand'].create({})
         session.action_refresh()
@@ -318,7 +320,8 @@ class TestPurchaseDemandPOGeneration(TransactionCase):
 
         session = self.env['guapante.purchase.demand'].create({})
         session.action_refresh()
-        session.action_select_all()
+        session.action_deselect_all()
+        session.line_ids.filtered(lambda l: l.product_id == self.product).write({'selected': True})
 
         result = session.action_generate_purchase_orders()
 
@@ -364,7 +367,8 @@ class TestPurchaseDemandPOGeneration(TransactionCase):
 
         session = self.env['guapante.purchase.demand'].create({})
         session.action_refresh()
-        session.action_select_all()
+        session.action_deselect_all()
+        session.line_ids.filtered(lambda l: l.product_id in (self.product, product_2)).write({'selected': True})
 
         result = session.action_generate_purchase_orders()
 

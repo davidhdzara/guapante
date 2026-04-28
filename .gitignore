@@ -15,6 +15,8 @@
 !insotech_dian_wizard/**
 !insotech_l10n_co_advanced/
 !insotech_l10n_co_advanced/**
+!insotech_account_colombia/
+!insotech_account_colombia/**
 
 # Always ignore compiled Python files
 __pycache__/
