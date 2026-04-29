@@ -1,4 +1,5 @@
-from odoo import models, fields, api
+from odoo import _, api, fields, models
+
 
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
@@ -6,115 +7,164 @@ class AccountPaymentRegister(models.TransientModel):
     insotech_retention_line_ids = fields.One2many(
         'insotech.payment.retention.line',
         'payment_register_id',
-        string='Retenciones o Ajustes (InSoTech)'
+        string='Retenciones o Ajustes (InSoTech)',
     )
     insotech_total_retentions = fields.Monetary(
         string='Total Ajustes',
-        compute='_compute_insotech_total_retentions'
+        compute='_compute_insotech_total_retentions',
     )
 
     @api.depends('insotech_retention_line_ids.amount')
     def _compute_insotech_total_retentions(self) -> None:
         for wizard in self:
-            wizard.insotech_total_retentions = sum(wizard.insotech_retention_line_ids.mapped('amount'))
+            wizard.insotech_total_retentions = sum(
+                wizard.insotech_retention_line_ids.mapped('amount')
+            )
+
+    # ── Obs 3.1: Resta dinámica del monto al banco ──
+    @api.onchange(
+        'insotech_retention_line_ids',
+        'insotech_retention_line_ids.amount',
+    )
+    def _onchange_insotech_retentions_update_amount(self) -> None:
+        """Cuando el usuario agrega o modifica retenciones,
+        el monto a pagar en banco se reduce automáticamente.
+        """
+        if not self.insotech_retention_line_ids:
+            return
+        total_retentions = sum(
+            self.insotech_retention_line_ids.mapped('amount')
+        )
+        if total_retentions > 0 and self.source_amount_currency:
+            self.amount = (
+                self.source_amount_currency - total_retentions
+            )
 
     def action_create_payments(self) -> dict:
-        # Capturamos las retenciones antes de que el wizard se consuma
+        """Captura las retenciones antes de que el wizard
+        TransientModel se consuma, luego ejecuta el pago
+        estándar y post-procesa los ajustes contables.
+        """
+        # Capturar datos antes de que el wizard muera
         retention_data = []
+        # Bug C: Leer la cuenta correcta según la dirección
+        payment_direction = (
+            'sale' if self.payment_type == 'inbound' else 'purchase'
+        )
         for line in self.insotech_retention_line_ids:
             if line.amount != 0.0:
+                concept = line.retention_concept_id
+                account = concept.get_account_for_direction(
+                    payment_direction,
+                )
                 retention_data.append({
-                    'concept_id': line.retention_concept_id.id,
-                    'account_id': line.retention_concept_id.account_id.id,
-                    'name': line.retention_concept_id.name,
+                    'concept_id': concept.id,
+                    'account_id': account.id,
+                    'name': concept.name,
                     'amount': line.amount,
                 })
-        
-        # Forzamos a que Odoo deje la factura "abierta" nativamente, porque nosotros la cuadraremos
+
+        # Forzar factura abierta si hay retenciones
         if retention_data:
             self.write({'payment_difference_handling': 'open'})
-            
-        # Ejecutamos la creación del pago estándar
-        res = super(AccountPaymentRegister, self).action_create_payments()
-        
-        # Post-procesamos las retenciones si hay
+
+        # Pago estándar de Odoo
+        res = super().action_create_payments()
+
+        # Post-proceso de retenciones
         if retention_data and self.line_ids:
-            self._create_insotech_retention_adjustments(retention_data)
-            
+            self._create_insotech_retention_adjustments(
+                retention_data,
+            )
+
         return res
 
-    def _create_insotech_retention_adjustments(self, retention_data: list) -> None:
+    def _create_insotech_retention_adjustments(
+        self, retention_data: list,
+    ) -> None:
+        """Crea un asiento contable de ajuste que cruza las
+        retenciones con la cuenta por cobrar/pagar de la
+        factura original, y lo concilia automáticamente.
+        """
         move_model = self.env['account.move']
-        
+
         for wizard in self:
-            # Identificamos el partner y la cuenta por cobrar/pagar de las líneas de la factura
             lines = wizard.line_ids
             if not lines:
                 continue
-                
+
             partner_id = lines[0].partner_id.id
             account_receivable_payable = lines[0].account_id
-            
-            # Construimos las líneas del asiento de ajuste
+
             move_lines = []
             total_adjustment = 0.0
-            
+            is_inbound = wizard.payment_type == 'inbound'
+
             for ret in retention_data:
                 amount = ret['amount']
                 total_adjustment += amount
-                
-                # Línea de la cuenta de retención (ej. 135515)
-                # Si es un cobro a cliente (inbound), retención positiva significa que no nos pagó esa plata
-                # por ende, Débito a la 1355 y Crédito a Cartera.
-                is_inbound = wizard.payment_type == 'inbound'
-                
+
                 if is_inbound:
                     debit = amount if amount > 0 else 0.0
                     credit = -amount if amount < 0 else 0.0
                 else:
                     debit = -amount if amount < 0 else 0.0
                     credit = amount if amount > 0 else 0.0
-                
+
                 move_lines.append((0, 0, {
-                    'name': f"Ajuste: {ret['name']}",
+                    'name': _("Ajuste: %s") % ret['name'],
                     'account_id': ret['account_id'],
                     'partner_id': partner_id,
                     'debit': debit,
                     'credit': credit,
                 }))
-                
-            # Línea de contrapartida (Cartera / Proveedores)
+
+            # Línea de contrapartida
             if is_inbound:
-                debit_cp = -total_adjustment if total_adjustment < 0 else 0.0
-                credit_cp = total_adjustment if total_adjustment > 0 else 0.0
+                debit_cp = (
+                    -total_adjustment if total_adjustment < 0
+                    else 0.0
+                )
+                credit_cp = (
+                    total_adjustment if total_adjustment > 0
+                    else 0.0
+                )
             else:
-                debit_cp = total_adjustment if total_adjustment > 0 else 0.0
-                credit_cp = -total_adjustment if total_adjustment < 0 else 0.0
-                
+                debit_cp = (
+                    total_adjustment if total_adjustment > 0
+                    else 0.0
+                )
+                credit_cp = (
+                    -total_adjustment if total_adjustment < 0
+                    else 0.0
+                )
+
             move_lines.append((0, 0, {
-                'name': 'Cruce de Retenciones InSoTech',
+                'name': _('Cruce de Retenciones InSoTech'),
                 'account_id': account_receivable_payable.id,
                 'partner_id': partner_id,
                 'debit': debit_cp,
                 'credit': credit_cp,
             }))
-            
-            # Creamos el asiento en el mismo diario del pago
-            move_vals = {
+
+            adjustment_move = move_model.create({
                 'journal_id': wizard.journal_id.id,
                 'date': wizard.payment_date,
-                'ref': f"Ajuste Retenciones {wizard.communication or ''}",
+                'ref': _(
+                    "Ajuste Retenciones %s",
+                ) % (wizard.communication or ''),
                 'line_ids': move_lines,
-            }
-            
-            adjustment_move = move_model.create(move_vals)
+            })
             adjustment_move.action_post()
-            
-            # Conciliamos la línea de contrapartida con las líneas de la factura original
-            # Esto es clave para que la factura pase a estado 'Pagado'
+
+            # Conciliar con la factura original
             cp_line = adjustment_move.line_ids.filtered(
-                lambda l: l.account_id.id == account_receivable_payable.id
+                lambda l: (
+                    l.account_id.id
+                    == account_receivable_payable.id
+                ),
             )
             if cp_line:
                 (lines + cp_line).reconcile()
+
 

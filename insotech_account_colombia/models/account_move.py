@@ -222,8 +222,8 @@ class AccountMove(models.Model):
                         f" ({target_pf_tax.name})"
                         f" [{line.product_id.name}]"
                     )
-                if pf_label not in applied:
-                    applied.append(pf_label)
+                    if pf_label not in applied:
+                        applied.append(pf_label)
 
             if taxes_for_line != line.tax_ids:
                 line.write({
@@ -275,16 +275,25 @@ class AccountMove(models.Model):
 class AccountMoveLine(models.Model):
     _inherit = 'account.move.line'
 
-    @api.onchange('product_id', 'price_unit', 'quantity', 'tax_ids')
+    @api.onchange('product_id', 'price_unit', 'quantity')
     def _onchange_insotech_realtime_retentions(self) -> None:
         """Motor en Tiempo Real (Híbrido).
-        Calcula matemáticamente por línea si se superan los topes UVT,
-        respetando obligaciones DIAN, e inyecta o retira el impuesto al instante.
+        Calcula matemáticamente por línea si se superan los
+        topes UVT, respetando obligaciones DIAN, e inyecta
+        o retira el impuesto al instante.
         Aplica tanto a Compras como a Ventas.
+        NO se dispara al editar tax_ids manualmente (Obs 4)
+        para permitir que el usuario elimine impuestos.
         """
-        if not self.move_id or self.move_id.move_type not in ('in_invoice', 'in_refund', 'out_invoice', 'out_refund'):
+        if (
+            not self.move_id
+            or self.move_id.move_type not in (
+                'in_invoice', 'in_refund',
+                'out_invoice', 'out_refund',
+            )
+        ):
             return
-        
+
         if self.display_type in ('line_section', 'line_note'):
             return
 
@@ -292,74 +301,122 @@ class AccountMoveLine(models.Model):
         if not partner:
             return
 
-        direction = 'purchase' if self.move_id.move_type in ('in_invoice', 'in_refund') else 'sale'
+        direction = (
+            'purchase'
+            if self.move_id.move_type in ('in_invoice', 'in_refund')
+            else 'sale'
+        )
 
         # 1. Validar Obligaciones (Exenciones)
-        obligations = partner.l10n_co_edi_obligation_type_ids.mapped('name')
+        obligations = (
+            partner.l10n_co_edi_obligation_type_ids.mapped('name')
+        )
         if 'O-47' in obligations:
-            return  # Régimen Simple, no retenemos
+            return
         if 'O-15' in obligations and direction == 'purchase':
-            return  # Gran Contribuyente, no le retenemos en compras
+            return
 
         # 2. Leer UVT
-        invoice_year = (self.move_id.invoice_date or fields.Date.today()).year
-        uvt = self.env['insotech.uvt'].search([('year', '=', invoice_year)], limit=1)
+        invoice_year = (
+            self.move_id.invoice_date or fields.Date.today()
+        ).year
+        uvt = self.env['insotech.uvt'].search(
+            [('year', '=', invoice_year)], limit=1,
+        )
         if not uvt or uvt.value == 0:
             return
 
         # 3. Calcular Base de la Línea
         line_base_cop = self.price_unit * self.quantity
         company_currency = self.move_id.company_id.currency_id
-        if self.move_id.currency_id and self.move_id.currency_id != company_currency:
+        if (
+            self.move_id.currency_id
+            and self.move_id.currency_id != company_currency
+        ):
             line_base_cop = self.move_id.currency_id._convert(
-                line_base_cop, company_currency, self.move_id.company_id, self.move_id.invoice_date or fields.Date.today()
+                line_base_cop,
+                company_currency,
+                self.move_id.company_id,
+                self.move_id.invoice_date or fields.Date.today(),
             )
         base_en_uvt = line_base_cop / uvt.value
 
-        # 4. Obtener Conceptos del Partner y Parafiscales
+        # 4. Obtener Conceptos del Partner
         concepts = partner.insotech_retention_concept_ids.filtered(
             lambda c: c.direction in (direction, 'both')
         )
-        all_retention_taxes = concepts.mapped('purchase_tax_id') | concepts.mapped('tax_id')
-        
-        # Añadir todos los impuestos parafiscales posibles para limpieza
-        all_retention_taxes |= self.env['insotech.retention.concept'].search([('type', '=', 'parafiscal')]).mapped('purchase_tax_id')
-        all_retention_taxes |= self.env['insotech.retention.concept'].search([('type', '=', 'parafiscal')]).mapped('tax_id')
 
-        # Aislar los impuestos actuales que NO son de retención (ej. IVA)
+        # 5. Construir set de TODOS los taxes de retención
+        #    (para poder aislar los taxes estándar como IVA)
+        all_retention_taxes = (
+            concepts.mapped('purchase_tax_id')
+            | concepts.mapped('tax_id')
+        )
+        # Cachear parafiscales una sola vez por onchange
+        parafiscal_concepts = self.env[
+            'insotech.retention.concept'
+        ].search([('type', '=', 'parafiscal')])
+        all_retention_taxes |= (
+            parafiscal_concepts.mapped('purchase_tax_id')
+            | parafiscal_concepts.mapped('tax_id')
+        )
+
+        # Aislar impuestos estándar (IVA, etc.)
         current_standard_taxes = self.tax_ids - all_retention_taxes
         taxes_to_apply = current_standard_taxes
-        
+
         has_iva = any(
-            t.amount > 0 and t.amount_type == 'percent' 
-            and ('iva' in t.name.lower() or 'vat' in t.name.lower())
+            t.amount > 0
+            and t.amount_type == 'percent'
+            and (
+                'iva' in t.name.lower()
+                or 'vat' in t.name.lower()
+            )
             for t in current_standard_taxes
         )
 
         fiscal_position = self.move_id.fiscal_position_id
 
-        # Evaluar Conceptos del Partner
+        # 6. Evaluar Conceptos del Partner
         for concept in concepts:
+            # Obs 5: Conceptos acumulativos se evalúan solo
+            # via botón de contingencia, no en tiempo real
+            if concept.accumulate_monthly:
+                continue
             if base_en_uvt >= concept.base_uvt:
-                target_tax = concept.purchase_tax_id if direction == 'purchase' else concept.tax_id
+                target_tax = (
+                    concept.purchase_tax_id
+                    if direction == 'purchase'
+                    else concept.tax_id
+                )
                 if fiscal_position and target_tax:
-                    target_tax = fiscal_position.map_tax(target_tax)
+                    target_tax = fiscal_position.map_tax(
+                        target_tax,
+                    )
                 if target_tax:
                     if concept.type == 'reteiva' and not has_iva:
                         continue
                     taxes_to_apply |= target_tax
 
-        # Evaluar Parafiscales del Producto
+        # 7. Evaluar Parafiscales del Producto
         if self.product_id:
-            parafiscal = self.product_id.product_tmpl_id.insotech_parafiscal_concept_id
-            if parafiscal:
+            tmpl = self.product_id.product_tmpl_id
+            parafiscal = tmpl.insotech_parafiscal_concept_id
+            if parafiscal and not parafiscal.accumulate_monthly:
                 if base_en_uvt >= parafiscal.base_uvt:
-                    target_pf_tax = parafiscal.purchase_tax_id if direction == 'purchase' else parafiscal.tax_id
+                    target_pf_tax = (
+                        parafiscal.purchase_tax_id
+                        if direction == 'purchase'
+                        else parafiscal.tax_id
+                    )
                     if fiscal_position and target_pf_tax:
-                        target_pf_tax = fiscal_position.map_tax(target_pf_tax)
+                        target_pf_tax = fiscal_position.map_tax(
+                            target_pf_tax,
+                        )
                     if target_pf_tax:
                         taxes_to_apply |= target_pf_tax
 
-        # Asignar finalmente a la línea
+        # 8. Asignar finalmente a la línea
         if taxes_to_apply != self.tax_ids:
             self.tax_ids = taxes_to_apply
+

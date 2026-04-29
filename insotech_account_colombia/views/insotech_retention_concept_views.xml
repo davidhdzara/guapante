@@ -11,7 +11,8 @@
                 <field name="direction"/>
                 <field name="base_uvt"/>
                 <field name="percentage"/>
-                <field name="account_id"/>
+                <field name="account_id" string="Cuenta Ventas (1355)"/>
+                <field name="purchase_account_id" string="Cuenta Compras (23xx)" optional="show"/>
                 <field name="purchase_tax_id" optional="show"/>
                 <field name="active" widget="boolean_toggle"/>
             </list>
@@ -58,15 +59,23 @@
                         <group string="Cálculo Legal">
                             <field name="base_uvt"/>
                             <field name="percentage" widget="percentage"/>
+                            <field name="accumulate_monthly"/>
                         </group>
                     </group>
                     <group string="Contabilidad">
-                        <group>
-                            <field name="account_id"/>
-                            <field name="tax_id"/>
+                        <group string="Ventas (Nos retienen → 1355)"
+                               invisible="direction == 'purchase'">
+                            <field name="account_id"
+                                   required="direction in ('sale', 'both')"/>
+                            <field name="tax_id"
+                                   required="direction in ('sale', 'both')"/>
                         </group>
-                        <group>
-                            <field name="purchase_tax_id"/>
+                        <group string="Compras (Retenemos → 23xx)"
+                               invisible="direction == 'sale'">
+                            <field name="purchase_account_id"
+                                   required="direction in ('purchase', 'both')"/>
+                            <field name="purchase_tax_id"
+                                   required="direction in ('purchase', 'both')"/>
                         </group>
                     </group>
                 </sheet>

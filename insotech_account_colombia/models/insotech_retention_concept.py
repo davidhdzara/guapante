@@ -52,8 +52,16 @@ class InsotechRetentionConcept(models.Model):
     account_id = fields.Many2one(
         'account.account',
         string='Cuenta PUC (Ventas)',
-        required=True,
         domain=[('deprecated', '=', False)],
+        help='Cuenta 1355xx — Anticipo de impuestos. '
+             'Se usa cuando NOS retienen (facturas de venta).',
+    )
+    purchase_account_id = fields.Many2one(
+        'account.account',
+        string='Cuenta PUC (Compras)',
+        domain=[('deprecated', '=', False)],
+        help='Cuenta 23xxxx — Retenciones por pagar. '
+             'Se usa cuando NOSOTROS retenemos (facturas de compra).',
     )
     tax_id = fields.Many2one(
         'account.tax',
@@ -69,9 +77,12 @@ class InsotechRetentionConcept(models.Model):
     )
 
     accumulate_monthly = fields.Boolean(
-        string='Topes Acumulados Mensuales',
+        string='Evaluar Tope Acumulado Mensual',
         default=False,
-        help='Si se marca, el tope UVT se evalúa sumando todas las facturas del mes.',
+        help='Si se marca, el tope UVT se evalúa sumando todas '
+             'las facturas del mes para el mismo tercero. '
+             'Solo se aplica desde el botón de contingencia, '
+             'no en tiempo real.',
     )
 
     active = fields.Boolean(default=True)
@@ -113,12 +124,63 @@ class InsotechRetentionConcept(models.Model):
     # ─── PREPARACIÓN PARA MÓDULO EXÓGENA ───
     dian_format = fields.Char(
         string='Formato DIAN',
-        help='Ej. 1001 (Pagos o abonos en cuenta y retenciones). Dejar listo para el módulo de Exógena.',
+        help='Ej. 1001 (Pagos o abonos en cuenta y retenciones). '
+             'Dejar listo para el módulo de Exógena.',
     )
     dian_concept_code = fields.Char(
         string='Concepto DIAN',
-        help='Ej. 5019 (Honorarios). Se usará para la consolidación automática en Medios Magnéticos.',
+        help='Ej. 5019 (Honorarios). Se usará para la '
+             'consolidación automática en Medios Magnéticos.',
     )
+
+    # ─── HELPERS ───
+    def get_account_for_direction(
+        self, payment_direction: str,
+    ) -> 'models.Model':
+        """Retorna la cuenta PUC correcta según la dirección
+        del pago. Fallback a account_id si no hay
+        purchase_account_id.
+        """
+        self.ensure_one()
+        if payment_direction == 'purchase' and self.purchase_account_id:
+            return self.purchase_account_id
+        return self.account_id
+
+    @api.constrains(
+        'direction', 'account_id', 'purchase_account_id',
+        'tax_id', 'purchase_tax_id',
+    )
+    def _check_accounts_by_direction(self) -> None:
+        """Valida que las cuentas e impuestos estén
+        configurados según la dirección del concepto.
+        """
+        for concept in self:
+            if concept.direction in ('sale', 'both'):
+                if not concept.account_id:
+                    raise models.ValidationError(
+                        f"El concepto '{concept.name}' requiere "
+                        f"una Cuenta PUC (Ventas) porque su "
+                        f"dirección incluye Ventas."
+                    )
+                if not concept.tax_id:
+                    raise models.ValidationError(
+                        f"El concepto '{concept.name}' requiere "
+                        f"un Impuesto de Venta porque su "
+                        f"dirección incluye Ventas."
+                    )
+            if concept.direction in ('purchase', 'both'):
+                if not concept.purchase_account_id:
+                    raise models.ValidationError(
+                        f"El concepto '{concept.name}' requiere "
+                        f"una Cuenta PUC (Compras) porque su "
+                        f"dirección incluye Compras."
+                    )
+                if not concept.purchase_tax_id:
+                    raise models.ValidationError(
+                        f"El concepto '{concept.name}' requiere "
+                        f"un Impuesto de Compra porque su "
+                        f"dirección incluye Compras."
+                    )
 
     @api.model
     def init_default_concepts(self):
