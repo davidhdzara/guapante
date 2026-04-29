@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Bloque de Retenciones InSoTech en el PDF de la factura.
+         Se inyecta antes de la sección de totales.
+         Compatible con el layout nativo de Odoo y con
+         insotech_l10n_co_advanced (que no toca div#total).
+         Prioridad < 99999 para no interferir con el advanced. -->
+
+    <template id="report_invoice_retention_block"
+              inherit_id="account.report_invoice_document"
+              priority="99990">
+
+        <xpath expr="//div[@id='total']" position="before">
+            <!-- Recopilar impuestos negativos (retenciones) -->
+            <t t-set="retention_lines" t-value="[]"/>
+            <t t-foreach="o.line_ids.filtered(lambda l: l.tax_line_id and l.tax_line_id.amount &lt; 0)"
+               t-as="rline">
+                <t t-set="retention_lines"
+                   t-value="retention_lines + [rline]"/>
+            </t>
+
+            <div t-if="retention_lines"
+                 style="margin-top: 12px; margin-bottom: 8px; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px 15px; background-color: #f8f9fa; font-size: 12px; page-break-inside: avoid;">
+
+                <div style="font-weight: 700; font-size: 13px; color: #14532d; border-bottom: 1px solid #14532d; padding-bottom: 4px; margin-bottom: 6px;">
+                    RETENCIONES APLICADAS
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #d1d5db;">
+                            <th style="text-align: left; padding: 3px 6px; color: #495057; font-weight: 600;">Concepto</th>
+                            <th style="text-align: right; padding: 3px 6px; color: #495057; font-weight: 600;">Base</th>
+                            <th style="text-align: right; padding: 3px 6px; color: #495057; font-weight: 600;">%</th>
+                            <th style="text-align: right; padding: 3px 6px; color: #495057; font-weight: 600;">Monto Retenido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="retention_lines" t-as="rline">
+                            <tr style="border-bottom: 1px dotted #e0e0e0;">
+                                <td style="padding: 3px 6px;">
+                                    <span t-out="rline.tax_line_id.invoice_label or rline.tax_line_id.name"/>
+                                </td>
+                                <td style="text-align: right; padding: 3px 6px;">
+                                    <span t-out="'{:,.0f}'.format(abs(rline.tax_base_amount))"
+                                          t-options="{'widget': 'text'}"/>
+                                </td>
+                                <td style="text-align: right; padding: 3px 6px;">
+                                    <span t-out="'{:.2f}%'.format(abs(rline.tax_line_id.amount))"/>
+                                </td>
+                                <td style="text-align: right; padding: 3px 6px; font-weight: 600; color: #dc3545;">
+                                    <span t-field="rline.price_total"/>
+                                </td>
+                            </tr>
+                        </t>
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 2px solid #14532d;">
+                            <td colspan="3"
+                                style="text-align: right; padding: 4px 6px; font-weight: 700; color: #14532d;">
+                                TOTAL RETENCIONES
+                            </td>
+                            <td style="text-align: right; padding: 4px 6px; font-weight: 700; color: #dc3545;">
+                                <t t-set="total_ret"
+                                   t-value="sum(l.price_total for l in retention_lines)"/>
+                                <span t-out="o.currency_id.symbol"/>
+                                <span t-out="'{:,.0f}'.format(total_ret)"/>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </xpath>
+    </template>
+</odoo>

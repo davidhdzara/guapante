@@ -96,10 +96,16 @@ class AccountMove(models.Model):
         company_currency = self.company_id.currency_id
         if self.currency_id and self.currency_id != company_currency:
             base_amount_cop = self.currency_id._convert(
-                self.amount_untaxed, company_currency, self.company_id, self.invoice_date or fields.Date.today()
+                self.amount_untaxed,
+                company_currency,
+                self.company_id,
+                self.invoice_date or fields.Date.today(),
             )
         else:
             base_amount_cop = self.amount_untaxed
+
+        # Func 1 — NC: usar valor absoluto para comparación UVT
+        base_amount_cop = abs(base_amount_cop)
 
         if not base_amount_cop:
             return self._insotech_notify(
@@ -116,14 +122,21 @@ class AccountMove(models.Model):
             ('id', '!=', self.id)
         ]
         month_moves = self.search(domain)
-        accumulated_cop = sum(
-            m.currency_id._convert(m.amount_untaxed, company_currency, m.company_id, m.invoice_date or fields.Date.today())
-            if m.currency_id != company_currency else m.amount_untaxed
+        accumulated_cop = abs(sum(
+            m.currency_id._convert(
+                m.amount_untaxed, company_currency,
+                m.company_id,
+                m.invoice_date or fields.Date.today(),
+            )
+            if m.currency_id != company_currency
+            else m.amount_untaxed
             for m in month_moves
-        )
-        
+        ))
+
         base_en_uvt = base_amount_cop / uvt.value
-        accumulated_uvt = (base_amount_cop + accumulated_cop) / uvt.value
+        accumulated_uvt = (
+            base_amount_cop + accumulated_cop
+        ) / uvt.value
 
         # ── 4. Obtener conceptos aplicables ──
         concepts = partner.insotech_retention_concept_ids.filtered(
@@ -268,6 +281,61 @@ class AccountMove(models.Model):
                 'message': message,
                 'type': notify_type,
                 'sticky': sticky,
+            },
+        }
+
+    # ── Func 2: Cálculo masivo desde vista lista ──
+    def action_calculate_retentions_batch(self) -> dict:
+        """Acción masiva: calcula retenciones en múltiples
+        facturas seleccionadas desde la vista lista.
+        """
+        valid_moves = self.filtered(
+            lambda m: m.state == 'draft'
+            and m.move_type in (
+                'in_invoice', 'in_refund',
+                'out_invoice', 'out_refund',
+            )
+        )
+        if not valid_moves:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _("Cálculo Masivo"),
+                    'message': _(
+                        "No hay facturas borrador seleccionadas "
+                        "para procesar."
+                    ),
+                    'type': 'warning',
+                },
+            }
+
+        ok_count = 0
+        err_count = 0
+        for move in valid_moves:
+            try:
+                result = move.action_calculate_retentions()
+                if (
+                    result
+                    and isinstance(result, dict)
+                    and result.get('res_model')
+                ):
+                    ok_count += 1
+                else:
+                    err_count += 1
+            except Exception:
+                err_count += 1
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _("Cálculo Masivo Completado"),
+                'message': _(
+                    "✅ %d facturas procesadas, "
+                    "⚠️ %d sin retención aplicable."
+                ) % (ok_count, err_count),
+                'type': 'success' if ok_count else 'warning',
             },
         }
 

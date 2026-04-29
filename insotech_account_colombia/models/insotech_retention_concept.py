@@ -84,6 +84,13 @@ class InsotechRetentionConcept(models.Model):
              'Solo se aplica desde el botón de contingencia, '
              'no en tiempo real.',
     )
+    applies_on_tax_amount = fields.Boolean(
+        string='Aplica sobre monto IVA',
+        default=False,
+        help='Si se activa, la retención se calcula sobre el '
+             'valor del IVA de la línea, no sobre el subtotal. '
+             'Usado típicamente para ReteIVA (15%% del IVA).',
+    )
 
     active = fields.Boolean(default=True)
 
