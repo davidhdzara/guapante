@@ -136,14 +136,21 @@ class AccountMovePreInv(models.Model):
     def _insotech_next_dian_consecutive(self, move):
         """Compute the next unique DIAN consecutive for a move.
 
-        Scans ALL sources to find the highest used consecutive number
-        and returns the next one. This guarantees uniqueness even when
-        multiple invoices are confirmed while DIAN is down.
+        Uses a PostgreSQL ``SELECT ... FOR UPDATE`` lock on
+        ``ir_config_parameter`` to guarantee atomicity even under
+        concurrent _post() calls.  The lock serializes all consecutive
+        assignments for the same journal, making collisions impossible.
 
-        Sources scanned (highest wins):
-        1. ir.config_parameter 'insotech.dian.last_consecutive.{journal_id}'
-        2. All pending invoices' insotech_reserved_dian_name in the journal
-        3. All posted non-PRE-INV invoices in the journal
+        Algorithm:
+        1. Lock the ir_config_parameter row for this journal
+           (or create it if missing).
+        2. Read the current counter value.
+        3. Scan pending invoices to detect any reserved numbers that
+           are higher than the counter (catches edge cases like
+           restored backups or manual edits).
+        4. Write ``max(counter, highest_pending) + 1`` back to the
+           locked row.
+        5. Return the DIAN-compliant name.
 
         :param move: account.move record being posted
         :returns: DIAN-compliant name (e.g. 'FE2574')
@@ -151,57 +158,72 @@ class AccountMovePreInv(models.Model):
         journal = move.journal_id
         prefix = (journal.code or '').strip()
         min_range = getattr(
-            journal, 'l10n_co_edi_min_range_number', 0
+            journal, 'l10n_co_edi_min_range_number', 0,
         ) or 0
         max_range = getattr(
-            journal, 'l10n_co_edi_max_range_number', 0
+            journal, 'l10n_co_edi_max_range_number', 0,
         ) or 0
 
-        highest = 0
+        param_key = (
+            'insotech.dian.last_consecutive.%d' % journal.id
+        )
 
-        # Source 1: ir.config_parameter (last DIAN-accepted consecutive)
-        ICP = self.env['ir.config_parameter'].sudo()
-        param_key = 'insotech.dian.last_consecutive.%d' % journal.id
-        last_accepted = int(ICP.get_param(param_key, '0'))
-        if last_accepted > highest:
-            highest = last_accepted
+        # ── Step 1: Atomic lock on ir_config_parameter ──
+        # SELECT FOR UPDATE blocks any concurrent transaction from
+        # reading this row until we COMMIT (or the transaction ends).
+        self.env.cr.execute("""
+            SELECT value
+              FROM ir_config_parameter
+             WHERE key = %s
+               FOR UPDATE
+        """, (param_key,))
+        row = self.env.cr.fetchone()
 
-        # Source 2: Pending invoices with reserved_dian_name in this journal
-        pending_moves = self.env['account.move'].search([
-            ('journal_id', '=', journal.id),
-            ('insotech_reserved_dian_name', '!=', False),
-            ('insotech_dian_status', 'in', ('pending', 'rejected')),
-            ('id', '!=', move.id),  # Exclude the move being posted
-        ])
-        for pm in pending_moves:
-            m = re.search(r'(\d+)\s*$', pm.insotech_reserved_dian_name or '')
+        if row:
+            counter = int(row[0] or '0')
+        else:
+            # Row doesn't exist yet — create it and lock it
+            self.env['ir.config_parameter'].sudo().set_param(
+                param_key, '0',
+            )
+            self.env.cr.execute("""
+                SELECT value
+                  FROM ir_config_parameter
+                 WHERE key = %s
+                   FOR UPDATE
+            """, (param_key,))
+            counter = 0
+
+        # ── Step 2: Safety scan — pending invoices ──
+        # In case reserved numbers were assigned before the counter
+        # was persisted (e.g. backup restore, manual edits), scan
+        # pending moves to find the actual highest.
+        highest = counter
+
+        self.env.cr.execute("""
+            SELECT insotech_reserved_dian_name
+              FROM account_move
+             WHERE journal_id = %s
+               AND insotech_reserved_dian_name IS NOT NULL
+               AND insotech_reserved_dian_name != ''
+               AND insotech_dian_status IN ('pending', 'rejected')
+               AND id != %s
+        """, (journal.id, move.id or 0))
+
+        for (reserved,) in self.env.cr.fetchall():
+            m = re.search(r'(\d+)\s*$', reserved or '')
             if m:
                 num = int(m.group(1))
                 if num > highest:
                     highest = num
 
-        # Source 3: Posted non-PRE-INV invoices (fallback)
-        if not highest:
-            posted_moves = self.env['account.move'].search([
-                ('journal_id', '=', journal.id),
-                ('state', '=', 'posted'),
-                ('move_type', 'in', ('out_invoice', 'out_refund')),
-                ('name', 'not like', 'PRE-INV%'),
-                ('name', '!=', '/'),
-            ], order='name desc', limit=10)
-            for pm in posted_moves:
-                m = re.search(r'(\d+)\s*$', pm.name or '')
-                if m:
-                    num = int(m.group(1))
-                    if num > highest:
-                        highest = num
-
         next_num = highest + 1
 
-        # Apply DIAN range offset if needed
+        # Apply DIAN range floor
         if min_range and next_num < min_range:
             next_num = min_range
 
+        # Range exhaustion check
         if max_range and next_num > max_range:
             raise UserError(_(
                 "La resolución DIAN del diario '%s' se ha agotado.\n\n"
@@ -216,14 +238,21 @@ class AccountMovePreInv(models.Model):
                 prefix, max_range,
             ))
 
+        # ── Step 3: Persist the new counter ──
+        # Write the assigned number (not next_num-1) so the next call
+        # sees this number as "already used".
+        self.env.cr.execute("""
+            UPDATE ir_config_parameter
+               SET value = %s
+             WHERE key = %s
+        """, (str(next_num), param_key))
+
         dian_name = '%s%d' % (prefix, next_num)
 
         _logger.info(
-            "Insotech: Next DIAN consecutive for journal %s: %s "
-            "(highest found: %d, sources: ICP=%d, pending=%d moves, "
-            "posted fallback scanned)",
-            journal.name, dian_name, highest,
-            last_accepted, len(pending_moves),
+            "Insotech: [ATOMIC] Next DIAN consecutive for journal %s: "
+            "%s (counter was %d, highest pending=%d, assigned=%d)",
+            journal.name, dian_name, counter, highest, next_num,
         )
 
         return dian_name
