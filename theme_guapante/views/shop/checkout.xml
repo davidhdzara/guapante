@@ -55,11 +55,18 @@
                                     </div>
 
                                     <!-- WhatsApp Checkbox -->
-                                    <div class="form-check mb-3">
+                                    <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" name="whatsapp_notifications" id="whatsappCheck"/>
                                         <label class="form-check-label text-muted small" for="whatsappCheck">
                                             Mantenerme informado sobre el estado de mi pedido vía WhatsApp.
                                         </label>
+                                    </div>
+                                    <div class="mb-4 d-none" id="whatsappInputContainer">
+                                        <label class="form-label fw-bold small text-success"><i class="fa fa-whatsapp me-1"></i> Número de WhatsApp</label>
+                                        <input type="tel" class="form-control bg-light" id="whatsappNumber" name="whatsapp_number" 
+                                               t-att-value="website_sale_order.partner_id.mobile or website_sale_order.partner_id.phone or ''"
+                                               placeholder="Ej: 300 123 4567"/>
+                                        <small class="text-muted d-block mt-1">Verifica o ingresa el número al cual deseas que llegue la notificación.</small>
                                     </div>
 
                                 </div>

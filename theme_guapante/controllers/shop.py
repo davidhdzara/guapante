@@ -201,6 +201,23 @@ class GuapanteWebsiteSale(WebsiteSale):
 
         return request.redirect('/shop/address')
 
+    @http.route(['/shop/update_whatsapp'], type='json', auth="user", website=True, csrf=False)
+    def update_whatsapp_number(self, whatsapp_number=None, **kwargs):
+        """
+        Updates the mobile number of the authenticated user when they opt-in 
+        for WhatsApp notifications during checkout.
+        """
+        if not whatsapp_number:
+            return {'success': False, 'error': 'No number provided'}
+        
+        partner = request.env.user.partner_id
+        if partner:
+            partner.sudo().write({'mobile': whatsapp_number})
+            _logger.info("WhatsApp checkout: Updated mobile for user %s to %s", partner.name, whatsapp_number)
+            return {'success': True}
+            
+        return {'success': False, 'error': 'No partner found'}
+
     @http.route(['/shop/checkout/confirm'], type='http', auth="user", website=True, sitemap=False)
     def confirm_order_skip_payment(self, **post):
         """
