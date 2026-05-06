@@ -598,6 +598,25 @@ class SaleOrder(models.Model):
 
         return result
 
+    def _prepare_cart_line_values(self, product_id, quantity, **kwargs):
+        """Inject Guapante custom fields into the cart line values.
+        
+        This ensures that when Odoo creates a new line via _cart_update,
+        it already has the correct uom_mode and packaging, preventing
+        default onchanges from resetting them.
+        """
+        values = super()._prepare_cart_line_values(product_id, quantity, **kwargs)
+        
+        uom_mode = kwargs.get('uom_mode')
+        if uom_mode:
+            values['uom_mode'] = uom_mode
+            
+        pkg_id = kwargs.get('product_packaging_id')
+        if pkg_id:
+            values['product_packaging_id'] = int(pkg_id)
+            
+        return values
+
     def _cart_find_product_line(
         self, product_id, line_id=None, **kwargs
     ):

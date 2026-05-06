@@ -558,13 +558,6 @@ class GuapanteWebsiteSale(WebsiteSale):
                         _logger.info("Unit→kg conversion (add): %s units × %s = %s kg", add_qty, factor, add_qty * factor)
                         add_qty = add_qty * factor
 
-        # 1. Spy on Javascript payload for debugging
-        # debug_order = request.website.sale_get_order()
-        # if debug_order:
-        #     debug_msg = f"\n[JS PAYLOAD IN CONTROLLER]: args=(product_id={product_id}, uom_mode={uom_mode}, packaging={product_packaging_id}) kwargs={kwargs}\n"
-        #     current_note = debug_order.sudo().note or ''
-        #     debug_order.sudo().write({'note': current_note + debug_msg})
-
         # 1. Call super to perform standard logic
         response = super().cart_update_json(
             product_id=product_id, 

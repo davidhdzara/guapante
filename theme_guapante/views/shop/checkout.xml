@@ -54,19 +54,30 @@
                                         </div>
                                     </div>
 
-                                    <!-- WhatsApp Checkbox -->
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input" type="checkbox" name="whatsapp_notifications" id="whatsappCheck"/>
-                                        <label class="form-check-label text-muted small" for="whatsappCheck">
-                                            Mantenerme informado sobre el estado de mi pedido vía WhatsApp.
-                                        </label>
-                                    </div>
-                                    <div class="mb-4 d-none" id="whatsappInputContainer">
-                                        <label class="form-label fw-bold small text-success"><i class="fa fa-whatsapp me-1"></i> Número de WhatsApp</label>
-                                        <input type="tel" class="form-control bg-light" id="whatsappNumber" name="whatsapp_number" 
-                                               t-att-value="website_sale_order.partner_id.mobile or website_sale_order.partner_id.phone or ''"
-                                               placeholder="Ej: 300 123 4567"/>
-                                        <small class="text-muted d-block mt-1">Verifica o ingresa el número al cual deseas que llegue la notificación.</small>
+                                    <!-- WhatsApp Notifications Section -->
+                                    <div class="guapante-whatsapp-section mt-4 p-3 rounded-3 border border-success border-opacity-10 bg-success bg-opacity-5">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="whatsapp_notifications" id="whatsappCheck" style="cursor: pointer;"/>
+                                            <label class="form-check-label fw-bold text-success" for="whatsappCheck" style="cursor: pointer;">
+                                                <i class="fa fa-whatsapp me-1"></i> Notificaciones por WhatsApp
+                                            </label>
+                                        </div>
+                                        <p class="text-muted small mb-3">Recibe actualizaciones en tiempo real sobre el pesaje y despacho de tu pedido.</p>
+                                        
+                                        <div class="guapante-whatsapp-input-wrapper d-none" id="whatsappInputContainer">
+                                            <div class="input-group">
+                                                <span class="input-group-text bg-white border-end-0 text-success">
+                                                    <i class="fa fa-phone"></i>
+                                                </span>
+                                                <input type="tel" class="form-control border-start-0 ps-0" id="whatsappNumber" name="whatsapp_number" 
+                                                       t-att-value="website_sale_order.partner_id.mobile or website_sale_order.partner_id.phone or ''"
+                                                       placeholder="Número de WhatsApp (ej: 3101234567)"/>
+                                            </div>
+                                            <div id="whatsapp_error" class="text-danger small mt-1 d-none">Por favor ingresa un número válido.</div>
+                                            <small class="text-muted d-block mt-2">
+                                                Confirmaremos el peso y el valor final de tu pedido a este número.
+                                            </small>
+                                        </div>
                                     </div>
 
                                 </div>

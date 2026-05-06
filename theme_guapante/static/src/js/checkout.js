@@ -8,6 +8,7 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
         'change #guapante_shipping_select': '_onShippingChange',
         'change #whatsappCheck': '_onWhatsappCheckChange',
         'click #guapante_confirm_btn': '_onConfirmOrder',
+        'submit #appendOrderModal form': '_onConfirmFusion',
     },
 
     /**
@@ -25,21 +26,35 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
     },
 
     _onWhatsappCheckChange: function (ev) {
+        var $container = $('#whatsappInputContainer');
         if ($(ev.currentTarget).is(':checked')) {
-            $('#whatsappInputContainer').removeClass('d-none');
+            $container.removeClass('d-none').hide().fadeIn(300);
         } else {
-            $('#whatsappInputContainer').addClass('d-none');
+            $container.fadeOut(300, function() {
+                $(this).addClass('d-none');
+            });
         }
     },
 
     _onConfirmOrder: function (ev) {
         var isChecked = $('#whatsappCheck').is(':checked');
-        var number = $('#whatsappNumber').val() ? $('#whatsappNumber').val().trim() : '';
+        var numberInput = $('#whatsappNumber').val() || '';
+        var number = numberInput.trim();
+        var $btn = $(ev.currentTarget);
         
-        if (isChecked && number) {
+        if (isChecked) {
+            // Validacion: al menos 7 digitos
+            var cleanNumber = number.replace(/\D/g, '');
+            if (cleanNumber.length < 7) {
+                $('#whatsappNumber').addClass('border-danger');
+                $('#whatsapp_error').removeClass('d-none');
+                return;
+            }
+            $('#whatsappNumber').removeClass('border-danger');
+            $('#whatsapp_error').addClass('d-none');
+
             ev.preventDefault();
-            var $btn = $(ev.currentTarget);
-            $btn.text('Confirmando...').addClass('disabled');
+            $btn.html('<i class="fa fa-spinner fa-spin me-2"></i> Guardando...').addClass('disabled');
             
             $.ajax({
                 url: '/shop/update_whatsapp',
@@ -54,14 +69,54 @@ publicWidget.registry.GuapanteCheckout = publicWidget.Widget.extend({
                     },
                 }),
             }).then(function () {
-                window.location.href = '/shop/checkout/confirm';
+                window.location.href = $btn.attr('href') || '/shop/checkout/confirm';
             }).catch(function (err) {
                 console.error("[GuapanteCheckout] Error al guardar número WhatsApp:", err);
-                // Si falla, continuamos con la orden para no bloquear al usuario
-                window.location.href = '/shop/checkout/confirm';
+                $btn.removeClass('disabled').html('<i class="fa fa-paper-plane me-2"></i> Confirmar Pedido');
+                alert('Error al guardar el número de WhatsApp. Por favor intenta de nuevo.');
             });
         }
-        // Si no está chequeado o no hay número, el enlace <a> funciona normalmente
+        // Si no está chequeado, el enlace <a> funciona normalmente (va a /shop/checkout/confirm)
+    },
+
+    _onConfirmFusion: function (ev) {
+        var isChecked = $('#whatsappCheck').is(':checked');
+        var number = ($('#whatsappNumber').val() || '').trim();
+        var $form = $(ev.currentTarget);
+        var $btn = $form.find('button[type="submit"]');
+
+        if (isChecked && number) {
+            ev.preventDefault();
+            
+            // Validacion rapida
+            var cleanNumber = number.replace(/\D/g, '');
+            if (cleanNumber.length < 7) {
+                $('#whatsappNumber').addClass('border-danger');
+                $('#whatsapp_error').removeClass('d-none');
+                return;
+            }
+
+            $btn.html('<i class="fa fa-spinner fa-spin me-2"></i> Procesando...').addClass('disabled');
+
+            $.ajax({
+                url: '/shop/update_whatsapp',
+                method: 'POST',
+                dataType: 'json',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'call',
+                    params: {
+                        whatsapp_number: number,
+                    },
+                }),
+            }).then(function () {
+                $form.off('submit').submit();
+            }).catch(function () {
+                // Si falla el guardado, igual procedemos con la fusion
+                $form.off('submit').submit();
+            });
+        }
     },
 
     /**

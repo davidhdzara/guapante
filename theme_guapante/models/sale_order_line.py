@@ -44,10 +44,11 @@ class SaleOrderLine(models.Model):
                 weight_categ
                 and line.product_id.uom_id.category_id == weight_categ
             )
-            if is_weight:
-                line.uom_mode = 'kg'
-            else:
-                line.uom_mode = 'unit'
+            if not line.uom_mode:
+                if is_weight:
+                    line.uom_mode = 'kg'
+                else:
+                    line.uom_mode = 'unit'
 
     @api.onchange('visual_qty', 'uom_mode')
     def _onchange_visual_qty_uom_mode_sync(self) -> None:
@@ -101,7 +102,7 @@ class SaleOrderLine(models.Model):
                     },
                 }
 
-    @api.depends('product_uom_qty', 'product_id')
+    @api.depends('product_uom_qty', 'product_id', 'uom_mode', 'product_packaging_id')
     def _compute_visual_qty(self) -> None:
         weight_categ = self.env.ref(
             'uom.product_uom_categ_kgm',
