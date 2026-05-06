@@ -28,12 +28,18 @@ class AccountMoveDraft(models.Model):
                         "Solo un Administrador Contable puede restablecer a borrador "
                         "una factura que está siendo procesada por la DIAN."
                     ))
-                _logger.warning("Insotech: Factura pendiente %s forzada a borrador por admin %s", move.name, self.env.user.login)
+                _logger.warning(
+                    "Insotech: Pending move %s (%s) forced to draft by "
+                    "admin %s. Resetting name to '/' for clean re-post.",
+                    move.id, move.name, self.env.user.login,
+                )
                 move.insotech_pre_inv_name = False
                 move.insotech_dian_status = 'not_applicable'
-                if move.insotech_reserved_dian_name:
-                    move.name = move.insotech_reserved_dian_name
-                    move.insotech_reserved_dian_name = False
+                # FIX: Same defense as 'rejected' — reset to '/' so
+                # SequenceMixin generates a fresh journal sequence on
+                # re-confirm, even if reserved was contaminated.
+                move.insotech_reserved_dian_name = False
+                move.name = '/'
                     
             if getattr(move, 'insotech_dian_status', False) == 'rejected':
                 _logger.info(
