@@ -50,16 +50,16 @@ class AccountMovePreInv(models.Model):
         journals), this method:
         1. Resets any PRE-INV names to '/' so SequenceMixin generates fresh.
         2. Lets super()._post() run normally (assigns journal sequence name).
-        3. Immediately replaces the name with a temporary PRE-INV/YYYY/NNNNN.
-        4. Marks the invoice as 'pending' DIAN validation.
+        3. Computes a UNIQUE reserved DIAN consecutive (independent of
+           SequenceMixin) using ir.config_parameter + pending invoice scan.
+        4. Replaces the name with a temporary PRE-INV/YYYY/NNNNN.
+        5. Marks the invoice as 'pending' DIAN validation.
 
         For non-Colombian-EDI invoices, the flow is completely untouched.
         """
         # FIX: Reset PRE-INV names BEFORE super()._post() so that Odoo's
-        # SequenceMixin generates a fresh journal sequence (e.g. FE2304)
-        # instead of incrementing the contaminated PRE-INV pattern.
-        # Without this, reject → draft → re-confirm causes massive
-        # consecutive gaps (e.g. FE2303 → FE2400).
+        # SequenceMixin generates a fresh journal sequence instead of
+        # incrementing the contaminated PRE-INV pattern.
         for move in self:
             if move.insotech_is_co_edi \
                     and move.move_type in ('out_invoice', 'out_refund') \
@@ -82,13 +82,24 @@ class AccountMovePreInv(models.Model):
             try:
                 if move.insotech_is_co_edi and \
                         move.move_type in ('out_invoice', 'out_refund'):
-                    original_name = move.name
+
+                    # ─── Compute UNIQUE reserved DIAN name ───
+                    # Instead of trusting SequenceMixin (which can't see
+                    # PRE-INV moves and assigns duplicates), we compute
+                    # the next consecutive ourselves using ALL sources:
+                    #   1. ir.config_parameter (last DIAN-accepted number)
+                    #   2. Pending invoices' reserved_dian_name
+                    #   3. Posted FE* invoices in the DB
+                    reserved_name = self._insotech_next_dian_consecutive(
+                        move,
+                    )
+
                     pre_inv_name = move._insotech_get_pre_inv_name()
 
                     _logger.info(
-                        "Insotech: Protecting DIAN consecutive for move %s. "
-                        "Original name: %s → Temporary: %s",
-                        move.id, original_name, pre_inv_name
+                        "Insotech: Protecting DIAN consecutive for "
+                        "move %s. Reserved: %s → Temporary: %s",
+                        move.id, reserved_name, pre_inv_name,
                     )
 
                     move.with_context(
@@ -96,7 +107,7 @@ class AccountMovePreInv(models.Model):
                     ).write({
                         'name': pre_inv_name,
                         'insotech_pre_inv_name': pre_inv_name,
-                        'insotech_reserved_dian_name': original_name,
+                        'insotech_reserved_dian_name': reserved_name,
                         'insotech_dian_status': 'pending',
                     })
 
@@ -104,9 +115,10 @@ class AccountMovePreInv(models.Model):
                         body=Markup(
                             '🔒 <b>Protección de consecutivo DIAN activada</b>'
                             '<br/>Nombre temporal: <b>%s</b>'
+                            '<br/>Consecutivo reservado: <b>%s</b>'
                             '<br/>El número definitivo se asignará tras '
                             'la aceptación electrónica.'
-                        ) % pre_inv_name,
+                        ) % (pre_inv_name, reserved_name),
                         message_type='notification',
                         subtype_xmlid='mail.mt_note',
                     )
@@ -120,6 +132,101 @@ class AccountMovePreInv(models.Model):
                 )
 
         return posted
+
+    def _insotech_next_dian_consecutive(self, move):
+        """Compute the next unique DIAN consecutive for a move.
+
+        Scans ALL sources to find the highest used consecutive number
+        and returns the next one. This guarantees uniqueness even when
+        multiple invoices are confirmed while DIAN is down.
+
+        Sources scanned (highest wins):
+        1. ir.config_parameter 'insotech.dian.last_consecutive.{journal_id}'
+        2. All pending invoices' insotech_reserved_dian_name in the journal
+        3. All posted non-PRE-INV invoices in the journal
+
+        :param move: account.move record being posted
+        :returns: DIAN-compliant name (e.g. 'FE2574')
+        """
+        journal = move.journal_id
+        prefix = (journal.code or '').strip()
+        min_range = getattr(
+            journal, 'l10n_co_edi_min_range_number', 0
+        ) or 0
+        max_range = getattr(
+            journal, 'l10n_co_edi_max_range_number', 0
+        ) or 0
+
+        highest = 0
+
+        # Source 1: ir.config_parameter (last DIAN-accepted consecutive)
+        ICP = self.env['ir.config_parameter'].sudo()
+        param_key = 'insotech.dian.last_consecutive.%d' % journal.id
+        last_accepted = int(ICP.get_param(param_key, '0'))
+        if last_accepted > highest:
+            highest = last_accepted
+
+        # Source 2: Pending invoices with reserved_dian_name in this journal
+        pending_moves = self.env['account.move'].search([
+            ('journal_id', '=', journal.id),
+            ('insotech_reserved_dian_name', '!=', False),
+            ('insotech_dian_status', 'in', ('pending', 'rejected')),
+            ('id', '!=', move.id),  # Exclude the move being posted
+        ])
+        for pm in pending_moves:
+            m = re.search(r'(\d+)\s*$', pm.insotech_reserved_dian_name or '')
+            if m:
+                num = int(m.group(1))
+                if num > highest:
+                    highest = num
+
+        # Source 3: Posted non-PRE-INV invoices (fallback)
+        if not highest:
+            posted_moves = self.env['account.move'].search([
+                ('journal_id', '=', journal.id),
+                ('state', '=', 'posted'),
+                ('move_type', 'in', ('out_invoice', 'out_refund')),
+                ('name', 'not like', 'PRE-INV%'),
+                ('name', '!=', '/'),
+            ], order='name desc', limit=10)
+            for pm in posted_moves:
+                m = re.search(r'(\d+)\s*$', pm.name or '')
+                if m:
+                    num = int(m.group(1))
+                    if num > highest:
+                        highest = num
+
+        next_num = highest + 1
+
+        # Apply DIAN range offset if needed
+        if min_range and next_num < min_range:
+            next_num = min_range
+
+        if max_range and next_num > max_range:
+            raise UserError(_(
+                "La resolución DIAN del diario '%s' se ha agotado.\n\n"
+                "Siguiente número: %s%d\n"
+                "Rango autorizado: %s%d – %s%d\n\n"
+                "Debe solicitar una nueva resolución de facturación "
+                "a la DIAN y configurarla en el diario."
+            ) % (
+                journal.name,
+                prefix, next_num,
+                prefix, min_range,
+                prefix, max_range,
+            ))
+
+        dian_name = '%s%d' % (prefix, next_num)
+
+        _logger.info(
+            "Insotech: Next DIAN consecutive for journal %s: %s "
+            "(highest found: %d, sources: ICP=%d, pending=%d moves, "
+            "posted fallback scanned)",
+            journal.name, dian_name, highest,
+            last_accepted, len(pending_moves),
+        )
+
+        return dian_name
 
     # -------------------------------------------------------------------------
     # NAME SWAP HELPERS — Swap between PRE-INV and real DIAN name
