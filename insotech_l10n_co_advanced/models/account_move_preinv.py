@@ -48,14 +48,34 @@ class AccountMovePreInv(models.Model):
 
         For Colombian EDI invoices (out_invoice, out_refund on DIAN-enabled
         journals), this method:
-        1. Checks RADIAN irrevocability (blocks NC on accepted invoices).
+        1. Resets any PRE-INV names to '/' so SequenceMixin generates fresh.
         2. Lets super()._post() run normally (assigns journal sequence name).
         3. Immediately replaces the name with a temporary PRE-INV/YYYY/NNNNN.
         4. Marks the invoice as 'pending' DIAN validation.
 
         For non-Colombian-EDI invoices, the flow is completely untouched.
         """
-        # Call super first — this assigns the journal sequence name
+        # FIX: Reset PRE-INV names BEFORE super()._post() so that Odoo's
+        # SequenceMixin generates a fresh journal sequence (e.g. FE2304)
+        # instead of incrementing the contaminated PRE-INV pattern.
+        # Without this, reject → draft → re-confirm causes massive
+        # consecutive gaps (e.g. FE2303 → FE2400).
+        for move in self:
+            if move.insotech_is_co_edi \
+                    and move.move_type in ('out_invoice', 'out_refund') \
+                    and move.name \
+                    and move.name.startswith('PRE-INV'):
+                _logger.info(
+                    "Insotech: Resetting PRE-INV name '%s' to '/' for "
+                    "move %s before _post() to prevent sequence "
+                    "contamination.",
+                    move.name, move.id,
+                )
+                move.with_context(
+                    skip_account_move_synchronization=True,
+                ).write({'name': '/'})
+
+        # Call super — this assigns the journal sequence name
         posted = super()._post(soft=soft)
 
         for move in posted:
