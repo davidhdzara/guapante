@@ -45,6 +45,23 @@ class ProductTemplate(models.Model):
              'exclusiva. Si se deja vacío, el producto VIP convive con los generales.',
     )
 
+    # ── eCommerce Search: Exclude noisy fields from fuzzy search ──
+
+    def _search_get_detail(self, website, order, options):
+        """Exclude 'description' (HTML) from the fuzzy search engine.
+
+        WHY: The 'description' field contains long marketing texts with generic
+        words like 'bajo', 'cultivado', 'sabor', etc. that cause massive false
+        positives. E.g., searching 'ajo' matched 18 unrelated products because
+        their descriptions contained the word 'bajo'.
+        We keep: name, default_code, product_variant_ids.default_code.
+        """
+        result = super()._search_get_detail(website, order, options)
+        result['search_fields'] = [
+            f for f in result['search_fields'] if f != 'description'
+        ]
+        return result
+
     def write(self, vals):
         res = super().write(vals)
         if 'is_seasonal' in vals:

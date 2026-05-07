@@ -380,6 +380,31 @@ class GuapanteWebsiteSale(WebsiteSale):
             response.qcontext['uom_display'] = self._build_uom_display(order)
         return response
 
+    # ── Search Relevance: Sort by name match quality ──────────────
+
+    def _sort_by_name_relevance(self, search_result, search_term):
+        """Sort products by name relevance: starts_with > contains > rest.
+
+        WHY: Odoo returns search results ordered by website_sequence, so a
+        product whose name exactly matches the query can appear after dozens
+        of unrelated products that matched in description or code fields.
+        This re-sorts so name matches always come first.
+        """
+        if not search_term or not search_result:
+            return search_result
+        term = search_term.lower().strip()
+        tier1, tier2, tier3 = [], [], []
+        for product in search_result:
+            name_lower = (product.name or '').lower()
+            if name_lower.startswith(term):
+                tier1.append(product.id)
+            elif term in name_lower:
+                tier2.append(product.id)
+            else:
+                tier3.append(product.id)
+        sorted_ids = tier1 + tier2 + tier3
+        return search_result.browse(sorted_ids)
+
     # ── VIP B2B: Centralized product filter ──────────────────────
 
     def _get_b2b_product_filter(self):
@@ -444,6 +469,12 @@ class GuapanteWebsiteSale(WebsiteSale):
         if post.get('is_seasonal') or request.params.get('is_seasonal'):
             search_result = search_result.filtered(lambda t: t.is_seasonal)
             product_count = len(search_result)
+
+        # ── Relevance sort: name matches first ──
+        if search:
+            search_result = self._sort_by_name_relevance(
+                search_result, fuzzy_search_term or search
+            )
 
         return fuzzy_search_term, product_count, search_result
 
@@ -663,6 +694,11 @@ class GuapanteWebsiteSale(WebsiteSale):
             if all_invisible:
                 search_result = search_result.filtered(lambda t: t.id not in all_invisible)
                 product_count = len(search_result)
+
+            # ── Relevance sort: name matches first ──
+            search_result = self._sort_by_name_relevance(
+                search_result, fuzzy_search_term or query
+            )
 
             # Limit results
             templates = search_result[:limit]
