@@ -3,7 +3,7 @@
 import publicWidget from "@web/legacy/js/public/public_widget";
 
 publicWidget.registry.GuapanteSignup = publicWidget.Widget.extend({
-    selector: '.OE_SIGNUP_FORM',
+    selector: '.oe_signup_form',
     events: {
         'change input[name="company_type"]': '_onCompanyTypeChange',
     },
