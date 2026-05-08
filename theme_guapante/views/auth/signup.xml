@@ -9,7 +9,7 @@
 
         <!-- 2. Customize the Form Content -->
         <xpath expr="//form" position="replace">
-            <form class="OE_SIGNUP_FORM" role="form" method="post" t-if="not message">
+            <form class="oe_signup_form" role="form" method="post" t-if="not message">
                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
 
                 <!-- TOKEN (if any) -->
