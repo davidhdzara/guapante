@@ -7,9 +7,11 @@ body.o_web_login {
     background-color: #ffffff;
 
     // Override Odoo's default login form container
-    .oe_login_form {
+    .oe_login_form,
+    .oe_signup_form {
         width: 100%;
         max-width: 100% !important;
+        margin: 0 auto !important;
         padding: 0;
         box-shadow: none;
         background: transparent;
