@@ -83,6 +83,14 @@
                     </div>
                 </div>
 
+                <!-- CLOUDFLARE TURNSTILE (anti-bot) -->
+                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async="async" defer="defer"/>
+                <div class="cf-turnstile mb-3 d-flex justify-content-center"
+                     data-sitekey="0x4AAAAAADLIp7PmT9Qv92pK"
+                     data-response-field-name="turnstile_captcha"
+                     data-action="signup"
+                     data-theme="light"/>
+
                 <!-- SUBMIT -->
                 <div class="text-center mt-4">
                     <button type="submit" class="btn btn-primary btn-block fw-bold">Crear Cuenta</button>
