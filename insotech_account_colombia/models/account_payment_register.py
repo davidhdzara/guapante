@@ -26,23 +26,15 @@ class AccountPaymentRegister(models.TransientModel):
             )
 
     # ── Obs 3.1: Resta dinámica del monto al banco ──
-    @api.onchange(
-        'insotech_retention_line_ids',
-        'insotech_retention_line_ids.amount',
-    )
-    def _onchange_insotech_retentions_update_amount(self) -> None:
-        """Cuando el usuario agrega o modifica retenciones,
-        el monto a pagar en banco se reduce automáticamente.
+    @api.depends('insotech_total_retentions')
+    def _compute_amount(self) -> None:
+        """En Odoo 18, amount es un campo computado. Debemos inyectar
+        la deducción de nuestras retenciones después del cálculo nativo.
         """
-        if not self.insotech_retention_line_ids:
-            return
-        total_retentions = sum(
-            self.insotech_retention_line_ids.mapped('amount')
-        )
-        if total_retentions > 0 and self.source_amount_currency:
-            self.amount = (
-                self.source_amount_currency - total_retentions
-            )
+        super()._compute_amount()
+        for wizard in self:
+            if wizard.insotech_total_retentions > 0 and not wizard.custom_user_amount:
+                wizard.amount = wizard.amount - wizard.insotech_total_retentions
 
     def action_create_payments(self) -> dict:
         """Captura las retenciones antes de que el wizard
