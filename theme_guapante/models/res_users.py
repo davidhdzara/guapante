@@ -31,7 +31,13 @@ class ResUsers(models.Model):
         # Update partner with custom fields
         partner_values = {
             'company_type': company_type,
+            'email': new_user.login,
         }
+
+        # Establecer País por defecto a Colombia para evitar errores con Facturación Electrónica DIAN
+        country_co = self.env.ref('base.co', raise_if_not_found=False)
+        if country_co:
+            partner_values['country_id'] = country_co.id
 
         if vat:
             partner_values['vat'] = vat
