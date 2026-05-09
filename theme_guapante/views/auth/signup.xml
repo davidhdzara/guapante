@@ -24,13 +24,16 @@
                 
                 <!-- === CLIENT TYPE TOGGLE === -->
                 <div class="mb-4">
-                    <label class="form-label d-block text-muted small fw-bold text-uppercase">Tipo de Cliente</label>
-                    <div class="btn-group w-100" role="group" aria-label="Tipo de Cliente">
-                        <input type="radio" class="btn-check" name="company_type" id="type_person" value="person" checked="checked"/>
-                        <label class="btn btn-outline-success" for="type_person">Persona Natural</label>
-
-                        <input type="radio" class="btn-check" name="company_type" id="type_company" value="company"/>
-                        <label class="btn btn-outline-success" for="type_company">Empresa</label>
+                    <label class="form-label d-block text-muted small fw-bold text-uppercase mb-2">Tipo de Cliente</label>
+                    <div class="d-flex gap-4">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="company_type" id="type_person" value="person" t-att-checked="not company_type or company_type == 'person'"/>
+                            <label class="form-check-label fw-bold" for="type_person">Persona Natural</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="company_type" id="type_company" value="company" t-att-checked="company_type == 'company'"/>
+                            <label class="form-check-label fw-bold" for="type_company">Empresa</label>
+                        </div>
                     </div>
                 </div>
 
@@ -50,7 +53,7 @@
                             <option value="">Seleccione una opción...</option>
                             <t t-foreach="identification_types" t-as="type">
                                 <option t-att-value="type.id" 
-                                        t-att-selected="type.id == l10n_latam_identification_type_id"
+                                        t-att-selected="str(type.id) == str(l10n_latam_identification_type_id)"
                                         t-att-data-name="type.name">
                                     <t t-esc="type.name"/>
                                 </option>

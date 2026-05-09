@@ -30,13 +30,15 @@ publicWidget.registry.GuapanteSignup = publicWidget.Widget.extend({
                 const name = $(this).data('name') || '';
                 // Standard name for NIT in Colombia is "NIT"
                 if (name.toUpperCase().includes('NIT')) {
-                    $(this).removeClass('d-none');
+                    $(this).removeClass('d-none').prop('disabled', false);
                 } else if ($(this).val()) { // Hide others, keep empty placeholder if needed or hide it
-                    $(this).addClass('d-none');
+                    $(this).addClass('d-none').prop('disabled', true);
                 }
             });
             // Auto-select NIT if visible, or reset
-            $select.val($select.find('option:not(.d-none):eq(1)').val());
+            if ($select.find('option:selected').is(':disabled') || !$select.val()) {
+                $select.val($select.find('option:not(:disabled):eq(1)').val());
+            }
 
         } else {
             // Show Person Labels & Placeholders
@@ -49,13 +51,13 @@ publicWidget.registry.GuapanteSignup = publicWidget.Widget.extend({
             $options.each(function () {
                 const name = $(this).data('name') || '';
                 if (name.toUpperCase().includes('NIT')) {
-                    $(this).addClass('d-none');
+                    $(this).addClass('d-none').prop('disabled', true);
                 } else {
-                    $(this).removeClass('d-none');
+                    $(this).removeClass('d-none').prop('disabled', false);
                 }
             });
             // Reset selection if hidden
-            if ($select.find('option:selected').hasClass('d-none')) {
+            if ($select.find('option:selected').is(':disabled')) {
                 $select.val('');
             }
         }
