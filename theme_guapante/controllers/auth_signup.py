@@ -41,12 +41,26 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         # --- Validation Logic ---
         email = values.get('login')
         vat = values.get('vat')
+        identification_type_id = values.get('l10n_latam_identification_type_id')
+        company_type = values.get('company_type')
         
         if not values.get('name'):
             raise UserError(_("The name is required."))
         
         if not email:
             raise UserError(_("The email is required."))
+
+        if not vat:
+            raise UserError(_("El Número de Documento es obligatorio."))
+
+        if not identification_type_id:
+            raise UserError(_("El Tipo de Identificación es obligatorio."))
+
+        # Integrity check: If Company, it MUST be NIT.
+        if company_type == 'company':
+            id_type_record = request.env['l10n_latam.identification.type'].sudo().browse(identification_type_id)
+            if id_type_record.exists() and 'NIT' not in id_type_record.name.upper():
+                raise UserError(_("Una Empresa debe registrarse con NIT."))
 
         Partner = request.env['res.partner'].sudo()
         
