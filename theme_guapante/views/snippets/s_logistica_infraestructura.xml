@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_logistica_infraestructura" name="Logística Infraestructura">
+        <section class="guapante-logistica-infraestructura">
+            <div class="container">
+                <div class="row align-items-center g-5">
+                    <!-- Text Content -->
+                    <div class="col-lg-6">
+                        <h2 class="fw-bold mb-4" style="color: #1A1A1A;">Infraestructura Propia de Vanguardia</h2>
+                        <p class="mb-5 text-muted" style="font-size: 1.1rem; line-height: 1.6;">
+                            En Guapante, no tercerizamos tu confianza. Contamos con camiones propios equipados con tecnología de refrigeración de última generación para asegurar que la cadena de frío sea impenetrable desde el origen.
+                        </p>
+                        
+                        <div class="feature-item">
+                            <i class="fa fa-truck"></i>
+                            <div>
+                                <h5>Camiones de Grado Alimentario</h5>
+                                <p>Interiores de acero inoxidable y superficies lavables certificadas.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <i class="fa fa-thermometer-half"></i>
+                            <div>
+                                <h5>Monitoreo Térmico en Tiempo Real</h5>
+                                <p>Sensores inteligentes que alertan cualquier desviación de temperatura (+/- 0.5°C).</p>
+                            </div>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <i class="fa fa-wrench"></i>
+                            <div>
+                                <h5>Mantenimiento Preventivo</h5>
+                                <p>Flota joven con revisiones mecánicas semanales para evitar retrasos.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Image -->
+                    <div class="col-lg-6">
+                        <div class="truck-image-wrapper">
+                            <img src="/theme_guapante/static/src/img/guapante_truck.png" alt="Camión Guapante" class="img-fluid"/>
+                            <div class="badge-247">
+                                <strong>24/7</strong>
+                                <span>Operación Continua</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

@@ -47,7 +47,7 @@
                                 <li class="nav-item"><a class="nav-link text-body" href="/shop">Tienda</a></li>
                                 <li class="nav-item"><a class="nav-link text-body" href="/shop">Ofertas</a></li>
                                 <li class="nav-item"><a class="nav-link text-body" href="/Nosotros">Nosotros</a></li>
-                                <li class="nav-item"><a class="nav-link text-body" href="/logistics">Logística</a></li>
+                                <li class="nav-item"><a class="nav-link text-body" href="/logistica">Logística</a></li>
                             </ul>
 
                             <!-- 3. Desktop Actions (Search + User + Cart) -->

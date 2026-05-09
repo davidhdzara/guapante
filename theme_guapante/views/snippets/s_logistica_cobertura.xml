@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_logistica_cobertura" name="Logística Cobertura">
+        <section class="guapante-logistica-cobertura">
+            <div class="container">
+                <div class="row align-items-center g-5">
+                    <!-- Map Image -->
+                    <div class="col-lg-6">
+                        <div class="map-container">
+                            <img src="/theme_guapante/static/src/img/antioquia_map_3d.png" alt="Mapa de Cobertura Antioquia" class="img-fluid"/>
+                            <div class="badge-cobertura">
+                                COBERTURA ACTIVA
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Text Content -->
+                    <div class="col-lg-6">
+                        <h2 class="fw-bold mb-4" style="color: #1A1A1A;">Antioquia a tu alcance</h2>
+                        
+                        <div class="row g-3 mb-4">
+                            <!-- Regions -->
+                            <div class="col-md-6">
+                                <div class="region-card">
+                                    <h6>Medellín</h6>
+                                    <p>Cobertura 100% urbana</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="region-card">
+                                    <h6>Valle de Aburrá</h6>
+                                    <p>Norte a Sur diario</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="region-card">
+                                    <h6>Oriente Antioqueño</h6>
+                                    <p>Rutas industriales</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="region-card">
+                                    <h6>Occidente</h6>
+                                    <p>Conexión estratégica</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p class="text-muted" style="font-size: 0.95rem; line-height: 1.6;">
+                            Optimizamos nuestras rutas para reducir tiempos de tránsito y emisiones, operando una red logística que conecta los centros de producción más importantes con los puntos de consumo final.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

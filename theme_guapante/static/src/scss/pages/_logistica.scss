@@ -1,0 +1,280 @@
+/* Logistica Page Styles */
+
+.guapante-logistica-hero {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    padding-top: 120px;
+    padding-bottom: 120px;
+    color: white;
+
+    &::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(135deg, rgba(21, 87, 36, 0.85) 0%, rgba(26, 26, 26, 0.6) 100%);
+        z-index: 1;
+    }
+
+    > .container {
+        position: relative;
+        z-index: 2;
+    }
+    
+    .stats-card {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        color: #1A1A1A;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        
+        .icon-circle {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: #f0fdf4;
+            color: #155724;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .stat-value {
+            font-weight: 700;
+            font-size: 1.5rem;
+            margin-bottom: 0;
+            line-height: 1;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #6c757d;
+            letter-spacing: 0.5px;
+            margin-bottom: 0;
+            font-weight: 600;
+        }
+    }
+}
+
+.guapante-logistica-infraestructura {
+    padding: 80px 0;
+    background-color: #f3f4f6;
+    
+    .feature-item {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        
+        i {
+            color: #28a745;
+            font-size: 1.25rem;
+            margin-top: 4px;
+        }
+        
+        h5 {
+            color: #155724;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        p {
+            color: #6c757d;
+            font-size: 0.95rem;
+        }
+    }
+    
+    .truck-image-wrapper {
+        position: relative;
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        
+        img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .badge-247 {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            background-color: #1A1A1A;
+            color: white;
+            padding: 1rem 2rem;
+            border-top-right-radius: 1rem;
+            
+            strong {
+                color: #28a745;
+                font-size: 1.5rem;
+                display: block;
+                line-height: 1;
+            }
+            span {
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+        }
+    }
+}
+
+.guapante-logistica-alianza {
+    padding: 80px 0;
+    background-color: white;
+    text-align: center;
+    
+    .pre-title {
+        color: #28a745;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+    }
+    
+    .title {
+        color: #1A1A1A;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+    }
+    
+    .subtitle {
+        color: #6c757d;
+        max-width: 700px;
+        margin: 0 auto 4rem auto;
+    }
+    
+    .pillar-card {
+        padding: 2rem;
+        border-radius: 1rem;
+        background-color: white;
+        transition: all 0.3s ease;
+        height: 100%;
+        border: 1px solid #e5e7eb;
+        
+        &:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            transform: translateY(-5px);
+            border-color: #28a745;
+        }
+        
+        .icon-wrapper {
+            font-size: 2.5rem;
+            color: #28a745;
+            margin-bottom: 1.5rem;
+        }
+        
+        h5 {
+            color: #155724;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        p {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+    }
+}
+
+.guapante-logistica-cobertura {
+    padding: 80px 0;
+    background-color: #f8f9fa;
+    
+    .map-container {
+        position: relative;
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        
+        .badge-cobertura {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #155724;
+            padding: 0.5rem 1rem;
+            border-radius: 50rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            
+            &::before {
+                content: "";
+                display: block;
+                width: 8px;
+                height: 8px;
+                background-color: #28a745;
+                border-radius: 50%;
+                box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.2);
+            }
+        }
+    }
+    
+    .region-card {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border: 1px solid #e5e7eb;
+        margin-bottom: 1rem;
+        transition: all 0.2s ease;
+        
+        &:hover {
+            border-color: #28a745;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        h6 {
+            color: #28a745;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        
+        p {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-bottom: 0;
+        }
+    }
+}
+
+.guapante-logistica-cta {
+    padding: 80px 0;
+    background-color: #1A1A1A;
+    color: white;
+    text-align: center;
+    border-radius: 1rem;
+    margin: 40px 0;
+    box-shadow: 0 20px 40px rgba(26, 26, 26, 0.3);
+    
+    h2 {
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    p {
+        color: #adb5bd;
+        max-width: 600px;
+        margin: 0 auto 2rem auto;
+    }
+    
+    .btn-outline-light {
+        border-color: rgba(255, 255, 255, 0.2);
+        
+        &:hover {
+            background-color: white;
+            color: #1A1A1A;
+        }
+    }
+}

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_logistica_hero" name="Logística Hero">
+        <section class="guapante-logistica-hero" style="background-image: url('/theme_guapante/static/src/img/hero_logistics_bg.png');">
+            <div class="container py-5">
+                <div class="row mb-5">
+                    <div class="col-lg-8">
+                        <h1 class="display-4 fw-bold mb-4">Logística de Clase Mundial para la Frescura de tu Negocio</h1>
+                        <p class="lead mb-5" style="color: rgba(255,255,255,0.9); max-width: 600px;">
+                            Control total desde el campo hasta tu puerta con nuestra flota propia en Antioquia. Garantizamos la integridad de cada entrega.
+                        </p>
+                        <div class="d-flex flex-wrap gap-3">
+                            <a href="#" class="btn btn-success btn-lg fw-bold rounded-3 px-4">Agendar Consultoría</a>
+                            <a href="#" class="btn btn-outline-light btn-lg fw-bold rounded-3 px-4">Ver Servicios</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row g-4 mt-5">
+                    <!-- KPI 1 -->
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="icon-circle">
+                                <i class="fa fa-clock-o"></i>
+                            </div>
+                            <div>
+                                <h3 class="stat-value">99%</h3>
+                                <p class="stat-label">Entregas a Tiempo</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- KPI 2 -->
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="icon-circle">
+                                <i class="fa fa-map-marker"></i>
+                            </div>
+                            <div>
+                                <h3 class="stat-value">+500</h3>
+                                <p class="stat-label">Puntos Diarios</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- KPI 3 -->
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="icon-circle">
+                                <i class="fa fa-snowflake-o"></i>
+                            </div>
+                            <div>
+                                <h3 class="stat-value">G.A.</h3>
+                                <p class="stat-label">Flota Grado Alimentario</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

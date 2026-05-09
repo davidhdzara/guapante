@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="page_logistica_guapante" model="website.page">
+        <field name="name">Logística</field>
+        <field name="url">/logistica</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_logistica</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_logistica">
+                <t t-call="website.layout">
+                    <div id="wrap" class="oe_structure oe_empty">
+                         <t t-call="theme_guapante.s_logistica_hero"/>
+                         <t t-call="theme_guapante.s_logistica_infraestructura"/>
+                         <t t-call="theme_guapante.s_logistica_alianza"/>
+                         <t t-call="theme_guapante.s_logistica_cobertura"/>
+                         <t t-call="theme_guapante.s_logistica_cta"/>
+                    </div>
+                </t>
+            </t>
+        </field>
+    </record>
+</odoo>

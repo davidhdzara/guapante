@@ -15,6 +15,13 @@
                 <t t-snippet="theme_guapante.s_about_mission_vision" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_about_pillars" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_about_cta" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                
+                <!-- Logistica Snippets -->
+                <t t-snippet="theme_guapante.s_logistica_hero" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_logistica_infraestructura" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_logistica_alianza" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_logistica_cobertura" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_logistica_cta" t-thumbnail="/theme_guapante/static/description/icon.png"/>
             </snippets>
         </xpath>
     </template>

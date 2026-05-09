@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_logistica_cta" name="Logística CTA">
+        <section class="container">
+            <div class="guapante-logistica-cta">
+                <h2>¿Listo para optimizar tu cadena de suministro?</h2>
+                <p class="lead">
+                    Solicita hoy una ruta personalizada y descubre cómo Guapante puede elevar el estándar de frescura de tu negocio con nuestra logística especializada.
+                </p>
+                <div class="d-flex flex-wrap justify-content-center gap-3">
+                    <a href="#" class="btn btn-success btn-lg fw-bold px-5 py-3 rounded-3">Solicitar Cotización B2B</a>
+                    <a href="#" class="btn btn-outline-light btn-lg fw-bold px-5 py-3 rounded-3">Hablar con un Experto</a>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

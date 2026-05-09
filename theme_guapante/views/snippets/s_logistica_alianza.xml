@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_logistica_alianza" name="Logística Alianza Estratégica">
+        <section class="guapante-logistica-alianza">
+            <div class="container">
+                <div class="pre-title">Alianza Estratégica</div>
+                <h2 class="title">Más que transporte, somos tu aliado de confianza</h2>
+                <p class="subtitle lead">Diseñamos soluciones logísticas a medida para que te enfoques en crecer, mientras nosotros nos encargamos de la frescura.</p>
+                
+                <div class="row g-4 mt-3">
+                    <div class="col-lg-4 col-md-6">
+                        <div class="pillar-card text-center">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-calendar-check-o"></i>
+                            </div>
+                            <h5>Entregas Programadas</h5>
+                            <p>Ventanas horarias precisas para optimizar tu recepción de mercancía y gestión de inventarios.</p>
+                        </div>
+                    </div>
+                    <div class="col-lg-4 col-md-6">
+                        <div class="pillar-card text-center">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-map-o"></i>
+                            </div>
+                            <h5>Trazabilidad Total</h5>
+                            <p>Dashboard exclusivo para clientes B2B con seguimiento GPS y remisiones digitales en tiempo real.</p>
+                        </div>
+                    </div>
+                    <div class="col-lg-4 col-md-6">
+                        <div class="pillar-card text-center">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-shield"></i>
+                            </div>
+                            <h5>Cumplimiento INVIMA</h5>
+                            <p>Rigurosos estándares sanitarios y protocolos de desinfección en cada ciclo de transporte.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>
