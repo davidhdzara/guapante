@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="contactus_custom" inherit_id="website.contactus" name="Custom Contact Us">
+        <xpath expr="//div[@id='wrap']" position="replace">
+            <div id="wrap" class="bg-background-light dark:bg-background-dark text-text-main dark:text-white transition-colors duration-200">
+                <main class="flex-1 w-full max-w-[1440px] mx-auto px-4 md:px-10 py-8 md:py-16">
+                    <div class="max-w-6xl mx-auto">
+                        <div class="text-center mb-12">
+                            <h1 class="text-4xl md:text-5xl font-black tracking-tight text-text-main dark:text-white">Ponte en Contacto</h1>
+                            <p class="mt-4 text-lg text-text-muted max-w-2xl mx-auto">
+                                ¿Tienes alguna pregunta o sugerencia? Estamos aquí para ayudarte. Completa el formulario y te responderemos lo antes posible.
+                            </p>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
+                            
+                            <!-- Formulario (Lado Izquierdo) -->
+                            <div class="lg:col-span-3 bg-white dark:bg-[#1a2e22] p-8 rounded-xl border border-[#f0f4f2] dark:border-[#2a4032] shadow-sm">
+                                <h2 class="text-2xl font-bold mb-6">Envíanos un Mensaje</h2>
+                                
+                                <!-- Odoo Native Form Configuration -->
+                                <form id="contactus_form" action="/website/form/" method="post" enctype="multipart/form-data" class="o_mark_required s_website_form space-y-6" data-mark="*" data-model_name="crm.lead" data-success-mode="redirect" data-success-page="/contactus-thank-you" hide-change-model="true">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    
+                                    <div>
+                                        <label class="text-sm font-medium text-text-main dark:text-white/90" for="contact_name">Nombre Completo</label>
+                                        <div class="mt-2">
+                                            <input autocomplete="name" class="block w-full rounded-lg border-0 bg-[#f0f4f2] dark:bg-[#25382c] py-2.5 px-4 text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-[#e0e4e2] dark:ring-[#2a4032] placeholder:text-text-muted/70 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-colors s_website_form_input" id="contact_name" name="contact_name" placeholder="Ej: Ana María Rojas" required="1" type="text"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-sm font-medium text-text-main dark:text-white/90" for="email_from">Correo Electrónico</label>
+                                        <div class="mt-2">
+                                            <input autocomplete="email" class="block w-full rounded-lg border-0 bg-[#f0f4f2] dark:bg-[#25382c] py-2.5 px-4 text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-[#e0e4e2] dark:ring-[#2a4032] placeholder:text-text-muted/70 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-colors s_website_form_input" id="email_from" name="email_from" placeholder="tu.correo@ejemplo.com" required="1" type="email"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-sm font-medium text-text-main dark:text-white/90" for="phone">Teléfono</label>
+                                            <span class="text-xs text-text-muted">Opcional</span>
+                                        </div>
+                                        <div class="mt-2">
+                                            <input autocomplete="tel" class="block w-full rounded-lg border-0 bg-[#f0f4f2] dark:bg-[#25382c] py-2.5 px-4 text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-[#e0e4e2] dark:ring-[#2a4032] placeholder:text-text-muted/70 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-colors s_website_form_input" id="phone" name="phone" placeholder="300 123 4567" type="tel"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-sm font-medium text-text-main dark:text-white/90" for="subject">Asunto</label>
+                                        <div class="mt-2">
+                                            <select class="block w-full rounded-lg border-0 bg-[#f0f4f2] dark:bg-[#25382c] py-2.5 px-4 text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-[#e0e4e2] dark:ring-[#2a4032] focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-colors s_website_form_input" id="subject" name="name" required="1">
+                                                <option selected="" value="">Selecciona una opción</option>
+                                                <option value="Pedidos">Pedidos</option>
+                                                <option value="Soporte">Soporte</option>
+                                                <option value="Información General">Información General</option>
+                                                <option value="Sugerencias">Sugerencias</option>
+                                                <option value="Ventas Mayoristas (B2B)">Ventas Mayoristas (B2B)</option>
+                                                <option value="Otro">Otro</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-sm font-medium text-text-main dark:text-white/90" for="message">Mensaje</label>
+                                        <div class="mt-2">
+                                            <textarea class="block w-full rounded-lg border-0 bg-[#f0f4f2] dark:bg-[#25382c] py-2.5 px-4 text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-[#e0e4e2] dark:ring-[#2a4032] placeholder:text-text-muted/70 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-colors s_website_form_input" id="message" name="description" placeholder="Escribe tu mensaje aquí..." required="1" rows="6"></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <button class="w-full bg-primary hover:bg-primary-hover text-[#111814] font-bold py-3.5 px-8 rounded-lg transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(19,236,109,0.3)] s_website_form_send" type="submit">
+                                            <span>Enviar Mensaje</span>
+                                            <span class="material-symbols-outlined text-[20px]">send</span>
+                                        </button>
+                                        <span id="s_website_form_result"></span>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Información y Mapa (Lado Derecho) -->
+                            <div class="lg:col-span-2 space-y-8">
+                                <div class="bg-white dark:bg-[#1a2e22] p-6 rounded-xl border border-[#f0f4f2] dark:border-[#2a4032] shadow-sm">
+                                    <h3 class="text-lg font-bold mb-4">Información de Contacto</h3>
+                                    <div class="space-y-4 text-sm">
+                                        <a class="flex items-start gap-4 group" href="#">
+                                            <div class="flex-shrink-0 size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-black transition-colors">
+                                                <span class="material-symbols-outlined">location_on</span>
+                                            </div>
+                                            <div>
+                                                <p class="font-semibold text-text-main dark:text-white">Dirección</p>
+                                                <p class="text-text-muted">Cra 43A #1-50, Edificio San Fernando, Oficina 801, Medellín, Colombia</p>
+                                            </div>
+                                        </a>
+                                        <a class="flex items-start gap-4 group" href="tel:+573001234567">
+                                            <div class="flex-shrink-0 size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-black transition-colors">
+                                                <span class="material-symbols-outlined">call</span>
+                                            </div>
+                                            <div>
+                                                <p class="font-semibold text-text-main dark:text-white">Teléfono</p>
+                                                <p class="text-text-muted">(+57) 300 123 4567</p>
+                                            </div>
+                                        </a>
+                                        <a class="flex items-start gap-4 group" href="mailto:soporte@guapante.com.co">
+                                            <div class="flex-shrink-0 size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-black transition-colors">
+                                                <span class="material-symbols-outlined">mail</span>
+                                            </div>
+                                            <div>
+                                                <p class="font-semibold text-text-main dark:text-white">Correo Electrónico</p>
+                                                <p class="text-text-muted">soporte@guapante.com.co</p>
+                                            </div>
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="rounded-xl overflow-hidden border border-[#f0f4f2] dark:border-[#2a4032] shadow-sm aspect-w-4 aspect-h-3" style="min-height: 250px;">
+                                    <iframe allowfullscreen="" height="100%" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4529399818817!2d-75.57291192591605!3d6.203644993783777!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e44295325021a69%3A0x6a13d71754430e5c!2sCra.%2043A%20%231-50%2C%20El%20Poblado%2C%20Medell%C3%ADn%2C%20El%20Poblado%2C%20Medell%C3%ADn%2C%20Antioquia!5e0!3m2!1ses!2sco!4v1700000000000!5m2!1ses!2sco" style="border:0;" width="100%"></iframe>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </xpath>
+    </template>
+</odoo>
