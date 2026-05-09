@@ -51,10 +51,7 @@
                                         <p class="text-muted mt-2">Actualizado hace 1 semana</p>
                                     </header>
                                     
-                                    <div class="oe_structure oe_empty article-prose">
-                                        <!-- Odoo users can drag and drop snippets here -->
-                                        <p class="lead mb-4">Selecciona esta área y haz clic en Editar para agregar el contenido de tu artículo. Puedes usar texto, imágenes o el bloque de pasos de Guapante.</p>
-                                    </div>
+                                    <t t-out="0"/>
                                     
                                     <footer class="article-footer border-top pt-4 mt-5">
                                         <div class="row align-items-center">
@@ -97,6 +94,47 @@
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Pedidos</t>
                     <t t-set="article_title">¿Cómo realizar un pedido?</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_pedidos">
+                        <p class="lead mb-4">Realizar un pedido en Guapante es un proceso fácil y rápido. Sigue estos pasos para recibir la frescura del campo en tu puerta:</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Explora nuestro catálogo</h4>
+                                    <p>Navega por nuestras categorías o utiliza la barra de búsqueda para encontrar tus frutas y verduras favoritas. Puedes filtrar por tipo de producto, origen o si es orgánico.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Agrega productos al carrito</h4>
+                                    <p>Una vez encuentres un producto que te guste, selecciona la cantidad (por unidad o por peso) y añádelo a tu canasta de compras B2B.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Revisa tu canasta</h4>
+                                    <p>Haz clic en el ícono de la canasta en la esquina superior derecha para revisar tu pedido, ajustar cantidades de embalaje o eliminar productos.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Procede al pago o crédito</h4>
+                                    <p>Si eres un cliente corporativo, puedes utilizar tu línea de crédito asignada, o proceder con el pago electrónico tradicional (PSE, Tarjeta de crédito).</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">5</div>
+                                <div class="step-content">
+                                    <h4>Confirma tu pedido</h4>
+                                    <p>Revisa todos los detalles de tu orden por última vez y haz clic en Confirmar Pedido. Recibirás un correo electrónico con la confirmación para tu departamento de compras.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
@@ -112,7 +150,41 @@
             <t t-name="theme_guapante.page_ayuda_pagos">
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Pago y Facturación</t>
-                    <t t-set="article_title">Métodos de pago aceptados</t>
+                    <t t-set="article_title">Métodos de pago aceptados y Facturación DIAN</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_pagos">
+                        <p class="lead mb-4">En Guapante, facilitamos la conciliación financiera de tu empresa ofreciendo métodos de pago flexibles y cumplimiento estricto con la normativa de la DIAN.</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Línea de Crédito B2B</h4>
+                                    <p>Para clientes empresariales aprobados, ofrecemos condiciones de pago a 15 o 30 días. Tu saldo de crédito se reflejará directamente en el checkout.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Pagos Electrónicos Integrados (PSE)</h4>
+                                    <p>Puedes pagar de forma inmediata mediante PSE, tarjetas de crédito corporativas o transferencias bancarias directas a nuestras cuentas en Bancolombia.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Facturación Electrónica DIAN</h4>
+                                    <p>Emitimos facturación electrónica con validación previa de la DIAN para el 100% de nuestros despachos. El XML y PDF llegarán al correo registrado para recepción de facturas.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Aplicación de Retenciones</h4>
+                                    <p>Si tu empresa es agente retenedor, puedes aplicar los certificados de retención correspondientes a través de tu portal de cliente antes de registrar el pago final.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
@@ -128,7 +200,41 @@
             <t t-name="theme_guapante.page_ayuda_envios">
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Envío y Entrega</t>
-                    <t t-set="article_title">Tiempos de entrega y zonas de cobertura</t>
+                    <t t-set="article_title">Tiempos de entrega y Zonas de Cobertura</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_envios">
+                        <p class="lead mb-4">Nuestra flota propia de logística en frío garantiza que tus insumos lleguen a tiempo y en perfectas condiciones a cualquier punto del departamento de Antioquia.</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Cobertura en el Valle de Aburrá</h4>
+                                    <p>Ofrecemos entregas diarias (Lunes a Sábado) en Medellín, Envigado, Itagüí, Sabaneta, Bello, Copacabana y La Estrella con ventanas horarias programadas.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Cobertura Regional (Oriente y Occidente)</h4>
+                                    <p>Para municipios como Rionegro, Marinilla, Guarne y San Jerónimo, contamos con rutas estratégicas 3 veces por semana. Consulta con tu asesor comercial los días de ruta.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Ventanas de Entrega B2B</h4>
+                                    <p>Sabemos que tu restaurante u hotel tiene horarios estrictos de recepción. Al hacer tu pedido, podrás coordinar la entrega en franjas AM (6:00 - 11:00) o PM (13:00 - 16:00).</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Trazabilidad en Tiempo Real</h4>
+                                    <p>Todos nuestros camiones cuentan con GPS y sensores térmicos. Desde tu panel de cliente podrás visualizar el estado de preparación y despacho de tu remisión.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
@@ -144,7 +250,41 @@
             <t t-name="theme_guapante.page_ayuda_productos">
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Productos</t>
-                    <t t-set="article_title">Garantía de frescura</t>
+                    <t t-set="article_title">Garantía de Frescura e Inocuidad</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_productos">
+                        <p class="lead mb-4">En Guapante, la calidad no se negocia. Implementamos estrictos protocolos de inocuidad alimentaria desde la recolección en finca hasta la entrega en tus instalaciones.</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Trazabilidad de Origen</h4>
+                                    <p>Conocemos exactamente de qué finca proviene cada lote de vegetales. Trabajamos directamente con agricultores certificados en Buenas Prácticas Agrícolas (BPA).</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Cadena de Frío Ininterrumpida</h4>
+                                    <p>Nuestros centros de acopio y flota de camiones de grado alimentario mantienen las temperaturas óptimas para cada tipo de producto (frutas sensibles, vegetales de hoja, etc.) para prolongar su vida útil.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Cumplimiento INVIMA</h4>
+                                    <p>Cumplimos con todas las normativas sanitarias colombianas. Si requieres fichas técnicas de producto para tus auditorías de calidad, puedes solicitarlas a través de nuestro equipo de soporte.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Presentaciones Institucionales</h4>
+                                    <p>Diseñamos empaques (cajas plásticas sanitizadas, bolsas de vacío) pensados para el alto volumen y el apilamiento seguro en los cuartos fríos de tu restaurante u hotel.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
@@ -160,7 +300,41 @@
             <t t-name="theme_guapante.page_ayuda_cuenta">
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Mi Cuenta</t>
-                    <t t-set="article_title">¿Cómo recuperar mi contraseña?</t>
+                    <t t-set="article_title">Gestión de Cuenta Corporativa</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_cuenta">
+                        <p class="lead mb-4">El portal de cliente de Guapante está diseñado para que tu equipo administrativo (compras, contabilidad) tenga control total sobre las operaciones.</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Recuperación de Contraseña</h4>
+                                    <p>Si olvidaste tu clave, haz clic en "Iniciar Sesión" y selecciona "Olvidé mi contraseña". Ingresa tu correo corporativo registrado y recibirás un enlace de restablecimiento seguro.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Gestión de Múltiples Direcciones</h4>
+                                    <p>Si tu empresa tiene varios puntos de venta o restaurantes, puedes dar de alta múltiples direcciones de entrega en tu perfil. Durante el checkout, simplemente selecciona a cuál punto de venta enviaremos la mercancía.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Consulta de Remisiones y Facturas</h4>
+                                    <p>En el menú "Mi Cuenta", podrás descargar el histórico de pedidos, remisiones firmadas (prueba de entrega) y los archivos XML/PDF de tus facturas electrónicas para tu contabilidad.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Permisos de Usuario</h4>
+                                    <p>Si requieres que el Chef haga los pedidos pero que Contabilidad reciba las facturas, puedes contactarnos para configurar múltiples usuarios bajo un mismo NIT corporativo.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
@@ -176,7 +350,41 @@
             <t t-name="theme_guapante.page_ayuda_devoluciones">
                 <t t-call="theme_guapante.ayuda_article_layout">
                     <t t-set="category_name">Devoluciones</t>
-                    <t t-set="article_title">Política de devoluciones</t>
+                    <t t-set="article_title">Política de Reclamos y Garantía</t>
+                    
+                    <div class="oe_structure oe_empty article-prose" id="content_ayuda_devoluciones">
+                        <p class="lead mb-4">Entendemos que trabajamos con productos perecederos. Nuestra política B2B está diseñada para darte tranquilidad y respuestas rápidas ante cualquier eventualidad.</p>
+                        <ol>
+                            <li>
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Revisión al momento de la entrega</h4>
+                                    <p>Recomendamos a tu personal de recepción verificar la calidad y el peso de los productos al momento de la descarga. Cualquier novedad puede ser anotada en la remisión digital del conductor.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Ventana de Reclamos (24 Horas)</h4>
+                                    <p>Dado que son productos frescos, tienes un plazo máximo de 24 horas desde la recepción para reportar cualquier problema de maduración, magulladuras o ruptura de la cadena de frío.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>¿Cómo reportar una novedad?</h4>
+                                    <p>Puedes comunicarte a nuestra línea exclusiva de soporte B2B o enviar un correo con fotografías del producto y el número de lote/remisión. Nuestro equipo de calidad evaluará el caso en menos de 2 horas.</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Notas Crédito y Reposiciones</h4>
+                                    <p>Una vez aprobado el reclamo, emitiremos de inmediato una Nota Crédito electrónica (validada por la DIAN) aplicable a tu factura. Si es un insumo crítico para tu menú, coordinaremos un envío de reposición de emergencia.</p>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
                 </t>
             </t>
         </field>
