@@ -47,9 +47,9 @@
                             <div class="col-lg-2 col-md-4 d-none d-md-block">
                                 <h5 class="fw-bold mb-3 text-dark-green">Ayuda</h5>
                                 <ul class="list-unstyled d-flex flex-column gap-2 small text-muted-green">
-                                    <li><a href="/help" class="text-reset text-decoration-none hover-primary transition-base">Centro de Ayuda</a></li>
-                                    <li><a href="/shipping" class="text-reset text-decoration-none hover-primary transition-base">Envíos</a></li>
-                                    <li><a href="/returns" class="text-reset text-decoration-none hover-primary transition-base">Devoluciones</a></li>
+                                    <li><a href="/ayuda" class="text-reset text-decoration-none hover-primary transition-base">Centro de Ayuda</a></li>
+                                    <li><a href="/ayuda/envios" class="text-reset text-decoration-none hover-primary transition-base">Envíos</a></li>
+                                    <li><a href="/ayuda/devoluciones" class="text-reset text-decoration-none hover-primary transition-base">Devoluciones</a></li>
                                     <li><a href="/contactus" class="text-reset text-decoration-none hover-primary transition-base">Contacto</a></li>
                                     <li><a href="/politica-tratamiento-de-datos" class="text-reset text-decoration-none hover-primary transition-base">Política tratamiento de datos</a></li>
                                 </ul>
@@ -73,6 +73,15 @@
                                     <ul class="list-unstyled mt-3 d-flex flex-column gap-2 small text-muted-green ps-2">
                                          <li><a href="/Nosotros" class="text-reset text-decoration-none">Nosotros</a></li>
                                          <li><a href="/sustainability" class="text-reset text-decoration-none">Sostenibilidad</a></li>
+                                    </ul>
+                                </details>
+                                <details class="border-bottom pb-3">
+                                    <summary class="fw-bold text-dark-green d-flex justify-content-between align-items-center list-unstyled cursor-pointer">
+                                        Ayuda <i class="fa fa-angle-down"/>
+                                    </summary>
+                                    <ul class="list-unstyled mt-3 d-flex flex-column gap-2 small text-muted-green ps-2">
+                                         <li><a href="/ayuda" class="text-reset text-decoration-none">Centro de Ayuda</a></li>
+                                         <li><a href="/contactus" class="text-reset text-decoration-none">Contacto</a></li>
                                     </ul>
                                 </details>
                              </div>
