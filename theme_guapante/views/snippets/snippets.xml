@@ -22,6 +22,11 @@
                 <t t-snippet="theme_guapante.s_logistica_alianza" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_logistica_cobertura" t-thumbnail="/theme_guapante/static/description/icon.png"/>
                 <t t-snippet="theme_guapante.s_logistica_cta" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                
+                <!-- Ayuda Snippets -->
+                <t t-snippet="theme_guapante.s_ayuda_hero" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_ayuda_categories" t-thumbnail="/theme_guapante/static/description/icon.png"/>
+                <t t-snippet="theme_guapante.s_ayuda_cta" t-thumbnail="/theme_guapante/static/description/icon.png"/>
             </snippets>
         </xpath>
     </template>

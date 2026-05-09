@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_ayuda_categories" name="Ayuda Categorías">
+        <section class="guapante-ayuda-categories">
+            <div class="container">
+                <h2 class="section-title">Categorías de Ayuda</h2>
+                
+                <div class="row g-4">
+                    <!-- Categoría 1 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/pedidos" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-file-text-o"></i>
+                            </div>
+                            <div>
+                                <h3>Pedidos</h3>
+                                <p>Cómo realizar, modificar o reordenar.</p>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <!-- Categoría 2 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/pagos" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-credit-card"></i>
+                            </div>
+                            <div>
+                                <h3>Pago y Facturación</h3>
+                                <p>Proceso de pago, precios y facturación.</p>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <!-- Categoría 3 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/envios" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-truck"></i>
+                            </div>
+                            <div>
+                                <h3>Envío y Entrega</h3>
+                                <p>Tiempos, seguimiento y problemas.</p>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <!-- Categoría 4 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/productos" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-leaf"></i>
+                            </div>
+                            <div>
+                                <h3>Productos</h3>
+                                <p>Información, variantes y certificados.</p>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <!-- Categoría 5 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/cuenta" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-user-circle-o"></i>
+                            </div>
+                            <div>
+                                <h3>Mi Cuenta</h3>
+                                <p>Gestiona tu perfil y seguridad.</p>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <!-- Categoría 6 -->
+                    <div class="col-md-6 col-lg-4">
+                        <a href="/ayuda/devoluciones" class="category-card text-decoration-none">
+                            <div class="icon-wrapper">
+                                <i class="fa fa-reply"></i>
+                            </div>
+                            <div>
+                                <h3>Devoluciones</h3>
+                                <p>Políticas y proceso de devolución.</p>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

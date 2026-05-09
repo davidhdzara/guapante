@@ -27,6 +27,8 @@
         'views/layout/search_modal.xml',
         'views/pages/home.xml',
         'views/pages/logistica.xml',
+        'views/pages/ayuda.xml',
+        'views/pages/ayuda_subpages.xml',
         'views/shop/categories.xml',
         'views/shop/products_item.xml',
         'views/shop/product.xml',
@@ -56,6 +58,9 @@
         'views/snippets/s_logistica_alianza.xml',
         'views/snippets/s_logistica_cobertura.xml',
         'views/snippets/s_logistica_cta.xml',
+        'views/snippets/s_ayuda_hero.xml',
+        'views/snippets/s_ayuda_categories.xml',
+        'views/snippets/s_ayuda_cta.xml',
         'views/snippets/snippets.xml',
     ],
     'assets': {
@@ -81,6 +86,7 @@
             'theme_guapante/static/src/scss/pages/_portal_profile.scss', # Portal / Mi Perfil styles
             'theme_guapante/static/src/scss/pages/_portal_addresses.scss', # Portal / Mis Direcciones styles
             'theme_guapante/static/src/scss/pages/_logistica.scss', # Logistica styles
+            'theme_guapante/static/src/scss/pages/_ayuda.scss', # Centro de Ayuda styles
             # Snippets
             'theme_guapante/static/src/scss/snippets/_s_hero.scss',
             'theme_guapante/static/src/scss/snippets/_s_features.scss',

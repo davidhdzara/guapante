@@ -4,10 +4,48 @@ from odoo import http, _, models
 from odoo.http import request
 from odoo.addons.auth_signup.controllers.main import AuthSignupHome
 from odoo.exceptions import UserError
+import werkzeug
+import uuid
 
 _logger = logging.getLogger(__name__)
 
 class GuapanteAuthSignupHome(AuthSignupHome):
+
+    @http.route('/web/signup', type='http', auth='public', website=True, sitemap=False)
+    def web_auth_signup(self, *args, **kw):
+        qcontext = self.get_auth_signup_qcontext()
+        if not qcontext.get('token') and not qcontext.get('signup_enabled'):
+            raise werkzeug.exceptions.NotFound()
+
+        if 'error' not in qcontext and request.httprequest.method == 'POST':
+            try:
+                self.do_signup(qcontext)
+                
+                # Enviar correo de verificación (Reset Password)
+                user = request.env['res.users'].sudo().search([('login', '=', qcontext.get('login'))], limit=1)
+                if user:
+                    user.action_reset_password()
+                
+                # Renderizar éxito en lugar de autologuear
+                qcontext['successful_signup'] = True
+                response = request.render('auth_signup.signup', qcontext)
+                response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+                response.headers['Content-Security-Policy'] = "frame-ancestors 'self'"
+                return response
+
+            except UserError as e:
+                qcontext['error'] = e.args[0]
+            except (Exception) as e:
+                if request.env["res.users"].sudo().search([("login", "=", qcontext.get("login"))]):
+                    qcontext["error"] = _("Another user is already registered using this email address.")
+                else:
+                    _logger.error("%s", e)
+                    qcontext['error'] = _("Could not create a new account.")
+
+        response = request.render('auth_signup.signup', qcontext)
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['Content-Security-Policy'] = "frame-ancestors 'self'"
+        return response
 
     def get_auth_signup_qcontext(self):
         """ Add identification types to the signup context for the dropdown. """
@@ -68,14 +106,10 @@ class GuapanteAuthSignupHome(AuthSignupHome):
         if Partner.search_count([('email', '=', email)]) > 0:
              raise UserError(_("Another user is already registered using this email address."))
 
-        # 2. Check duplicate VAT (if provided)
+        # Check duplicate VAT (if provided)
         if vat:
             if Partner.search_count([('vat', '=', vat)]) > 0:
                 raise UserError(_("A partner with this Tax ID (NIT) already exists."))
-
-        # Password confirmation check
-        if values.get('password') != qcontext.get('confirm_password'):
-            raise UserError(_("Passwords do not match; please retype them."))
 
         # Language support
         supported_lang_codes = [code for code, _ in request.env['res.lang'].get_installed()]
@@ -90,7 +124,12 @@ class GuapanteAuthSignupHome(AuthSignupHome):
             signup_identification_type_id=values.get('l10n_latam_identification_type_id')
         )
 
-        # Call parent signup
-        self._signup_with_values(qcontext.get('token'), values)
+        # Generate random password for deferred password flow
+        token = qcontext.get('token')
+        values['password'] = str(uuid.uuid4())
+
+        # Call model signup directly without authenticating the session
+        request.env['res.users'].sudo().signup(values, token)
+        request.env.cr.commit()
 
 

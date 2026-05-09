@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Plantilla base para artículos/subpáginas de ayuda -->
+    <template id="ayuda_article_layout" name="Layout Artículo de Ayuda">
+        <t t-call="website.layout">
+            <div id="wrap" class="oe_structure oe_empty">
+                <section class="guapante-ayuda-article">
+                    <div class="container">
+                        <div class="row justify-content-center">
+                            <div class="col-lg-8">
+                                <!-- Breadcrumb -->
+                                <div class="breadcrumb-ayuda">
+                                    <a href="/ayuda">Centro de Ayuda</a>
+                                    <span class="separator">/</span>
+                                    <span class="current"><t t-esc="article_title"/></span>
+                                </div>
+                                
+                                <!-- Header -->
+                                <div class="article-header text-center">
+                                    <div class="category-icon">
+                                        <i t-att-class="article_icon"></i>
+                                    </div>
+                                    <h1><t t-esc="article_title"/></h1>
+                                    <p><t t-esc="article_subtitle"/></p>
+                                </div>
+                                
+                                <!-- Contenido Editable Odoo (FAQ Accordion) -->
+                                <div class="faq-list oe_structure">
+                                    <!-- Aquí el usuario de Odoo puede arrastrar el snippet de Acordeón -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <t t-call="theme_guapante.s_ayuda_cta"/>
+            </div>
+        </t>
+    </template>
+
+    <!-- Subpágina 1: Pedidos -->
+    <record id="page_ayuda_pedidos" model="website.page">
+        <field name="name">Ayuda: Pedidos</field>
+        <field name="url">/ayuda/pedidos</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_pedidos</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_pedidos">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Pedidos</t>
+                    <t t-set="article_subtitle">Cómo realizar, modificar o reordenar tus compras.</t>
+                    <t t-set="article_icon">fa fa-file-text-o</t>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Subpágina 2: Pagos -->
+    <record id="page_ayuda_pagos" model="website.page">
+        <field name="name">Ayuda: Pago y Facturación</field>
+        <field name="url">/ayuda/pagos</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_pagos</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_pagos">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Pago y Facturación</t>
+                    <t t-set="article_subtitle">Todo sobre métodos de pago, retenciones y facturas electrónicas.</t>
+                    <t t-set="article_icon">fa fa-credit-card</t>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Subpágina 3: Envíos -->
+    <record id="page_ayuda_envios" model="website.page">
+        <field name="name">Ayuda: Envío y Entrega</field>
+        <field name="url">/ayuda/envios</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_envios</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_envios">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Envío y Entrega</t>
+                    <t t-set="article_subtitle">Tiempos de tránsito, rutas de nuestra flota y rastreo.</t>
+                    <t t-set="article_icon">fa fa-truck</t>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Subpágina 4: Productos -->
+    <record id="page_ayuda_productos" model="website.page">
+        <field name="name">Ayuda: Productos</field>
+        <field name="url">/ayuda/productos</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_productos</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_productos">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Productos</t>
+                    <t t-set="article_subtitle">Certificaciones de calidad, frescura y origen.</t>
+                    <t t-set="article_icon">fa fa-leaf</t>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Subpágina 5: Cuenta -->
+    <record id="page_ayuda_cuenta" model="website.page">
+        <field name="name">Ayuda: Mi Cuenta</field>
+        <field name="url">/ayuda/cuenta</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_cuenta</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_cuenta">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Mi Cuenta</t>
+                    <t t-set="article_subtitle">Recuperar contraseña, actualizar datos y direcciones.</t>
+                    <t t-set="article_icon">fa fa-user-circle-o</t>
+                </t>
+            </t>
+        </field>
+    </record>
+
+    <!-- Subpágina 6: Devoluciones -->
+    <record id="page_ayuda_devoluciones" model="website.page">
+        <field name="name">Ayuda: Devoluciones</field>
+        <field name="url">/ayuda/devoluciones</field>
+        <field name="type">qweb</field>
+        <field name="key">theme_guapante.page_ayuda_devoluciones</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.page_ayuda_devoluciones">
+                <t t-call="theme_guapante.ayuda_article_layout">
+                    <t t-set="article_title">Devoluciones</t>
+                    <t t-set="article_subtitle">Garantía de frescura y política de reclamos.</t>
+                    <t t-set="article_icon">fa fa-reply</t>
+                </t>
+            </t>
+        </field>
+    </record>
+</odoo>

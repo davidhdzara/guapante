@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_ayuda_hero" name="Ayuda Hero Buscador">
+        <section class="guapante-ayuda-hero">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-lg-8">
+                        <h1 class="display-4 title-ayuda">¿Cómo podemos ayudarte?</h1>
+                        
+                        <div class="search-wrapper">
+                            <div class="search-input-group">
+                                <i class="fa fa-search"></i>
+                                <input type="text" id="ayudaSearchInput" placeholder="Busca respuestas (ej. 'tiempos de entrega')" autocomplete="off"/>
+                            </div>
+                            <!-- JS Dropdown para resultados de búsqueda -->
+                            <div class="search-results-dropdown" id="ayudaSearchResults">
+                                <!-- Resultados inyectados por JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+</odoo>

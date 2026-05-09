@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="s_ayuda_cta" name="Ayuda CTA">
+        <section class="guapante-ayuda-cta">
+            <div class="container">
+                <h3>¿No encuentras lo que buscas?</h3>
+                <p>Nuestro equipo de soporte está aquí para ayudarte. Ponte en contacto con nosotros.</p>
+                <a href="/contactus" class="btn btn-contact text-decoration-none">Contactar Soporte</a>
+            </div>
+        </section>
+    </template>
+</odoo>
