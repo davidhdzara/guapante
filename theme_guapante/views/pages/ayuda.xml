@@ -4,6 +4,7 @@
         <field name="name">Centro de Ayuda</field>
         <field name="url">/ayuda</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda">

@@ -88,6 +88,7 @@
         <field name="name">Ayuda: Pedidos</field>
         <field name="url">/ayuda/pedidos</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_pedidos</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_pedidos">
@@ -145,6 +146,7 @@
         <field name="name">Ayuda: Pago y Facturación</field>
         <field name="url">/ayuda/pagos</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_pagos</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_pagos">
@@ -195,6 +197,7 @@
         <field name="name">Ayuda: Envío y Entrega</field>
         <field name="url">/ayuda/envios</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_envios</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_envios">
@@ -245,6 +248,7 @@
         <field name="name">Ayuda: Productos</field>
         <field name="url">/ayuda/productos</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_productos</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_productos">
@@ -295,6 +299,7 @@
         <field name="name">Ayuda: Mi Cuenta</field>
         <field name="url">/ayuda/cuenta</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_cuenta</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_cuenta">
@@ -345,6 +350,7 @@
         <field name="name">Ayuda: Devoluciones</field>
         <field name="url">/ayuda/devoluciones</field>
         <field name="type">qweb</field>
+        <field name="is_published">True</field>
         <field name="key">theme_guapante.page_ayuda_devoluciones</field>
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_devoluciones">
