@@ -18,7 +18,7 @@
                         
                         <!-- 1. Logo -->
                         <a href="/" class="navbar-brand d-flex align-items-center gap-2 me-auto me-lg-5">
-                            <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Logo" width="110" height="110" class="d-inline-block align-text-top"/>
+                            <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Logo" class="d-inline-block align-text-top guapante-header-logo"/>
                             <span class="brand-text fw-bold text-dark fs-3 tracking-tight d-none">Guapante</span>
                         </a>
 

@@ -10,6 +10,18 @@ header.o_header_affixed,
     z-index: 1000;
     opacity: 1 !important; // Ensure no opacity changes happen
 
+    .guapante-header-logo {
+        height: 100px; /* Tamaño base */
+        width: auto;
+        max-width: 150px;
+        object-fit: contain;
+        transition: all 0.3s ease;
+    }
+
+    // Odoo sticky navbar reduce el padding y a veces impone un max-height
+    &.o_header_is_scrolled .guapante-header-logo {
+        height: 60px; /* Tamaño reducido al hacer scroll */
+    }
 
     .navbar {
         padding: 0.75rem 0;
