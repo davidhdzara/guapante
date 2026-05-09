@@ -9,16 +9,15 @@
                             <!-- Col 1: Brand -->
                             <div class="col-lg-3 col-md-12">
                                 <div class="d-flex align-items-center gap-2 mb-3">
-                                    <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Guapante" height="32" class="d-block"/>
-                                    <span class="fw-bold fs-5 tracking-tight text-dark-green">Guapante</span>
+                                    <img src="/theme_guapante/static/src/img/logo_guapante.png" alt="Guapante" width="80" height="80" class="d-block"/>
+                                    <span class="fw-bold fs-5 tracking-tight text-dark-green d-none">Guapante</span>
                                 </div>
                                 <p class="text-muted-green small mb-4">
                                     Llevamos lo mejor del campo colombiano a tu hogar o negocio con transparencia, frescura y sostenibilidad.
                                 </p>
                                 <div class="d-flex gap-3">
-                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-instagram fs-5"/></a>
-                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-facebook fs-5"/></a>
-                                    <a href="#" class="text-muted-green hover-primary transition-base"><i class="fa fa-whatsapp fs-5"/></a>
+                                    <a href="https://www.instagram.com/donguapante/" class="text-muted-green hover-primary transition-base" target="_blank"><i class="fa fa-instagram fs-5"/></a>
+                                    <a href="https://wa.me/+573018101132" class="text-muted-green hover-primary transition-base" target="_blank"><i class="fa fa-whatsapp fs-5"/></a>
                                 </div>
                             </div>
                             
@@ -37,7 +36,7 @@
                             <div class="col-lg-2 col-md-4 d-none d-md-block">
                                 <h5 class="fw-bold mb-3 text-dark-green">Compañía</h5>
                                 <ul class="list-unstyled d-flex flex-column gap-2 small text-muted-green">
-                                    <li><a href="/about" class="text-reset text-decoration-none hover-primary transition-base">Nosotros</a></li>
+                                    <li><a href="/Nosotros" class="text-reset text-decoration-none hover-primary transition-base">Nosotros</a></li>
                                     <li><a href="/farmers" class="text-reset text-decoration-none hover-primary transition-base">Agricultores</a></li>
                                     <li><a href="/sustainability" class="text-reset text-decoration-none hover-primary transition-base">Sostenibilidad</a></li>
                                     <li><a href="/jobs" class="text-reset text-decoration-none hover-primary transition-base">Empleo</a></li>
@@ -52,6 +51,7 @@
                                     <li><a href="/shipping" class="text-reset text-decoration-none hover-primary transition-base">Envíos</a></li>
                                     <li><a href="/returns" class="text-reset text-decoration-none hover-primary transition-base">Devoluciones</a></li>
                                     <li><a href="/contactus" class="text-reset text-decoration-none hover-primary transition-base">Contacto</a></li>
+                                    <li><a href="/Política tratamiento de datos" class="text-reset text-decoration-none hover-primary transition-base">Política tratamiento de datos</a></li>
                                 </ul>
                             </div>
                             
@@ -71,7 +71,7 @@
                                         Compañía <i class="fa fa-angle-down"/>
                                     </summary>
                                     <ul class="list-unstyled mt-3 d-flex flex-column gap-2 small text-muted-green ps-2">
-                                         <li><a href="/about" class="text-reset text-decoration-none">Nosotros</a></li>
+                                         <li><a href="/Nosotros" class="text-reset text-decoration-none">Nosotros</a></li>
                                          <li><a href="/sustainability" class="text-reset text-decoration-none">Sostenibilidad</a></li>
                                     </ul>
                                 </details>
@@ -81,8 +81,8 @@
                         
                         <!-- Bottom Bar -->
                         <div class="border-top border-light pt-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 text-muted-green small">
-                            <p class="mb-0">© 2024 Comercializadora Guapante S.A.S.</p>
-                            <p class="mb-0">Hecho con <span class="text-danger">❤</span> en Colombia</p>
+                            <p class="mb-0">© 2026 Comercializadora Guapante S.A.S.</p>
+                            <p class="mb-0">Sitio web Realizado por <a href="https://www.insotech.it" target="_blank" class="text-muted-green text-decoration-none fw-bold">InSoTech</a></p>
                         </div>
                     </div>
                 </section>
