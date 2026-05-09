@@ -113,6 +113,18 @@ class AccountMove(models.Model):
              "confirmar. Se restaura cuando la DIAN acepta la factura."
     )
 
+    insotech_dian_xml_sent = fields.Boolean(
+        string="XML Enviado a DIAN",
+        default=False,
+        copy=False,
+        readonly=True,
+        help="Se marca como True justo ANTES de enviar el XML a la DIAN. "
+             "Una vez marcado, el consecutivo reservado NO puede ser "
+             "reasignado a otra factura, incluso si el envío falla por "
+             "timeout. Esto previene la duplicación de consecutivos "
+             "cuando la DIAN acepta pero Odoo no recibe la respuesta."
+    )
+
     insotech_is_co_edi = fields.Boolean(
         string="Es Factura EDI Colombiana",
         compute='_compute_insotech_is_co_edi',

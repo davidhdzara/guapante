@@ -201,41 +201,88 @@ class L10nCoDianDocument(models.Model):
         )
 
     def _recover_from_regla_90(self, move) -> bool:
-        """Attempt to recover from Regla 90 using a prior accepted doc.
+        """Attempt to recover from Regla 90 using a prior accepted
+        OR sending_failed doc.
 
         When DIAN returns "Documento procesado anteriormente", it means
-        a previous submission was accepted. We look for that accepted
-        document and rescue the CUFE from it.
+        a previous submission was accepted. We look for evidence in:
+
+        1. A prior ``invoice_accepted`` doc (cleanest case).
+        2. A prior ``invoice_sending_failed`` doc (timeout case):
+           the XML reached the DIAN and was accepted, but Odoo
+           never received the acknowledgement. The doc's attachment
+           contains the signed XML (needed for QR / PDF generation).
+           We PROMOTE the doc to ``invoice_accepted`` instead of
+           creating a new empty one — this preserves the attachment.
 
         :param move: the account.move stuck in limbo
         :returns: True if recovery succeeded, False otherwise
         """
+        from markupsafe import Markup
+
+        # ── Strategy 1: prior accepted doc (cleanest) ──
         accepted_doc = self.search([
             ('move_id', '=', move.id),
             ('state', '=', 'invoice_accepted'),
         ], limit=1, order='id desc')
 
-        if not accepted_doc:
-            _logger.warning(
-                "Insotech Regla 90: No prior accepted document "
-                "found for move %s. Cannot recover.",
-                move.name,
+        if accepted_doc and accepted_doc.identifier:
+            return self._finalize_regla_90_recovery(
+                move, accepted_doc, source='accepted',
             )
-            return False
 
-        identifier = accepted_doc.identifier
-        if not identifier:
-            _logger.warning(
-                "Insotech Regla 90: Accepted doc %d for move %s "
-                "has no identifier. Cannot recover.",
-                accepted_doc.id, move.name,
+        # ── Strategy 2: prior sending_failed doc (timeout) ──
+        # The DIAN received and processed the invoice during a
+        # request that timed out in Odoo. The doc's attachment
+        # holds the signed XML → we promote it to preserve
+        # the attachment for QR code and PDF generation.
+        failed_doc = self.search([
+            ('move_id', '=', move.id),
+            ('state', '=', 'invoice_sending_failed'),
+        ], limit=1, order='id desc')
+
+        if failed_doc and failed_doc.identifier:
+            _logger.info(
+                "Insotech Regla 90: TIMEOUT RECOVERY for "
+                "move %s — promoting sending_failed doc %d "
+                "to accepted (CUFE: %s...).",
+                move.name, failed_doc.id,
+                failed_doc.identifier[:20],
             )
-            return False
+            # Promote the doc: change state, keep attachment
+            failed_doc.write({'state': 'invoice_accepted'})
+            return self._finalize_regla_90_recovery(
+                move, failed_doc, source='timeout',
+            )
+
+        # ── No evidence found ──
+        _logger.warning(
+            "Insotech Regla 90: No prior accepted or "
+            "sending_failed document found for move %s. "
+            "Cannot auto-recover.",
+            move.name,
+        )
+        return False
+
+    def _finalize_regla_90_recovery(self, move, doc, source='accepted'):
+        """Shared finalization for Regla 90 recovery.
+
+        Writes the CUFE, cleans rejected docs, triggers the
+        acceptance flow, and posts a chatter notification.
+
+        :param move: the account.move to recover
+        :param doc: the l10n_co_dian.document with the real CUFE
+        :param source: 'accepted' or 'timeout' (for logging)
+        :returns: True
+        """
+        from markupsafe import Markup
+
+        identifier = doc.identifier
 
         _logger.info(
-            "Insotech Regla 90: RECOVERY for move %s — "
-            "rescued CUFE %s... from doc %d.",
-            move.name, identifier[:20], accepted_doc.id,
+            "Insotech Regla 90: RECOVERY (%s) for move %s — "
+            "CUFE %s... from doc %d.",
+            source, move.name, identifier[:20], doc.id,
         )
 
         # Write the CUFE to the invoice
@@ -246,7 +293,7 @@ class L10nCoDianDocument(models.Model):
                 'l10n_co_edi_cufe_cude_ref': identifier,
             })
 
-        # Remove the rejected duplicate documents
+        # Remove rejected duplicate documents (NOT the rescued one)
         rejected_docs = self.search([
             ('move_id', '=', move.id),
             ('state', '=', 'invoice_rejected'),
@@ -264,15 +311,25 @@ class L10nCoDianDocument(models.Model):
 
         # Log recovery in chatter
         try:
-            from markupsafe import Markup
-            move.message_post(
-                body=Markup(
+            if source == 'timeout':
+                body = Markup(
+                    '🔄 <b>Regla 90 + Timeout Recuperada</b>'
+                    '<br/>La DIAN confirmó que esta factura fue '
+                    'procesada durante un timeout anterior.'
+                    '<br/>CUFE rescatado: <code>%s</code>'
+                    '<br/>El XML firmado original se conservó '
+                    'para la generación del PDF con QR.'
+                ) % identifier[:30]
+            else:
+                body = Markup(
                     '🔄 <b>Regla 90 Recuperada</b>'
                     '<br/>La DIAN indicó que esta factura ya '
                     'fue procesada anteriormente.'
                     '<br/>Se rescató el CUFE del envío '
                     'original: <code>%s</code>'
-                ) % identifier[:30],
+                ) % identifier[:30]
+            move.message_post(
+                body=body,
                 message_type='notification',
                 subtype_xmlid='mail.mt_note',
             )

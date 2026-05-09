@@ -194,10 +194,13 @@ class AccountMovePreInv(models.Model):
             """, (param_key,))
             counter = 0
 
-        # ── Step 2: Safety scan — pending invoices ──
+        # ── Step 2: Safety scan — pending/sent invoices ──
         # In case reserved numbers were assigned before the counter
         # was persisted (e.g. backup restore, manual edits), scan
         # pending moves to find the actual highest.
+        # ALSO includes invoices where the XML was already sent to
+        # DIAN (insotech_dian_xml_sent=True) — these consecutives
+        # must NEVER be reused, even if the DIAN response was lost.
         highest = counter
 
         self.env.cr.execute("""
@@ -206,7 +209,10 @@ class AccountMovePreInv(models.Model):
              WHERE journal_id = %s
                AND insotech_reserved_dian_name IS NOT NULL
                AND insotech_reserved_dian_name != ''
-               AND insotech_dian_status IN ('pending', 'rejected')
+               AND (
+                   insotech_dian_status IN ('pending', 'rejected')
+                   OR insotech_dian_xml_sent = TRUE
+               )
                AND id != %s
         """, (journal.id, move.id or 0))
 

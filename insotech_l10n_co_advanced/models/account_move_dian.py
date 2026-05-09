@@ -520,11 +520,33 @@ class AccountMoveDian(models.Model):
         Injects license validation and name swap before the native
         DIAN submission. On failure, restores the PRE-INV name.
 
+        PROTECTION: Before sending, marks ``insotech_dian_xml_sent``
+        and flushes to DB. This ensures the consecutive is permanently
+        marked as "used" even if the DIAN request times out and
+        Odoo's transaction rolls back partially.
+
         :param xml: The UBL XML bytes to send to DIAN.
         :returns: l10n_co_dian.document record.
         """
         self._insotech_validate_license_before_dian()
         self._insotech_swap_to_dian_name()
+
+        # ── Mark XML as sent BEFORE the HTTP call ──
+        # This flag persists even on timeout/rollback and prevents
+        # the consecutive from being reassigned to another invoice.
+        for move in self:
+            if move.insotech_is_co_edi and not move.insotech_dian_xml_sent:
+                move.with_context(
+                    skip_account_move_synchronization=True,
+                ).write({'insotech_dian_xml_sent': True})
+                _logger.info(
+                    "Insotech: Marked XML as sent for move %s "
+                    "(reserved: %s) before DIAN submission.",
+                    move.id, move.insotech_reserved_dian_name,
+                )
+        # Flush to DB to survive potential timeout/rollback
+        self.env.cr.flush()
+
         try:
             return super()._l10n_co_dian_send_invoice_xml(xml)
         except Exception:

@@ -35,6 +35,7 @@ class AccountMoveDraft(models.Model):
                 )
                 move.insotech_pre_inv_name = False
                 move.insotech_dian_status = 'not_applicable'
+                move.insotech_dian_xml_sent = False
                 # FIX: Same defense as 'rejected' — reset to '/' so
                 # SequenceMixin generates a fresh journal sequence on
                 # re-confirm, even if reserved was contaminated.
@@ -50,6 +51,7 @@ class AccountMoveDraft(models.Model):
                 )
                 move.insotech_pre_inv_name = False
                 move.insotech_dian_status = 'not_applicable'
+                move.insotech_dian_xml_sent = False
                 # FIX: Reset name to '/' instead of restoring the
                 # reserved_dian_name (which may be a contaminated
                 # PRE-INV string). This forces SequenceMixin to
