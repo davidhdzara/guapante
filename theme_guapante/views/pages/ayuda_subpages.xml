@@ -3,36 +3,85 @@
     <!-- Plantilla base para artículos/subpáginas de ayuda -->
     <template id="ayuda_article_layout" name="Layout Artículo de Ayuda">
         <t t-call="website.layout">
-            <div id="wrap" class="oe_structure oe_empty">
-                <section class="guapante-ayuda-article">
-                    <div class="container">
-                        <div class="row justify-content-center">
-                            <div class="col-lg-8">
-                                <!-- Breadcrumb -->
-                                <div class="breadcrumb-ayuda">
-                                    <a href="/ayuda">Centro de Ayuda</a>
-                                    <span class="separator">/</span>
-                                    <span class="current"><t t-esc="article_title"/></span>
+            <div id="wrap" class="oe_structure oe_empty bg-background-light">
+                <main class="guapante-ayuda-article-container">
+                    <div class="container py-5">
+                        <!-- Breadcrumb -->
+                        <div class="mb-5">
+                            <nav aria-label="Breadcrumb" class="breadcrumb-ayuda">
+                                <ol class="d-flex align-items-center gap-2 list-unstyled mb-0">
+                                    <li><a href="/ayuda" class="text-decoration-none">Centro de Ayuda</a></li>
+                                    <li><i class="fa fa-chevron-right mx-2 text-muted" style="font-size: 0.8rem;"></i></li>
+                                    <li><a href="#" class="text-decoration-none"><t t-esc="category_name"/></a></li>
+                                    <li><i class="fa fa-chevron-right mx-2 text-muted" style="font-size: 0.8rem;"></i></li>
+                                    <li class="font-weight-bold text-dark"><t t-esc="article_title"/></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        
+                        <div class="row g-5">
+                            <!-- Sidebar -->
+                            <aside class="col-lg-3 d-none d-lg-block">
+                                <div class="sticky-sidebar">
+                                    <h3 class="h5 font-weight-bold mb-4">Categorías</h3>
+                                    <ul class="list-unstyled sidebar-nav mb-5">
+                                        <li><a href="/ayuda/pedidos" t-attf-class="sidebar-link #{'active' if category_name == 'Pedidos' else ''}">Pedidos</a></li>
+                                        <li><a href="/ayuda/pagos" t-attf-class="sidebar-link #{'active' if category_name == 'Pago y Facturación' else ''}">Pagos y Facturación</a></li>
+                                        <li><a href="/ayuda/envios" t-attf-class="sidebar-link #{'active' if category_name == 'Envío y Entrega' else ''}">Envíos y Entregas</a></li>
+                                        <li><a href="/ayuda/productos" t-attf-class="sidebar-link #{'active' if category_name == 'Productos' else ''}">Productos</a></li>
+                                        <li><a href="/ayuda/cuenta" t-attf-class="sidebar-link #{'active' if category_name == 'Mi Cuenta' else ''}">Mi Cuenta</a></li>
+                                        <li><a href="/ayuda/devoluciones" t-attf-class="sidebar-link #{'active' if category_name == 'Devoluciones' else ''}">Devoluciones</a></li>
+                                    </ul>
+                                    
+                                    <h3 class="h5 font-weight-bold mb-4">Artículos Relacionados</h3>
+                                    <ul class="list-unstyled sidebar-nav text-muted">
+                                        <li><a href="#" class="sidebar-link">¿Puedo modificar mi pedido?</a></li>
+                                        <li><a href="#" class="sidebar-link">¿Cómo rastrear mi entrega?</a></li>
+                                        <li><a href="#" class="sidebar-link">Métodos de pago aceptados</a></li>
+                                        <li><a href="#" class="sidebar-link">Política de devoluciones</a></li>
+                                    </ul>
                                 </div>
-                                
-                                <!-- Header -->
-                                <div class="article-header text-center">
-                                    <div class="category-icon">
-                                        <i t-att-class="article_icon"></i>
+                            </aside>
+                            
+                            <!-- Main Content -->
+                            <article class="col-lg-9">
+                                <div class="article-content-wrapper">
+                                    <header class="article-header border-bottom pb-4 mb-4">
+                                        <h1 class="display-5 font-weight-bold"><t t-esc="article_title"/></h1>
+                                        <p class="text-muted mt-2">Actualizado hace 1 semana</p>
+                                    </header>
+                                    
+                                    <div class="oe_structure oe_empty article-prose">
+                                        <!-- Odoo users can drag and drop snippets here -->
+                                        <p class="lead mb-4">Selecciona esta área y haz clic en Editar para agregar el contenido de tu artículo. Puedes usar texto, imágenes o el bloque de pasos de Guapante.</p>
                                     </div>
-                                    <h1><t t-esc="article_title"/></h1>
-                                    <p><t t-esc="article_subtitle"/></p>
+                                    
+                                    <footer class="article-footer border-top pt-4 mt-5">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+                                                <p class="font-weight-bold mb-3">¿Fue útil esta información?</p>
+                                                <div class="d-flex justify-content-center justify-content-md-start gap-2">
+                                                    <button class="btn btn-outline-success rounded-pill d-flex align-items-center gap-2">
+                                                        <i class="fa fa-thumbs-up"></i> Sí
+                                                    </button>
+                                                    <button class="btn btn-outline-danger rounded-pill d-flex align-items-center gap-2">
+                                                        <i class="fa fa-thumbs-down"></i> No
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6 text-center text-md-end">
+                                                <p class="text-muted small mb-2">¿No encontraste lo que buscabas?</p>
+                                                <a href="/contactus" class="font-weight-bold text-success text-decoration-none d-inline-flex align-items-center gap-2">
+                                                    <i class="fa fa-headphones"></i> Contactar a Soporte
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </footer>
                                 </div>
-                                
-                                <!-- Contenido Editable Odoo (FAQ Accordion) -->
-                                <div class="faq-list oe_structure">
-                                    <!-- Aquí el usuario de Odoo puede arrastrar el snippet de Acordeón -->
-                                </div>
-                            </div>
+                            </article>
                         </div>
                     </div>
-                </section>
-                <t t-call="theme_guapante.s_ayuda_cta"/>
+                </main>
             </div>
         </t>
     </template>
@@ -46,9 +95,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_pedidos">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Pedidos</t>
-                    <t t-set="article_subtitle">Cómo realizar, modificar o reordenar tus compras.</t>
-                    <t t-set="article_icon">fa fa-file-text-o</t>
+                    <t t-set="category_name">Pedidos</t>
+                    <t t-set="article_title">¿Cómo realizar un pedido?</t>
                 </t>
             </t>
         </field>
@@ -63,9 +111,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_pagos">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Pago y Facturación</t>
-                    <t t-set="article_subtitle">Todo sobre métodos de pago, retenciones y facturas electrónicas.</t>
-                    <t t-set="article_icon">fa fa-credit-card</t>
+                    <t t-set="category_name">Pago y Facturación</t>
+                    <t t-set="article_title">Métodos de pago aceptados</t>
                 </t>
             </t>
         </field>
@@ -80,9 +127,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_envios">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Envío y Entrega</t>
-                    <t t-set="article_subtitle">Tiempos de tránsito, rutas de nuestra flota y rastreo.</t>
-                    <t t-set="article_icon">fa fa-truck</t>
+                    <t t-set="category_name">Envío y Entrega</t>
+                    <t t-set="article_title">Tiempos de entrega y zonas de cobertura</t>
                 </t>
             </t>
         </field>
@@ -97,9 +143,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_productos">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Productos</t>
-                    <t t-set="article_subtitle">Certificaciones de calidad, frescura y origen.</t>
-                    <t t-set="article_icon">fa fa-leaf</t>
+                    <t t-set="category_name">Productos</t>
+                    <t t-set="article_title">Garantía de frescura</t>
                 </t>
             </t>
         </field>
@@ -114,9 +159,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_cuenta">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Mi Cuenta</t>
-                    <t t-set="article_subtitle">Recuperar contraseña, actualizar datos y direcciones.</t>
-                    <t t-set="article_icon">fa fa-user-circle-o</t>
+                    <t t-set="category_name">Mi Cuenta</t>
+                    <t t-set="article_title">¿Cómo recuperar mi contraseña?</t>
                 </t>
             </t>
         </field>
@@ -131,9 +175,8 @@
         <field name="arch" type="xml">
             <t t-name="theme_guapante.page_ayuda_devoluciones">
                 <t t-call="theme_guapante.ayuda_article_layout">
-                    <t t-set="article_title">Devoluciones</t>
-                    <t t-set="article_subtitle">Garantía de frescura y política de reclamos.</t>
-                    <t t-set="article_icon">fa fa-reply</t>
+                    <t t-set="category_name">Devoluciones</t>
+                    <t t-set="article_title">Política de devoluciones</t>
                 </t>
             </t>
         </field>
