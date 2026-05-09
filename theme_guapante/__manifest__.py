@@ -29,6 +29,7 @@
         'views/pages/logistica.xml',
         'views/pages/ayuda.xml',
         'views/pages/ayuda_subpages.xml',
+        'views/pages/contactus.xml',
         'views/shop/categories.xml',
         'views/shop/products_item.xml',
         'views/shop/product.xml',
