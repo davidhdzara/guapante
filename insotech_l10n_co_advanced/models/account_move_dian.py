@@ -544,8 +544,8 @@ class AccountMoveDian(models.Model):
                     "(reserved: %s) before DIAN submission.",
                     move.id, move.insotech_reserved_dian_name,
                 )
-        # Flush to DB to survive potential timeout/rollback
-        self.env.cr.flush()
+        # Flush ORM cache to SQL before the HTTP call
+        self.env.flush_all()
 
         try:
             return super()._l10n_co_dian_send_invoice_xml(xml)
