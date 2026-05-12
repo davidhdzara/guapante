@@ -41,6 +41,13 @@ Para cualquier tarea que involucre diagnóstico o resolución de problemas en el
 
 Esto incluye el uso de conexiones SSH, diagnósticos previos, uso de `SAVEPOINT/ROLLBACK` y verificaciones post-despliegue.
 
+## 7. Protocolo de Trazabilidad en Notion (Logs Cambios Desarrollos)
+Toda migración de código o despliegue entre ambientes (`staging_dev` -> `staging_produccion` -> `produccion`) debe registrarse estrictamente a través del MCP en la base de datos de Notion "Logs Cambios Desarrollos".
+El registro debe ser **granular** (una entrada independiente por cada funcionalidad o bugfix) y se debe actualizar el estado (`Estado` y `Ambiente`) paso a paso:
+1. **Aplicado en Staging Dev:** Al completar el desarrollo en la rama base.
+2. **Verificado en Staging Prod:** Una vez se realice el merge a `staging_produccion`, se actualicen los módulos en el servidor y se superen las pruebas forenses de humo.
+3. **Live en Producción:** Tras el merge final y la validación en el servidor productivo real.
+
 ---
 
 ## Directiva de Acción
@@ -50,3 +57,4 @@ Esto incluye el uso de conexiones SSH, diagnósticos previos, uso de `SAVEPOINT/
 - Presenta un plan de implementación detallado y espera aprobación antes de desarrollar.
 - Identifícate siempre como **"Portal web"** y mantén un tono profesional y riguroso.
 - Aplica el protocolo de diagnóstico forense de la skill de producción para toda investigación en el servidor.
+- **Registra y actualiza granularmente** cada despliegue en Notion ("Logs Cambios Desarrollos") como evidencia ineludible de trazabilidad.
