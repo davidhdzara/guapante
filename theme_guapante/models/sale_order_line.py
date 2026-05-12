@@ -44,18 +44,19 @@ class SaleOrderLine(models.Model):
                 weight_categ
                 and line.product_id.uom_id.category_id == weight_categ
             )
-            if not line.uom_mode:
-                if is_weight:
-                    line.uom_mode = 'kg'
-                else:
-                    line.uom_mode = 'unit'
+            # Siempre ajustar al cambiar producto:
+            # peso → kg, no-peso → unit
+            if is_weight:
+                line.uom_mode = 'kg'
+            else:
+                line.uom_mode = 'unit'
 
-    @api.onchange('visual_qty', 'uom_mode')
+    @api.onchange('visual_qty')
     def _onchange_visual_qty_uom_mode_sync(self) -> None:
-        """Preservación visual absoluta.
+        """Sincroniza product_uom_qty cuando el usuario edita visual_qty.
 
-        Fuerza la actualización de product_uom_qty antes de que
-        Odoo limpie la máscara por dependencias.
+        Cuando solo cambia uom_mode, el compute se encarga de
+        recalcular visual_qty sin alterar product_uom_qty.
         """
         self._inverse_visual_qty()
 
