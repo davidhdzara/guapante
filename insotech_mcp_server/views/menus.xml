@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Root menu under Contabilidad -->
+    <!-- Root menu under Ajustes (Settings) -->
     <menuitem
         id="menu_mcp_root"
-        name="MCP — Asistente IA"
-        parent="account.menu_finance"
+        name="Integraciones IA"
+        parent="base.menu_administration"
         sequence="100"
         groups="insotech_mcp_server.group_mcp_admin"
     />
