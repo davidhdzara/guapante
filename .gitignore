@@ -21,6 +21,7 @@
 !guapante_mcp_server/**
 !guapante_wa_assistant/
 !guapante_wa_assistant/**
+!requirements.txt
 
 # Always ignore compiled Python files
 __pycache__/
