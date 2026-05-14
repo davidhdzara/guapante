@@ -334,3 +334,268 @@ class GuapanteMcpTools(models.AbstractModel):
             'lines': lines,
             'invoices': invoices,
         }
+
+    # ------------------------------------------------------------------
+    # Product catalog tools
+    # ------------------------------------------------------------------
+
+    @api.model
+    def tool_search_products(self, query, limit=10):
+        """Search products and return their attributes and available UoMs."""
+        templates = self.env['product.template'].sudo().search(
+            [
+                ('name', 'ilike', query),
+                ('sale_ok', '=', True),
+                ('active', '=', True),
+            ],
+            limit=min(int(limit), 20),
+            order='name asc',
+        )
+        result = []
+        for tmpl in templates:
+            attributes = [
+                {
+                    'name': line.attribute_id.name,
+                    'values': line.value_ids.mapped('name'),
+                }
+                for line in tmpl.attribute_line_ids
+            ]
+            uom_category = tmpl.uom_id.category_id
+            available_uoms = self.env['uom.uom'].sudo().search(
+                [('category_id', '=', uom_category.id), ('active', '=', True)],
+                order='factor asc',
+            )
+            result.append({
+                'id': tmpl.id,
+                'name': tmpl.name,
+                'default_uom': tmpl.uom_id.name,
+                'available_uoms': available_uoms.mapped('name'),
+                'attributes': attributes,
+                'has_variants': bool(attributes),
+            })
+        return {'products': result, 'count': len(result)}
+
+    # ------------------------------------------------------------------
+    # Order write tools
+    # ------------------------------------------------------------------
+
+    @api.model
+    def tool_get_active_orders(self, partner_id):
+        """Return confirmed orders where picking has not started yet."""
+        orders = self.env['sale.order'].sudo().search(
+            [('partner_id', '=', int(partner_id)), ('state', '=', 'sale')],
+            order='date_order desc',
+        )
+        active = []
+        for order in orders:
+            picking_started = any(
+                p.state in ('assigned', 'done')
+                for p in order.picking_ids
+            )
+            if not picking_started:
+                active.append({
+                    'id': order.id,
+                    'name': order.name,
+                    'date': str(order.date_order or ''),
+                    'amount_total': order.amount_total,
+                    'line_count': len(order.order_line),
+                })
+        return {'orders': active, 'count': len(active)}
+
+    @api.model
+    def tool_create_confirmed_order(self, partner_id, lines):
+        """Create and confirm a sale order, then trigger WhatsApp confirmation."""
+        resolved = self._resolve_order_lines(lines)
+        if resolved.get('error'):
+            return resolved
+
+        order = self.env['sale.order'].sudo().create({
+            'partner_id': int(partner_id),
+            'origin': 'WhatsApp',
+        })
+        for line_vals in resolved['lines']:
+            self.env['sale.order.line'].sudo().create({
+                'order_id': order.id,
+                **line_vals,
+            })
+
+        order.sudo().action_confirm()
+
+        # Try to send native WhatsApp confirmation
+        self._send_order_whatsapp_confirmation(order)
+
+        return {
+            'success': True,
+            'order_id': order.id,
+            'order_name': order.name,
+            'lines_created': len(resolved['lines']),
+            'message': (
+                f'Pedido {order.name} creado y confirmado. '
+                'El comprobante fue enviado por WhatsApp.'
+            ),
+        }
+
+    @api.model
+    def tool_add_line_to_order(self, order_id, partner_id, lines):
+        """Add lines to an existing confirmed order (if picking not started)."""
+        order = self.env['sale.order'].sudo().browse(int(order_id))
+        if not order.exists():
+            return {'error': 'Orden no encontrada.'}
+        if order.partner_id.id != int(partner_id):
+            return {'error': 'No tiene acceso a esta orden.'}
+        if order.state != 'sale':
+            return {'error': 'Solo se pueden agregar lineas a ordenes confirmadas.'}
+
+        picking_started = any(
+            p.state in ('assigned', 'done') for p in order.picking_ids
+        )
+        if picking_started:
+            return {
+                'error': (
+                    f'El proceso de alistamiento de la orden {order.name} ya inicio. '
+                    'No es posible agregar mas productos.'
+                )
+            }
+
+        resolved = self._resolve_order_lines(lines)
+        if resolved.get('error'):
+            return resolved
+
+        for line_vals in resolved['lines']:
+            self.env['sale.order.line'].sudo().create({
+                'order_id': order.id,
+                **line_vals,
+            })
+
+        return {
+            'success': True,
+            'order_name': order.name,
+            'lines_added': len(resolved['lines']),
+            'message': f'Se agregaron {len(resolved["lines"])} linea(s) a la orden {order.name}.',
+        }
+
+    # ------------------------------------------------------------------
+    # Internal helpers for order creation
+    # ------------------------------------------------------------------
+
+    @api.model
+    def _resolve_order_lines(self, lines):
+        """Resolve product names + attributes + UoM to sale.order.line vals."""
+        resolved = []
+        errors = []
+
+        for line in lines:
+            product_name = line.get('product_name', '')
+            attributes = line.get('attributes') or {}
+            quantity = float(line.get('quantity', 0))
+            uom_name = line.get('uom_name', '')
+
+            if quantity <= 0:
+                errors.append(f'Cantidad invalida para {product_name}.')
+                continue
+
+            tmpl = self.env['product.template'].sudo().search(
+                [('name', 'ilike', product_name), ('sale_ok', '=', True)],
+                limit=1,
+                order='name asc',
+            )
+            if not tmpl:
+                errors.append(f'Producto no encontrado: "{product_name}".')
+                continue
+
+            # Find the specific variant
+            variant = self._find_variant(tmpl, attributes)
+            if not variant:
+                errors.append(
+                    f'Variante no encontrada para "{product_name}" '
+                    f'con los atributos: {attributes}.'
+                )
+                continue
+
+            # Find UoM within the same category
+            uom = self.env['uom.uom'].sudo().search(
+                [
+                    ('name', 'ilike', uom_name),
+                    ('category_id', '=', tmpl.uom_id.category_id.id),
+                    ('active', '=', True),
+                ],
+                limit=1,
+            )
+            if not uom:
+                uom = tmpl.uom_id
+                _logger.warning(
+                    "MCP: UoM '%s' not found for product '%s', using default '%s'",
+                    uom_name, product_name, uom.name,
+                )
+
+            resolved.append({
+                'product_id': variant.id,
+                'product_uom_qty': quantity,
+                'product_uom': uom.id,
+            })
+
+        if errors:
+            return {'error': 'Errores al resolver lineas de pedido', 'details': errors}
+
+        if not resolved:
+            return {'error': 'No se pudo resolver ninguna linea del pedido.'}
+
+        return {'lines': resolved}
+
+    @api.model
+    def _find_variant(self, tmpl, attribute_values):
+        """Find the product.product variant matching the given attribute values dict."""
+        if not attribute_values:
+            return tmpl.product_variant_id if tmpl.product_variant_count == 1 else None
+
+        for variant in tmpl.product_variant_ids:
+            variant_attrs = {
+                pav.attribute_id.name: pav.name
+                for pav in variant.product_template_attribute_value_ids
+            }
+            if all(
+                variant_attrs.get(k) == v
+                for k, v in attribute_values.items()
+            ):
+                return variant
+        return None
+
+    @api.model
+    def _send_order_whatsapp_confirmation(self, order):
+        """Try to send native Odoo WhatsApp order confirmation template."""
+        try:
+            template = self.env['whatsapp.template'].sudo().search(
+                [
+                    ('model', '=', 'sale.order'),
+                    ('status', '=', 'approved'),
+                ],
+                limit=1,
+                order='id asc',
+            )
+            if not template:
+                _logger.info(
+                    "MCP: No approved WhatsApp template found for sale.order — "
+                    "skipping WhatsApp confirmation for order %s", order.name
+                )
+                return
+
+            wa_account = self.env['whatsapp.account'].sudo().search([], limit=1)
+            if not wa_account:
+                return
+
+            partner = order.partner_id
+            phone = partner.mobile or partner.phone or ''
+            if not phone:
+                return
+
+            self.env['whatsapp.message'].sudo().create({
+                'mobile_number': phone,
+                'wa_template_id': template.id,
+                'res_id': order.id,
+                'wa_account_id': wa_account.id,
+            })
+        except Exception:
+            _logger.warning(
+                "MCP: Could not send WhatsApp confirmation for order %s",
+                order.name, exc_info=True,
+            )

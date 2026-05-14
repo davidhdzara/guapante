@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
             <tree string="Sesiones WhatsApp MCP"
                   decoration-success="state == 'authenticated'"
-                  decoration-warning="state == 'pending_confirm'"
+                  decoration-warning="state in ('pending_confirm', 'pending_branch')"
                   decoration-danger="state == 'blocked'"
                   decoration-muted="state in ('expired',)">
                 <field name="whatsapp_number"/>
@@ -28,7 +28,7 @@
             <form string="Sesión WhatsApp MCP" create="false">
                 <header>
                     <field name="state" widget="statusbar"
-                           statusbar_visible="pending_nit,pending_confirm,authenticated"/>
+                           statusbar_visible="pending_nit,pending_branch,pending_confirm,authenticated"/>
                 </header>
                 <sheet>
                     <group>

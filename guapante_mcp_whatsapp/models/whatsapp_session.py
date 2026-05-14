@@ -33,7 +33,8 @@ class GuapanteMcpWhatsappSession(models.Model):
     state = fields.Selection(
         [
             ('pending_nit', 'Esperando NIT'),
-            ('pending_confirm', 'Esperando Confirmación'),
+            ('pending_branch', 'Esperando Selección de Sucursal'),
+            ('pending_confirm', 'Esperando Confirmación de Número'),
             ('authenticated', 'Autenticado'),
             ('blocked', 'Bloqueado'),
             ('expired', 'Expirado'),
@@ -43,6 +44,8 @@ class GuapanteMcpWhatsappSession(models.Model):
         required=True,
         index=True,
     )
+    # JSON list: [{"id": int, "name": str, "street": str, "city": str}, ...]
+    pending_options = fields.Text(string='Opciones Pendientes (JSON)')
     nit_attempt = fields.Char(string='NIT Intentado')
     nit_tries = fields.Integer(string='Intentos de NIT', default=0)
     conversation_history = fields.Text(
@@ -57,7 +60,7 @@ class GuapanteMcpWhatsappSession(models.Model):
 
     @api.model
     def _get_or_create_session(self, whatsapp_number, channel_id=None):
-        """Return an active session or create a new one for this number."""
+        """Return an active non-expired session or create a fresh one."""
         ttl_minutes = int(
             self.env['ir.config_parameter']
             .sudo()
@@ -88,12 +91,13 @@ class GuapanteMcpWhatsappSession(models.Model):
         return self.sudo().create(vals)
 
     def reset(self):
-        """Reset session to initial state for re-authentication."""
+        """Reset session to initial state."""
         self.ensure_one()
         self.sudo().write({
             'state': 'pending_nit',
             'partner_id': False,
             'nit_attempt': False,
             'nit_tries': 0,
+            'pending_options': False,
             'conversation_history': '[]',
         })

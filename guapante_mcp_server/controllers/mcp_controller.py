@@ -165,6 +165,83 @@ _TOOL_DEFINITIONS = [
         },
         True,
     ),
+    # Product & order write tools
+    (
+        'search_products',
+        'Busca productos por nombre y retorna atributos disponibles y unidades de medida validas.',
+        {
+            'type': 'object',
+            'properties': {
+                'query': {'type': 'string'},
+                'limit': {'type': 'integer', 'default': 10, 'maximum': 20},
+            },
+            'required': ['query'],
+        },
+        False,
+    ),
+    (
+        'get_active_orders',
+        'Retorna ordenes confirmadas del partner donde el picking no ha iniciado.',
+        {
+            'type': 'object',
+            'properties': {
+                'partner_id': {'type': 'integer'},
+            },
+            'required': ['partner_id'],
+        },
+        False,
+    ),
+    (
+        'create_confirmed_order',
+        'Crea y confirma una orden de venta, luego envia el comprobante por WhatsApp.',
+        {
+            'type': 'object',
+            'properties': {
+                'partner_id': {'type': 'integer'},
+                'lines': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'product_name': {'type': 'string'},
+                            'attributes': {'type': 'object'},
+                            'quantity': {'type': 'number'},
+                            'uom_name': {'type': 'string'},
+                        },
+                        'required': ['product_name', 'quantity', 'uom_name'],
+                    },
+                },
+            },
+            'required': ['partner_id', 'lines'],
+        },
+        True,
+    ),
+    (
+        'add_line_to_order',
+        'Agrega lineas a una orden confirmada donde el alistamiento no ha iniciado.',
+        {
+            'type': 'object',
+            'properties': {
+                'order_id': {'type': 'integer'},
+                'partner_id': {'type': 'integer'},
+                'lines': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'product_name': {'type': 'string'},
+                            'attributes': {'type': 'object'},
+                            'quantity': {'type': 'number'},
+                            'uom_name': {'type': 'string'},
+                        },
+                        'required': ['product_name', 'quantity', 'uom_name'],
+                    },
+                },
+            },
+            'required': ['order_id', 'partner_id', 'lines'],
+        },
+        True,
+    ),
 ]
 
 
