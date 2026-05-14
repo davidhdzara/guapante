@@ -1,10 +1,10 @@
 {
-    'name': 'Guapante WA Assistant — Asistente por WhatsApp',
+    'name': 'Insotech WA Assistant — Asistente por WhatsApp',
     'version': '18.0.1.0.0',
     'category': 'Technical',
     'summary': 'Chatbot IA en WhatsApp con autenticación por teléfono + NIT',
     'description': """
-        Asistente conversacional para clientes de Guapante en WhatsApp.
+        Asistente conversacional para clientes de Insotech en WhatsApp.
         Los clientes pueden consultar sus facturas, pedidos y realizar nuevos pedidos
         directamente desde WhatsApp, autenticándose con su número de teléfono y NIT.
 
@@ -15,9 +15,9 @@
         - Herramientas: facturas, saldos, pedidos, reenvío de facturas, creación de órdenes
         - Panel administrativo de sesiones activas
     """,
-    'author': 'Insotech / Guapante',
+    'author': 'Insotech / Insotech',
     'depends': [
-        'guapante_mcp_server',
+        'insotech_mcp_server',
         'mail',
         'whatsapp',
     ],

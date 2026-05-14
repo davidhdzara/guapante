@@ -4,8 +4,8 @@ from datetime import timedelta
 from odoo import _, api, fields, models
 
 
-class GuapanteWaSession(models.Model):
-    _name = 'guapante.wa.session'
+class InsotechWaSession(models.Model):
+    _name = 'insotech.wa.session'
     _description = 'Sesión del Asistente WhatsApp'
     _order = 'last_activity desc'
 
@@ -66,7 +66,7 @@ class GuapanteWaSession(models.Model):
         ttl_minutes = int(
             self.env['ir.config_parameter']
             .sudo()
-            .get_param('guapante_wa_assistant.session_ttl_minutes', '30')
+            .get_param('insotech_wa_assistant.session_ttl_minutes', '30')
         )
         expiry_threshold = fields.Datetime.now() - timedelta(minutes=ttl_minutes)
 

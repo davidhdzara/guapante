@@ -1,3 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_wa_session_admin,guapante.wa.session admin,model_guapante_wa_session,guapante_mcp_server.group_mcp_admin,1,1,1,1
-access_wa_session_user,guapante.wa.session user,model_guapante_wa_session,base.group_user,1,0,0,0

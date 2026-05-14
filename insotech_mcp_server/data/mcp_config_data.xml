@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <record id="mcp_protocol_version" model="ir.config_parameter">
-        <field name="key">guapante_mcp_server.protocol_version</field>
+        <field name="key">insotech_mcp_server.protocol_version</field>
         <field name="value">2024-11-05</field>
     </record>
 </odoo>

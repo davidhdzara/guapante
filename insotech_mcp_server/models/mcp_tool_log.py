@@ -2,13 +2,13 @@
 from odoo import fields, models
 
 
-class GuapanteMcpToolLog(models.Model):
-    _name = 'guapante.mcp.tool.log'
-    _description = 'Guapante MCP Audit Log'
+class InsotechMcpToolLog(models.Model):
+    _name = 'insotech.mcp.tool.log'
+    _description = 'Insotech MCP Audit Log'
     _order = 'create_date desc'
 
     api_key_id = fields.Many2one(
-        'guapante.mcp.api.key',
+        'insotech.mcp.api.key',
         string='API Key',
         ondelete='set null',
         index=True,

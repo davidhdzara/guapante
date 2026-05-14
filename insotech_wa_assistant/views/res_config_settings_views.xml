@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
-                <app data-string="WA Assistant" string="WA Assistant" name="guapante_wa_assistant" groups="guapante_mcp_server.group_mcp_admin">
+                <app data-string="WA Assistant" string="WA Assistant" name="insotech_wa_assistant" groups="insotech_mcp_server.group_mcp_admin">
                     <block title="Asistente WhatsApp" id="wa_assistant_settings">
                         <setting string="Identidad del Bot" help="Cómo se presenta el asistente a los clientes.">
                             <div class="content-group">

@@ -7,9 +7,9 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 
-class GuapanteMcpApiKey(models.Model):
-    _name = 'guapante.mcp.api.key'
-    _description = 'Guapante MCP API Key'
+class InsotechMcpApiKey(models.Model):
+    _name = 'insotech.mcp.api.key'
+    _description = 'Insotech MCP API Key'
     _order = 'create_date desc'
 
     name = fields.Char(string='Nombre / Cliente', required=True)

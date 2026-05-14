@@ -6,16 +6,16 @@ from odoo import _, api, fields, models
 _logger = logging.getLogger(__name__)
 
 
-class GuapanteMcpTools(models.AbstractModel):
+class InsotechMcpTools(models.AbstractModel):
     """Stateless collection of all MCP tool implementations.
 
-    Called via self.env['guapante.mcp.tools'].tool_<name>(**kwargs).
+    Called via self.env['insotech.mcp.tools'].tool_<name>(**kwargs).
     All methods return plain Python dicts (JSON-serializable).
     Access enforcement (scope, partner isolation) is the caller's responsibility.
     """
 
-    _name = 'guapante.mcp.tools'
-    _description = 'Guapante MCP Tool Implementations'
+    _name = 'insotech.mcp.tools'
+    _description = 'Insotech MCP Tool Implementations'
 
     # ------------------------------------------------------------------
     # Internal helpers

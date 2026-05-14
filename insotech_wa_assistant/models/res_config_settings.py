@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models
 
-_PARAM = 'guapante_wa_assistant.'
+_PARAM = 'insotech_wa_assistant.'
 
 
 class ResConfigSettings(models.TransientModel):

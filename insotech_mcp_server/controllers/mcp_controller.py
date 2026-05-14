@@ -9,14 +9,14 @@ from odoo.http import request, Response
 _logger = logging.getLogger(__name__)
 
 MCP_PROTOCOL_VERSION = '2024-11-05'
-MCP_SERVER_NAME = 'guapante-mcp-server'
+MCP_SERVER_NAME = 'insotech-mcp-server'
 MCP_SERVER_VERSION = '1.0.0'
 
 # Tools available per scope. Each entry: (name, description, input_schema, admin_only)
 _TOOL_DEFINITIONS = [
     (
         'list_invoices',
-        'Lista las facturas de ventas (out_invoice/out_refund) del sistema Odoo de Guapante.',
+        'Lista las facturas de ventas (out_invoice/out_refund) del sistema Odoo de Insotech.',
         {
             'type': 'object',
             'properties': {
@@ -270,7 +270,7 @@ def _error_response(req_id, code, message):
     })
 
 
-class GuapanteMcpController(http.Controller):
+class InsotechMcpController(http.Controller):
 
     @http.route('/mcp/v1', type='http', auth='none', methods=['OPTIONS'], csrf=False)
     def mcp_options(self, **kwargs):
@@ -299,7 +299,7 @@ class GuapanteMcpController(http.Controller):
             if auth_header.startswith('Bearer '):
                 raw_token = auth_header[7:].strip()
 
-            api_key = request.env['guapante.mcp.api.key']._validate_token(raw_token)
+            api_key = request.env['insotech.mcp.api.key']._validate_token(raw_token)
             if not api_key:
                 return _error_response(req_id, -32001, 'Unauthorized: invalid or expired token')
 
@@ -370,7 +370,7 @@ class GuapanteMcpController(http.Controller):
         result_data = {}
 
         try:
-            tools = request.env['guapante.mcp.tools'].sudo()
+            tools = request.env['insotech.mcp.tools'].sudo()
             method_name = f'tool_{tool_name}'
             if not hasattr(tools, method_name):
                 return _error_response(req_id, -32602, f'Tool method not implemented: {tool_name}')
@@ -387,7 +387,7 @@ class GuapanteMcpController(http.Controller):
         # Audit log
         duration_ms = int((time.monotonic() - t_start) * 1000)
         try:
-            request.env['guapante.mcp.tool.log'].sudo().create({
+            request.env['insotech.mcp.tool.log'].sudo().create({
                 'api_key_id': api_key.id,
                 'tool_name': tool_name,
                 'scope': api_key.scope,

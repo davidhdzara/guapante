@@ -1,5 +1,5 @@
 {
-    'name': 'Guapante MCP Server — Facturación y Órdenes',
+    'name': 'Insotech MCP Server — Facturación y Órdenes',
     'version': '18.0.1.0.0',
     'category': 'Technical',
     'summary': 'Servidor MCP seguro para consulta y gestión de facturación y órdenes',
@@ -15,7 +15,7 @@
         - Auditoría completa de todas las llamadas
         - Panel administrativo para gestionar API keys
     """,
-    'author': 'Insotech / Guapante',
+    'author': 'Insotech / Insotech',
     'depends': [
         'account',
         'insotech_account_colombia',

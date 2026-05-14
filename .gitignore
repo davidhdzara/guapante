@@ -17,10 +17,10 @@
 !insotech_l10n_co_advanced/**
 !insotech_account_colombia/
 !insotech_account_colombia/**
-!guapante_mcp_server/
-!guapante_mcp_server/**
-!guapante_wa_assistant/
-!guapante_wa_assistant/**
+!insotech_mcp_server/
+!insotech_mcp_server/**
+!insotech_wa_assistant/
+!insotech_wa_assistant/**
 !requirements.txt
 
 # Always ignore compiled Python files

@@ -354,7 +354,7 @@ class DiscussChannel(models.Model):
     # ------------------------------------------------------------------
 
     def _wa_process_message(self, whatsapp_number, body_text):
-        Session = self.env['guapante.wa.session']
+        Session = self.env['insotech.wa.session']
         session = Session._get_or_create_session(whatsapp_number, channel_id=self.id)
 
         text_lower = body_text.lower().strip()
@@ -638,8 +638,8 @@ class DiscussChannel(models.Model):
         import anthropic  # noqa: PLC0415
 
         ICP = self.env['ir.config_parameter'].sudo()
-        api_key = ICP.get_param('guapante_wa_assistant.anthropic_api_key', '')
-        model = ICP.get_param('guapante_wa_assistant.claude_model', 'claude-opus-4-7')
+        api_key = ICP.get_param('insotech_wa_assistant.anthropic_api_key', '')
+        model = ICP.get_param('insotech_wa_assistant.claude_model', 'claude-opus-4-7')
 
         if not api_key:
             _logger.error("WA Assistant: anthropic_api_key not configured")
@@ -647,9 +647,9 @@ class DiscussChannel(models.Model):
 
         client = anthropic.Anthropic(api_key=api_key)
         partner = session.partner_id
-        bot_name = ICP.get_param('guapante_wa_assistant.bot_name', 'Asistente')
+        bot_name = ICP.get_param('insotech_wa_assistant.bot_name', 'Asistente')
         company_description = ICP.get_param(
-            'guapante_wa_assistant.company_description',
+            'insotech_wa_assistant.company_description',
             self.env.company.name,
         )
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
@@ -742,7 +742,7 @@ class DiscussChannel(models.Model):
 
         # Notify escalation channel if configured
         ICP = self.env['ir.config_parameter'].sudo()
-        channel_id = int(ICP.get_param('guapante_wa_assistant.escalation_channel_id', '0') or 0)
+        channel_id = int(ICP.get_param('insotech_wa_assistant.escalation_channel_id', '0') or 0)
         if not channel_id:
             return
         escalation_channel = self.env['discuss.channel'].browse(channel_id).exists()
@@ -765,7 +765,7 @@ class DiscussChannel(models.Model):
     # ------------------------------------------------------------------
 
     def _execute_wa_tool(self, tool_name, tool_input, session):
-        tools = self.env['guapante.mcp.tools'].sudo()
+        tools = self.env['insotech.mcp.tools'].sudo()
         partner_id = session.partner_id.id
         safe_input = dict(tool_input or {})
 
@@ -812,7 +812,7 @@ class DiscussChannel(models.Model):
 
     def _get_welcome_msg(self):
         ICP = self.env['ir.config_parameter'].sudo()
-        bot_name = ICP.get_param('guapante_wa_assistant.bot_name', 'Asistente')
+        bot_name = ICP.get_param('insotech_wa_assistant.bot_name', 'Asistente')
         return (
             f"Hola! Soy {bot_name}.\n\n"
             "Para consultar tus facturas, pedidos o hacer un nuevo pedido, "

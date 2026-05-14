@@ -2,17 +2,17 @@
 <odoo>
     <!-- Placeholder parameters — configure via Settings or ir.config_parameter -->
     <record id="wa_assistant_claude_model" model="ir.config_parameter">
-        <field name="key">guapante_wa_assistant.claude_model</field>
+        <field name="key">insotech_wa_assistant.claude_model</field>
         <field name="value">claude-opus-4-7</field>
     </record>
 
     <record id="wa_assistant_session_ttl" model="ir.config_parameter">
-        <field name="key">guapante_wa_assistant.session_ttl_minutes</field>
+        <field name="key">insotech_wa_assistant.session_ttl_minutes</field>
         <field name="value">30</field>
     </record>
 
-    <!-- guapante_wa_assistant.anthropic_api_key must be set manually via:
+    <!-- insotech_wa_assistant.anthropic_api_key must be set manually via:
          Settings > Technical > Parameters > System Parameters
-         Key: guapante_wa_assistant.anthropic_api_key
+         Key: insotech_wa_assistant.anthropic_api_key
          Never commit API keys to source control. -->
 </odoo>
