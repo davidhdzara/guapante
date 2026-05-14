@@ -551,7 +551,7 @@ class DiscussChannel(models.Model):
         wa_digits = re.sub(r'\D', '', wa_number)
 
         if any(
-            wa_digits.endswith(r[-9:]) for r in registered if len(r) >= 9
+            wa_digits.endswith(r[-10:]) for r in registered if len(r) >= 10
         ):
             self._authenticate_partner(session, partner)
         else:
