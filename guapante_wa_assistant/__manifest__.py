@@ -26,6 +26,7 @@
         'security/ir.model.access.csv',
         'data/wa_assistant_params.xml',
         'views/whatsapp_session_views.xml',
+        'views/res_config_settings_views.xml',
         'views/menus.xml',
     ],
     'installable': True,

@@ -10,12 +10,6 @@ _logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------
 # Bot messages
 # -----------------------------------------------------------------------
-_WELCOME_MSG = (
-    "Hola! Soy el asistente de Comercializadora Guapante.\n\n"
-    "Para consultar tus facturas, pedidos o hacer un nuevo pedido, "
-    "necesito verificar tu identidad.\n\n"
-    "Por favor escribe tu NIT (sin digito de verificacion):"
-)
 _NIT_NOT_FOUND_MSG = (
     "No encontre un cliente registrado con el NIT {nit}. "
     "Verifica e intenta de nuevo. (Intento {tries}/3)"
@@ -53,6 +47,11 @@ _BLOCKED_MSG = (
 _RESET_KEYWORDS = ('salir', 'reiniciar', 'reset', 'logout', 'inicio', 'menu')
 _CONFIRM_YES = ('si', 'sí', 'yes', 's', 'claro', 'correcto', 'ok', 'afirmativo', 'dale')
 _CONFIRM_NO = ('no', 'nop', 'negativo', 'incorrecto', 'n')
+_ESCALATION_KEYWORDS = (
+    'asesor', 'asesora', 'humano', 'humana', 'persona', 'agente',
+    'ayuda', 'soporte', 'hablar con alguien', 'hablar con un asesor',
+    'quiero hablar', 'necesito ayuda', 'no entiendo',
+)
 
 # -----------------------------------------------------------------------
 # WhatsApp tools available to authenticated users (Claude tool_use format)
@@ -239,8 +238,7 @@ _WA_TOOLS = [
 # System prompt for Claude
 # -----------------------------------------------------------------------
 _SYSTEM_PROMPT_TEMPLATE = (
-    "Eres el asistente de facturacion y pedidos de Comercializadora Guapante, "
-    "empresa colombiana de frutas, verduras y productos del campo.\n"
+    "Eres {bot_name}, el asistente de facturacion y pedidos de {company_description}.\n"
     "Cliente autenticado: {name} (NIT: {vat}, ID Odoo: {partner_id}).\n\n"
     "REGLAS GENERALES:\n"
     "- Responde siempre en espanol. Canal: WhatsApp.\n"
@@ -359,9 +357,11 @@ class DiscussChannel(models.Model):
         Session = self.env['guapante.wa.session']
         session = Session._get_or_create_session(whatsapp_number, channel_id=self.id)
 
-        if body_text.lower().strip() in _RESET_KEYWORDS:
+        text_lower = body_text.lower().strip()
+
+        if text_lower in _RESET_KEYWORDS:
             session.reset()
-            self._bot_reply(_WELCOME_MSG)
+            self._bot_reply(self._get_welcome_msg())
             return
 
         if session.state == 'pending_nit':
@@ -372,11 +372,13 @@ class DiscussChannel(models.Model):
             self._handle_pending_confirm(session, body_text)
         elif session.state == 'authenticated':
             self._handle_authenticated(session, body_text)
+        elif session.state == 'needs_human':
+            self._handle_needs_human(session, body_text)
         elif session.state == 'blocked':
             self._bot_reply(_BLOCKED_MSG)
         else:
             session.reset()
-            self._bot_reply(_WELCOME_MSG)
+            self._bot_reply(self._get_welcome_msg())
 
     # ------------------------------------------------------------------
     # Step 1 — NIT
@@ -501,7 +503,7 @@ class DiscussChannel(models.Model):
         options = json.loads(session.pending_options or '[]')
         if not options:
             session.reset()
-            self._bot_reply(_WELCOME_MSG)
+            self._bot_reply(self._get_welcome_msg())
             return
 
         text = body_text.strip()
@@ -601,17 +603,32 @@ class DiscussChannel(models.Model):
     # ------------------------------------------------------------------
 
     def _handle_authenticated(self, session, user_message):
+        # Check escalation request before calling Claude
+        text_lower = user_message.lower().strip()
+        if any(kw in text_lower for kw in _ESCALATION_KEYWORDS):
+            self._escalate_to_human(session, 'Solicitado por el cliente')
+            return
+
         session.sudo().write({'message_count': session.message_count + 1})
         try:
             response = self._call_claude(session, user_message)
         except Exception as e:
             _logger.error("WA Assistant Claude error: %s", e)
-            response = (
-                "Lo siento, tuve un problema procesando tu solicitud. "
-                "Por favor intenta de nuevo o escribe 'menu' para reiniciar."
-            )
+            self._escalate_to_human(session, f'Error del asistente: {e}')
+            return
         if response:
             self._bot_reply(response)
+
+    # ------------------------------------------------------------------
+    # Needs human — hold messages until released by admin
+    # ------------------------------------------------------------------
+
+    def _handle_needs_human(self, session, body_text):
+        self._bot_reply(
+            "Tu solicitud ya fue enviada a uno de nuestros asesores. "
+            "Te contactarán a la brevedad. "
+            "Escribe 'menu' si deseas reiniciar la sesion con el asistente."
+        )
 
     # ------------------------------------------------------------------
     # Claude API
@@ -630,7 +647,14 @@ class DiscussChannel(models.Model):
 
         client = anthropic.Anthropic(api_key=api_key)
         partner = session.partner_id
+        bot_name = ICP.get_param('guapante_wa_assistant.bot_name', 'Asistente')
+        company_description = ICP.get_param(
+            'guapante_wa_assistant.company_description',
+            self.env.company.name,
+        )
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
+            bot_name=bot_name,
+            company_description=company_description,
             name=partner.name,
             vat=partner.vat or 'N/A',
             partner_id=partner.id,
@@ -688,7 +712,53 @@ class DiscussChannel(models.Model):
                 history.append({'role': 'user', 'content': tool_results})
 
         session.sudo().write({'conversation_history': json.dumps(history[-20:])})
+
+        if not final_text:
+            self._escalate_to_human(session, 'El asistente no pudo resolver la solicitud')
+            return ''
+
         return final_text
+
+    # ------------------------------------------------------------------
+    # Escalation
+    # ------------------------------------------------------------------
+
+    def _escalate_to_human(self, session, reason):
+        session.sudo().write({
+            'state': 'needs_human',
+            'escalation_reason': reason,
+        })
+
+        partner = session.partner_id
+        partner_info = (
+            f"{partner.name} ({session.whatsapp_number})"
+            if partner
+            else session.whatsapp_number
+        )
+        self._bot_reply(
+            "Entendido. Voy a comunicarte con uno de nuestros asesores. "
+            "Te contactarán a la brevedad. Gracias por tu paciencia."
+        )
+
+        # Notify escalation channel if configured
+        ICP = self.env['ir.config_parameter'].sudo()
+        channel_id = int(ICP.get_param('guapante_wa_assistant.escalation_channel_id', '0') or 0)
+        if not channel_id:
+            return
+        escalation_channel = self.env['discuss.channel'].browse(channel_id).exists()
+        if not escalation_channel:
+            return
+
+        escalation_channel.sudo().message_post(
+            body=(
+                f"<b>Escalación WhatsApp</b><br/>"
+                f"Cliente: {partner_info}<br/>"
+                f"Motivo: {reason}<br/>"
+                f"Canal: <a href='/web#model=discuss.channel&amp;id={self.id}'>Ver conversación</a>"
+            ),
+            message_type='comment',
+            subtype_xmlid='mail.mt_comment',
+        )
 
     # ------------------------------------------------------------------
     # Tool execution (partner-isolated)
@@ -738,6 +808,16 @@ class DiscussChannel(models.Model):
             body=text,
             message_type='comment',
             subtype_xmlid='mail.mt_note',
+        )
+
+    def _get_welcome_msg(self):
+        ICP = self.env['ir.config_parameter'].sudo()
+        bot_name = ICP.get_param('guapante_wa_assistant.bot_name', 'Asistente')
+        return (
+            f"Hola! Soy {bot_name}.\n\n"
+            "Para consultar tus facturas, pedidos o hacer un nuevo pedido, "
+            "necesito verificar tu identidad.\n\n"
+            "Por favor escribe tu NIT (sin digito de verificacion):"
         )
 
     def _compute_dv_safe(self, nit_base):

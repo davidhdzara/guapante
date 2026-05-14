@@ -9,6 +9,7 @@
                   decoration-success="state == 'authenticated'"
                   decoration-warning="state in ('pending_confirm', 'pending_branch')"
                   decoration-danger="state == 'blocked'"
+                  decoration-info="state == 'needs_human'"
                   decoration-muted="state in ('expired',)">
                 <field name="whatsapp_number"/>
                 <field name="partner_id"/>
@@ -27,10 +28,22 @@
         <field name="arch" type="xml">
             <form string="Sesión WhatsApp" create="false">
                 <header>
+                    <button name="action_release_to_bot"
+                            string="Liberar al Bot"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'needs_human'"
+                            confirm="¿Confirmas que el asesor ha atendido al cliente y el bot puede retomar la sesión?"/>
                     <field name="state" widget="statusbar"
-                           statusbar_visible="pending_nit,pending_branch,pending_confirm,authenticated"/>
+                           statusbar_visible="pending_nit,pending_branch,pending_confirm,authenticated,needs_human"/>
                 </header>
                 <sheet>
+                    <div class="alert alert-info" role="alert"
+                         invisible="state != 'needs_human'">
+                        <strong>Requiere Asesor.</strong>
+                        El asistente ha escalado esta sesión.
+                        Motivo: <field name="escalation_reason" readonly="1" nolabel="1"/>
+                    </div>
                     <group>
                         <group string="Identificación">
                             <field name="whatsapp_number"/>

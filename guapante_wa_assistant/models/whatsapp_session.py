@@ -36,6 +36,7 @@ class GuapanteWaSession(models.Model):
             ('pending_branch', 'Esperando Selección de Sucursal'),
             ('pending_confirm', 'Esperando Confirmación de Número'),
             ('authenticated', 'Autenticado'),
+            ('needs_human', 'Requiere Asesor'),
             ('blocked', 'Bloqueado'),
             ('expired', 'Expirado'),
         ],
@@ -48,6 +49,7 @@ class GuapanteWaSession(models.Model):
     pending_options = fields.Text(string='Opciones Pendientes (JSON)')
     nit_attempt = fields.Char(string='NIT Intentado')
     nit_tries = fields.Integer(string='Intentos de NIT', default=0)
+    escalation_reason = fields.Text(string='Motivo de Escalación')
     conversation_history = fields.Text(
         string='Historial de Conversación (JSON)',
         default='[]',
@@ -99,5 +101,15 @@ class GuapanteWaSession(models.Model):
             'nit_attempt': False,
             'nit_tries': 0,
             'pending_options': False,
+            'escalation_reason': False,
             'conversation_history': '[]',
         })
+
+    def action_release_to_bot(self):
+        """Return session to authenticated state so the bot resumes."""
+        self.ensure_one()
+        self.sudo().write({
+            'state': 'authenticated',
+            'escalation_reason': False,
+        })
+        return True
