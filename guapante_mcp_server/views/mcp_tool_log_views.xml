@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree view -->
+    <record id="guapante_mcp_tool_log_view_tree" model="ir.ui.view">
+        <field name="name">guapante.mcp.tool.log.view.tree</field>
+        <field name="model">guapante.mcp.tool.log</field>
+        <field name="arch" type="xml">
+            <tree string="Auditoría MCP"
+                  decoration-danger="not success"
+                  default_order="create_date desc">
+                <field name="create_date" string="Fecha"/>
+                <field name="api_key_id"/>
+                <field name="tool_name"/>
+                <field name="scope"/>
+                <field name="duration_ms" string="ms"/>
+                <field name="success"/>
+                <field name="ip_address"/>
+                <field name="error_message" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form view -->
+    <record id="guapante_mcp_tool_log_view_form" model="ir.ui.view">
+        <field name="name">guapante.mcp.tool.log.view.form</field>
+        <field name="model">guapante.mcp.tool.log</field>
+        <field name="arch" type="xml">
+            <form string="Registro de Auditoría MCP" create="false" edit="false">
+                <sheet>
+                    <group>
+                        <group string="Solicitud">
+                            <field name="create_date" string="Fecha / Hora"/>
+                            <field name="api_key_id"/>
+                            <field name="tool_name"/>
+                            <field name="scope"/>
+                            <field name="ip_address"/>
+                            <field name="duration_ms"/>
+                            <field name="success"/>
+                        </group>
+                        <group string="Detalles">
+                            <field name="arguments" widget="ace" options="{'mode': 'json'}"/>
+                            <field name="response_summary"/>
+                            <field name="error_message"
+                                   attrs="{'invisible': [('success', '=', True)]}"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="guapante_mcp_tool_log_action" model="ir.actions.act_window">
+        <field name="name">Auditoría MCP</field>
+        <field name="res_model">guapante.mcp.tool.log</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'search_default_groupby_tool': 1}</field>
+    </record>
+</odoo>

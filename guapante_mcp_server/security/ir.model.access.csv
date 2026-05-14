@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_mcp_api_key_admin,guapante.mcp.api.key admin,model_guapante_mcp_api_key,guapante_mcp_server.group_mcp_admin,1,1,1,1
+access_mcp_tool_log_admin,guapante.mcp.tool.log admin,model_guapante_mcp_tool_log,guapante_mcp_server.group_mcp_admin,1,0,1,0

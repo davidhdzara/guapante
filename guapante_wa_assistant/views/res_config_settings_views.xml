@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_wa_assistant" model="ir.ui.view">
+        <field name="name">res.config.settings.view.wa.assistant</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base_setup.action_general_configuration"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[hasclass('settings')]" position="inside">
+                <div class="app_settings_block"
+                     data-string="WA Assistant"
+                     data-key="guapante_wa_assistant"
+                     string="WA Assistant"
+                     groups="guapante_mcp_server.group_mcp_admin">
+                    <h2>Asistente WhatsApp</h2>
+
+                    <div class="row mt16 o_settings_container">
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <span class="o_form_label">Identidad del Bot</span>
+                                <div class="text-muted mb8">
+                                    Cómo se presenta el asistente a los clientes.
+                                </div>
+                                <div class="content-group">
+                                    <div class="row">
+                                        <label for="wa_bot_name" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_bot_name" class="col-lg-8"
+                                               placeholder="Ej: Sofía, Asistente..."/>
+                                    </div>
+                                    <div class="row">
+                                        <label for="wa_company_description" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_company_description" class="col-lg-8"
+                                               placeholder="Ej: empresa colombiana de frutas y verduras"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <span class="o_form_label">Escalación a Asesor</span>
+                                <div class="text-muted mb8">
+                                    Canal de Discuss donde se notifica cuando un cliente solicita un asesor humano.
+                                </div>
+                                <div class="content-group">
+                                    <div class="row">
+                                        <label for="wa_escalation_channel_id" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_escalation_channel_id" class="col-lg-8"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <span class="o_form_label">API de Anthropic</span>
+                                <div class="text-muted mb8">
+                                    Credenciales y modelo para el asistente de IA.
+                                </div>
+                                <div class="content-group">
+                                    <div class="row">
+                                        <label for="wa_anthropic_api_key" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_anthropic_api_key" class="col-lg-8"
+                                               password="True"/>
+                                    </div>
+                                    <div class="row">
+                                        <label for="wa_claude_model" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_claude_model" class="col-lg-8"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <span class="o_form_label">Sesiones</span>
+                                <div class="text-muted mb8">
+                                    Tiempo de inactividad antes de que una sesión expire.
+                                </div>
+                                <div class="content-group">
+                                    <div class="row">
+                                        <label for="wa_session_ttl_minutes" class="col-lg-4 o_light_label"/>
+                                        <field name="wa_session_ttl_minutes" class="col-lg-8"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>
