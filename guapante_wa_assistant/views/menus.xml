@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <menuitem
-        id="menu_mcp_whatsapp_sessions"
+        id="menu_wa_sessions"
         name="Sesiones WhatsApp"
         parent="guapante_mcp_server.menu_mcp_root"
-        action="guapante_mcp_whatsapp_session_action"
+        action="guapante_wa_session_action"
         sequence="30"
         groups="guapante_mcp_server.group_mcp_admin"
     />

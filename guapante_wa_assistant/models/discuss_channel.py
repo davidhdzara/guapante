@@ -336,9 +336,9 @@ class DiscussChannel(models.Model):
             return result
 
         try:
-            self._mcp_process_message(whatsapp_number, body_text)
+            self._wa_process_message(whatsapp_number, body_text)
         except Exception:
-            _logger.exception("MCP WhatsApp bot error on channel %s", self.id)
+            _logger.exception("WA Assistant bot error on channel %s", self.id)
 
         return result
 
@@ -355,8 +355,8 @@ class DiscussChannel(models.Model):
     # State machine dispatcher
     # ------------------------------------------------------------------
 
-    def _mcp_process_message(self, whatsapp_number, body_text):
-        Session = self.env['guapante.mcp.whatsapp.session']
+    def _wa_process_message(self, whatsapp_number, body_text):
+        Session = self.env['guapante.wa.session']
         session = Session._get_or_create_session(whatsapp_number, channel_id=self.id)
 
         if body_text.lower().strip() in _RESET_KEYWORDS:
@@ -605,7 +605,7 @@ class DiscussChannel(models.Model):
         try:
             response = self._call_claude(session, user_message)
         except Exception as e:
-            _logger.error("MCP WhatsApp Claude error: %s", e)
+            _logger.error("WA Assistant Claude error: %s", e)
             response = (
                 "Lo siento, tuve un problema procesando tu solicitud. "
                 "Por favor intenta de nuevo o escribe 'menu' para reiniciar."
@@ -621,11 +621,11 @@ class DiscussChannel(models.Model):
         import anthropic  # noqa: PLC0415
 
         ICP = self.env['ir.config_parameter'].sudo()
-        api_key = ICP.get_param('guapante_mcp_whatsapp.anthropic_api_key', '')
-        model = ICP.get_param('guapante_mcp_whatsapp.claude_model', 'claude-opus-4-7')
+        api_key = ICP.get_param('guapante_wa_assistant.anthropic_api_key', '')
+        model = ICP.get_param('guapante_wa_assistant.claude_model', 'claude-opus-4-7')
 
         if not api_key:
-            _logger.error("MCP WhatsApp: anthropic_api_key not configured")
+            _logger.error("WA Assistant: anthropic_api_key not configured")
             return "El servicio de asistente no esta disponible en este momento."
 
         client = anthropic.Anthropic(api_key=api_key)
@@ -726,7 +726,7 @@ class DiscussChannel(models.Model):
         try:
             return getattr(tools, method_name)(**safe_input)
         except Exception as e:
-            _logger.error("MCP WA tool %s error: %s", tool_name, e)
+            _logger.error("WA Assistant tool %s error: %s", tool_name, e)
             return {'error': str(e)}
 
     # ------------------------------------------------------------------

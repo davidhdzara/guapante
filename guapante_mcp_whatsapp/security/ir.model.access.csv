@@ -1,3 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_mcp_whatsapp_session_admin,guapante.mcp.whatsapp.session admin,model_guapante_mcp_whatsapp_session,guapante_mcp_server.group_mcp_admin,1,1,1,1
-access_mcp_whatsapp_session_user,guapante.mcp.whatsapp.session user,model_guapante_mcp_whatsapp_session,base.group_user,1,0,0,0
