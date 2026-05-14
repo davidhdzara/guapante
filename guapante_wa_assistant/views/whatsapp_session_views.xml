@@ -5,7 +5,7 @@
         <field name="name">guapante.wa.session.view.tree</field>
         <field name="model">guapante.wa.session</field>
         <field name="arch" type="xml">
-            <tree string="Sesiones WhatsApp"
+            <list string="Sesiones WhatsApp"
                   decoration-success="state == 'authenticated'"
                   decoration-warning="state in ('pending_confirm', 'pending_branch')"
                   decoration-danger="state == 'blocked'"
@@ -17,7 +17,7 @@
                 <field name="last_activity"/>
                 <field name="message_count"/>
                 <field name="channel_id"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -42,7 +42,7 @@
                          invisible="state != 'needs_human'">
                         <strong>Requiere Asesor.</strong>
                         El asistente ha escalado esta sesión.
-                        Motivo: <field name="escalation_reason" readonly="1" nolabel="1"/>
+                        Motivo: <field name="escalation_reason" readonly="True" nolabel="True"/>
                     </div>
                     <group>
                         <group string="Identificación">
@@ -62,7 +62,7 @@
                             <field name="conversation_history"
                                    widget="ace"
                                    options="{'mode': 'json'}"
-                                   readonly="1"/>
+                                   readonly="True"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -74,7 +74,7 @@
     <record id="guapante_wa_session_action" model="ir.actions.act_window">
         <field name="name">Sesiones WhatsApp</field>
         <field name="res_model">guapante.wa.session</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
         <field name="context">{'search_default_authenticated': 1}</field>
     </record>
 </odoo>

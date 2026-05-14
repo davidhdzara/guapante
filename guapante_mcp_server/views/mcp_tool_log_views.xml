@@ -5,7 +5,7 @@
         <field name="name">guapante.mcp.tool.log.view.tree</field>
         <field name="model">guapante.mcp.tool.log</field>
         <field name="arch" type="xml">
-            <tree string="Auditoría MCP"
+            <list string="Auditoría MCP"
                   decoration-danger="not success"
                   default_order="create_date desc">
                 <field name="create_date" string="Fecha"/>
@@ -16,7 +16,7 @@
                 <field name="success"/>
                 <field name="ip_address"/>
                 <field name="error_message" optional="show"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -40,8 +40,7 @@
                         <group string="Detalles">
                             <field name="arguments" widget="ace" options="{'mode': 'json'}"/>
                             <field name="response_summary"/>
-                            <field name="error_message"
-                                   attrs="{'invisible': [('success', '=', True)]}"/>
+                            <field name="error_message" invisible="success"/>
                         </group>
                     </group>
                 </sheet>
@@ -53,7 +52,7 @@
     <record id="guapante_mcp_tool_log_action" model="ir.actions.act_window">
         <field name="name">Auditoría MCP</field>
         <field name="res_model">guapante.mcp.tool.log</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
         <field name="domain">[]</field>
         <field name="context">{'search_default_groupby_tool': 1}</field>
     </record>
