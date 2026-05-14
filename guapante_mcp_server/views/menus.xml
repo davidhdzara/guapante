@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Root menu under Contabilidad -->
+    <menuitem
+        id="menu_mcp_root"
+        name="MCP — Asistente IA"
+        parent="account.menu_finance"
+        sequence="100"
+        groups="guapante_mcp_server.group_mcp_admin"
+    />
+
+    <menuitem
+        id="menu_mcp_api_keys"
+        name="API Keys"
+        parent="menu_mcp_root"
+        action="guapante_mcp_api_key_action"
+        sequence="10"
+    />
+
+    <menuitem
+        id="menu_mcp_tool_log"
+        name="Auditoría"
+        parent="menu_mcp_root"
+        action="guapante_mcp_tool_log_action"
+        sequence="20"
+    />
+</odoo>

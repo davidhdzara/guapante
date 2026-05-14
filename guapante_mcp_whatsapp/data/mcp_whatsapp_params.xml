@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Placeholder parameters — configure via Settings or ir.config_parameter -->
+    <record id="mcp_wa_claude_model" model="ir.config_parameter">
+        <field name="key">guapante_mcp_whatsapp.claude_model</field>
+        <field name="value">claude-opus-4-7</field>
+    </record>
+
+    <record id="mcp_wa_session_ttl" model="ir.config_parameter">
+        <field name="key">guapante_mcp_whatsapp.session_ttl_minutes</field>
+        <field name="value">30</field>
+    </record>
+
+    <!-- guapante_mcp_whatsapp.anthropic_api_key must be set manually via:
+         Settings > Technical > Parameters > System Parameters
+         Key: guapante_mcp_whatsapp.anthropic_api_key
+         Never commit API keys to source control. -->
+</odoo>

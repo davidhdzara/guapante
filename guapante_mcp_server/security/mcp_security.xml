@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_guapante_mcp_server" model="ir.module.category">
+        <field name="name">Guapante MCP</field>
+        <field name="sequence">100</field>
+    </record>
+
+    <record id="group_mcp_admin" model="res.groups">
+        <field name="name">Administrador MCP</field>
+        <field name="category_id" ref="module_guapante_mcp_server"/>
+        <field name="comment">Puede gestionar API keys, ver logs de auditoría y usar todas las herramientas MCP.</field>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+</odoo>
