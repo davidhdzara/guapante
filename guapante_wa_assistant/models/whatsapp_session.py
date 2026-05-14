@@ -83,6 +83,14 @@ class GuapanteWaSession(models.Model):
             session.sudo().write({'last_activity': fields.Datetime.now()})
             return session
 
+        # CRIT-1: Never create a new session for a permanently blocked number.
+        blocked = self.sudo().search(
+            [('whatsapp_number', '=', whatsapp_number), ('state', '=', 'blocked')],
+            limit=1,
+        )
+        if blocked:
+            return blocked
+
         vals = {
             'whatsapp_number': whatsapp_number,
             'state': 'pending_nit',
@@ -103,6 +111,25 @@ class GuapanteWaSession(models.Model):
             'pending_options': False,
             'escalation_reason': False,
             'conversation_history': '[]',
+        })
+
+    @api.model
+    def _cron_expire_sessions(self):
+        """Mark stale authenticated/pending sessions as expired and clear sensitive data."""
+        ttl_minutes = int(
+            self.env['ir.config_parameter']
+            .sudo()
+            .get_param('guapante_wa_assistant.session_ttl_minutes', '30')
+        )
+        expiry_threshold = fields.Datetime.now() - timedelta(minutes=ttl_minutes)
+        stale = self.sudo().search([
+            ('state', 'not in', ['expired', 'blocked']),
+            ('last_activity', '<=', expiry_threshold),
+        ])
+        stale.sudo().write({
+            'state': 'expired',
+            'conversation_history': '[]',
+            'pending_options': False,
         })
 
     def action_release_to_bot(self):

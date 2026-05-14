@@ -223,10 +223,13 @@ class GuapanteMcpTools(models.AbstractModel):
         return {'partner_id': int(partner_id), 'retentions': totals}
 
     @api.model
-    def tool_send_invoice_email(self, invoice_id):
+    def tool_send_invoice_email(self, invoice_id, partner_id=None):
         invoice = self.env['account.move'].sudo().browse(int(invoice_id))
         if not invoice.exists():
             return {'error': f'Factura {invoice_id} no encontrada.'}
+        # CRIT-2: Enforce partner ownership for non-admin callers.
+        if partner_id and invoice.partner_id.id != int(partner_id):
+            return {'error': 'No tiene acceso a esta factura.'}
         if invoice.state != 'posted':
             return {'error': 'Solo se pueden enviar facturas publicadas (estado: posted).'}
         try:
@@ -234,7 +237,7 @@ class GuapanteMcpTools(models.AbstractModel):
             return {'success': True, 'message': f'Factura {invoice.name} enviada por email.'}
         except Exception as e:
             _logger.error("MCP tool_send_invoice_email: %s", e)
-            return {'error': str(e)}
+            return {'error': 'No se pudo enviar la factura.'}
 
     @api.model
     def tool_get_dian_status(self, invoice_id):
@@ -257,10 +260,12 @@ class GuapanteMcpTools(models.AbstractModel):
 
     @api.model
     def tool_add_invoice_note(self, invoice_id, note):
+        from odoo.tools import html_escape  # noqa: PLC0415
         invoice = self.env['account.move'].sudo().browse(int(invoice_id))
         if not invoice.exists():
             return {'error': 'Factura no encontrada.'}
-        invoice.message_post(body=note, message_type='comment')
+        # MED-5: Sanitize note to prevent HTML injection in chatter.
+        invoice.message_post(body=html_escape(note), message_type='comment')
         return {'success': True, 'invoice': invoice.name}
 
     # ------------------------------------------------------------------

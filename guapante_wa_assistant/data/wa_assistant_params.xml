@@ -12,7 +12,18 @@
     </record>
 
     <!-- guapante_wa_assistant.anthropic_api_key must be set manually via:
-         Settings > Technical > Parameters > System Parameters
-         Key: guapante_wa_assistant.anthropic_api_key
+         Settings > WA Assistant > API de Anthropic
          Never commit API keys to source control. -->
+
+    <!-- LOW-3: Cron to expire stale sessions and clear conversation history -->
+    <record id="ir_cron_wa_expire_sessions" model="ir.cron">
+        <field name="name">WA Assistant: Expirar Sesiones Inactivas</field>
+        <field name="model_id" ref="model_guapante_wa_session"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_expire_sessions()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+    </record>
 </odoo>

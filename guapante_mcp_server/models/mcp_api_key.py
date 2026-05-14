@@ -13,7 +13,7 @@ class GuapanteMcpApiKey(models.Model):
     _order = 'create_date desc'
 
     name = fields.Char(string='Nombre / Cliente', required=True)
-    token_hash = fields.Char(string='Token (Hash SHA-256)', readonly=True, copy=False)
+    token_hash = fields.Char(string='Token (Hash SHA-256)', readonly=True, copy=False, index=True)
     token_prefix = fields.Char(string='Prefijo Visible', readonly=True, copy=False)
     scope = fields.Selection(
         [('admin', 'Administrador'), ('user', 'Usuario Final')],

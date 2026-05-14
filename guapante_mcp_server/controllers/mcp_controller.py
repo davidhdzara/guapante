@@ -316,9 +316,9 @@ class GuapanteMcpController(http.Controller):
 
             return _json_response({'jsonrpc': '2.0', 'result': result, 'id': req_id})
 
-        except Exception as e:
+        except Exception:
             _logger.exception("MCP endpoint unhandled error")
-            return _error_response(req_id, -32603, f'Internal error: {str(e)}')
+            return _error_response(req_id, -32603, 'Internal server error')
 
     def _handle_initialize(self, params):
         return {
@@ -356,14 +356,13 @@ class GuapanteMcpController(http.Controller):
         if tool_def[3] and not is_admin:
             return _error_response(req_id, -32001, f'Tool "{tool_name}" requires admin scope')
 
-        # For user scope, inject partner_id restriction
-        if not is_admin and api_key.partner_id:
-            if tool_name in ('get_invoice', 'get_payment_link'):
-                arguments['partner_id'] = api_key.partner_id.id
-            elif tool_name in ('list_invoices', 'get_outstanding_balance', 'list_orders'):
-                arguments['partner_id'] = api_key.partner_id.id
-            elif tool_name == 'get_order':
-                arguments['partner_id'] = api_key.partner_id.id
+        # HIGH-1: Hard guard — user-scope tokens must always have a partner assigned.
+        if not is_admin and not api_key.partner_id:
+            return _error_response(req_id, -32001, 'User token has no partner assigned')
+
+        # For user scope, unconditionally inject partner_id restriction.
+        if not is_admin:
+            arguments['partner_id'] = api_key.partner_id.id
 
         success = True
         error_msg = ''
@@ -382,7 +381,7 @@ class GuapanteMcpController(http.Controller):
             _logger.exception("MCP tool execution error: %s", tool_name)
             success = False
             error_msg = str(e)
-            result_data = {'error': error_msg}
+            result_data = {'error': 'Tool execution failed'}
 
         # Audit log
         duration_ms = int((time.monotonic() - t_start) * 1000)
@@ -395,7 +394,10 @@ class GuapanteMcpController(http.Controller):
                     {k: v for k, v in arguments.items() if k != 'partner_id'},
                     default=str,
                 ),
-                'response_summary': str(result_data)[:500],
+                # MED-9: Store only non-sensitive metadata, never financial field values.
+                'response_summary': (
+                    f"success={success} keys={list(result_data.keys()) if isinstance(result_data, dict) else type(result_data).__name__}"
+                )[:500],
                 'duration_ms': duration_ms,
                 'success': success,
                 'error_message': error_msg or False,

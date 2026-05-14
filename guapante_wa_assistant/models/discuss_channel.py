@@ -425,17 +425,8 @@ class DiscussChannel(models.Model):
             limit=1,
             order='id asc',
         )
-        # Fallback: ilike search on vat starting with nit_base
-        if not partner:
-            partner = self.env['res.partner'].sudo().search(
-                [
-                    ('vat', 'like', nit_base),
-                    ('parent_id', '=', False),
-                    ('active', '=', True),
-                ],
-                limit=1,
-                order='id asc',
-            )
+        # CRIT-3: Substring LIKE fallback removed — it matched partial NITs and
+        # could authenticate the wrong company. Exact match and NIT+DV are sufficient.
 
         if not partner:
             tries = session.nit_tries + 1
@@ -585,8 +576,15 @@ class DiscussChannel(models.Model):
         text_lower = body_text.lower().strip()
         if text_lower in _CONFIRM_YES:
             partner = session.partner_id
+            # HIGH-6: Never auto-write an unverified number to partner.mobile.
+            # A human admin must register phone numbers in Odoo. Notify escalation
+            # channel so an admin can review and add the number if legitimate.
             if partner and not partner.mobile:
-                partner.sudo().write({'mobile': session.whatsapp_number})
+                self._escalate_to_human(
+                    session,
+                    f'Nuevo número no registrado intentó autenticarse: {session.whatsapp_number}',
+                )
+                return
             self._authenticate_partner(session, partner)
         elif text_lower in _CONFIRM_NO:
             session.reset()
@@ -614,7 +612,8 @@ class DiscussChannel(models.Model):
             response = self._call_claude(session, user_message)
         except Exception as e:
             _logger.error("WA Assistant Claude error: %s", e)
-            self._escalate_to_human(session, f'Error del asistente: {e}')
+            # LOW-5: Log full detail server-side; post only generic reason to channel.
+            self._escalate_to_human(session, 'Error interno del asistente')
             return
         if response:
             self._bot_reply(response)
@@ -788,6 +787,11 @@ class DiscussChannel(models.Model):
             safe_input['partner_id'] = partner_id
         elif tool_name in _partner_owner:
             safe_input['partner_id'] = partner_id
+
+        # MED-8: Validate tool name against explicit whitelist before dispatch.
+        _ALLOWED_TOOLS = {t['name'] for t in _WA_TOOLS}
+        if tool_name not in _ALLOWED_TOOLS:
+            return {'error': f'Herramienta {tool_name} no disponible.'}
 
         method_name = f'tool_{tool_name}'
         if not hasattr(tools, method_name):
