@@ -51,12 +51,13 @@ class SaleOrderLine(models.Model):
             else:
                 line.uom_mode = 'unit'
 
-    @api.onchange('visual_qty')
+    @api.onchange('visual_qty', 'uom_mode')
     def _onchange_visual_qty_uom_mode_sync(self) -> None:
-        """Sincroniza product_uom_qty cuando el usuario edita visual_qty.
+        """Preservación visual: mantiene el número al cambiar modo.
 
-        Cuando solo cambia uom_mode, el compute se encarga de
-        recalcular visual_qty sin alterar product_uom_qty.
+        Al cambiar uom_mode, el inverse toma el visual_qty actual
+        y recalcula product_uom_qty para el nuevo modo.
+        Ej: 7 en modo 'unit' → puq = 7 × 0.65 = 4.55 kg.
         """
         self._inverse_visual_qty()
 
@@ -103,7 +104,7 @@ class SaleOrderLine(models.Model):
                     },
                 }
 
-    @api.depends('product_uom_qty', 'product_id', 'uom_mode', 'product_packaging_id')
+    @api.depends('product_uom_qty', 'product_id', 'product_packaging_id')
     def _compute_visual_qty(self) -> None:
         weight_categ = self.env.ref(
             'uom.product_uom_categ_kgm',

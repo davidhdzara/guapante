@@ -57,7 +57,7 @@ class PurchaseOrderLine(models.Model):
                 line.uom_mode = 'unit'
                 return {'warning': {'title': 'Modo Restringido', 'message': f'"{line.product_id.name}" es un producto unitario, no se puede pesar.'}}
 
-    @api.depends('product_qty', 'product_id')
+    @api.depends('product_qty', 'product_id', 'product_packaging_id')
     def _compute_visual_qty(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
         for line in self:
