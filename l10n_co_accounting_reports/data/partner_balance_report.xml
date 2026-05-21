@@ -9,7 +9,7 @@
         <field name="filter_multi_company">selector</field>
         <field name="filter_unfold_all" eval="True"/>
         <field name="filter_partner" eval="True"/>
-        <field name="filter_hide_0_lines">never</field>
+        <field name="filter_hide_0_lines">by_default</field>
         <field name="default_opening_date_filter">this_month</field>
         <field name="search_bar" eval="True"/>
         <field name="custom_handler_model_id" ref="model_account_partner_balance_report_handler"/>
