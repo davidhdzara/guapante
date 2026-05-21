@@ -6,6 +6,8 @@ from odoo import models, fields, api, _
 from odoo.tools import SQL
 from odoo.exceptions import UserError
 
+import io
+import base64
 from datetime import timedelta
 from collections import defaultdict
 
@@ -35,6 +37,14 @@ class PartnerBalanceReportHandler(models.AbstractModel):
         super()._custom_options_initializer(report, options, previous_options)
         # FIX #1: Evitar líneas "Total" duplicadas debajo de cada sección
         options['ignore_totals_below_sections'] = True
+        # Botón de exportación parafiscal
+        options['buttons'].append({
+            'name': _('Detalle Parafiscal'),
+            'sequence': 50,
+            'action': 'export_file',
+            'action_param': 'export_parafiscal_xlsx',
+            'file_export_type': _('XLSX'),
+        })
         # Desplegar automáticamente en modo impresión
         if options.get('export_mode') == 'print' and not options.get('unfolded_lines'):
             options['unfold_all'] = True
@@ -174,6 +184,143 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                 self._get_partner_results(report, options, account_ids)
                 if account_ids else {}
             ),
+        }
+
+    # =================================================================
+    # EXPORT: PARAFISCAL XLSX
+    # =================================================================
+
+    def export_parafiscal_xlsx(self, options):
+        """Genera un Excel con detalle extendido para reportes parafiscales.
+
+        Columnas: NIT, DV, Razón Social, Dirección, Teléfono,
+                  Departamento, Municipio, Producto, Kilos,
+                  Valor Recaudado.
+
+        Retorna dict con file_name, file_content, file_type
+        compatible con el framework export_file de account.report.
+        """
+        import xlsxwriter
+
+        report = self.env['account.report'].browse(options['report_id'])
+        date_from = options['date']['date_from']
+        date_to = options['date']['date_to']
+
+        # Obtener datos por (cuenta, tercero)
+        rows = self._get_parafiscal_data(report, options)
+
+        if not rows:
+            raise UserError(_(
+                'No se encontraron datos para exportar en el período '
+                '%s a %s con los filtros seleccionados.',
+                date_from, date_to,
+            ))
+
+        # Generar Excel
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        sheet = workbook.add_worksheet('Detalle Parafiscal')
+
+        # --- Formatos ---
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'bg_color': '#1a237e',
+            'font_color': 'white',
+            'border': 1,
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'center',
+            'font_size': 10,
+        })
+        fmt_text = workbook.add_format({
+            'border': 1,
+            'font_size': 9,
+            'valign': 'vcenter',
+        })
+        fmt_number = workbook.add_format({
+            'border': 1,
+            'font_size': 9,
+            'num_format': '#,##0.00',
+            'valign': 'vcenter',
+        })
+        fmt_integer = workbook.add_format({
+            'border': 1,
+            'font_size': 9,
+            'num_format': '#,##0',
+            'valign': 'vcenter',
+        })
+        fmt_account = workbook.add_format({
+            'bold': True,
+            'bg_color': '#e3f2fd',
+            'border': 1,
+            'font_size': 10,
+            'valign': 'vcenter',
+        })
+
+        # --- Encabezados ---
+        headers = [
+            ('NIT', 15),
+            ('DV', 4),
+            ('NOMBRE O RAZÓN SOCIAL', 35),
+            ('DIRECCIÓN', 30),
+            ('TELÉFONO', 14),
+            ('DEPARTAMENTO', 16),
+            ('MUNICIPIO', 16),
+            ('PRODUCTO', 25),
+            ('KILOS', 12),
+            ('VALOR RECAUDADO', 18),
+        ]
+
+        for col, (name, width) in enumerate(headers):
+            sheet.write(0, col, name, fmt_header)
+            sheet.set_column(col, col, width)
+
+        sheet.set_row(0, 30)
+        sheet.freeze_panes(1, 0)
+
+        # --- Datos ---
+        row_idx = 1
+        current_account = None
+
+        for data in rows:
+            # Separador por cuenta contable
+            if data['account_code'] != current_account:
+                current_account = data['account_code']
+                account_label = '%s %s' % (
+                    data['account_code'], data['account_name']
+                )
+                sheet.merge_range(
+                    row_idx, 0, row_idx, len(headers) - 1,
+                    account_label, fmt_account,
+                )
+                row_idx += 1
+
+            # Fila del tercero
+            sheet.write(row_idx, 0, data['nit'], fmt_text)
+            sheet.write(row_idx, 1, data['dv'], fmt_text)
+            sheet.write(row_idx, 2, data['partner_name'], fmt_text)
+            sheet.write(row_idx, 3, data['address'], fmt_text)
+            sheet.write(row_idx, 4, data['phone'], fmt_text)
+            sheet.write(row_idx, 5, data['state'], fmt_text)
+            sheet.write(row_idx, 6, data['city'], fmt_text)
+            sheet.write(row_idx, 7, data['products'], fmt_text)
+            sheet.write(row_idx, 8, data['kilos'], fmt_integer)
+            sheet.write(row_idx, 9, data['amount'], fmt_number)
+            row_idx += 1
+
+        workbook.close()
+        output.seek(0)
+
+        # Retornar en formato compatible con export_file
+        period = '%s_%s' % (
+            date_from.replace('-', ''),
+            date_to.replace('-', ''),
+        )
+
+        return {
+            'file_name': 'detalle_parafiscal_%s' % period,
+            'file_content': output.getvalue(),
+            'file_type': 'xlsx',
         }
 
     # =================================================================
@@ -707,3 +854,240 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                 return vat_clean
 
         return vat_clean
+
+    # =================================================================
+    # PARAFISCAL: DATA HELPERS
+    # =================================================================
+
+    def _get_parafiscal_data(self, report, options):
+        """Obtiene datos extendidos de terceros para exportación parafiscal.
+
+        Combina:
+        - Montos agrupados por (cuenta, tercero) del período
+        - Datos extendidos del partner (dirección, teléfono, etc.)
+        - Productos y kilos de las facturas relacionadas
+
+        Returns:
+            Lista de dicts ordenada por (cuenta, tercero) con todos
+            los campos necesarios para el Excel.
+        """
+        date_from = options['date']['date_from']
+        date_to = options['date']['date_to']
+
+        # Obtener cuentas con movimientos en el período
+        account_results = self._get_account_results(report, options)
+        if not account_results:
+            return []
+
+        # Aplicar filtro de búsqueda por cuenta (filter_search_bar)
+        # El framework lo aplica a nivel de frontend; aquí lo replicamos
+        search_term = options.get('filter_search_bar')
+        if search_term:
+            search_lower = search_term.strip().lower()
+            account_results = [
+                (acc, vals) for acc, vals in account_results
+                if search_lower in (acc.code or '').lower()
+                or search_lower in (acc.name or '').lower()
+            ]
+            if not account_results:
+                return []
+
+        account_ids = [a.id for a, _ in account_results]
+        account_map = {
+            a.id: {'code': a.code, 'name': a.name}
+            for a, _ in account_results
+        }
+
+        # Lookup de tipos de identificación
+        id_types = self.env['l10n_latam.identification.type'].search([])
+        nit_type_ids = {
+            t.id for t in id_types
+            if 'nit' in (t.name or '').lower()
+        }
+
+        # Query principal: montos por (cuenta, tercero) + datos extendidos
+        self._cr.execute(SQL(
+            """
+            SELECT
+                aml.account_id,
+                aml.partner_id,
+                p.vat AS partner_vat,
+                p.name AS partner_name,
+                p.l10n_latam_identification_type_id AS doc_type_id,
+                p.street AS address,
+                p.phone AS phone,
+                rs.name AS state_name,
+                p.city AS city,
+                SUM(aml.balance) AS amount
+            FROM account_move_line aml
+            JOIN account_move am ON am.id = aml.move_id
+            LEFT JOIN res_partner p ON p.id = aml.partner_id
+            LEFT JOIN res_country_state rs ON rs.id = p.state_id
+            WHERE aml.account_id = ANY(%(account_ids)s)
+              AND aml.date >= %(date_from)s
+              AND aml.date <= %(date_to)s
+              AND am.state = 'posted'
+              AND aml.partner_id IS NOT NULL
+            GROUP BY
+                aml.account_id,
+                aml.partner_id,
+                p.vat, p.name,
+                p.l10n_latam_identification_type_id,
+                p.street, p.phone,
+                rs.name, p.city
+            ORDER BY aml.account_id, p.name
+            """,
+            account_ids=account_ids,
+            date_from=date_from,
+            date_to=date_to,
+        ))
+        partner_rows = self._cr.dictfetchall()
+
+        if not partner_rows:
+            return []
+
+        # Query productos/kilos: desde facturas relacionadas
+        product_data = self._get_product_kilos_data(
+            account_ids, date_from, date_to
+        )
+
+        # Construir resultado
+        rows = []
+        for row in partner_rows:
+            acc_id = row['account_id']
+            p_id = row['partner_id']
+            vat = row['partner_vat'] or ''
+            is_nit = row['doc_type_id'] in nit_type_ids
+
+            # Separar NIT y DV
+            vat_clean = ''.join(c for c in str(vat) if c.isdigit())
+            if is_nit and len(vat_clean) > 1:
+                nit = vat_clean[:-1]
+                dv = vat_clean[-1]
+            else:
+                nit = vat_clean
+                dv = ''
+
+            # Productos y kilos del partner en esta cuenta
+            prod_key = (acc_id, p_id)
+            prod_info = product_data.get(prod_key, {})
+            products = ', '.join(sorted(
+                self._resolve_translated_field(p)
+                for p in prod_info.get('products', set())
+                if self._resolve_translated_field(p)
+            ))
+            kilos = prod_info.get('quantity', 0.0)
+
+            acc_info = account_map.get(acc_id, {})
+            rows.append({
+                'account_code': acc_info.get('code', ''),
+                'account_name': acc_info.get('name', ''),
+                'nit': nit,
+                'dv': dv,
+                'partner_name': row['partner_name'] or '',
+                'address': row['address'] or '',
+                'phone': row['phone'] or '',
+                'state': row['state_name'] or '',
+                'city': row['city'] or '',
+                'products': products,
+                'kilos': kilos,
+                'amount': abs(row['amount'] or 0.0),
+            })
+
+        return rows
+
+    def _get_product_kilos_data(self, account_ids, date_from, date_to):
+        """Obtiene productos y cantidades de facturas relacionadas.
+
+        Para cada (cuenta, tercero), busca las facturas que tienen
+        líneas en esa cuenta y extrae los productos y cantidades
+        de las líneas de producto de esas facturas.
+
+        Returns:
+            Dict {(account_id, partner_id): {
+                'products': set of product names,
+                'quantity': total quantity,
+            }}
+        """
+        self._cr.execute(SQL(
+            """
+            SELECT
+                aml_para.account_id,
+                aml_para.partner_id,
+                COALESCE(
+                    pt.name->>'es_CO',
+                    pt.name->>'en_US',
+                    pt.name::text
+                ) AS product_name,
+                SUM(aml_prod.quantity) AS total_qty
+            FROM account_move_line aml_para
+            JOIN account_move am
+                ON am.id = aml_para.move_id
+            JOIN account_move_line aml_prod
+                ON aml_prod.move_id = am.id
+                AND aml_prod.product_id IS NOT NULL
+                AND aml_prod.display_type = 'product'
+            JOIN product_product pp
+                ON pp.id = aml_prod.product_id
+            JOIN product_template pt
+                ON pt.id = pp.product_tmpl_id
+            WHERE aml_para.account_id = ANY(%(account_ids)s)
+              AND aml_para.date >= %(date_from)s
+              AND aml_para.date <= %(date_to)s
+              AND am.state = 'posted'
+              AND aml_para.partner_id IS NOT NULL
+            GROUP BY
+                aml_para.account_id,
+                aml_para.partner_id,
+                product_name
+            """,
+            account_ids=account_ids,
+            date_from=date_from,
+            date_to=date_to,
+        ))
+
+        result = defaultdict(lambda: {'products': set(), 'quantity': 0.0})
+        for row in self._cr.dictfetchall():
+            key = (row['account_id'], row['partner_id'])
+            product_name = row['product_name'] or ''
+            # Resolver JSONB → string plano
+            product_name = self._resolve_translated_field(product_name)
+            if product_name:
+                result[key]['products'].add(product_name)
+            result[key]['quantity'] += row['total_qty'] or 0.0
+
+        return dict(result)
+
+    @api.model
+    def _resolve_translated_field(self, value):
+        """Convierte un campo traducible JSONB a string plano.
+
+        En Odoo 18, los campos traducibles se almacenan como JSONB
+        con estructura {'en_US': '...', 'es_CO': '...'}. psycopg2
+        los deserializa como dict de Python.
+
+        Prioridad: es_CO → en_US → primer valor disponible.
+        """
+        if not value:
+            return ''
+        if isinstance(value, dict):
+            return (
+                value.get('es_CO')
+                or value.get('en_US')
+                or next(iter(value.values()), '')
+            )
+        s = str(value)
+        # Fallback: si es un string JSON (e.g. '{"en_US": "Batata"}')
+        if s.startswith('{') and 'en_US' in s:
+            try:
+                import json
+                d = json.loads(s)
+                if isinstance(d, dict):
+                    return (
+                        d.get('es_CO')
+                        or d.get('en_US')
+                        or next(iter(d.values()), '')
+                    )
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return s
