@@ -1024,9 +1024,24 @@ class PartnerBalanceReportHandler(models.AbstractModel):
             JOIN account_move am
                 ON am.id = aml_para.move_id
             JOIN account_move_line aml_prod
-                ON aml_prod.move_id = am.id
-                AND aml_prod.product_id IS NOT NULL
+                ON aml_prod.product_id IS NOT NULL
                 AND aml_prod.display_type = 'product'
+                AND (
+                    -- Patron A: Productos en el mismo asiento
+                    aml_prod.move_id = am.id
+                    OR
+                    -- Patron B: Productos en asientos (facturas) conciliados con este
+                    aml_prod.move_id IN (
+                        SELECT aml_inv.move_id
+                        FROM account_move_line aml_pay
+                        JOIN account_partial_reconcile apr
+                            ON apr.debit_move_id = aml_pay.id OR apr.credit_move_id = aml_pay.id
+                        JOIN account_move_line aml_inv
+                            ON aml_inv.id = CASE WHEN apr.debit_move_id = aml_pay.id THEN apr.credit_move_id ELSE apr.debit_move_id END
+                        WHERE aml_pay.move_id = am.id
+                          AND aml_pay.account_id != aml_para.account_id
+                    )
+                )
             JOIN product_product pp
                 ON pp.id = aml_prod.product_id
             JOIN product_template pt
