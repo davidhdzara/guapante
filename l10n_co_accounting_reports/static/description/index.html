@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        /* Reset & Base */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #333; line-height: 1.6; }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        .hero h1 { font-size: 2.4em; font-weight: 300; margin-bottom: 10px; }
+        .hero h1 strong { font-weight: 700; }
+        .hero p { font-size: 1.2em; opacity: 0.9; max-width: 700px; margin: 0 auto; }
+
+        /* Sections */
+        .section { padding: 50px 40px; max-width: 950px; margin: 0 auto; }
+        .section h2 {
+            font-size: 1.8em; color: #1a237e; margin-bottom: 25px;
+            padding-bottom: 10px; border-bottom: 3px solid #0d47a1;
+        }
+        .section-alt { background-color: #f5f7fa; }
+
+        /* Feature Grid */
+        .features { display: flex; flex-wrap: wrap; gap: 25px; justify-content: center; }
+        .feature {
+            flex: 1 1 280px; max-width: 300px; background: white;
+            border-radius: 10px; padding: 25px; text-align: center;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            border-top: 4px solid #0d47a1;
+        }
+        .feature .icon { font-size: 2.5em; margin-bottom: 10px; }
+        .feature h3 { color: #1a237e; margin-bottom: 8px; font-size: 1.1em; }
+        .feature p { font-size: 0.92em; color: #666; }
+
+        /* Columns Table */
+        .columns-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .columns-table th {
+            background: #1a237e; color: white; padding: 12px 16px;
+            text-align: left; font-size: 0.95em;
+        }
+        .columns-table td { padding: 10px 16px; border-bottom: 1px solid #e0e0e0; }
+        .columns-table tr:nth-child(even) { background: #f5f7fa; }
+        .columns-table .tag {
+            display: inline-block; padding: 2px 10px; border-radius: 12px;
+            font-size: 0.82em; font-weight: 600;
+        }
+        .tag-monetary { background: #e8f5e9; color: #2e7d32; }
+        .tag-string { background: #e3f2fd; color: #1565c0; }
+
+        /* Screenshot placeholder */
+        .screenshot {
+            background: #f0f4f8; border: 2px dashed #ccc; border-radius: 10px;
+            padding: 40px; text-align: center; color: #888; margin: 20px 0;
+        }
+
+        /* Requirements */
+        .req-list { list-style: none; padding: 0; }
+        .req-list li {
+            padding: 8px 0 8px 30px; position: relative;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .req-list li::before {
+            content: '✓'; position: absolute; left: 0;
+            color: #2e7d32; font-weight: bold; font-size: 1.2em;
+        }
+
+        /* Footer */
+        .footer {
+            background: #1a237e; color: white; padding: 30px 40px;
+            text-align: center; font-size: 0.9em;
+        }
+        .footer a { color: #64b5f6; text-decoration: none; }
+
+        /* Badges */
+        .badges { display: flex; gap: 15px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+        .badge {
+            display: inline-block; padding: 6px 16px; border-radius: 20px;
+            font-size: 0.85em; font-weight: 600;
+        }
+        .badge-green { background: #e8f5e9; color: #2e7d32; }
+        .badge-blue { background: #e3f2fd; color: #1565c0; }
+        .badge-orange { background: #fff3e0; color: #e65100; }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+    <h1><strong>Trial Balance by Partner</strong></h1>
+    <p>Advanced Colombian accounting report for Odoo 18. View account balances grouped by partner with NIT, document type, and fiscal year-aware initial balances.</p>
+    <div class="badges" style="margin-top: 20px;">
+        <span class="badge" style="background: rgba(255,255,255,0.2); color: white;">🇨🇴 Colombian Localization</span>
+        <span class="badge" style="background: rgba(255,255,255,0.2); color: white;">📊 account_reports Framework</span>
+        <span class="badge" style="background: rgba(255,255,255,0.2); color: white;">🔒 Multi-company</span>
+    </div>
+</div>
+
+<!-- Overview -->
+<div class="section">
+    <h2>Overview</h2>
+    <p>
+        The <strong>Trial Balance by Partner</strong> report is an essential tool for Colombian accountants.
+        It provides a hierarchical view of account balances grouped by partner (third party), displaying
+        the partner's tax ID (NIT), document type, business name, and calculated balances that respect
+        the Colombian fiscal year rules.
+    </p>
+    <p style="margin-top: 15px;">
+        Built on Odoo's native <code>account_reports</code> framework, this module integrates seamlessly
+        with all standard filters (date range, journals, analytic accounts, partners) and supports
+        Excel/PDF export out of the box.
+    </p>
+</div>
+
+<!-- Key Features -->
+<div class="section section-alt">
+    <h2>Key Features</h2>
+    <div class="features">
+        <div class="feature">
+            <div class="icon">📋</div>
+            <h3>Account → Partner Hierarchy</h3>
+            <p>Foldable account lines that expand to show each partner's individual balances within that account.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">🆔</div>
+            <h3>Colombian NIT Formatting</h3>
+            <p>Automatic NIT formatting with verification digit (e.g., 900.123.456-7). Supports CC, CE, and other ID types.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">📅</div>
+            <h3>Fiscal Year-Aware Balances</h3>
+            <p>Initial balances correctly handle Balance Sheet vs. P&amp;L accounts per Colombian fiscal year rules.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">🔍</div>
+            <h3>Advanced Filters</h3>
+            <p>Filter by date range, journals, partners, analytic accounts. Search bar and hide-zero-lines toggle included.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">⚡</div>
+            <h3>Optimized Performance</h3>
+            <p>Lazy loading: partner data is fetched only when expanding an account. Batch loading for "Unfold All" mode.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">📤</div>
+            <h3>Excel &amp; PDF Export</h3>
+            <p>Native export to XLSX and PDF via the standard Odoo report framework. No extra configuration needed.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Report Columns -->
+<div class="section">
+    <h2>Report Columns</h2>
+    <table class="columns-table">
+        <thead>
+            <tr>
+                <th>Column</th>
+                <th>Description</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Tipo Doc.</strong></td>
+                <td>Partner identification type (NIT, Cédula de Ciudadanía, CE, etc.)</td>
+                <td><span class="tag tag-string">String</span></td>
+            </tr>
+            <tr>
+                <td><strong>NIT / Identificación</strong></td>
+                <td>Tax ID formatted per Colombian standards (e.g., 900.123.456-7)</td>
+                <td><span class="tag tag-string">String</span></td>
+            </tr>
+            <tr>
+                <td><strong>Razón Social</strong></td>
+                <td>Partner's legal name / business name</td>
+                <td><span class="tag tag-string">String</span></td>
+            </tr>
+            <tr>
+                <td><strong>Saldo Anterior</strong></td>
+                <td>Opening balance (fiscal year-aware for BS vs. P&amp;L accounts)</td>
+                <td><span class="tag tag-monetary">Monetary</span></td>
+            </tr>
+            <tr>
+                <td><strong>Débito</strong></td>
+                <td>Total debits in the selected period</td>
+                <td><span class="tag tag-monetary">Monetary</span></td>
+            </tr>
+            <tr>
+                <td><strong>Crédito</strong></td>
+                <td>Total credits in the selected period</td>
+                <td><span class="tag tag-monetary">Monetary</span></td>
+            </tr>
+            <tr>
+                <td><strong>Saldo Final</strong></td>
+                <td>Ending balance = Initial + Debit - Credit</td>
+                <td><span class="tag tag-monetary">Monetary</span></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Requirements -->
+<div class="section section-alt">
+    <h2>Requirements</h2>
+    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+            <h3 style="color: #1a237e; margin-bottom: 10px;">Dependencies</h3>
+            <ul class="req-list">
+                <li><strong>account_reports</strong> (Odoo Enterprise)</li>
+                <li><strong>l10n_co</strong> (Colombian Localization)</li>
+            </ul>
+        </div>
+        <div style="flex: 1; min-width: 250px;">
+            <h3 style="color: #1a237e; margin-bottom: 10px;">Compatibility</h3>
+            <ul class="req-list">
+                <li>Odoo 18.0 (Enterprise)</li>
+                <li>Multi-company supported</li>
+                <li>Multi-currency supported</li>
+                <li>Odoo.sh compatible</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- How to Use -->
+<div class="section">
+    <h2>How to Use</h2>
+    <ol style="padding-left: 20px;">
+        <li style="margin-bottom: 12px;">
+            <strong>Install the module</strong> from the Apps menu. Search for
+            <em>"Balance por Terceros"</em> or <em>"CO Trial Balance"</em>.
+        </li>
+        <li style="margin-bottom: 12px;">
+            <strong>Navigate to the report:</strong>
+            <code>Accounting → Reports → Audit Reports → Balance por Terceros</code>
+        </li>
+        <li style="margin-bottom: 12px;">
+            <strong>Select your filters:</strong> date range, journals, partners, or analytic accounts.
+        </li>
+        <li style="margin-bottom: 12px;">
+            <strong>Click on any account line</strong> to expand and see the detailed partner breakdown.
+        </li>
+        <li style="margin-bottom: 12px;">
+            <strong>Export</strong> to Excel (XLSX) or PDF using the buttons at the top of the report.
+        </li>
+    </ol>
+</div>
+
+<!-- Support -->
+<div class="footer">
+    <p><strong>Need help?</strong> Contact us at
+        <a href="mailto:soporte@insotech.co">soporte@insotech.co</a>
+    </p>
+    <p style="margin-top: 8px; opacity: 0.7;">
+        Developed by InSoTech · Medellín, Colombia
+    </p>
+</div>
+
+</body>
+</html>
