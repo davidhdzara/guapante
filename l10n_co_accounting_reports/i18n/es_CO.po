@@ -37,21 +37,6 @@ msgid "Wrong ID for partner balance line to expand: %s"
 msgstr "ID incorrecto para expandir línea de balance por terceros: %s"
 
 #. module: l10n_co_accounting_reports
-#: code:addons/l10n_co_accounting_reports/models/account_partner_balance.py:0
-msgid "Libro Mayor"
-msgstr "Libro Mayor"
-
-#. module: l10n_co_accounting_reports
-#: code:addons/l10n_co_accounting_reports/models/account_partner_balance.py:0
-msgid "Asientos Contables"
-msgstr "Asientos Contables"
-
-#. module: l10n_co_accounting_reports
-#: code:addons/l10n_co_accounting_reports/models/account_partner_balance.py:0
-msgid "Libro Mayor del Tercero"
-msgstr "Libro Mayor del Tercero"
-
-#. module: l10n_co_accounting_reports
 #: model:ir.actions.client,name:l10n_co_accounting_reports.action_partner_balance_report
 msgid "Balance por Terceros"
 msgstr "Balance por Terceros"

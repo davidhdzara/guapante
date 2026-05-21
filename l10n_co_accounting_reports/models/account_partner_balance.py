@@ -39,35 +39,6 @@ class PartnerBalanceReportHandler(models.AbstractModel):
         if options.get('export_mode') == 'print' and not options.get('unfolded_lines'):
             options['unfold_all'] = True
 
-    def _caret_options_initializer(self, report, options):
-        """Configura el menú contextual (clic derecho) en las líneas.
-
-        Permite al usuario navegar desde una línea del reporte hacia
-        los asientos contables o el libro mayor filtrado.
-        """
-        options['caret_options'] = {
-            'account.account': [
-                {
-                    'name': _('Libro Mayor'),
-                    'action': 'caret_option_open_general_ledger',
-                },
-                {
-                    'name': _('Asientos Contables'),
-                    'action': 'caret_option_open_journal_items',
-                },
-            ],
-            'res.partner': [
-                {
-                    'name': _('Libro Mayor del Tercero'),
-                    'action': 'caret_option_open_partner_ledger',
-                },
-                {
-                    'name': _('Asientos Contables'),
-                    'action': 'caret_option_open_journal_items',
-                },
-            ],
-        }
-
     # =================================================================
     # DYNAMIC LINES GENERATOR (Líneas de cuenta - nivel 1)
     # =================================================================
@@ -585,7 +556,6 @@ class PartnerBalanceReportHandler(models.AbstractModel):
             'expand_function': (
                 '_report_expand_unfoldable_line_partner_balance'
             ),
-            'caret_options': 'account.account',
         }
 
     def _get_partner_line(
@@ -652,7 +622,6 @@ class PartnerBalanceReportHandler(models.AbstractModel):
             'name': partner_data.get('partner_name', _('Sin Tercero')),
             'columns': column_values,
             'level': 3,
-            'caret_options': 'res.partner',
         }
 
     def _get_total_line(self, report, options, totals_by_col_group):
