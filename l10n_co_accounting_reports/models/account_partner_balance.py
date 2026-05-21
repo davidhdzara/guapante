@@ -879,6 +879,19 @@ class PartnerBalanceReportHandler(models.AbstractModel):
         if not account_results:
             return []
 
+        # Aplicar filtro de búsqueda por cuenta (filter_search_bar)
+        # El framework lo aplica a nivel de frontend; aquí lo replicamos
+        search_term = options.get('filter_search_bar')
+        if search_term:
+            search_lower = search_term.strip().lower()
+            account_results = [
+                (acc, vals) for acc, vals in account_results
+                if search_lower in (acc.code or '').lower()
+                or search_lower in (acc.name or '').lower()
+            ]
+            if not account_results:
+                return []
+
         account_ids = [a.id for a, _ in account_results]
         account_map = {
             a.id: {'code': a.code, 'name': a.name}
