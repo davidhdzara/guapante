@@ -219,38 +219,42 @@
                             <t t-if="any(inv.currency_id != par[2].currency_id for par in inv._get_reconciled_invoices_partials()[0])" t-set="otherCurrency" t-value="True"/>
                         </t>
 
+                        <!-- Check if any invoice has retentions (negative taxes) -->
+                        <t t-set="has_retentions" t-value="any(inv.amount_tax != 0 for inv in invoices if inv.move_type != 'entry')"/>
+
                         <table class="gpt-invoice-table">
                             <thead>
                                 <tr>
                                     <th>Factura</th>
                                     <th>Fecha</th>
                                     <th t-if="otherCurrency" class="text-end">Monto en Divisa</th>
-                                    <th class="text-end">Valor Factura</th>
-                                    <th class="text-end">Valor Aplicado</th>
-                                    <th class="text-end">Saldo</th>
+                                    <th t-if="has_retentions" class="text-end">Base</th>
+                                    <th t-if="has_retentions" class="text-end">Retención</th>
+                                    <th class="text-end">Total Neto</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                <t t-set="total_base" t-value="0"/>
+                                <t t-set="total_retencion" t-value="0"/>
+                                <t t-set="total_neto" t-value="0"/>
+
                                 <t t-foreach="invoices" t-as="inv">
                                     <t t-if="inv.move_type != 'entry'">
-                                        <!-- Calcular el valor aplicado de este pago a esta factura -->
+                                        <t t-set="total_base" t-value="total_base + inv.amount_untaxed"/>
+                                        <t t-set="total_retencion" t-value="total_retencion + inv.amount_tax"/>
+                                        <t t-set="total_neto" t-value="total_neto + inv.amount_total"/>
+
+                                        <!-- For multi-currency: get applied amount -->
                                         <t t-set="partials" t-value="inv._get_reconciled_invoices_partials()[0]"/>
-                                        <t t-set="applied_amount" t-value="0"/>
-                                        <t t-foreach="partials" t-as="par">
-                                            <t t-set="payment" t-value="par[2]"/>
-                                            <t t-if="payment.move_id.id == o.move_id.id">
-                                                <t t-set="applied_amount" t-value="abs(par[1])"/>
-                                            </t>
-                                        </t>
 
                                         <tr>
                                             <td>
-                                                <strong><span t-field="inv.name">FE3293</span></strong>
+                                                <strong><span t-field="inv.name">FVR22839</span></strong>
                                                 <t t-if="inv.ref">
                                                     <br/><span style="font-size: 9px; color: #9ca3af;"><span t-field="inv.ref"/></span>
                                                 </t>
                                             </td>
-                                            <td><span t-field="inv.invoice_date">19-05-2026</span></td>
+                                            <td><span t-field="inv.invoice_date">15-05-2026</span></td>
                                             <td t-if="otherCurrency" class="text-end">
                                                 <t t-foreach="partials" t-as="par">
                                                     <t t-set="pay_line" t-value="par[2]"/>
@@ -260,16 +264,42 @@
                                                     </t>
                                                 </t>
                                             </td>
-                                            <td class="text-end"><span t-field="inv.amount_total">$133.688,00</span></td>
-                                            <td class="text-end" style="font-weight: 600; color: #14532d;">
-                                                <span t-out="applied_amount"
-                                                      t-options="{'widget': 'monetary', 'display_currency': inv.currency_id}">$133.688,00</span>
+                                            <td t-if="has_retentions" class="text-end">
+                                                <span t-out="inv.amount_untaxed"
+                                                      t-options="{'widget': 'monetary', 'display_currency': inv.currency_id}">$1.295.000</span>
                                             </td>
-                                            <td class="text-end">
-                                                <span t-field="inv.amount_residual">$0,00</span>
+                                            <td t-if="has_retentions" class="text-end" style="color: #dc2626;">
+                                                <t t-if="inv.amount_tax != 0">
+                                                    <span t-out="inv.amount_tax"
+                                                          t-options="{'widget': 'monetary', 'display_currency': inv.currency_id}">-$12.950</span>
+                                                </t>
+                                                <t t-else="">—</t>
+                                            </td>
+                                            <td class="text-end" style="font-weight: 600;">
+                                                <span t-field="inv.amount_total">$1.282.050</span>
                                             </td>
                                         </tr>
                                     </t>
+                                </t>
+
+                                <!-- Totals row when retentions exist -->
+                                <t t-if="has_retentions">
+                                    <tr class="gpt-balance-row">
+                                        <td colspan="2" style="text-align: right;"><strong>Totales</strong></td>
+                                        <td t-if="otherCurrency"/>
+                                        <td class="text-end">
+                                            <strong><span t-out="total_base"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                        <td class="text-end" style="color: #dc2626 !important;">
+                                            <strong><span t-out="total_retencion"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                        <td class="text-end">
+                                            <strong><span t-out="total_neto"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                    </tr>
                                 </t>
                             </tbody>
                         </table>
