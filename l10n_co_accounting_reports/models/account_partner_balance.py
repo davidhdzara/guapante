@@ -1026,7 +1026,7 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                         pt.name->>'en_US',
                         pt.name::text
                     ) AS product_name,
-                    SUM(aml_prod.quantity) AS total_qty
+                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
                 FROM account_move_line aml_para
                 JOIN account_move am
                     ON am.id = aml_para.move_id
@@ -1038,6 +1038,8 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                     ON pp.id = aml_prod.product_id
                 JOIN product_template pt
                     ON pt.id = pp.product_tmpl_id
+                JOIN uom_uom uu
+                    ON uu.id = pt.uom_id
                 WHERE aml_para.account_id = ANY(%(account_ids)s)
                   AND aml_para.date >= %(date_from)s
                   AND aml_para.date <= %(date_to)s
@@ -1059,7 +1061,7 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                         pt.name->>'en_US',
                         pt.name::text
                     ) AS product_name,
-                    SUM(aml_prod.quantity) AS total_qty
+                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
                 FROM account_move_line aml_para
                 JOIN account_move am
                     ON am.id = aml_para.move_id
@@ -1078,6 +1080,8 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                     ON pp.id = aml_prod.product_id
                 JOIN product_template pt
                     ON pt.id = pp.product_tmpl_id
+                JOIN uom_uom uu
+                    ON uu.id = pt.uom_id
                 WHERE aml_para.account_id = ANY(%(account_ids)s)
                   AND aml_para.date >= %(date_from)s
                   AND aml_para.date <= %(date_to)s
@@ -1099,7 +1103,7 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                         pt.name->>'en_US',
                         pt.name::text
                     ) AS product_name,
-                    SUM(aml_prod.quantity) AS total_qty
+                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
                 FROM account_move_line aml_para
                 JOIN account_move am
                     ON am.id = aml_para.move_id
@@ -1118,6 +1122,8 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                     ON pp.id = aml_prod.product_id
                 JOIN product_template pt
                     ON pt.id = pp.product_tmpl_id
+                JOIN uom_uom uu
+                    ON uu.id = pt.uom_id
                 WHERE aml_para.account_id = ANY(%(account_ids)s)
                   AND aml_para.date >= %(date_from)s
                   AND aml_para.date <= %(date_to)s
