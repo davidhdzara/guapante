@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo auto_sequence="1">
+    <record id="partner_balance_report" model="account.report">
+        <field name="name">Balance de Prueba por Terceros</field>
+        <field name="filter_show_draft" eval="True"/>
+        <field name="filter_journals" eval="True"/>
+        <field name="filter_analytic" eval="True"/>
+        <field name="filter_period_comparison" eval="False"/>
+        <field name="filter_multi_company">selector</field>
+        <field name="filter_unfold_all" eval="True"/>
+        <field name="filter_partner" eval="True"/>
+        <field name="filter_hide_0_lines">never</field>
+        <field name="default_opening_date_filter">this_month</field>
+        <field name="search_bar" eval="True"/>
+        <field name="custom_handler_model_id" ref="model_account_partner_balance_report_handler"/>
+        <field name="column_ids">
+            <record id="partner_balance_col_doc_type" model="account.report.column">
+                <field name="name">Tipo Doc.</field>
+                <field name="expression_label">doc_type</field>
+                <field name="figure_type">string</field>
+            </record>
+            <record id="partner_balance_col_vat" model="account.report.column">
+                <field name="name">NIT / Identificación</field>
+                <field name="expression_label">partner_vat</field>
+                <field name="figure_type">string</field>
+            </record>
+            <record id="partner_balance_col_partner_name" model="account.report.column">
+                <field name="name">Razón Social</field>
+                <field name="expression_label">partner_name</field>
+                <field name="figure_type">string</field>
+            </record>
+            <record id="partner_balance_col_initial" model="account.report.column">
+                <field name="name">Saldo Anterior</field>
+                <field name="expression_label">initial_balance</field>
+            </record>
+            <record id="partner_balance_col_debit" model="account.report.column">
+                <field name="name">Débito</field>
+                <field name="expression_label">debit</field>
+            </record>
+            <record id="partner_balance_col_credit" model="account.report.column">
+                <field name="name">Crédito</field>
+                <field name="expression_label">credit</field>
+            </record>
+            <record id="partner_balance_col_balance" model="account.report.column">
+                <field name="name">Saldo Final</field>
+                <field name="expression_label">balance</field>
+            </record>
+        </field>
+    </record>
+</odoo>
