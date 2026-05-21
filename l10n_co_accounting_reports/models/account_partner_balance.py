@@ -1012,49 +1012,126 @@ class PartnerBalanceReportHandler(models.AbstractModel):
         self._cr.execute(SQL(
             """
             SELECT
-                aml_para.account_id,
-                aml_para.partner_id,
-                COALESCE(
-                    pt.name->>'es_CO',
-                    pt.name->>'en_US',
-                    pt.name::text
-                ) AS product_name,
-                SUM(aml_prod.quantity) AS total_qty
-            FROM account_move_line aml_para
-            JOIN account_move am
-                ON am.id = aml_para.move_id
-            JOIN account_move_line aml_prod
-                ON aml_prod.product_id IS NOT NULL
-                AND aml_prod.display_type = 'product'
-                AND (
-                    -- Patron A: Productos en el mismo asiento
-                    aml_prod.move_id = am.id
-                    OR
-                    -- Patron B: Productos en asientos (facturas) conciliados con este
-                    aml_prod.move_id IN (
-                        SELECT aml_inv.move_id
-                        FROM account_move_line aml_pay
-                        JOIN account_partial_reconcile apr
-                            ON apr.debit_move_id = aml_pay.id OR apr.credit_move_id = aml_pay.id
-                        JOIN account_move_line aml_inv
-                            ON aml_inv.id = CASE WHEN apr.debit_move_id = aml_pay.id THEN apr.credit_move_id ELSE apr.debit_move_id END
-                        WHERE aml_pay.move_id = am.id
-                          AND aml_pay.account_id != aml_para.account_id
-                    )
-                )
-            JOIN product_product pp
-                ON pp.id = aml_prod.product_id
-            JOIN product_template pt
-                ON pt.id = pp.product_tmpl_id
-            WHERE aml_para.account_id = ANY(%(account_ids)s)
-              AND aml_para.date >= %(date_from)s
-              AND aml_para.date <= %(date_to)s
-              AND am.state = 'posted'
-              AND aml_para.partner_id IS NOT NULL
+                sub.account_id,
+                sub.partner_id,
+                sub.product_name,
+                SUM(sub.total_qty) AS total_qty
+            FROM (
+                -- Patron A: Productos en el mismo asiento contable
+                SELECT
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    COALESCE(
+                        pt.name->>'es_CO',
+                        pt.name->>'en_US',
+                        pt.name::text
+                    ) AS product_name,
+                    SUM(aml_prod.quantity) AS total_qty
+                FROM account_move_line aml_para
+                JOIN account_move am
+                    ON am.id = aml_para.move_id
+                JOIN account_move_line aml_prod
+                    ON aml_prod.move_id = am.id
+                    AND aml_prod.product_id IS NOT NULL
+                    AND aml_prod.display_type = 'product'
+                JOIN product_product pp
+                    ON pp.id = aml_prod.product_id
+                JOIN product_template pt
+                    ON pt.id = pp.product_tmpl_id
+                WHERE aml_para.account_id = ANY(%(account_ids)s)
+                  AND aml_para.date >= %(date_from)s
+                  AND aml_para.date <= %(date_to)s
+                  AND am.state = 'posted'
+                  AND aml_para.partner_id IS NOT NULL
+                GROUP BY
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    product_name
+
+                UNION ALL
+
+                -- Patron B1: Pagos Debito conciliados con Facturas Credito
+                SELECT
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    COALESCE(
+                        pt.name->>'es_CO',
+                        pt.name->>'en_US',
+                        pt.name::text
+                    ) AS product_name,
+                    SUM(aml_prod.quantity) AS total_qty
+                FROM account_move_line aml_para
+                JOIN account_move am
+                    ON am.id = aml_para.move_id
+                JOIN account_move_line aml_pay
+                    ON aml_pay.move_id = am.id
+                    AND aml_pay.account_id != aml_para.account_id
+                JOIN account_partial_reconcile apr
+                    ON apr.debit_move_id = aml_pay.id
+                JOIN account_move_line aml_inv
+                    ON aml_inv.id = apr.credit_move_id
+                JOIN account_move_line aml_prod
+                    ON aml_prod.move_id = aml_inv.move_id
+                    AND aml_prod.product_id IS NOT NULL
+                    AND aml_prod.display_type = 'product'
+                JOIN product_product pp
+                    ON pp.id = aml_prod.product_id
+                JOIN product_template pt
+                    ON pt.id = pp.product_tmpl_id
+                WHERE aml_para.account_id = ANY(%(account_ids)s)
+                  AND aml_para.date >= %(date_from)s
+                  AND aml_para.date <= %(date_to)s
+                  AND am.state = 'posted'
+                  AND aml_para.partner_id IS NOT NULL
+                GROUP BY
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    product_name
+
+                UNION ALL
+
+                -- Patron B2: Pagos Credito conciliados con Facturas Debito
+                SELECT
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    COALESCE(
+                        pt.name->>'es_CO',
+                        pt.name->>'en_US',
+                        pt.name::text
+                    ) AS product_name,
+                    SUM(aml_prod.quantity) AS total_qty
+                FROM account_move_line aml_para
+                JOIN account_move am
+                    ON am.id = aml_para.move_id
+                JOIN account_move_line aml_pay
+                    ON aml_pay.move_id = am.id
+                    AND aml_pay.account_id != aml_para.account_id
+                JOIN account_partial_reconcile apr
+                    ON apr.credit_move_id = aml_pay.id
+                JOIN account_move_line aml_inv
+                    ON aml_inv.id = apr.debit_move_id
+                JOIN account_move_line aml_prod
+                    ON aml_prod.move_id = aml_inv.move_id
+                    AND aml_prod.product_id IS NOT NULL
+                    AND aml_prod.display_type = 'product'
+                JOIN product_product pp
+                    ON pp.id = aml_prod.product_id
+                JOIN product_template pt
+                    ON pt.id = pp.product_tmpl_id
+                WHERE aml_para.account_id = ANY(%(account_ids)s)
+                  AND aml_para.date >= %(date_from)s
+                  AND aml_para.date <= %(date_to)s
+                  AND am.state = 'posted'
+                  AND aml_para.partner_id IS NOT NULL
+                GROUP BY
+                    aml_para.account_id,
+                    aml_para.partner_id,
+                    product_name
+            ) sub
             GROUP BY
-                aml_para.account_id,
-                aml_para.partner_id,
-                product_name
+                sub.account_id,
+                sub.partner_id,
+                sub.product_name
             """,
             account_ids=account_ids,
             date_from=date_from,
