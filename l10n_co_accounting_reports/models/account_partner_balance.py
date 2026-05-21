@@ -905,12 +905,13 @@ class PartnerBalanceReportHandler(models.AbstractModel):
             if 'nit' in (t.name or '').lower()
         }
 
-        # Query principal: montos por (cuenta, tercero) + datos extendidos
+        # Query principal: montos desglosados por (cuenta, tercero, asiento) + datos extendidos
         self._cr.execute(SQL(
             """
             SELECT
                 aml.account_id,
                 aml.partner_id,
+                aml.move_id,
                 p.vat AS partner_vat,
                 p.name AS partner_name,
                 p.l10n_latam_identification_type_id AS doc_type_id,
@@ -931,6 +932,7 @@ class PartnerBalanceReportHandler(models.AbstractModel):
             GROUP BY
                 aml.account_id,
                 aml.partner_id,
+                aml.move_id,
                 p.vat, p.name,
                 p.l10n_latam_identification_type_id,
                 p.street, p.phone,
@@ -946,18 +948,243 @@ class PartnerBalanceReportHandler(models.AbstractModel):
         if not partner_rows:
             return []
 
-        # Query productos/kilos: desde facturas relacionadas
-        product_data = self._get_product_kilos_data(
-            account_ids, date_from, date_to
+        # Extraer todos los move_ids únicos involucrados
+        move_ids = list({row['move_id'] for row in partner_rows if row.get('move_id')})
+
+        # Query masiva de productos asociados a todas las facturas directas
+        self._cr.execute(SQL(
+            """
+            SELECT
+                aml.move_id,
+                aml.product_id,
+                COALESCE(
+                    pt.name->>'es_CO',
+                    pt.name->>'en_US',
+                    pt.name::text
+                ) AS product_name,
+                aml.quantity,
+                aml.balance,
+                pt.weight,
+                uu.category_id AS uom_category_id
+            FROM account_move_line aml
+            JOIN product_product pp ON pp.id = aml.product_id
+            JOIN product_template pt ON pt.id = pp.product_tmpl_id
+            JOIN uom_uom uu ON uu.id = pt.uom_id
+            WHERE aml.move_id = ANY(%(move_ids)s)
+              AND aml.display_type = 'product'
+            """,
+            move_ids=move_ids,
+        ))
+        product_rows = self._cr.dictfetchall()
+
+        # Query masiva para mapear relaciones de conciliacion para pagos (B1 & B2)
+        self._cr.execute(SQL(
+            """
+            -- Patron B1: Pagos Debito conciliados con Facturas Credito
+            SELECT DISTINCT
+                aml_para.move_id AS pay_move_id,
+                aml_inv.move_id AS inv_move_id
+            FROM account_move_line aml_para
+            JOIN account_move_line aml_pay
+                ON aml_pay.move_id = aml_para.move_id
+                AND aml_pay.account_id != aml_para.account_id
+            JOIN account_partial_reconcile apr
+                ON apr.debit_move_id = aml_pay.id
+            JOIN account_move_line aml_inv
+                ON aml_inv.id = apr.credit_move_id
+            WHERE aml_para.move_id = ANY(%(move_ids)s)
+
+            UNION
+
+            -- Patron B2: Pagos Credito conciliados con Facturas Debito
+            SELECT DISTINCT
+                aml_para.move_id AS pay_move_id,
+                aml_inv.move_id AS inv_move_id
+            FROM account_move_line aml_para
+            JOIN account_move_line aml_pay
+                ON aml_pay.move_id = aml_para.move_id
+                AND aml_pay.account_id != aml_para.account_id
+            JOIN account_partial_reconcile apr
+                ON apr.credit_move_id = aml_pay.id
+            JOIN account_move_line aml_inv
+                ON aml_inv.id = apr.debit_move_id
+            WHERE aml_para.move_id = ANY(%(move_ids)s)
+            """,
+            move_ids=move_ids,
+        ))
+        payment_reconciled_rows = self._cr.dictfetchall()
+
+        # Construir mapeo de Pago -> Facturas
+        pay_to_inv_map = defaultdict(set)
+        all_reconciled_inv_ids = set()
+        for r in payment_reconciled_rows:
+            pay_to_inv_map[r['pay_move_id']].add(r['inv_move_id'])
+            all_reconciled_inv_ids.add(r['inv_move_id'])
+
+        # Cargar productos de las facturas conciliadas de forma masiva
+        reconciled_product_rows = []
+        if all_reconciled_inv_ids:
+            self._cr.execute(SQL(
+                """
+                SELECT
+                    aml.move_id,
+                    aml.product_id,
+                    COALESCE(
+                        pt.name->>'es_CO',
+                        pt.name->>'en_US',
+                        pt.name::text
+                    ) AS product_name,
+                    aml.quantity,
+                    aml.balance,
+                    pt.weight,
+                    uu.category_id AS uom_category_id
+                FROM account_move_line aml
+                JOIN product_product pp ON pp.id = aml.product_id
+                JOIN product_template pt ON pt.id = pp.product_tmpl_id
+                JOIN uom_uom uu ON uu.id = pt.uom_id
+                WHERE aml.move_id = ANY(%(inv_ids)s)
+                  AND aml.display_type = 'product'
+                """,
+                inv_ids=list(all_reconciled_inv_ids),
+            ))
+            reconciled_product_rows = self._cr.dictfetchall()
+
+        # Agrupar las lineas de producto por move_id
+        move_products_db = defaultdict(list)
+        for r in (product_rows + reconciled_product_rows):
+            move_products_db[r['move_id']].append(r)
+
+        # Mapear productos e informacion por move_id (directo o via conciliado)
+        move_to_products = {}
+        for mid in move_ids:
+            prod_rows = move_products_db.get(mid, [])
+            if not prod_rows:
+                # Intentar resolver a traves de facturas conciliadas si es un pago
+                inv_ids = pay_to_inv_map.get(mid, set())
+                for iid in inv_ids:
+                    prod_rows.extend(move_products_db.get(iid, []))
+            
+            # Construir la lista estructurada de productos y sus pesos
+            plist = []
+            for r in prod_rows:
+                weight_factor = 1.0
+                if r['uom_category_id'] != 2 and r['weight'] and r['weight'] > 0:
+                    weight_factor = r['weight']
+                kilos = (r['quantity'] or 0.0) * weight_factor
+                plist.append({
+                    'product_name': r['product_name'] or '',
+                    'balance': r['balance'] or 0.0,
+                    'kilos': kilos,
+                })
+            move_to_products[mid] = plist
+
+        # Prorrateo y desglose de lineas contables en caliente
+        temp_rows = []
+        for row in partner_rows:
+            mid = row['move_id']
+            prod_list = move_to_products.get(mid, [])
+            
+            # Valor contable absoluto del movimiento contable (retencion o cargo)
+            row_amount = abs(row['amount'] or 0.0)
+            
+            if prod_list:
+                # Sumar el valor absoluto total de las lineas de producto
+                total_prod_val = sum(abs(p['balance']) for p in prod_list)
+                
+                if total_prod_val > 0:
+                    # Distribuir proporcionalmente segun costo de producto
+                    for p in prod_list:
+                        proportion = abs(p['balance']) / total_prod_val
+                        dist_amount = row_amount * proportion
+                        temp_rows.append({
+                            'account_id': row['account_id'],
+                            'partner_id': row['partner_id'],
+                            'partner_vat': row['partner_vat'],
+                            'partner_name': row['partner_name'],
+                            'doc_type_id': row['doc_type_id'],
+                            'address': row['address'],
+                            'phone': row['phone'],
+                            'state_name': row['state_name'],
+                            'city': row['city'],
+                            'product_name': p['product_name'],
+                            'kilos': p['kilos'],
+                            'amount': dist_amount,
+                        })
+                else:
+                    # Si el costo es cero (ej. obsequio o muestra), distribuir equitativamente
+                    count = len(prod_list)
+                    dist_amount = row_amount / count
+                    for p in prod_list:
+                        temp_rows.append({
+                            'account_id': row['account_id'],
+                            'partner_id': row['partner_id'],
+                            'partner_vat': row['partner_vat'],
+                            'partner_name': row['partner_name'],
+                            'doc_type_id': row['doc_type_id'],
+                            'address': row['address'],
+                            'phone': row['phone'],
+                            'state_name': row['state_name'],
+                            'city': row['city'],
+                            'product_name': p['product_name'],
+                            'kilos': p['kilos'],
+                            'amount': dist_amount,
+                        })
+            else:
+                # Sin productos asociados (asientos contables de ajuste o directos)
+                temp_rows.append({
+                    'account_id': row['account_id'],
+                    'partner_id': row['partner_id'],
+                    'partner_vat': row['partner_vat'],
+                    'partner_name': row['partner_name'],
+                    'doc_type_id': row['doc_type_id'],
+                    'address': row['address'],
+                    'phone': row['phone'],
+                    'state_name': row['state_name'],
+                    'city': row['city'],
+                    'product_name': '',
+                    'kilos': 0.0,
+                    'amount': row_amount,
+                })
+
+        # Consolidar todas las lineas desglosadas por la terna (cuenta, partner, producto)
+        # Esto acumula kilos y montos desglosados del mes de forma limpia
+        consolidated = {}
+        for r in temp_rows:
+            prod_name = r['product_name']
+            # Resolver JSONB o traducciones
+            prod_name = self._resolve_translated_field(prod_name)
+            
+            key = (r['account_id'], r['partner_id'], prod_name)
+            if key not in consolidated:
+                consolidated[key] = {
+                    'account_id': r['account_id'],
+                    'partner_id': r['partner_id'],
+                    'partner_vat': r['partner_vat'],
+                    'partner_name': r['partner_name'],
+                    'doc_type_id': r['doc_type_id'],
+                    'address': r['address'],
+                    'phone': r['phone'],
+                    'state_name': r['state_name'],
+                    'city': r['city'],
+                    'product_name': prod_name,
+                    'kilos': 0.0,
+                    'amount': 0.0,
+                }
+            consolidated[key]['kilos'] += r['kilos']
+            consolidated[key]['amount'] += r['amount']
+
+        # Construir lista ordenada final de filas para el reporte
+        rows = []
+        # Ordenamos por cuenta contable y nombre del partner para mantener la coherencia del Excel
+        sorted_keys = sorted(
+            consolidated.keys(),
+            key=lambda k: (consolidated[k]['account_id'], consolidated[k]['partner_name'] or '', consolidated[k]['product_name'] or '')
         )
 
-        # Construir resultado
-        rows = []
-        for row in partner_rows:
-            acc_id = row['account_id']
-            p_id = row['partner_id']
-            vat = row['partner_vat'] or ''
-            is_nit = row['doc_type_id'] in nit_type_ids
+        for key in sorted_keys:
+            r = consolidated[key]
+            vat = r['partner_vat'] or ''
+            is_nit = r['doc_type_id'] in nit_type_ids
 
             # Separar NIT y DV
             vat_clean = ''.join(c for c in str(vat) if c.isdigit())
@@ -968,193 +1195,24 @@ class PartnerBalanceReportHandler(models.AbstractModel):
                 nit = vat_clean
                 dv = ''
 
-            # Productos y kilos del partner en esta cuenta
-            prod_key = (acc_id, p_id)
-            prod_info = product_data.get(prod_key, {})
-            products = ', '.join(sorted(
-                self._resolve_translated_field(p)
-                for p in prod_info.get('products', set())
-                if self._resolve_translated_field(p)
-            ))
-            kilos = prod_info.get('quantity', 0.0)
-
-            acc_info = account_map.get(acc_id, {})
+            acc_info = account_map.get(r['account_id'], {})
             rows.append({
                 'account_code': acc_info.get('code', ''),
                 'account_name': acc_info.get('name', ''),
                 'nit': nit,
                 'dv': dv,
-                'partner_name': row['partner_name'] or '',
-                'address': row['address'] or '',
-                'phone': row['phone'] or '',
-                'state': row['state_name'] or '',
-                'city': row['city'] or '',
-                'products': products,
-                'kilos': kilos,
-                'amount': abs(row['amount'] or 0.0),
+                'partner_name': r['partner_name'] or '',
+                'address': r['address'] or '',
+                'phone': r['phone'] or '',
+                'state': r['state_name'] or '',
+                'city': r['city'] or '',
+                'products': r['product_name'], # Nombre del producto consolidado
+                'kilos': r['kilos'],
+                'amount': r['amount'],
             })
 
         return rows
 
-    def _get_product_kilos_data(self, account_ids, date_from, date_to):
-        """Obtiene productos y cantidades de facturas relacionadas.
-
-        Para cada (cuenta, tercero), busca las facturas que tienen
-        líneas en esa cuenta y extrae los productos y cantidades
-        de las líneas de producto de esas facturas.
-
-        Returns:
-            Dict {(account_id, partner_id): {
-                'products': set of product names,
-                'quantity': total quantity,
-            }}
-        """
-        self._cr.execute(SQL(
-            """
-            SELECT
-                sub.account_id,
-                sub.partner_id,
-                sub.product_name,
-                SUM(sub.total_qty) AS total_qty
-            FROM (
-                -- Patron A: Productos en el mismo asiento contable
-                SELECT
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    COALESCE(
-                        pt.name->>'es_CO',
-                        pt.name->>'en_US',
-                        pt.name::text
-                    ) AS product_name,
-                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
-                FROM account_move_line aml_para
-                JOIN account_move am
-                    ON am.id = aml_para.move_id
-                JOIN account_move_line aml_prod
-                    ON aml_prod.move_id = am.id
-                    AND aml_prod.product_id IS NOT NULL
-                    AND aml_prod.display_type = 'product'
-                JOIN product_product pp
-                    ON pp.id = aml_prod.product_id
-                JOIN product_template pt
-                    ON pt.id = pp.product_tmpl_id
-                JOIN uom_uom uu
-                    ON uu.id = pt.uom_id
-                WHERE aml_para.account_id = ANY(%(account_ids)s)
-                  AND aml_para.date >= %(date_from)s
-                  AND aml_para.date <= %(date_to)s
-                  AND am.state = 'posted'
-                  AND aml_para.partner_id IS NOT NULL
-                GROUP BY
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    product_name
-
-                UNION ALL
-
-                -- Patron B1: Pagos Debito conciliados con Facturas Credito
-                SELECT
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    COALESCE(
-                        pt.name->>'es_CO',
-                        pt.name->>'en_US',
-                        pt.name::text
-                    ) AS product_name,
-                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
-                FROM account_move_line aml_para
-                JOIN account_move am
-                    ON am.id = aml_para.move_id
-                JOIN account_move_line aml_pay
-                    ON aml_pay.move_id = am.id
-                    AND aml_pay.account_id != aml_para.account_id
-                JOIN account_partial_reconcile apr
-                    ON apr.debit_move_id = aml_pay.id
-                JOIN account_move_line aml_inv
-                    ON aml_inv.id = apr.credit_move_id
-                JOIN account_move_line aml_prod
-                    ON aml_prod.move_id = aml_inv.move_id
-                    AND aml_prod.product_id IS NOT NULL
-                    AND aml_prod.display_type = 'product'
-                JOIN product_product pp
-                    ON pp.id = aml_prod.product_id
-                JOIN product_template pt
-                    ON pt.id = pp.product_tmpl_id
-                JOIN uom_uom uu
-                    ON uu.id = pt.uom_id
-                WHERE aml_para.account_id = ANY(%(account_ids)s)
-                  AND aml_para.date >= %(date_from)s
-                  AND aml_para.date <= %(date_to)s
-                  AND am.state = 'posted'
-                  AND aml_para.partner_id IS NOT NULL
-                GROUP BY
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    product_name
-
-                UNION ALL
-
-                -- Patron B2: Pagos Credito conciliados con Facturas Debito
-                SELECT
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    COALESCE(
-                        pt.name->>'es_CO',
-                        pt.name->>'en_US',
-                        pt.name::text
-                    ) AS product_name,
-                    SUM(aml_prod.quantity * COALESCE(CASE WHEN uu.category_id != 2 AND pt.weight > 0 THEN pt.weight ELSE 1.0 END, 1.0)) AS total_qty
-                FROM account_move_line aml_para
-                JOIN account_move am
-                    ON am.id = aml_para.move_id
-                JOIN account_move_line aml_pay
-                    ON aml_pay.move_id = am.id
-                    AND aml_pay.account_id != aml_para.account_id
-                JOIN account_partial_reconcile apr
-                    ON apr.credit_move_id = aml_pay.id
-                JOIN account_move_line aml_inv
-                    ON aml_inv.id = apr.debit_move_id
-                JOIN account_move_line aml_prod
-                    ON aml_prod.move_id = aml_inv.move_id
-                    AND aml_prod.product_id IS NOT NULL
-                    AND aml_prod.display_type = 'product'
-                JOIN product_product pp
-                    ON pp.id = aml_prod.product_id
-                JOIN product_template pt
-                    ON pt.id = pp.product_tmpl_id
-                JOIN uom_uom uu
-                    ON uu.id = pt.uom_id
-                WHERE aml_para.account_id = ANY(%(account_ids)s)
-                  AND aml_para.date >= %(date_from)s
-                  AND aml_para.date <= %(date_to)s
-                  AND am.state = 'posted'
-                  AND aml_para.partner_id IS NOT NULL
-                GROUP BY
-                    aml_para.account_id,
-                    aml_para.partner_id,
-                    product_name
-            ) sub
-            GROUP BY
-                sub.account_id,
-                sub.partner_id,
-                sub.product_name
-            """,
-            account_ids=account_ids,
-            date_from=date_from,
-            date_to=date_to,
-        ))
-
-        result = defaultdict(lambda: {'products': set(), 'quantity': 0.0})
-        for row in self._cr.dictfetchall():
-            key = (row['account_id'], row['partner_id'])
-            product_name = row['product_name'] or ''
-            # Resolver JSONB → string plano
-            product_name = self._resolve_translated_field(product_name)
-            if product_name:
-                result[key]['products'].add(product_name)
-            result[key]['quantity'] += row['total_qty'] or 0.0
-
-        return dict(result)
 
     @api.model
     def _resolve_translated_field(self, value):
