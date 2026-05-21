@@ -8,7 +8,8 @@
 
     <menuitem id="menu_partner_balance_report"
         name="Balance por Terceros"
-        parent="account_reports.account_report_menu"
+        parent="account_reports.account_reports_audit_reports_menu"
         action="action_partner_balance_report"
+        groups="account.group_account_readonly,account.group_account_basic"
         sequence="4"/>
 </odoo>
