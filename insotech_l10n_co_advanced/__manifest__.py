@@ -24,6 +24,7 @@
         'views/account_move_views.xml',
         'views/account_journal_views.xml',
         'views/report_invoice_document_inherit.xml',
+        'views/report_payment_receipt_inherit.xml',
     ],
     'installable': True,
     'application': False,
