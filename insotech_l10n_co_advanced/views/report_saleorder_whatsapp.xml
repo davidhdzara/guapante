@@ -304,7 +304,7 @@
                                     <td>
                                         <strong><span t-field="line.product_id.name"/></strong>
                                         <!-- Variantes: Grado de Madurez, Tamaño, etc. -->
-                                        <t t-set="ptavs" t-value="line.product_id.product_template_attribute_value_ids"/>
+                                        <t t-set="ptavs" t-value="line.product_template_attribute_value_ids"/>
                                         <t t-if="ptavs">
                                             <br/>
                                             <t t-foreach="ptavs" t-as="ptav">
