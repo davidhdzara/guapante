@@ -328,7 +328,12 @@
                                         </t>
                                         <span style="font-size: 10px; font-weight: 400; color: #6b7280;">
                                             <t t-if="'uom_mode' in line._fields and line.uom_mode">
-                                                <span t-esc="dict(line._fields['uom_mode'].selection).get(line.uom_mode)"/>
+                                                <t t-if="line.uom_mode == 'kg'">Kg</t>
+                                                <t t-elif="line.uom_mode == 'g'">g</t>
+                                                <t t-elif="line.uom_mode == 'unit'">Unidades</t>
+                                                <t t-else="">
+                                                    <span t-esc="dict(line._fields['uom_mode'].selection).get(line.uom_mode)"/>
+                                                </t>
                                             </t>
                                             <t t-else="">
                                                 <span t-field="line.product_uom"/>
