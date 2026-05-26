@@ -574,7 +574,7 @@ class GuapanteCustomerPortal(CustomerPortal):
         # pero el dominio restringe estrictamente a que solo sea su info.
         AccountPayment = request.env['account.payment'].sudo()
         payment_domain = [
-            ('partner_id', 'child_of', [partner.id]),
+            ('partner_id', 'child_of', [partner.commercial_partner_id.id]),
             ('state', '=', 'posted')
         ]
         last_payment = AccountPayment.search(payment_domain, order='date desc', limit=1)
@@ -777,3 +777,29 @@ class GuapanteCustomerPortal(CustomerPortal):
         ]
 
         return request.make_response(zip_content, headers=headers)
+
+    @http.route(['/my/orders/download_whatsapp/<int:order_id>'], type='http', auth="user", website=True)
+    def portal_my_orders_download_whatsapp(self, order_id, **kw):
+        """
+        Download the specific Whatsapp Sale Order Report as PDF.
+        """
+        order = request.env['sale.order'].sudo().browse(order_id)
+        partner = request.env.user.partner_id
+        
+        # Security check: the order must belong to the partner or its commercial partner (company)
+        if not order.exists() or (order.partner_id.id != partner.id and order.partner_id.commercial_partner_id.id != partner.commercial_partner_id.id):
+            return request.redirect('/my/orders')
+
+        pdf_content, _ = request.env['ir.actions.report'].sudo()._render_qweb_pdf('insotech_l10n_co_advanced.report_saleorder_whatsapp', [order.id])
+        
+        safe_name = order.name.replace('/', '_')
+        filename = f"Pedido_{safe_name}.pdf"
+        
+        headers = [
+            ('Content-Type', 'application/pdf'),
+            ('Content-Disposition', f'attachment; filename="{filename}"'),
+            ('Content-Length', len(pdf_content))
+        ]
+        
+        return request.make_response(pdf_content, headers=headers)
+
