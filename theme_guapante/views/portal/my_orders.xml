@@ -180,7 +180,7 @@
                                                 <td class="fw-bold text-end">
                                                     <t t-set="valid_invoices" t-value="order.invoice_ids.filtered(lambda i: i.state not in ('draft', 'cancel'))"/>
                                                     <t t-if="valid_invoices">
-                                                        <span t-esc="sum(valid_invoices.mapped('amount_total'))" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                                        <span t-esc="sum(valid_invoices.mapped('amount_total_in_currency_signed'))" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
                                                     </t>
                                                     <t t-elif="order.guapante_delivery_status in ['shipping', 'delivered']">
                                                         <span t-field="order.amount_total" t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
