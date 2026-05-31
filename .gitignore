@@ -23,6 +23,8 @@
 !insotech_wa_assistant/**
 !l10n_co_accounting_reports/
 !l10n_co_accounting_reports/**
+!l10n_co_bank_payment_export/
+!l10n_co_bank_payment_export/**
 !requirements.txt
 
 # Always ignore compiled Python files

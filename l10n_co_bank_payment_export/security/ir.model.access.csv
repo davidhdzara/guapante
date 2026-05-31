@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_bank_payment_export_manager,bank.payment.export manager,model_bank_payment_export,account.group_account_manager,1,1,1,1
+access_bank_payment_export_user,bank.payment.export user,model_bank_payment_export,account.group_account_user,1,0,1,0
+access_bank_payment_export_payroll,bank.payment.export payroll,model_bank_payment_export,hr_payroll.group_hr_payroll_user,1,0,1,0
+access_bank_payment_export_wizard_user,bank.payment.export.wizard user,model_bank_payment_export_wizard,account.group_account_user,1,1,1,1
+access_bank_payment_export_wizard_payroll,bank.payment.export.wizard payroll,model_bank_payment_export_wizard,hr_payroll.group_hr_payroll_user,1,1,1,1
