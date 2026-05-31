@@ -630,12 +630,9 @@ class BankPaymentExport(models.Model):
                 _('El pago %s tiene un valor de cero o negativo.') % payment.name
             )
 
-        if partner.is_company:
-            nombre, apellido = _sanitize(partner.name, 40), ''
-        else:
-            parts    = (partner.name or '').strip().split(' ', 1)
-            nombre   = _sanitize(parts[0], 40)
-            apellido = _sanitize(parts[1], 40) if len(parts) > 1 else ''
+        parts    = (partner.name or '').strip().split(' ', 1)
+        nombre   = _sanitize(parts[0], 40)
+        apellido = _sanitize(parts[1], 40) if len(parts) > 1 else 'NA'
 
         return [
             _davivienda_id_type(partner),
@@ -697,7 +694,7 @@ class BankPaymentExport(models.Model):
 
         parts    = (employee.name or '').strip().split(' ', 1)
         nombre   = _sanitize(parts[0], 40)
-        apellido = _sanitize(parts[1], 40) if len(parts) > 1 else ''
+        apellido = _sanitize(parts[1], 40) if len(parts) > 1 else 'NA'
         periodo  = payslip.date_from.strftime('%Y%m') if payslip.date_from else ''
 
         return [
