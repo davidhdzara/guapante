@@ -582,12 +582,12 @@ class AccountMoveDian(models.Model):
     # -------------------------------------------------------------------------
 
     def action_insotech_retry_dian(self):
-        """Button action: retry sending a rejected or pending invoice to DIAN."""
+        """Button action: retry sending a rejected invoice to DIAN."""
         for move in self:
-            if move.insotech_dian_status not in ('rejected', 'pending'):
+            if move.insotech_dian_status != 'rejected':
                 raise UserError(_(
                     "Solo puede reintentar el envío de facturas que "
-                    "estén pendientes o hayan sido rechazadas por la DIAN."
+                    "hayan sido rechazadas por la DIAN."
                 ))
             move._insotech_validate_license_before_dian()
             move.write({'insotech_dian_status': 'pending'})
