@@ -402,3 +402,68 @@ class AccountMovePreInv(models.Model):
                     skip_account_move_synchronization=True,
                 ).write({'name': pre_inv})
                 move.invalidate_recordset(['name'])
+
+    # -------------------------------------------------------------------------
+    # CANCELLATION — Release Consecutive
+    # -------------------------------------------------------------------------
+
+    def button_cancel(self):
+        """Override cancellation to release DIAN consecutives safely.
+
+        If a pending/rejected DIAN invoice is cancelled, we clear its
+        reserved name ONLY if it's safe to do so (avoiding timeout duplicates).
+        We also decrement the journal's config_parameter if this was the very
+        last consecutive assigned, preventing 'huecos'.
+        """
+        for move in self:
+            if move.insotech_is_co_edi and move.insotech_reserved_dian_name:
+                can_release = False
+                
+                # 1. Seguridad: Si fue rechazada definitivamente, es seguro.
+                if move.insotech_dian_status == 'rejected':
+                    can_release = True
+                # 2. Seguridad: Si está pendiente pero NUNCA se disparó el XML, es seguro.
+                elif move.insotech_dian_status == 'pending' and not move.insotech_dian_xml_sent:
+                    can_release = True
+                    
+                if can_release:
+                    _logger.info(
+                        "Insotech: Releasing DIAN consecutive '%s' for "
+                        "cancelled move %s.",
+                        move.insotech_reserved_dian_name, move.id,
+                    )
+                    
+                    # Decrementar el High-Water Mark (ir.config_parameter) si era el último
+                    try:
+                        journal = move.journal_id
+                        param_key = 'insotech.dian.last_consecutive.%d' % journal.id
+                        current_param = self.env['ir.config_parameter'].sudo().get_param(param_key)
+                        if current_param:
+                            current_val = int(current_param)
+                            m = re.search(r'(\d+)\s*$', move.insotech_reserved_dian_name)
+                            if m and int(m.group(1)) == current_val:
+                                self.env['ir.config_parameter'].sudo().set_param(param_key, str(current_val - 1))
+                                _logger.info(
+                                    "Insotech: Decremented last_consecutive for journal %s from %d to %d",
+                                    journal.id, current_val, current_val - 1
+                                )
+                    except Exception as e:
+                        _logger.error("Insotech: Failed to decrement config parameter: %s", str(e))
+
+                    move.with_context(
+                        skip_account_move_synchronization=True,
+                    ).write({
+                        'insotech_reserved_dian_name': False,
+                        'insotech_dian_xml_sent': False,
+                    })
+                elif move.insotech_dian_status == 'pending' and move.insotech_dian_xml_sent:
+                    raise UserError(_(
+                        "⚠️ RIESGO DE DUPLICADO DIAN ⚠️\n\n"
+                        "Esta factura intentó enviarse a la DIAN pero hubo un fallo de conexión "
+                        "(Timeout). No se puede cancelar y liberar el consecutivo porque "
+                        "la DIAN podría haberla procesado internamente.\n\n"
+                        "Por favor, use el botón 'Reintentar Envío DIAN'. Si la DIAN "
+                        "responde que ya existe, el sistema la marcará como Aceptada."
+                    ))
+                    
+        return super().button_cancel()
