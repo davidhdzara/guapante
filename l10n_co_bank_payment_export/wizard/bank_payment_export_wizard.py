@@ -54,7 +54,7 @@ class BankPaymentExportWizard(models.TransientModel):
     payment_ids = fields.Many2many(
         comodel_name='account.payment',
         string='Pagos a Proveedores',
-        domain=[('payment_type', '=', 'outbound'), ('state', '=', 'posted')],
+        domain=[('payment_type', '=', 'outbound'), ('state', 'in', ('posted', 'in_process'))],
     )
     payslip_ids = fields.Many2many(
         comodel_name='hr.payslip',
@@ -126,11 +126,11 @@ class BankPaymentExportWizard(models.TransientModel):
 
         if active_model == 'account.payment' and active_ids:
             valid = self.env['account.payment'].browse(active_ids).filtered(
-                lambda p: p.payment_type == 'outbound' and p.state == 'posted'
+                lambda p: p.payment_type == 'outbound' and p.state in ('posted', 'in_process')
             )
             if not valid:
                 raise UserError(_(
-                    'Seleccione pagos de tipo Enviar en estado Publicado.'
+                    'Seleccione pagos de tipo Enviar en estado Publicado o En Proceso.'
                 ))
             res.update({
                 'payment_ids':    [(6, 0, valid.ids)],

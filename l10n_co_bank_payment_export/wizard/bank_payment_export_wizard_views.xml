@@ -43,7 +43,7 @@
                 <group string="Pagos a Proveedores"
                        invisible="payment_source not in ('vendor', 'both') or export_id">
                     <field name="payment_ids" nolabel="1"
-                           domain="[('payment_type','=','outbound'),('state','=','posted')]">
+                           domain="[('payment_type','=','outbound'),('state','in',('posted','in_process'))]">
                         <list>
                             <field name="name"/>
                             <field name="date"/>
