@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+</head>
+<body>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12" style="text-align:center; padding:32px 0;">
+            <h2 class="oe_slogan" style="color:#C0392B;">
+                Colombia &mdash; Archivos Planos Bancarios
+            </h2>
+            <h3 class="oe_slogan">
+                Genera archivos de dispersión masiva de pagos directamente desde Odoo,
+                listos para cargar en el portal de tu banco.
+            </h3>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     BANCOS SOPORTADOS
+     ============================================================ -->
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan">Bancos y formatos soportados</h2>
+
+        <div class="oe_span6">
+            <div class="oe_demo oe_picture oe_screenshot" style="padding:16px;">
+                <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                    <thead>
+                        <tr style="background:#C0392B; color:#fff;">
+                            <th style="padding:8px 12px; text-align:left;">Banco</th>
+                            <th style="padding:8px 12px; text-align:left;">Formato</th>
+                            <th style="padding:8px 12px; text-align:left;">Tipo archivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 12px;"><strong>Banco Davivienda</strong></td>
+                            <td style="padding:8px 12px;">Excel Est&aacute;ndar</td>
+                            <td style="padding:8px 12px;">.xlsx</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eee; background:#fafafa;">
+                            <td style="padding:8px 12px;"><strong>Banco de Bogot&aacute;</strong></td>
+                            <td style="padding:8px 12px;">ASCII ancho fijo</td>
+                            <td style="padding:8px 12px;">.txt &mdash; 250 chars/l&iacute;nea</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 12px;"><strong>Bancolombia PAB</strong></td>
+                            <td style="padding:8px 12px;">Pagos Autom&aacute;ticos (recomendado)</td>
+                            <td style="padding:8px 12px;">.txt &mdash; 264 chars/l&iacute;nea</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:8px 12px;"><strong>Bancolombia SAP</strong></td>
+                            <td style="padding:8px 12px;">Sistema Aplicaci&oacute;n Pagos (legacy)</td>
+                            <td style="padding:8px 12px;">.txt &mdash; 95 chars/l&iacute;nea</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="oe_span6">
+            <p style="font-size:15px; line-height:1.8;">
+                Soporta los <strong>17 bancos ACH Colombia</strong> como destino de los pagos:
+                Bancolombia, Banco de Bogot&aacute;, Davivienda, BBVA, Banco Popular,
+                Banco Agrario, Av Villas, Caja Social, Colpatria, Occidente,
+                GNB Sudameris, Citi, Helm, Procredit, Falabella,
+                Itaú y Ban100.
+            </p>
+            <p style="font-size:15px; line-height:1.8;">
+                Los c&oacute;digos ACH Colombia de los bancos vienen
+                <strong>precargados</strong> en la instalaci&oacute;n.
+                Solo necesitas asignar el banco a cada cuenta bancaria de tus
+                proveedores o empleados.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     CARACTERÍSTICAS
+     ============================================================ -->
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan">Caracter&iacute;sticas principales</h2>
+
+        <div class="oe_span4" style="padding:16px;">
+            <h4 style="color:#C0392B;">&#10003; Validaci&oacute;n previa en tiempo real</h4>
+            <p>
+                Antes de generar el archivo, el wizard muestra un reporte
+                detallado de cu&aacute;les pagos est&aacute;n listos y cu&aacute;les
+                tienen errores (cuenta sin c&oacute;digo ACH, NIT vac&iacute;o, etc.).
+                Corriges en Odoo y regeneras sin perder el historial.
+            </p>
+        </div>
+
+        <div class="oe_span4" style="padding:16px;">
+            <h4 style="color:#C0392B;">&#10003; Auditor&iacute;a autom&aacute;tica</h4>
+            <p>
+                Cada archivo generado queda registrado en
+                <em>Contabilidad &rarr; Archivos Planos Bancarios &rarr; Historial</em>
+                con fecha, banco, n&uacute;mero de registros y el archivo descargable.
+                Cumple con requerimientos de trazabilidad contable.
+            </p>
+        </div>
+
+        <div class="oe_span4" style="padding:16px;">
+            <h4 style="color:#C0392B;">&#10003; Pagos a Proveedores y N&oacute;mina</h4>
+            <p>
+                Exporta pagos de <code>account.payment</code> (proveedores)
+                y recibos de <code>hr.payslip</code> (n&oacute;mina) en el mismo archivo
+                o por separado. El tipo de clase ACH se asigna autom&aacute;ticamente
+                (220 Proveedores / 225 N&oacute;mina).
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     FLUJO DE USO
+     ============================================================ -->
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan">Flujo de uso en 5 pasos</h2>
+        <div class="oe_span12">
+            <ol style="font-size:15px; line-height:2.2; max-width:680px; margin:0 auto;">
+                <li>
+                    Ve a <strong>Contabilidad &rarr; Proveedores &rarr; Pagos</strong>
+                    y selecciona los pagos publicados.
+                </li>
+                <li>
+                    Haz clic en <strong>Acci&oacute;n &rarr; Exportar Archivo Plano Bancario</strong>.
+                </li>
+                <li>
+                    Elige el <strong>banco destino</strong> y revisa el
+                    <strong>reporte de validaci&oacute;n</strong> en tiempo real.
+                </li>
+                <li>
+                    Haz clic en <strong>Generar</strong> y descarga el archivo.
+                </li>
+                <li>
+                    Sube el archivo al <strong>portal web del banco</strong> y listo.
+                </li>
+            </ol>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     CONFIGURACIÓN REQUERIDA
+     ============================================================ -->
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan">Configuraci&oacute;n requerida</h2>
+
+        <div class="oe_span6" style="padding:16px;">
+            <h4>Por cada banco destino</h4>
+            <ul style="font-size:14px; line-height:2;">
+                <li>
+                    Asigna el <strong>C&oacute;digo ACH Colombia</strong> al banco
+                    en <em>Contabilidad &rarr; Configuraci&oacute;n &rarr; Bancos</em>.
+                    (Los 17 bancos principales vienen precargados.)
+                </li>
+                <li>
+                    Asigna el <strong>Tipo de Cuenta</strong> (Ahorros / Corriente)
+                    en la cuenta bancaria de cada proveedor o empleado.
+                </li>
+            </ul>
+        </div>
+
+        <div class="oe_span6" style="padding:16px;">
+            <h4>En la empresa (una sola vez)</h4>
+            <ul style="font-size:14px; line-height:2;">
+                <li>
+                    Configura la <strong>Cuenta Dispersora</strong> en
+                    <em>Configuraci&oacute;n &rarr; Empresas &rarr; pesta&ntilde;a "Pagos Colombia"</em>.
+                    Es el n&uacute;mero de cuenta de tu empresa desde el que el banco
+                    har&aacute; el d&eacute;bito.
+                    (Requerido para Banco de Bogot&aacute; y Bancolombia.)
+                </li>
+                <li>
+                    Aseg&uacute;rate de que tu empresa tenga el <strong>NIT</strong> configurado
+                    en el campo <em>NIT</em> de la compa&ntilde;&iacute;a.
+                </li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     COMPATIBILIDAD
+     ============================================================ -->
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan">Compatibilidad y dependencias</h2>
+        <div class="oe_span12" style="text-align:center; font-size:15px; line-height:2.2;">
+            <p>
+                Compatible con <strong>Odoo 18</strong>.<br/>
+                Requiere los m&oacute;dulos: <code>account</code>, <code>account_accountant</code>,
+                <code>hr_payroll</code>, <code>l10n_co</code>.<br/>
+                Dependencia Python externa: <code>openpyxl</code>
+                (incluida en la mayor&iacute;a de instalaciones de Odoo 18).
+            </p>
+        </div>
+    </div>
+</section>
+
+</body>
+</html>

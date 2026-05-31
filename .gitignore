@@ -1,0 +1,32 @@
+# Ignore everything by default
+*
+
+# Exceptions
+!theme_guapante/
+!theme_guapante/**
+!.gitignore
+!README.md
+!.agent/
+!.agent/**
+!.cursorrules
+!insotech_core/
+!insotech_core/**
+!insotech_dian_wizard/
+!insotech_dian_wizard/**
+!insotech_l10n_co_advanced/
+!insotech_l10n_co_advanced/**
+!insotech_account_colombia/
+!insotech_account_colombia/**
+!insotech_mcp_server/
+!insotech_mcp_server/**
+!insotech_wa_assistant/
+!insotech_wa_assistant/**
+!l10n_co_accounting_reports/
+!l10n_co_accounting_reports/**
+!l10n_co_bank_payment_export/
+!l10n_co_bank_payment_export/**
+!requirements.txt
+
+# Always ignore compiled Python files
+__pycache__/
+*.pyc
