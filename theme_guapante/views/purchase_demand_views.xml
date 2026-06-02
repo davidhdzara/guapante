@@ -1,7 +1,98 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- ════════════════════════════════════════════════════
-         FORM: Sesión de Demanda de Compra
+         SEARCH: Demanda de Compra (Estilo Reabastecimiento)
+         Panel lateral izquierdo + filtros + agrupaciones
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_line_view_search" model="ir.ui.view">
+        <field name="name">guapante.purchase.demand.line.search</field>
+        <field name="model">guapante.purchase.demand.line</field>
+        <field name="arch" type="xml">
+            <search string="Búsqueda de Demanda de Compra">
+                <field name="product_id"/>
+                <field name="attribute_combination" string="Variante"/>
+                <field name="supplier_id"/>
+                <separator/>
+                <filter string="Con Déficit" name="filter_deficit"
+                        domain="[('product_deficit', '&gt;', 0)]"/>
+                <filter string="Seleccionados" name="filter_selected"
+                        domain="[('selected', '=', True)]"/>
+                <separator/>
+                <filter string="Por Peso (Kg)" name="filter_kg"
+                        domain="[('uom_mode', '=', 'kg')]"/>
+                <filter string="Por Unidad" name="filter_unit"
+                        domain="[('uom_mode', '=', 'unit')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Proveedor" name="groupby_supplier"
+                            domain="[]" context="{'group_by': 'supplier_id'}"/>
+                    <filter string="Producto" name="groupby_product"
+                            domain="[]" context="{'group_by': 'product_id'}"/>
+                    <filter string="UdM" name="groupby_uom"
+                            domain="[]" context="{'group_by': 'uom_mode'}"/>
+                </group>
+                <searchpanel>
+                    <field name="uom_mode" icon="fa-balance-scale"
+                           string="Unidad" enable_counters="1"/>
+                    <field name="supplier_id" icon="fa-truck"
+                           string="Proveedor" enable_counters="1"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         LIST: Líneas de Demanda (Estilo Reabastecimiento)
+         Vista directa sobre las líneas, no sobre la sesión
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_line_view_list" model="ir.ui.view">
+        <field name="name">guapante.purchase.demand.line.list</field>
+        <field name="model">guapante.purchase.demand.line</field>
+        <field name="arch" type="xml">
+            <list string="Demanda de Compra"
+                  decoration-danger="product_deficit &gt; 0"
+                  decoration-muted="product_deficit &lt;= 0 and pending_qty &gt; 0"
+                  default_order="product_deficit desc, product_id"
+                  multi_edit="1">
+                <!-- Checkbox de selección -->
+                <field name="selected" string="✓"
+                       widget="boolean_toggle" nolabel="1"/>
+                <!-- Producto + Variante -->
+                <field name="product_id" string="Producto"/>
+                <field name="attribute_combination" string="Variante"/>
+                <!-- Indicadores de stock (como Reabastecimiento) -->
+                <field name="product_stock" string="A la mano"
+                       decoration-danger="product_stock &lt;= 0"
+                       decoration-success="product_stock &gt; 0"/>
+                <field name="pending_kg" string="Demanda (kg)" sum="Total"/>
+                <field name="pending_qty" string="Piden" sum="Total"/>
+                <field name="product_deficit" string="Por ordenar"
+                       sum="Total faltante"
+                       decoration-danger="product_deficit &gt; 0"/>
+                <field name="uom_mode" string="UdM"/>
+                <!-- Proveedor -->
+                <field name="supplier_id" string="Proveedor"/>
+                <!-- Columnas opcionales -->
+                <field name="supplier_price" string="Precio Unit."
+                       optional="hide"/>
+                <field name="estimated_cost" string="Costo Est."
+                       sum="Total costo" optional="hide"/>
+                <field name="order_count" string="# Pedidos"
+                       optional="hide"/>
+                <field name="sale_order_names" string="Pedidos"
+                       optional="hide"/>
+                <field name="packaging_name" string="Embalaje"
+                       optional="hide"/>
+                <field name="product_total_demand"
+                       string="Dem. Total Prod."
+                       optional="hide"/>
+                <!-- Session ID oculto para filtro -->
+                <field name="session_id" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         FORM: Sesión de Demanda de Compra (header con botones)
          ════════════════════════════════════════════════════ -->
     <record id="guapante_purchase_demand_view_form" model="ir.ui.view">
         <field name="name">guapante.purchase.demand.form</field>
@@ -80,7 +171,7 @@
                                 class="btn-sm btn-outline-secondary"/>
                     </div>
 
-                    <!-- ── TABLA PRINCIPAL: Simple y accionable ── -->
+                    <!-- Tabla Principal -->
                     <notebook>
                         <page string="¿Qué debo comprar?" name="demand_lines">
                             <field name="line_ids" nolabel="1">
@@ -88,37 +179,27 @@
                                       decoration-danger="product_deficit &gt; 0"
                                       decoration-muted="product_deficit &lt;= 0 and pending_qty &gt; 0"
                                       default_order="product_deficit desc, product_id">
-                                    <!-- ── Columnas principales (siempre visibles) ── -->
-                                    <field name="selected" string="Comprar"
+                                    <field name="selected" string="✓"
                                            widget="boolean_toggle"/>
                                     <field name="product_id" string="Producto"/>
                                     <field name="attribute_combination"
                                            string="Variante"/>
-                                    <field name="pending_qty"
-                                           string="Piden"
+                                    <field name="product_stock" string="A la mano"/>
+                                    <field name="pending_qty" string="Piden"
                                            sum="Total"/>
-                                    <field name="uom_mode" string="UdM"
-                                           column_invisible="True"/>
-                                    <field name="pending_kg"
-                                           string="Total Kg"
-                                           sum="Total kg"/>
+                                    <field name="pending_kg" string="Demanda (kg)"
+                                           sum="Total"/>
                                     <field name="product_deficit"
-                                           string="Falta (kg)"
+                                           string="Por ordenar"
                                            sum="Total faltante"/>
+                                    <field name="uom_mode" string="UdM"/>
                                     <field name="supplier_id"
                                            string="Proveedor"/>
                                     <field name="order_count"
-                                           string="# Pedidos"/>
-
-                                    <!-- ── Columnas opcionales (ocultas por defecto) ── -->
+                                           string="# Pedidos"
+                                           optional="hide"/>
                                     <field name="packaging_name"
                                            string="Embalaje"
-                                           optional="hide"/>
-                                    <field name="product_stock"
-                                           string="Stock Actual"
-                                           optional="hide"/>
-                                    <field name="product_total_demand"
-                                           string="Dem. Total Producto"
                                            optional="hide"/>
                                     <field name="supplier_price"
                                            string="Precio Unit."
@@ -129,6 +210,9 @@
                                            optional="hide"/>
                                     <field name="sale_order_names"
                                            string="Pedidos"
+                                           optional="hide"/>
+                                    <field name="product_total_demand"
+                                           string="Dem. Total Producto"
                                            optional="hide"/>
                                 </list>
                             </field>
@@ -174,10 +258,32 @@
     </record>
 
     <!-- ════════════════════════════════════════════════════
-         ACTION: Demanda de Compra
+         ACTION: Vista directa de líneas (estilo Reabastecimiento)
+         ════════════════════════════════════════════════════ -->
+    <record id="guapante_purchase_demand_line_action" model="ir.actions.act_window">
+        <field name="name">Demanda de Compra</field>
+        <field name="res_model">guapante.purchase.demand.line</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="guapante_purchase_demand_line_view_search"/>
+        <field name="context">{'search_default_filter_deficit': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay demanda pendiente
+            </p>
+            <p>
+                Primero crea una sesión de demanda desde
+                <b>Compras → Sesiones de Demanda</b> y pulsa
+                <b>🔄 Actualizar Demanda</b> para cargar las
+                líneas de venta pendientes.
+            </p>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════
+         ACTION: Sesiones de Demanda (para crear/refrescar)
          ════════════════════════════════════════════════════ -->
     <record id="guapante_purchase_demand_action" model="ir.actions.act_window">
-        <field name="name">Demanda de Compra</field>
+        <field name="name">Sesiones de Demanda</field>
         <field name="res_model">guapante.purchase.demand</field>
         <field name="view_mode">list,form</field>
         <field name="help" type="html">
@@ -193,12 +299,20 @@
     </record>
 
     <!-- ════════════════════════════════════════════════════
-         MENU: Compra > Demanda de Compra
+         MENUS: Compra → Demanda de Compra
          ════════════════════════════════════════════════════ -->
+    <!-- Menú principal: Vista estilo Reabastecimiento -->
     <menuitem id="guapante_purchase_demand_menu"
               name="Demanda de Compra"
               parent="purchase.menu_purchase_root"
+              action="guapante_purchase_demand_line_action"
+              sequence="3"/>
+
+    <!-- Sub-menú: Sesiones (para crear/refrescar) -->
+    <menuitem id="guapante_purchase_demand_sessions_menu"
+              name="Sesiones de Demanda"
+              parent="purchase.menu_purchase_root"
               action="guapante_purchase_demand_action"
-              sequence="5"/>
+              sequence="4"/>
 
 </odoo>

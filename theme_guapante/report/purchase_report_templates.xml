@@ -10,131 +10,274 @@
          - Sin columnas financieras
          ════════════════════════════════════════════════════ -->
 
-    <!-- 1. Report action: binding propio para purchase.order -->
-    <record id="action_report_purchase_order_guapante" model="ir.actions.report">
-        <field name="name">Orden de Compra Guapante</field>
-        <field name="model">purchase.order</field>
-        <field name="report_type">qweb-pdf</field>
-        <field name="report_name">theme_guapante.report_purchaseorder_guapante</field>
-        <field name="report_file">theme_guapante.report_purchaseorder_guapante</field>
-        <field name="binding_model_id" ref="purchase.model_purchase_order"/>
-        <field name="binding_type">report</field>
-    </record>
+    <!-- Template del documento (Diseño Guapante Premium) -->
+    <record id="report_purchaseorder_guapante_document_backend" model="ir.ui.view">
+        <field name="name">report.purchaseorder.guapante.document.backend</field>
+        <field name="type">qweb</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_guapante.report_purchaseorder_guapante_document_backend">
+                <t t-call="insotech_l10n_co_advanced.external_layout_guapante">
+                    <t t-set="o" t-value="o.with_context(lang=o.partner_id.lang)"/>
+                    
+                    <!-- ══════ CSS PREMIUM ══════ -->
+                    <style type="text/css">
+                        /* Variables Guapante (Extraídas del Recibo de Pago) */
+                        .gpt-receipt-title {
+                            font-size: 22px;
+                            font-weight: 900;
+                            color: #14532d;
+                            letter-spacing: 1px;
+                            text-transform: uppercase;
+                            margin: 0;
+                            line-height: 1.2;
+                        }
+                        .gpt-receipt-number {
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: #495057;
+                            margin-top: 2px;
+                        }
+                        .gpt-accent-bar {
+                            height: 3px;
+                            background: linear-gradient(90deg, #14532d 0%, #22c55e 100%);
+                            border: none;
+                            margin: 12px 0 20px 0;
+                        }
 
-    <!-- 2. Template principal (wrapper) -->
-    <template id="report_purchaseorder_guapante">
-        <t t-call="web.html_container">
-            <t t-foreach="docs" t-as="o">
-                <t t-call="theme_guapante.report_purchaseorder_guapante_document"/>
-            </t>
-        </t>
-    </template>
+                        /* Info Grid */
+                        .gpt-info-grid {
+                            display: table;
+                            width: 100%;
+                            border: 1px solid #e5e7eb;
+                            border-left: 3px solid #14532d;
+                            margin-bottom: 20px;
+                            background: #fafbfc;
+                        }
+                        .gpt-info-row {
+                            display: table-row;
+                        }
+                        .gpt-info-label {
+                            display: table-cell;
+                            width: 35%;
+                            padding: 7px 12px;
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #14532d;
+                            text-transform: uppercase;
+                            letter-spacing: 0.08em;
+                            border-bottom: 1px solid #f0f0f0;
+                            vertical-align: middle;
+                        }
+                        .gpt-info-value {
+                            display: table-cell;
+                            width: 65%;
+                            padding: 7px 12px;
+                            font-size: 12px;
+                            color: #2d2d2d;
+                            border-bottom: 1px solid #f0f0f0;
+                            vertical-align: middle;
+                        }
 
-    <!-- 3. Template del documento -->
-    <template id="report_purchaseorder_guapante_document">
-        <t t-call="web.external_layout">
-            <t t-set="o" t-value="o.with_context(lang=o.partner_id.lang)"/>
-            <t t-set="address">
-                <div t-field="o.partner_id"
-                     t-options='{"widget": "contact", "fields": ["address", "name", "phone", "vat"], "no_marker": True, "phone_icons": True}'/>
-            </t>
-            <t t-if="o.dest_address_id">
-                <t t-set="information_block">
-                    <strong class="d-block mt-3">Dirección de envío</strong>
-                    <div t-field="o.dest_address_id"
-                         t-options='{"widget": "contact", "fields": ["address", "name", "phone"], "no_marker": True, "phone_icons": True}'/>
+                        /* Invoice Table */
+                        .gpt-invoice-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            font-size: 11px;
+                            margin-bottom: 15px;
+                        }
+                        .gpt-invoice-table thead th {
+                            background-color: #14532d;
+                            color: white;
+                            font-size: 9px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.1em;
+                            padding: 8px 10px;
+                            border: none;
+                        }
+                        .gpt-invoice-table tbody td {
+                            padding: 7px 10px;
+                            border-bottom: 1px solid #e5e7eb;
+                            color: #374151;
+                            font-size: 11px;
+                        }
+                        .gpt-invoice-table tbody tr:nth-child(even) td {
+                            background-color: #f9fafb;
+                        }
+
+                        /* Total Bar */
+                        .gpt-total-bar {
+                            background-color: #14532d;
+                            color: white;
+                            padding: 12px 20px;
+                            display: table;
+                            width: 100%;
+                            margin-top: 5px;
+                        }
+                        .gpt-total-label {
+                            display: table-cell;
+                            font-size: 12px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.15em;
+                            vertical-align: middle;
+                        }
+                        .gpt-total-amount {
+                            display: table-cell;
+                            text-align: right;
+                            font-size: 18px;
+                            font-weight: 900;
+                            letter-spacing: 0.5px;
+                            vertical-align: middle;
+                        }
+
+                        /* Badges */
+                        .qty-badge {
+                            background-color: #14532d;
+                            color: white;
+                            padding: 3px 8px;
+                            border-radius: 4px;
+                            font-weight: 700;
+                            display: inline-block;
+                            font-size: 11px;
+                        }
+                        .qty-badge-weight {
+                            background-color: #f0fdf4;
+                            color: #14532d;
+                            border: 1px solid #bbf7d0;
+                            padding: 3px 8px;
+                            border-radius: 4px;
+                            font-weight: 700;
+                            display: inline-block;
+                            font-size: 11px;
+                        }
+                    </style>
+
+                    <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                        
+                        <!-- ══════ TÍTULO ══════ -->
+                        <div style="margin-bottom: 5px;">
+                            <div class="gpt-receipt-title">
+                                <t t-if="o.state in ['draft', 'sent', 'to approve']">Solicitud de Cotización</t>
+                                <t t-else="">Orden de Compra</t>
+                            </div>
+                            <div class="gpt-receipt-number">
+                                No. <span t-field="o.name"/>
+                            </div>
+                        </div>
+                        <div class="gpt-accent-bar"/>
+
+                        <!-- ══════ GRID INFORMACIÓN ══════ -->
+                        <div class="gpt-info-grid">
+                            <div class="gpt-info-row" t-if="o.partner_id">
+                                <div class="gpt-info-label">Proveedor</div>
+                                <div class="gpt-info-value">
+                                    <strong><span t-field="o.partner_id"/></strong>
+                                    <t t-if="o.partner_id.vat">
+                                        <br/><span style="font-size: 10px; color: #6b7280;">NIT: <span t-field="o.partner_id.vat"/></span>
+                                    </t>
+                                </div>
+                            </div>
+                            <div class="gpt-info-row" t-if="o.user_id">
+                                <div class="gpt-info-label">Comprador</div>
+                                <div class="gpt-info-value"><span t-field="o.user_id"/></div>
+                            </div>
+                            <div class="gpt-info-row" t-if="o.date_order">
+                                <div class="gpt-info-label">Fecha Límite</div>
+                                <div class="gpt-info-value"><span t-field="o.date_order" t-options="{'widget': 'date'}"/></div>
+                            </div>
+                            <div class="gpt-info-row" t-if="o.date_planned">
+                                <div class="gpt-info-label">Fecha de Llegada</div>
+                                <div class="gpt-info-value"><span t-field="o.date_planned" t-options="{'widget': 'date'}"/></div>
+                            </div>
+                            <div class="gpt-info-row" t-if="o.dest_address_id">
+                                <div class="gpt-info-label">Dirección de Envío</div>
+                                <div class="gpt-info-value">
+                                    <span t-field="o.dest_address_id" t-options='{"widget": "contact", "fields": ["address", "name", "phone"], "no_marker": True}'/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ══════ TABLA DE PRODUCTOS ══════ -->
+                        <table class="gpt-invoice-table">
+                            <thead>
+                                <tr>
+                                    <th>PRODUCTO</th>
+                                    <th class="text-center">FECHA PREVISTA</th>
+                                    <th class="text-end">CANTIDAD</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="o.order_line" t-as="line">
+                                    <tr t-if="not line.display_type">
+                                        <td>
+                                            <strong><span t-field="line.name"/></strong>
+                                        </td>
+                                        <td class="text-center">
+                                            <span t-field="line.date_planned" t-options="{'widget': 'date'}"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <t t-if="line.uom_mode == 'unit'">
+                                                <div class="qty-badge">
+                                                    <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else '%.2f' % line.visual_qty"/>
+                                                    <span> Unidades</span>
+                                                </div>
+                                            </t>
+                                            <t t-elif="line.uom_mode == 'g'">
+                                                <div class="qty-badge-weight">
+                                                    <span t-esc="'%.0f' % line.visual_qty"/>
+                                                    <span> g</span>
+                                                </div>
+                                            </t>
+                                            <t t-else="">
+                                                <div class="qty-badge-weight">
+                                                    <span t-esc="'%.2f' % line.product_qty"/>
+                                                    <span> kg</span>
+                                                </div>
+                                            </t>
+                                        </td>
+                                    </tr>
+                                    <tr t-if="line.display_type == 'line_section'">
+                                        <td colspan="3" style="background-color: #f0fdf4; color: #14532d; font-weight: 700;">
+                                            <span t-field="line.name"/>
+                                        </td>
+                                    </tr>
+                                    <tr t-if="line.display_type == 'line_note'">
+                                        <td colspan="3" style="font-style: italic; color: #6b7280;">
+                                            <span t-field="line.name"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+
+                        <div class="oe_structure"/>
+                    </div>
                 </t>
             </t>
+        </field>
+    </record>
 
-            <div class="page">
-                <div class="oe_structure"/>
+    <!-- Reemplazar el reporte estándar de Solicitud de Cotización (RFQ) -->
+    <record id="report_purchasequotation_document_inherit_guapante_backend" model="ir.ui.view">
+        <field name="name">report.purchasequotation.document.inherit.guapante.backend</field>
+        <field name="inherit_id" ref="purchase.report_purchasequotation_document"/>
+        <field name="arch" type="xml">
+            <xpath expr="." position="replace">
+                <t t-call="theme_guapante.report_purchaseorder_guapante_document_backend"/>
+            </xpath>
+        </field>
+    </record>
 
-                <!-- ── Título: siempre "Orden de Compra" ── -->
-                <div class="mt-4">
-                    <t t-set="layout_document_title">
-                        Orden de Compra #<span t-field="o.name"/>
-                    </t>
-                </div>
-
-                <!-- ── Info del pedido ── -->
-                <div id="informations" class="row mb-4">
-                    <div t-if="o.user_id" class="col">
-                        <strong>Comprador</strong>
-                        <div t-field="o.user_id"/>
-                    </div>
-                    <div t-if="o.date_order" class="col-2 bm-2">
-                        <strong>Fecha límite:</strong>
-                        <p t-field="o.date_order"
-                           t-options="{'date_only': 'true'}" class="m-0"/>
-                    </div>
-                    <div t-if="o.date_planned" class="col-2 bm-2">
-                        <strong>Llegada esperada:</strong>
-                        <p t-field="o.date_planned"
-                           t-options="{'date_only': 'true'}" class="m-0"/>
-                    </div>
-                </div>
-
-                <!-- ── Tabla: solo Descripción, Fecha, Cantidad ── -->
-                <table class="table table-sm table-borderless mt-4">
-                    <thead>
-                        <tr>
-                            <th class="text-start"><strong>DESCRIPCIÓN</strong></th>
-                            <th class="text-center"><strong>FECHA PREVISTA</strong></th>
-                            <th class="text-end"><strong>CANT.</strong></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <t t-foreach="o.order_line" t-as="line">
-                            <tr t-if="not line.display_type">
-                                <!-- Descripción -->
-                                <td class="text-start">
-                                    <span t-field="line.name"/>
-                                </td>
-                                <!-- Fecha prevista -->
-                                <td class="text-center">
-                                    <span t-field="line.date_planned"
-                                          t-options="{'widget': 'date'}"/>
-                                </td>
-                                <!-- Cantidad: kg O unidades, NUNCA ambos -->
-                                <td class="text-end">
-                                    <t t-if="line.uom_mode == 'unit'">
-                                        <span t-esc="int(line.visual_qty) if line.visual_qty == int(line.visual_qty) else '%.2f' % line.visual_qty"/>
-                                        <span> Unidad</span>
-                                    </t>
-                                    <t t-elif="line.uom_mode == 'g'">
-                                        <span t-esc="'%.0f' % line.visual_qty"/>
-                                        <span> Gramos</span>
-                                    </t>
-                                    <t t-else="">
-                                        <span t-esc="'%.2f' % line.product_qty"/>
-                                        <span> kg</span>
-                                    </t>
-                                </td>
-                            </tr>
-                            <!-- Secciones -->
-                            <tr t-if="line.display_type == 'line_section'">
-                                <td colspan="3" class="fw-bold">
-                                    <span t-field="line.name"/>
-                                </td>
-                            </tr>
-                            <!-- Notas -->
-                            <tr t-if="line.display_type == 'line_note'">
-                                <td colspan="3" class="fst-italic">
-                                    <span t-field="line.name"/>
-                                </td>
-                            </tr>
-                        </t>
-                    </tbody>
-                </table>
-
-                <div class="oe_structure"/>
-            </div>
-        </t>
-    </template>
-
-    <!-- 4. Desactivar el reporte estándar para que no aparezca duplicado -->
-    <record id="purchase.action_report_purchase_order" model="ir.actions.report">
-        <field name="binding_model_id" eval="False"/>
+    <!-- Reemplazar el reporte estándar de Orden de Compra (PO) -->
+    <record id="report_purchaseorder_document_inherit_guapante_backend" model="ir.ui.view">
+        <field name="name">report.purchaseorder.document.inherit.guapante.backend</field>
+        <field name="inherit_id" ref="purchase.report_purchaseorder_document"/>
+        <field name="arch" type="xml">
+            <xpath expr="." position="replace">
+                <t t-call="theme_guapante.report_purchaseorder_guapante_document_backend"/>
+            </xpath>
+        </field>
     </record>
 
 </odoo>

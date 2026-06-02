@@ -143,8 +143,12 @@ class PurchaseDemand(models.Model):
             # product's base UoM. In Guapante, all products have
             # kg as base UoM but customers order by 'unit' or 'kg'.
             line_uom_mode = getattr(line, 'uom_mode', None) or 'unit'
+            
+            # Group 'kg' and 'g' together as 'kg' to consolidate weight orders
+            is_weight = weight_categ and product.uom_id.category_id == weight_categ
+            group_uom_mode = 'kg' if is_weight and line_uom_mode in ('kg', 'g') else line_uom_mode
 
-            key = (pid, attr_ids, line_uom_mode)
+            key = (pid, attr_ids, group_uom_mode)
             pending_product_qty = (
                 line.product_uom_qty - line.qty_delivered
             )
@@ -153,7 +157,7 @@ class PurchaseDemand(models.Model):
                 demand[key] = {
                     'product_id': pid,
                     'attr_value_ids': list(attr_ids),
-                    'uom_mode': line_uom_mode,
+                    'uom_mode': group_uom_mode,
                     'pending_product_qty': 0.0,
                     'order_ids': set(),
                     'order_names': [],
@@ -440,7 +444,10 @@ class PurchaseDemand(models.Model):
                 if packaging:
                     po_line_vals['product_packaging_id'] = packaging.id
 
-                self.env['purchase.order.line'].create(po_line_vals)
+                po_line = self.env['purchase.order.line'].create(po_line_vals)
+                # Odoo's compute method for name overwrites it upon creation. 
+                # We force the name again to preserve the variant description.
+                po_line.write({'name': description})
 
             created_orders |= po
 
