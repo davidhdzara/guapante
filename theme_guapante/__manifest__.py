@@ -17,6 +17,7 @@
         'report/sale_report_templates.xml',
         'report/purchase_report_templates.xml',
         'views/preparation_day_views.xml',
+        'views/purchase_demand_views.xml',
         'views/stock_picking_views.xml',
         'views/shop/order_status.xml',
         'views/product_template_view.xml',

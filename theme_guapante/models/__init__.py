@@ -11,3 +11,4 @@ from . import purchase_order_line
 from . import product_packaging
 from . import purchase_order
 from . import purchase_demand
+from . import stock_orderpoint
