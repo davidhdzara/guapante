@@ -35,6 +35,8 @@ class AccountPaymentRegister(models.TransientModel):
         'company_id',
         'currency_id',
         'payment_date',
+        'installments_mode',
+        'journal_id',
         'group_payment'
     )
     def _compute_amount(self) -> None:
