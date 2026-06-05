@@ -814,6 +814,15 @@ class PreparationDay(models.Model):
         self.state = 'loaded'
         return False
 
+    def action_export_excel(self) -> dict:
+        """Retorna una acción de URL para descargar el consolidado en Excel."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_url',
+            'url': f'/web/guapante/preparation_day/{self.id}/export_excel',
+            'target': 'new',
+        }
+
 
 class PreparationDaySummary(models.Model):
     """Aggregated view: one row per product variant showing totals."""
