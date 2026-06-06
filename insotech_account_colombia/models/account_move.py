@@ -143,7 +143,18 @@ class AccountMove(models.Model):
             lambda c: c.direction in (direction, 'both')
             and (c.purchase_tax_id if direction == 'purchase' else c.tax_id)
         )
-        if not concepts:
+
+        product_lines = self.invoice_line_ids.filtered(
+            lambda ln: ln.display_type not in (
+                'line_section', 'line_note',
+            )
+        )
+        has_parafiscals = any(
+            ln.product_id.product_tmpl_id.insotech_parafiscal_concept_id
+            for ln in product_lines if ln.product_id
+        )
+
+        if not concepts and not has_parafiscals:
             return self._insotech_notify(
                 _("El proveedor '%s' no tiene conceptos de retención "
                   "de compra configurados. Configúrelos en la ficha "
@@ -153,11 +164,6 @@ class AccountMove(models.Model):
 
         # ── 5. Retenciones del proveedor (Nivel 1) ──
         applied = []
-        product_lines = self.invoice_line_ids.filtered(
-            lambda ln: ln.display_type not in (
-                'line_section', 'line_note',
-            )
-        )
 
         vendor_taxes = self.env['account.tax']
         reteiva_taxes = self.env['account.tax']
