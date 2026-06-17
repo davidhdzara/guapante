@@ -5,7 +5,7 @@
     <t t-name="insotech_l10n_co_pos.OrderReceipt" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension" owl="1">
         
         <!-- 1. Cambiar Título del Recibo (Factura Electrónica de Venta) -->
-        <xpath expr="//div[hasclass('pos-receipt-contact')]" position="after">
+        <xpath expr="//ReceiptHeader" position="after">
             <div class="pos-receipt-dian-title" style="font-weight: bold; text-align: center; margin-top: 10px; margin-bottom: 10px; font-size: 14px;">
                 Factura Electrónica de Venta
             </div>
