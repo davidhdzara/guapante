@@ -1,6 +1,6 @@
 {
     'name': 'Insotech — Localización Colombiana POS',
-    'version': '19.0.1.0.0',
+    'version': '18.0.1.0.0',
     'category': 'Sales/Point of Sale',
     'summary': 'Adaptación de POS para Facturación Electrónica en Tirilla (DIAN)',
     'description': """
