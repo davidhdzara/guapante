@@ -1,13 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates id="template" xml:space="preserve">
 
-    <!-- Extensión DIAN para la Tirilla POS — Formato Factura Electrónica -->
+    <!-- ============================================================ -->
+    <!-- Extensión del ReceiptHeader — Ocultar turnero + Cashier      -->
+    <!-- ============================================================ -->
+    <t t-name="insotech_l10n_co_pos.ReceiptHeader" t-inherit="point_of_sale.ReceiptHeader" t-inherit-mode="extension">
+        <!-- Ocultar el número grande del turnero (105) -->
+        <xpath expr="//h1[hasclass('tracking-number')]" position="attributes">
+            <attribute name="style">display: none;</attribute>
+        </xpath>
+        <!-- Ocultar el tracking number pequeño también -->
+        <xpath expr="//span[hasclass('tracking-number')]" position="attributes">
+            <attribute name="style">display: none;</attribute>
+        </xpath>
+    </t>
+
+    <!-- ============================================================ -->
+    <!-- Extensión DIAN para la Tirilla POS                           -->
+    <!-- ============================================================ -->
     <t t-name="insotech_l10n_co_pos.OrderReceipt" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension">
 
         <!-- ============================================================ -->
-        <!-- Inyectar info DIAN antes de las líneas de producto            -->
+        <!-- BLOQUE 1: DESPUÉS del header, ANTES de los productos         -->
+        <!-- Inyectar: Título FE + info transacción + cliente + headers   -->
         <!-- ============================================================ -->
-        <xpath expr="//div[hasclass('pos-receipt-order-data')]" position="before">
+        <xpath expr="//ReceiptHeader" position="after">
             <div style="text-align: center; margin-top: 8px; margin-bottom: 4px;">
                 <div style="font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                     Factura Electrónica de Venta
@@ -20,7 +37,7 @@
             <!-- Separador -->
             <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
 
-            <!-- Info de la transacción (SIN cajero, ya lo muestra "Atendido por" nativo) -->
+            <!-- Info de la transacción -->
             <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
                 <div><strong>Fecha:</strong> <t t-esc="props.data.date"/></div>
                 <div><strong>Forma de pago:</strong> <t t-esc="props.data.dian_forma_pago || 'Contado'"/></div>
@@ -49,7 +66,7 @@
 
             <!-- Separador + encabezados de tabla de productos -->
             <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
-            <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; padding: 0 4px; margin-bottom: 4px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; padding: 0 4px; margin-bottom: 2px;">
                 <span>Producto</span>
                 <span style="text-align: right;">Cant  Precio</span>
             </div>
@@ -57,21 +74,20 @@
         </xpath>
 
         <!-- ============================================================ -->
-        <!-- Punto 4: Nombres de pagos en MAYÚSCULAS                      -->
-        <!-- Reemplazar la línea de pago con text-uppercase                -->
+        <!-- BLOQUE 2: Pagos en MAYÚSCULAS                                -->
         <!-- ============================================================ -->
         <xpath expr="//div[hasclass('paymentlines')]" position="attributes">
             <attribute name="style">text-transform: uppercase;</attribute>
         </xpath>
 
         <!-- ============================================================ -->
-        <!-- Bloque DIAN completo (después de totales/pagos)              -->
+        <!-- BLOQUE 3: DESPUÉS de totales/pagos — datos DIAN              -->
         <!-- ============================================================ -->
         <xpath expr="//div[hasclass('before-footer')]" position="after">
 
             <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
 
-            <!-- Responsabilidades Fiscales / Gran Contribuyente -->
+            <!-- Responsabilidades Fiscales -->
             <t t-if="props.data.dian_obligations_text">
                 <div style="font-size: 10px; text-align: center; padding: 0 4px; line-height: 1.4;">
                     <t t-esc="props.data.dian_obligations_text"/>
@@ -105,24 +121,21 @@
 
             <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
 
-            <!-- CUFE y QR (solo si ya se generó factura electrónica) -->
+            <!-- CUFE y QR -->
             <t t-if="props.data.dian_cufe">
                 <div style="text-align: center; padding: 4px;">
                     <img t-att-src="'/report/barcode/?barcode_type=QR&amp;value=' + (props.data.dian_qr || '') + '&amp;width=180&amp;height=180'"
                          style="width: 150px; height: 150px;"/>
-                    <div style="font-size: 9px; margin-top: 4px;">
-                        Use el QR para descargar su factura
-                    </div>
+                    <div style="font-size: 9px; margin-top: 4px;">Use el QR para descargar su factura</div>
                     <div style="font-size: 8px; margin-top: 4px; word-wrap: break-word; padding: 0 4px;">
                         <strong>CUFE:</strong><br/>
                         <t t-esc="props.data.dian_cufe"/>
                     </div>
                 </div>
-
                 <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
             </t>
 
-            <!-- Mensaje de envío por correo electrónico -->
+            <!-- Mensaje de envío por email -->
             <t t-if="props.data.dian_client and props.data.dian_client.email">
                 <div style="font-size: 9px; text-align: center; padding: 0 4px; line-height: 1.4; margin-bottom: 6px;">
                     La factura se enviará al correo electrónico<br/>
@@ -137,23 +150,13 @@
                 Infinity Solutions Technology SAS<br/>
                 NIT: 901.797.249 — Tel: 3028522449
             </div>
-
         </xpath>
 
-    </t>
+        <!-- ============================================================ -->
+        <!-- BLOQUE 4: Ocultar secciones nativas que ya mostramos         -->
+        <!-- Ocultar "Powered by Odoo" y la referencia de orden repetida  -->
+        <!-- ============================================================ -->
 
-    <!-- ============================================================ -->
-    <!-- Extensión del ReceiptHeader — Ocultar turnero grande          -->
-    <!-- ============================================================ -->
-    <t t-name="insotech_l10n_co_pos.ReceiptHeader" t-inherit="point_of_sale.ReceiptHeader" t-inherit-mode="extension">
-        <!-- Ocultar el número grande del turnero (105) -->
-        <xpath expr="//h1[hasclass('tracking-number')]" position="attributes">
-            <attribute name="style">display: none;</attribute>
-        </xpath>
-        <!-- Ocultar el tracking number pequeño también -->
-        <xpath expr="//span[hasclass('tracking-number')]" position="attributes">
-            <attribute name="style">display: none;</attribute>
-        </xpath>
     </t>
 
 </templates>
