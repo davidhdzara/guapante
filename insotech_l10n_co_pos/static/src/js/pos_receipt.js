@@ -11,27 +11,6 @@ patch(PosOrder.prototype, "insotech_l10n_co_pos.PosOrder", {
         this.dian_qr = this.dian_qr || false;
     },
 
-    init_from_JSON(json) {
-        super.init_from_JSON(...arguments);
-        if (json.dian_cufe) {
-            this.dian_cufe = json.dian_cufe;
-        }
-        if (json.dian_qr) {
-            this.dian_qr = json.dian_qr;
-        }
-    },
-
-    export_as_JSON() {
-        const json = super.export_as_JSON(...arguments);
-        if (this.dian_cufe) {
-            json.dian_cufe = this.dian_cufe;
-        }
-        if (this.dian_qr) {
-            json.dian_qr = this.dian_qr;
-        }
-        return json;
-    },
-
     export_for_printing(baseUrl, headerData) {
         const result = super.export_for_printing(...arguments);
         
