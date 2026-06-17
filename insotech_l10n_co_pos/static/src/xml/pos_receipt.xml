@@ -5,9 +5,10 @@
     <t t-name="insotech_l10n_co_pos.OrderReceipt" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension">
 
         <!-- ============================================================ -->
-        <!-- SECCIÓN 1: Título + Número de Documento (después del header) -->
+        <!-- OCULTAR el número grande del tracking/turnero (105)          -->
+        <!-- Solo quitar la sección de tracking number nativa             -->
         <!-- ============================================================ -->
-        <xpath expr="//ReceiptHeader" position="after">
+        <xpath expr="//div[hasclass('pos-receipt-order-data')]" position="before">
             <div style="text-align: center; margin-top: 8px; margin-bottom: 4px;">
                 <div style="font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                     Factura Electrónica de Venta
@@ -21,17 +22,16 @@
             <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
 
             <!-- ============================================================ -->
-            <!-- SECCIÓN 2: Info de la transacción                            -->
+            <!-- Info de la transacción (SIN cajero, ya lo muestra "Atendido por") -->
             <!-- ============================================================ -->
             <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
                 <div><strong>Fecha:</strong> <t t-esc="props.data.date"/></div>
                 <div><strong>Forma de pago:</strong> <t t-esc="props.data.dian_forma_pago || 'Contado'"/></div>
                 <div><strong>Medio de Pago:</strong> <t t-esc="props.data.dian_medios_pago || 'Efectivo'"/></div>
-                <div><strong>Cajero:</strong> <t t-esc="props.data.cashier"/></div>
             </div>
 
             <!-- ============================================================ -->
-            <!-- SECCIÓN 3: Datos del Cliente                                 -->
+            <!-- Datos del Cliente                                            -->
             <!-- ============================================================ -->
             <t t-if="props.data.dian_client">
                 <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
@@ -52,12 +52,17 @@
                 </div>
             </t>
 
-            <!-- Separador antes de productos -->
+            <!-- Separador + encabezados de tabla de productos -->
             <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; padding: 0 4px; margin-bottom: 4px;">
+                <span>Producto</span>
+                <span style="text-align: right;">Cant  Precio</span>
+            </div>
+            <div class="text-center" style="margin: 2px 0;">- - - - - - - - - - - - - - - - -</div>
         </xpath>
 
         <!-- ============================================================ -->
-        <!-- SECCIÓN 4: Bloque DIAN completo (después de totales/pagos)   -->
+        <!-- Bloque DIAN completo (después de totales/pagos)              -->
         <!-- ============================================================ -->
         <xpath expr="//div[hasclass('before-footer')]" position="after">
 
@@ -111,14 +116,15 @@
                     </div>
                 </div>
 
-                <!-- Email del cliente -->
-                <t t-if="props.data.dian_client.email">
-                    <div style="font-size: 9px; text-align: center; margin-top: 4px;">
-                        La factura se enviará al correo electrónico<br/>
-                        <t t-esc="props.data.dian_client.email"/>
-                    </div>
-                </t>
+                <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
+            </t>
 
+            <!-- Mensaje de envío por correo electrónico -->
+            <t t-if="props.data.dian_client and props.data.dian_client.email">
+                <div style="font-size: 9px; text-align: center; padding: 0 4px; line-height: 1.4; margin-bottom: 6px;">
+                    La factura se enviará al correo electrónico<br/>
+                    <strong><t t-esc="props.data.dian_client.email"/></strong>
+                </div>
                 <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
             </t>
 
