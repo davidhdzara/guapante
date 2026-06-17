@@ -1,34 +1,33 @@
 {
-    'name': 'Insotech — Localización Colombiana POS',
-    'version': '18.0.1.0.0',
+    'name': 'Insotech — Tirilla Factura Electrónica POS',
+    'version': '18.0.1.0.1',
     'category': 'Sales/Point of Sale',
-    'summary': 'Adaptación de POS para Facturación Electrónica en Tirilla (DIAN)',
+    'summary': 'Formato DIAN para tirilla de recibo en Punto de Venta',
     'description': """
-        Extiende el Punto de Venta de Odoo para emitir Facturas Electrónicas de Venta (Tipo 01)
-        impresas en formato de tirilla térmica, cumpliendo con los requisitos de 
-        Representación Gráfica de la DIAN (Resolución 165).
-
-        Características principales:
-        - Auto-asignación de "Consumidor Final" (NIT 222222222222).
-        - Impresión del CUFE y Código QR de la DIAN en el tiquete JS.
-        - Desglose de impuestos (INC, Base Gravable).
-        - Información de Resolución y Proveedor Tecnológico.
-        - Mapeo de métodos de pago (Efectivo, Tarjeta).
+        Extiende la tirilla del recibo del Punto de Venta de Odoo 18 para mostrar 
+        la información requerida por la DIAN para la Representación Gráfica de la 
+        Factura Electrónica de Venta (Resolución 165):
+        
+        - Título "Factura Electrónica de Venta"
+        - Resolución de numeración autorizada
+        - Actividad Económica (CIIU)
+        - Responsabilidades Fiscales
+        - Forma y Medio de Pago (Anexo 1.9)
+        - CUFE y Código QR de la DIAN
+        - Aviso legal de datos personales
+        - Datos del proveedor tecnológico
     """,
     'author': 'Insotech',
     'website': 'https://www.insotech.it',
     'depends': [
         'point_of_sale',
-        'l10n_co_edi',
-        'insotech_l10n_co_advanced',
+        'l10n_co_pos',
     ],
-    'data': [
-    ],
+    'data': [],
     'assets': {
         'point_of_sale._assets_pos': [
             'insotech_l10n_co_pos/static/src/xml/pos_receipt.xml',
             'insotech_l10n_co_pos/static/src/js/pos_receipt.js',
-            'insotech_l10n_co_pos/static/src/js/pos_payment_screen.js',
         ],
     },
     'installable': True,

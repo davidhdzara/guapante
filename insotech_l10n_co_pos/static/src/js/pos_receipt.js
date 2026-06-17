@@ -3,70 +3,41 @@
 import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { patch } from "@web/core/utils/patch";
 
-patch(PosOrder.prototype, "insotech_l10n_co_pos.PosOrder", {
-    // Al cargar la orden desde el backend, guardamos nuestras variables DIAN
-    setup() {
-        super.setup(...arguments);
-        this.dian_cufe = this.dian_cufe || false;
-        this.dian_qr = this.dian_qr || false;
-    },
-
+patch(PosOrder.prototype, {
     export_for_printing(baseUrl, headerData) {
         const result = super.export_for_printing(...arguments);
-        
-        // Asignar variables DIAN al root para que el XML las encuentre en props.data
+
+        // Datos de la empresa para la sección DIAN del recibo
+        const company = this.company || {};
+
+        // Resolución DIAN y obligaciones fiscales
+        result.dian_resolution_text = company.dian_resolution_text || '';
+        result.dian_obligations_text = company.dian_obligations_text || '';
+        result.dian_ciiu_code = company.company_registry || '';
+
+        // CUFE y QR (si la orden ya fue facturada electrónicamente)
         result.dian_cufe = this.dian_cufe || false;
         result.dian_qr = this.dian_qr || false;
-        
-        // Asegurar que result.headerData existe
-        result.headerData = result.headerData || {};
 
-        // También inyectar datos de la empresa desde el config de POS
-        const posCompany = this.pos?.company || this.company || {};
-        result.headerData.dian_resolution_text = posCompany.dian_resolution_text || '';
-        result.headerData.dian_obligations_text = posCompany.dian_obligations_text || '';
-        result.headerData.ciiu_code = posCompany.company_registry || '';
-        
-        // Lógica para desglosar Base Gravable e INC (Impuesto al Consumo)
-        let base_gravable = 0.0;
-        let inc_total = 0.0;
-        
-        if (result.tax_details && result.tax_details.length > 0) {
-            for (let tax of result.tax_details) {
-                if (tax.tax && tax.tax.name && (tax.tax.name.toUpperCase().includes('INC') || tax.tax.name.toUpperCase().includes('CONSUMO'))) {
-                    inc_total += tax.amount;
-                }
-            }
-            base_gravable = result.total_without_tax;
-        }
-        
-        if (base_gravable > 0) {
-            result.dian_base_gravable = base_gravable;
-        }
-        if (inc_total > 0) {
-            result.dian_inc = inc_total;
-        }
-        
         // Forma y Medio de Pago DIAN (Anexo 1.9)
         result.dian_forma_pago = 'Contado';
-        let medios_pago = [];
+        const medios = [];
         if (result.paymentlines && result.paymentlines.length > 0) {
-            for (let line of result.paymentlines) {
-                let name = (line.name || '').toLowerCase();
+            for (const line of result.paymentlines) {
+                const name = (line.name || '').toLowerCase();
                 if (name.includes('efectivo') || name.includes('cash')) {
-                    medios_pago.push('10 Efectivo');
+                    medios.push('Efectivo');
                 } else if (name.includes('transferencia') || name.includes('bank')) {
-                    medios_pago.push('41 Transferencia');
+                    medios.push('Transferencia');
                 } else {
-                    medios_pago.push('48 Tarjeta de Crédito/Débito');
+                    medios.push('Tarjeta');
                 }
             }
         } else {
-            medios_pago.push('10 Efectivo');
+            medios.push('Efectivo');
         }
-        
-        result.dian_medios_pago = [...new Set(medios_pago)].join(' / ');
-        
+        result.dian_medios_pago = [...new Set(medios)].join(' / ');
+
         return result;
     }
 });
