@@ -11,11 +11,9 @@
     'website': 'https://www.insotech.it',
     'depends': [
         'account',
-        'sale',
         'l10n_co_edi',
         'l10n_co_dian',
         'mail',
-        'web',
         'insotech_core',
     ],
     'data': [
@@ -25,11 +23,10 @@
         'views/account_move_views.xml',
         'views/account_journal_views.xml',
         'views/report_invoice_document_inherit.xml',
-        'views/report_payment_receipt_inherit.xml',
-        'views/report_saleorder_whatsapp.xml',
     ],
     'installable': True,
     'application': False,
     'auto_install': False,
     'license': 'OPL-1',
+    'post_init_hook': 'post_init_hook',
 }

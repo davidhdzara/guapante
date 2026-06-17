@@ -46,3 +46,13 @@ class ResPartner(models.Model):
                             partner.l10n_co_verification_code = _compute_dv_local(partner.vat)
                     except Exception as e:
                         _logger.debug("Insotech Partner Onchange: Error calculando DV autómata: %s", e)
+
+    @api.onchange('city_id')
+    def _onchange_city_id_zip(self):
+        """
+        Asigna automáticamente el código postal (zip) de la ciudad seleccionada
+        al contacto, cumpliendo con la exigencia cbc:PostalZone de la DIAN.
+        """
+        for partner in self:
+            if partner.city_id and hasattr(partner.city_id, 'zipcode') and partner.city_id.zipcode:
+                partner.zip = partner.city_id.zipcode
