@@ -34,14 +34,14 @@
             <div class="pos-receipt-dian-legal" style="font-size: 10px; text-align: center; margin-top: 15px; border-top: 1px dashed black; padding-top: 10px;">
                 <div>
                     <strong>Numeración autorizada según formulario</strong><br/>
-                    <t t-esc="props.data.headerData.dian_resolution_text || 'Resolución DIAN pendiente de configurar'"/>
+                    <t t-esc="props.data.headerData?.dian_resolution_text || 'Resolución DIAN pendiente de configurar'"/>
                 </div>
                 <div style="margin-top: 5px;">
-                    Actividad ICA según municipio CIIU <t t-esc="props.data.headerData.ciiu_code || 'N/A'"/>
+                    Actividad ICA según municipio CIIU <t t-esc="props.data.headerData?.ciiu_code || 'N/A'"/>
                 </div>
                 <div style="margin-top: 5px; font-weight: bold;">
                     Responsabilidades Fiscales:<br/>
-                    <span style="font-weight: normal;"><t t-esc="props.data.headerData.dian_obligations_text || 'Responsable de IVA'"/></span>
+                    <span style="font-weight: normal;"><t t-esc="props.data.headerData?.dian_obligations_text || 'Responsable de IVA'"/></span>
                 </div>
                 <div style="margin-top: 10px; font-size: 9px;">
                     Los datos personales de los clientes serán tratados conforme a los fines establecidos en el manual y políticas de tratamiento de datos personales.
@@ -63,7 +63,7 @@
                 </div>
                 <div style="margin-top: 10px; font-size: 9px;">
                     Software de Facturación: Software Propio basado en Odoo ERP<br/>
-                    NIT: <t t-esc="props.data.headerData.company.vat || ''"/>
+                    NIT: <t t-esc="props.data.headerData?.company?.vat || props.data.company?.vat || ''"/>
                 </div>
                 <div style="margin-top: 5px; font-size: 8px; border-top: 1px solid #ccc; padding-top: 3px;">
                     Implementado por Infinity Solutions Technology SAS<br/>

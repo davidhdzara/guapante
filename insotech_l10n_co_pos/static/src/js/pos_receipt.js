@@ -39,10 +39,14 @@ patch(PosOrder.prototype, {
         result.dian_cufe = this.dian_cufe || false;
         result.dian_qr = this.dian_qr || false;
         
+        // Asegurar que result.headerData existe
+        result.headerData = result.headerData || {};
+
         // También inyectar datos de la empresa desde el config de POS
-        result.headerData.dian_resolution_text = this.pos.company.dian_resolution_text || '';
-        result.headerData.dian_obligations_text = this.pos.company.dian_obligations_text || '';
-        result.headerData.ciiu_code = this.pos.company.company_registry || '';
+        const posCompany = this.pos?.company || this.company || {};
+        result.headerData.dian_resolution_text = posCompany.dian_resolution_text || '';
+        result.headerData.dian_obligations_text = posCompany.dian_obligations_text || '';
+        result.headerData.ciiu_code = posCompany.company_registry || '';
         
         // Lógica para desglosar Base Gravable e INC (Impuesto al Consumo)
         let base_gravable = 0.0;
