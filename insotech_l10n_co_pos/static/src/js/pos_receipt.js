@@ -7,12 +7,16 @@ patch(PosOrder.prototype, {
     export_for_printing(baseUrl, headerData) {
         const result = super.export_for_printing(...arguments);
 
+        // En Odoo 18, los campos custom inyectados via _load_pos_data
+        // están disponibles en company.raw (el dict original),
+        // no como propiedades del modelo ORM reactivo.
         const company = this.company || {};
+        const raw = company.raw || company;
 
         // --- Datos de la empresa para la sección DIAN ---
-        result.dian_resolution_text = company.dian_resolution_text || '';
-        result.dian_obligations_text = company.dian_obligations_text || '';
-        result.dian_ciiu_code = company.dian_ciiu_code || '';
+        result.dian_resolution_text = raw.dian_resolution_text || '';
+        result.dian_obligations_text = raw.dian_obligations_text || '';
+        result.dian_ciiu_code = raw.dian_ciiu_code || '';
 
         // --- Datos del cliente ---
         const partner = this.partner_id;
@@ -21,7 +25,8 @@ patch(PosOrder.prototype, {
                 name: partner.name || 'Consumidor Final',
                 vat: partner.vat || '',
                 id_type: partner.l10n_latam_identification_type_id
-                    ? partner.l10n_latam_identification_type_id.name
+                    ? (partner.l10n_latam_identification_type_id.name ||
+                       partner.l10n_latam_identification_type_id)
                     : 'NIT',
                 street: partner.street || '',
                 city: partner.city || '',
