@@ -5,8 +5,7 @@
     <t t-name="insotech_l10n_co_pos.OrderReceipt" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension">
 
         <!-- ============================================================ -->
-        <!-- OCULTAR el número grande del tracking/turnero (105)          -->
-        <!-- Solo quitar la sección de tracking number nativa             -->
+        <!-- Inyectar info DIAN antes de las líneas de producto            -->
         <!-- ============================================================ -->
         <xpath expr="//div[hasclass('pos-receipt-order-data')]" position="before">
             <div style="text-align: center; margin-top: 8px; margin-bottom: 4px;">
@@ -21,18 +20,14 @@
             <!-- Separador -->
             <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
 
-            <!-- ============================================================ -->
-            <!-- Info de la transacción (SIN cajero, ya lo muestra "Atendido por") -->
-            <!-- ============================================================ -->
+            <!-- Info de la transacción (SIN cajero, ya lo muestra "Atendido por" nativo) -->
             <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
                 <div><strong>Fecha:</strong> <t t-esc="props.data.date"/></div>
                 <div><strong>Forma de pago:</strong> <t t-esc="props.data.dian_forma_pago || 'Contado'"/></div>
                 <div><strong>Medio de Pago:</strong> <t t-esc="props.data.dian_medios_pago || 'Efectivo'"/></div>
             </div>
 
-            <!-- ============================================================ -->
-            <!-- Datos del Cliente                                            -->
-            <!-- ============================================================ -->
+            <!-- Datos del Cliente -->
             <t t-if="props.data.dian_client">
                 <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
                 <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
@@ -59,6 +54,14 @@
                 <span style="text-align: right;">Cant  Precio</span>
             </div>
             <div class="text-center" style="margin: 2px 0;">- - - - - - - - - - - - - - - - -</div>
+        </xpath>
+
+        <!-- ============================================================ -->
+        <!-- Punto 4: Nombres de pagos en MAYÚSCULAS                      -->
+        <!-- Reemplazar la línea de pago con text-uppercase                -->
+        <!-- ============================================================ -->
+        <xpath expr="//div[hasclass('paymentlines')]" position="attributes">
+            <attribute name="style">text-transform: uppercase;</attribute>
         </xpath>
 
         <!-- ============================================================ -->
@@ -138,4 +141,19 @@
         </xpath>
 
     </t>
+
+    <!-- ============================================================ -->
+    <!-- Extensión del ReceiptHeader — Ocultar turnero grande          -->
+    <!-- ============================================================ -->
+    <t t-name="insotech_l10n_co_pos.ReceiptHeader" t-inherit="point_of_sale.ReceiptHeader" t-inherit-mode="extension">
+        <!-- Ocultar el número grande del turnero (105) -->
+        <xpath expr="//h1[hasclass('tracking-number')]" position="attributes">
+            <attribute name="style">display: none;</attribute>
+        </xpath>
+        <!-- Ocultar el tracking number pequeño también -->
+        <xpath expr="//span[hasclass('tracking-number')]" position="attributes">
+            <attribute name="style">display: none;</attribute>
+        </xpath>
+    </t>
+
 </templates>
