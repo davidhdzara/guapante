@@ -1,76 +1,131 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates id="template" xml:space="preserve">
 
-    <!-- Extensión DIAN para el Recibo (Tirilla) del POS — Odoo 18 -->
+    <!-- Extensión DIAN para la Tirilla POS — Formato Factura Electrónica -->
     <t t-name="insotech_l10n_co_pos.OrderReceipt" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension">
 
-        <!-- Título: Factura Electrónica de Venta — justo después del header -->
+        <!-- ============================================================ -->
+        <!-- SECCIÓN 1: Título + Número de Documento (después del header) -->
+        <!-- ============================================================ -->
         <xpath expr="//ReceiptHeader" position="after">
-            <div style="font-weight: bold; text-align: center; margin-top: 8px; margin-bottom: 8px; font-size: 13px;">
-                FACTURA ELECTRÓNICA DE VENTA
+            <div style="text-align: center; margin-top: 8px; margin-bottom: 4px;">
+                <div style="font-weight: bold; font-size: 13px; margin-bottom: 2px;">
+                    Factura Electrónica de Venta
+                </div>
+                <div style="font-size: 11px;">
+                    No. <t t-esc="props.data.name"/>
+                </div>
             </div>
-        </xpath>
-
-        <!-- Bloque DIAN completo: va ANTES del footer nativo -->
-        <xpath expr="//div[hasclass('before-footer')]" position="after">
 
             <!-- Separador -->
-            <div class="text-center">--------------------------------</div>
+            <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
+
+            <!-- ============================================================ -->
+            <!-- SECCIÓN 2: Info de la transacción                            -->
+            <!-- ============================================================ -->
+            <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
+                <div><strong>Fecha:</strong> <t t-esc="props.data.date"/></div>
+                <div><strong>Forma de pago:</strong> <t t-esc="props.data.dian_forma_pago || 'Contado'"/></div>
+                <div><strong>Medio de Pago:</strong> <t t-esc="props.data.dian_medios_pago || 'Efectivo'"/></div>
+                <div><strong>Cajero:</strong> <t t-esc="props.data.cashier"/></div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- SECCIÓN 3: Datos del Cliente                                 -->
+            <!-- ============================================================ -->
+            <t t-if="props.data.dian_client">
+                <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
+                <div style="font-size: 11px; line-height: 1.5; padding: 0 4px;">
+                    <div><strong>Cliente:</strong> <t t-esc="props.data.dian_client.name"/></div>
+                    <div><strong><t t-esc="props.data.dian_client.id_type"/>:</strong> <t t-esc="props.data.dian_client.vat"/></div>
+                    <t t-if="props.data.dian_client.phone">
+                        <div><strong>Teléfono:</strong> <t t-esc="props.data.dian_client.phone"/></div>
+                    </t>
+                    <t t-if="props.data.dian_client.street">
+                        <div><strong>Dirección:</strong> <t t-esc="props.data.dian_client.street"/>
+                            <t t-if="props.data.dian_client.city">, <t t-esc="props.data.dian_client.city"/></t>
+                        </div>
+                    </t>
+                    <t t-if="props.data.dian_client.email">
+                        <div><strong>Email:</strong> <t t-esc="props.data.dian_client.email"/></div>
+                    </t>
+                </div>
+            </t>
+
+            <!-- Separador antes de productos -->
+            <div class="text-center" style="margin: 4px 0;">- - - - - - - - - - - - - - - - -</div>
+        </xpath>
+
+        <!-- ============================================================ -->
+        <!-- SECCIÓN 4: Bloque DIAN completo (después de totales/pagos)   -->
+        <!-- ============================================================ -->
+        <xpath expr="//div[hasclass('before-footer')]" position="after">
+
+            <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
+
+            <!-- Responsabilidades Fiscales / Gran Contribuyente -->
+            <t t-if="props.data.dian_obligations_text">
+                <div style="font-size: 10px; text-align: center; padding: 0 4px; line-height: 1.4;">
+                    <t t-esc="props.data.dian_obligations_text"/>
+                </div>
+            </t>
 
             <!-- Resolución DIAN -->
-            <div style="font-size: 10px; text-align: center; margin-top: 5px;">
+            <div style="font-size: 10px; text-align: center; margin-top: 6px; padding: 0 4px; line-height: 1.4;">
                 <t t-if="props.data.dian_resolution_text">
-                    <div>
-                        <strong>Numeración autorizada</strong><br/>
-                        <t t-esc="props.data.dian_resolution_text"/>
-                    </div>
+                    <t t-esc="props.data.dian_resolution_text"/>
                 </t>
                 <t t-else="">
-                    <div>Resolución DIAN pendiente de configurar</div>
+                    Resolución DIAN pendiente de configurar
                 </t>
             </div>
 
-            <!-- Actividad económica CIIU -->
+            <!-- Actividad CIIU -->
             <t t-if="props.data.dian_ciiu_code">
                 <div style="font-size: 10px; text-align: center; margin-top: 3px;">
-                    Actividad Económica CIIU: <t t-esc="props.data.dian_ciiu_code"/>
+                    Actividad CIIU: <t t-esc="props.data.dian_ciiu_code"/>
                 </div>
             </t>
 
-            <!-- Responsabilidades Fiscales -->
-            <t t-if="props.data.dian_obligations_text">
-                <div style="font-size: 10px; text-align: center; margin-top: 3px;">
-                    <strong>Responsabilidades:</strong> <t t-esc="props.data.dian_obligations_text"/>
-                </div>
-            </t>
+            <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
 
-            <!-- Forma y Medio de Pago -->
-            <div style="font-size: 10px; text-align: center; margin-top: 5px; border-top: 1px dashed #000; padding-top: 5px;">
-                <strong>Forma de pago:</strong> <t t-esc="props.data.dian_forma_pago || 'Contado'"/><br/>
-                <strong>Medio de pago:</strong> <t t-esc="props.data.dian_medios_pago || 'Efectivo'"/>
+            <!-- Aviso legal datos personales -->
+            <div style="font-size: 9px; text-align: center; padding: 0 4px; line-height: 1.4;">
+                Los datos personales de los clientes serán tratados conforme a los fines
+                establecidos en las políticas de tratamiento de datos personales.
             </div>
+
+            <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
 
             <!-- CUFE y QR (solo si ya se generó factura electrónica) -->
             <t t-if="props.data.dian_cufe">
-                <div style="text-align: center; margin-top: 8px; border-top: 1px dashed #000; padding-top: 8px;">
-                    <img t-att-src="'/report/barcode/?barcode_type=QR&amp;value=' + (props.data.dian_qr || '') + '&amp;width=150&amp;height=150'"
-                         style="width: 130px; height: 130px;"/>
-                    <div style="font-size: 9px; margin-top: 4px; word-wrap: break-word;">
+                <div style="text-align: center; padding: 4px;">
+                    <img t-att-src="'/report/barcode/?barcode_type=QR&amp;value=' + (props.data.dian_qr || '') + '&amp;width=180&amp;height=180'"
+                         style="width: 150px; height: 150px;"/>
+                    <div style="font-size: 9px; margin-top: 4px;">
+                        Use el QR para descargar su factura
+                    </div>
+                    <div style="font-size: 8px; margin-top: 4px; word-wrap: break-word; padding: 0 4px;">
                         <strong>CUFE:</strong><br/>
                         <t t-esc="props.data.dian_cufe"/>
                     </div>
                 </div>
+
+                <!-- Email del cliente -->
+                <t t-if="props.data.dian_client.email">
+                    <div style="font-size: 9px; text-align: center; margin-top: 4px;">
+                        La factura se enviará al correo electrónico<br/>
+                        <t t-esc="props.data.dian_client.email"/>
+                    </div>
+                </t>
+
+                <div class="text-center" style="margin: 6px 0;">- - - - - - - - - - - - - - - - -</div>
             </t>
 
-            <!-- Aviso legal datos personales -->
-            <div style="font-size: 8px; text-align: center; margin-top: 8px; border-top: 1px dashed #000; padding-top: 5px;">
-                Los datos personales serán tratados conforme a la política de tratamiento de datos personales.
-            </div>
-
             <!-- Proveedor tecnológico -->
-            <div style="font-size: 8px; text-align: center; margin-top: 5px;">
-                Software: Odoo ERP<br/>
-                Implementado por Infinity Solutions Technology SAS<br/>
+            <div style="font-size: 9px; text-align: center; padding: 0 4px; line-height: 1.4;">
+                <strong>Proveedor Tecnológico:</strong><br/>
+                Infinity Solutions Technology SAS<br/>
                 NIT: 901.797.249 — Tel: 3028522449
             </div>
 

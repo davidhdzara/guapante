@@ -21,7 +21,7 @@
     'website': 'https://www.insotech.it',
     'depends': [
         'point_of_sale',
-        'l10n_co_pos',
+        'l10n_co',
     ],
     'data': [],
     'assets': {
