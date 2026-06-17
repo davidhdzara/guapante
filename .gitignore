@@ -25,6 +25,8 @@
 !l10n_co_accounting_reports/**
 !l10n_co_bank_payment_export/
 !l10n_co_bank_payment_export/**
+!insotech_l10n_co_pos/
+!insotech_l10n_co_pos/**
 !requirements.txt
 
 # Always ignore compiled Python files
