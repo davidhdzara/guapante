@@ -12,21 +12,42 @@ class ResCompany(models.Model):
     dian_ciiu_code = fields.Char(compute='_compute_dian_ciiu_code')
 
     def _compute_dian_resolution_text(self):
+        """
+        Lee la resolución DIAN directamente del diario de ventas POS.
+        Los campos están en account.journal (módulo enterprise l10n_co_dian):
+          - l10n_co_edi_dian_authorization_number
+          - l10n_co_edi_dian_authorization_date
+          - l10n_co_edi_dian_authorization_end_date
+          - l10n_co_edi_min_range_number
+          - l10n_co_edi_max_range_number
+          - code (prefijo)
+        """
         for company in self:
             resolution_text = ''
             try:
-                if 'l10n_co_dian.document' in self.env:
-                    dian_doc = self.env['l10n_co_dian.document'].search([
+                # Buscar el diario del POS (tipo 'sale' o 'general' con resolución)
+                journal = self.env['account.journal'].search([
+                    ('company_id', '=', company.id),
+                    ('type', '=', 'sale'),
+                ], limit=1)
+
+                if not journal:
+                    journal = self.env['account.journal'].search([
                         ('company_id', '=', company.id),
                     ], limit=1)
-                    if dian_doc:
-                        prefix = dian_doc.prefix or ''
+
+                if journal and hasattr(journal, 'l10n_co_edi_dian_authorization_number'):
+                    auth_number = journal.l10n_co_edi_dian_authorization_number
+                    if auth_number:
+                        date_from = journal.l10n_co_edi_dian_authorization_date or ''
+                        date_to = journal.l10n_co_edi_dian_authorization_end_date or ''
+                        prefix = journal.code or ''
+                        min_range = journal.l10n_co_edi_min_range_number or 0
+                        max_range = journal.l10n_co_edi_max_range_number or 0
                         resolution_text = (
                             f"Numeración autorizada según formulario "
-                            f"{dian_doc.resolution_number} del "
-                            f"{dian_doc.date_from} al {dian_doc.date_to}. "
-                            f"DIAN {prefix}{dian_doc.number_from} al "
-                            f"{prefix}{dian_doc.number_to}"
+                            f"{auth_number} del {date_from} al {date_to}. "
+                            f"DIAN {prefix}{min_range} al {prefix}{max_range}"
                         )
             except Exception as e:
                 _logger.warning("Error cargando resolución DIAN para POS: %s", e)
@@ -66,9 +87,9 @@ class ResCompany(models.Model):
             ciiu = ''
             try:
                 if hasattr(company, 'l10n_co_edi_ciiu_id') and company.l10n_co_edi_ciiu_id:
-                    ciiu = company.l10n_co_edi_ciiu_id.name or company.l10n_co_edi_ciiu_id.code or ''
-                elif company.company_registry:
-                    ciiu = company.company_registry
+                    ciiu = company.l10n_co_edi_ciiu_id.name or ''
+                    if hasattr(company.l10n_co_edi_ciiu_id, 'code') and company.l10n_co_edi_ciiu_id.code:
+                        ciiu = f"{company.l10n_co_edi_ciiu_id.code} - {company.l10n_co_edi_ciiu_id.name}"
             except Exception as e:
                 _logger.warning("Error cargando CIIU para POS: %s", e)
             company.dian_ciiu_code = ciiu
@@ -90,7 +111,6 @@ class PosSession(models.Model):
                 'dian_ciiu_code',
             ])
         if model_name == 'res.partner':
-            # Asegurar que datos de identificación colombiana se cargan
             extra_fields = ['l10n_latam_identification_type_id', 'street', 'city', 'phone', 'mobile', 'email']
             for f in extra_fields:
                 if f not in result:
