@@ -48,6 +48,18 @@ patch(PosOrder.prototype, {
         // --- Flag: ¿Es factura electrónica o remisión? ---
         result.is_electronic_invoice = this.to_invoice || false;
 
+        // --- Consecutivo de factura (FE2574) ---
+        // Intentar obtener desde múltiples fuentes:
+        // 1. Campo inyectado por read_pos_data del backend
+        // 2. Propiedad raw del modelo
+        // 3. Fallback: vacío (el XML usará el name de la orden)
+        result.dian_invoice_name = this.dian_invoice_name
+            || (this.raw && this.raw.dian_invoice_name)
+            || '';
+
+        // --- Número de orden / Turnero ---
+        result.dian_order_number = this.tracking_number || '';
+
         // --- CUFE y QR (solo cuando es factura electrónica) ---
         result.dian_cufe = this.dian_cufe || false;
         result.dian_qr = this.dian_qr || false;

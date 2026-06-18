@@ -37,8 +37,10 @@
                     <div style="font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                         Comprobante de Venta
                     </div>
+                </t>
+                <t t-if="props.data.dian_order_number">
                     <div style="font-size: 11px;">
-                        No. <t t-esc="props.data.name"/>
+                        Orden: <t t-esc="props.data.dian_order_number"/>
                     </div>
                 </t>
             </div>
