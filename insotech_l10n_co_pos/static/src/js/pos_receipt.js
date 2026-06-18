@@ -45,7 +45,10 @@ patch(PosOrder.prototype, {
             };
         }
 
-        // --- CUFE y QR ---
+        // --- Flag: ¿Es factura electrónica o remisión? ---
+        result.is_electronic_invoice = this.to_invoice || false;
+
+        // --- CUFE y QR (solo cuando es factura electrónica) ---
         result.dian_cufe = this.dian_cufe || false;
         result.dian_qr = this.dian_qr || false;
 
