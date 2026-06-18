@@ -98,18 +98,6 @@ class ResCompany(models.Model):
         return result
 
 
-class PosSession(models.Model):
-    _inherit = 'pos.session'
-
-    @api.model
-    def _load_pos_data_fields(self, config_id):
-        """
-        Cargar campos extra del contacto para el POS.
-        """
-        result = super()._load_pos_data_fields(config_id)
-        return result
-
-
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 

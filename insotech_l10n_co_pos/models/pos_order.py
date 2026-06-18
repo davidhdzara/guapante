@@ -75,6 +75,10 @@ class PosOrder(models.Model):
         if qr:
             return qr
 
+        # Verificar que el modelo Enterprise existe
+        if 'l10n_co_dian.document' not in self.env:
+            return ''
+
         try:
             DianDoc = self.env['l10n_co_dian.document']
             doc = DianDoc.sudo().search([
@@ -83,9 +87,16 @@ class PosOrder(models.Model):
             ], limit=1, order='id desc')
 
             if doc and doc.attachment_id:
-                from lxml import etree
-                from urllib.parse import quote
-                from odoo.addons.l10n_co_dian.models import xml_utils
+                try:
+                    from lxml import etree
+                    from urllib.parse import quote
+                    from odoo.addons.l10n_co_dian.models import xml_utils
+                except ImportError:
+                    _logger.info(
+                        "Insotech POS: l10n_co_dian no instalado, "
+                        "QR no disponible"
+                    )
+                    return ''
                 root = etree.fromstring(doc.attachment_id.raw)
                 value = xml_utils._get_qr_code_value(
                     root, move.currency_id
