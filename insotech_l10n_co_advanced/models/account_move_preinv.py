@@ -36,7 +36,9 @@ class AccountMovePreInv(models.Model):
         instead of the real journal sequence (e.g. INV/2026/XXXX).
         """
         where_string, param = super()._get_last_sequence_domain(relaxed)
-        where_string += " AND name NOT LIKE 'PRE-INV%%'"
+        # FIX #9: Use anchored pattern to avoid matching journal codes
+        # that happen to contain 'PRE-INV' as a substring.
+        where_string += " AND name NOT LIKE 'PRE-INV/%%'"
         return where_string, param
 
     # -------------------------------------------------------------------------
@@ -124,12 +126,23 @@ class AccountMovePreInv(models.Model):
                     )
 
             except Exception as e:
+                # FIX #8: Re-raise to prevent publishing without
+                # PRE-INV protection. A silent failure here means the
+                # invoice gets the native journal name (e.g. FE/2026/0001)
+                # and goes to DIAN without any consecutive safeguard.
                 _logger.error(
                     "Insotech: Error protecting DIAN consecutive for "
-                    "move %s: %s. The move was posted with its original "
-                    "name to avoid blocking operations.",
+                    "move %s: %s. Blocking publication to prevent "
+                    "unprotected DIAN submission.",
                     move.id, str(e)
                 )
+                raise UserError(_(
+                    "Error al proteger el consecutivo DIAN para la "
+                    "factura %s: %s\n\n"
+                    "La factura NO fue publicada. Por favor contacte "
+                    "a soporte técnico.",
+                    move.name or move.id, str(e)
+                ))
 
         return posted
 
@@ -363,7 +376,9 @@ class AccountMovePreInv(models.Model):
         must be in DIAN format (e.g. ``FE1``) instead of PRE-INV.
         """
         for move in self:
-            if move.insotech_dian_status != 'pending':
+            # FIX #4: Also allow 'rejected' status so that retry flows
+            # that call this before status is updated still work.
+            if move.insotech_dian_status not in ('pending', 'rejected'):
                 continue
             if not move.insotech_reserved_dian_name:
                 continue
@@ -417,6 +432,16 @@ class AccountMovePreInv(models.Model):
         """
         for move in self:
             if move.insotech_is_co_edi and move.insotech_reserved_dian_name:
+                # FIX #6: Block cancellation of accepted invoices.
+                # The UI normally hides the cancel button, but scripts
+                # or automations could call this directly.
+                if move.insotech_dian_status == 'accepted':
+                    raise UserError(_(
+                        "No se puede cancelar una factura aceptada por la DIAN "
+                        "(consecutivo %s). Debe emitir una Nota Crédito.",
+                        move.name
+                    ))
+
                 can_release = False
                 
                 # 1. Seguridad: Si fue rechazada definitivamente, es seguro.
@@ -433,20 +458,35 @@ class AccountMovePreInv(models.Model):
                         move.insotech_reserved_dian_name, move.id,
                     )
                     
-                    # Decrementar el High-Water Mark (ir.config_parameter) si era el último
+                    # FIX #10: Use SELECT FOR UPDATE when decrementing
+                    # the counter to avoid race conditions with concurrent
+                    # cancellations.
                     try:
                         journal = move.journal_id
                         param_key = 'insotech.dian.last_consecutive.%d' % journal.id
-                        current_param = self.env['ir.config_parameter'].sudo().get_param(param_key)
-                        if current_param:
-                            current_val = int(current_param)
-                            m = re.search(r'(\d+)\s*$', move.insotech_reserved_dian_name)
-                            if m and int(m.group(1)) == current_val:
-                                self.env['ir.config_parameter'].sudo().set_param(param_key, str(current_val - 1))
-                                _logger.info(
-                                    "Insotech: Decremented last_consecutive for journal %s from %d to %d",
-                                    journal.id, current_val, current_val - 1
-                                )
+                        m = re.search(r'(\d+)\s*$', move.insotech_reserved_dian_name)
+                        if m:
+                            reserved_num = int(m.group(1))
+                            self.env.cr.execute("""
+                                SELECT value
+                                  FROM ir_config_parameter
+                                 WHERE key = %s
+                                   FOR UPDATE
+                            """, (param_key,))
+                            row = self.env.cr.fetchone()
+                            if row:
+                                current_val = int(row[0] or '0')
+                                if reserved_num == current_val:
+                                    self.env.cr.execute("""
+                                        UPDATE ir_config_parameter
+                                           SET value = %s
+                                         WHERE key = %s
+                                    """, (str(current_val - 1), param_key))
+                                    _logger.info(
+                                        "Insotech: Decremented last_consecutive "
+                                        "for journal %s from %d to %d",
+                                        journal.id, current_val, current_val - 1
+                                    )
                     except Exception as e:
                         _logger.error("Insotech: Failed to decrement config parameter: %s", str(e))
 
