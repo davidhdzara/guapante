@@ -134,7 +134,24 @@ class L10nCoDianDocument(models.Model):
                     _logger.error(
                         "Insotech: Error processing acceptance "
                         "for move %s: %s", move.id, str(e),
+                        exc_info=True,
                     )
+                    # FIX E-5: Post visible warning so the user
+                    # knows acceptance processing failed.
+                    try:
+                        move.message_post(
+                            body=(
+                                '⚠️ <b>Error procesando aceptación DIAN</b>'
+                                '<br/>La DIAN aceptó esta factura pero '
+                                'hubo un error interno al procesar la '
+                                'aceptación. Contacte soporte.<br/>'
+                                'Error: %s'
+                            ) % str(e)[:200],
+                            message_type='notification',
+                            subtype_xmlid='mail.mt_note',
+                        )
+                    except Exception:
+                        pass
 
             elif state == 'invoice_rejected':
                 try:
@@ -162,7 +179,23 @@ class L10nCoDianDocument(models.Model):
                     _logger.error(
                         "Insotech: Error processing rejection "
                         "for move %s: %s", move.id, str(e),
+                        exc_info=True,
                     )
+                    # FIX E-6: Post visible warning for rejection error.
+                    try:
+                        move.message_post(
+                            body=(
+                                '⚠️ <b>Error procesando rechazo DIAN</b>'
+                                '<br/>La DIAN rechazó esta factura pero '
+                                'hubo un error interno al procesar el '
+                                'rechazo. Contacte soporte.<br/>'
+                                'Error: %s'
+                            ) % str(e)[:200],
+                            message_type='notification',
+                            subtype_xmlid='mail.mt_note',
+                        )
+                    except Exception:
+                        pass
 
     @staticmethod
     def _extract_error_message(doc) -> str:

@@ -461,6 +461,7 @@ class AccountMovePreInv(models.Model):
                     # FIX #10: Use SELECT FOR UPDATE when decrementing
                     # the counter to avoid race conditions with concurrent
                     # cancellations.
+                    decrement_ok = True
                     try:
                         journal = move.journal_id
                         param_key = 'insotech.dian.last_consecutive.%d' % journal.id
@@ -488,12 +489,22 @@ class AccountMovePreInv(models.Model):
                                         journal.id, current_val, current_val - 1
                                     )
                     except Exception as e:
-                        _logger.error("Insotech: Failed to decrement config parameter: %s", str(e))
+                        # FIX E-3: Don't clear reserved name if decrement
+                        # fails — the safety scan will prevent reuse.
+                        decrement_ok = False
+                        _logger.error(
+                            "Insotech: Failed to decrement config parameter: %s",
+                            str(e), exc_info=True,
+                        )
 
                     move.with_context(
                         skip_account_move_synchronization=True,
                     ).write({
-                        'insotech_reserved_dian_name': False,
+                        # FIX E-3: Only clear reserved name if decrement
+                        # succeeded. If it failed, keeping the name ensures
+                        # _insotech_next_dian_consecutive's safety scan
+                        # will see it and skip that number.
+                        'insotech_reserved_dian_name': False if decrement_ok else move.insotech_reserved_dian_name,
                         'insotech_dian_xml_sent': False,
                     })
                 elif move.insotech_dian_status == 'pending' and move.insotech_dian_xml_sent:
