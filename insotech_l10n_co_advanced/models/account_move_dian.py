@@ -564,29 +564,51 @@ class AccountMoveDian(models.Model):
         # Flush ORM cache to SQL before the HTTP call
         self.env.flush_all()
 
-        # ── FIX #7: Protect docs with CUFE from native unlink() ──
-        # Native Odoo deletes invoice_rejected docs before retrying.
-        # We pre-emptively protect any doc that has a valid identifier
-        # (CUFE) because it may be needed for Regla 90 recovery.
-        for move in self:
-            docs_to_protect = move.l10n_co_dian_document_ids.filtered(
-                lambda d: d.state == 'invoice_rejected' and d.identifier
+        # ── FIX #7: Selective unlink of rejected docs ──
+        # The native super()._l10n_co_dian_send_invoice_xml() does:
+        #   self.l10n_co_dian_document_ids.filtered(
+        #       lambda doc: doc.state == 'invoice_rejected'
+        #   ).unlink()
+        # This deletes ALL rejected docs, including those with a valid
+        # CUFE/identifier that might be needed for Regla 90 recovery.
+        # We replace super() entirely to do a SELECTIVE unlink that
+        # preserves docs with identifiers.
+        self.ensure_one()
+        rejected_docs = self.l10n_co_dian_document_ids.filtered(
+            lambda doc: doc.state == 'invoice_rejected'
+        )
+        # Only unlink docs WITHOUT a CUFE — keep those that have one
+        docs_to_delete = rejected_docs.filtered(lambda d: not d.identifier)
+        docs_kept = rejected_docs - docs_to_delete
+        if docs_kept:
+            _logger.info(
+                "Insotech: Keeping %d rejected docs with CUFE for "
+                "move %s (Regla 90 recovery insurance).",
+                len(docs_kept), self.id,
             )
-            if docs_to_protect:
-                # Move them to 'invoice_sending_failed' temporarily so
-                # native unlink() (which targets 'invoice_rejected') skips them
-                docs_to_protect.write({'state': 'invoice_sending_failed'})
-                _logger.info(
-                    "Insotech: Protected %d rejected docs with CUFE "
-                    "for move %s from native unlink().",
-                    len(docs_to_protect), move.id,
-                )
+        docs_to_delete.unlink()
 
+        # Send to DIAN (replicates native logic)
         try:
-            return super()._l10n_co_dian_send_invoice_xml(xml)
+            document = self.env['l10n_co_dian.document']._send_to_dian(
+                xml=xml, move=self,
+            )
         except Exception:
             self._insotech_swap_to_pre_inv_name()
             raise
+
+        if document.state == 'invoice_accepted':
+            self.with_context(no_new_invoice=True).message_post(
+                body=_(
+                    "The %s was accepted by the DIAN.",
+                    dict(self._fields['move_type'].selection)[self.move_type],
+                ) if not self.company_id.l10n_co_dian_demo_mode else _(
+                    "The %s was validated locally in Demo Mode.",
+                    dict(self._fields['move_type'].selection)[self.move_type],
+                ),
+                attachment_ids=document.attachment_id.copy().ids,
+            )
+        return document
 
     # -------------------------------------------------------------------------
     # MAIN INTERCEPTION — action_send_and_print (Odoo 18/19)
