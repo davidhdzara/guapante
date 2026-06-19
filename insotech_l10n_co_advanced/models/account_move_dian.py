@@ -608,6 +608,21 @@ class AccountMoveDian(models.Model):
                 ),
                 attachment_ids=document.attachment_id.copy().ids,
             )
+        elif document.state != 'invoice_accepted':
+            # FIX BUG #5: If DIAN returns a non-accepted state
+            # (e.g. invoice_sending_failed from timeout, or
+            # invoice_rejected), restore the PRE-INV name so the
+            # invoice doesn't display the legal DIAN name without
+            # actual DIAN acceptance.
+            # Note: for invoice_rejected, _process_state_changes()
+            # will ALSO restore the name, but we do it here too as
+            # a safety net (belt + suspenders).
+            _logger.info(
+                "Insotech: DIAN returned non-accepted state '%s' "
+                "for move %s. Restoring PRE-INV name.",
+                document.state, self.id,
+            )
+            self._insotech_swap_to_pre_inv_name()
         return document
 
     # -------------------------------------------------------------------------
@@ -627,12 +642,12 @@ class AccountMoveDian(models.Model):
         self._insotech_pre_validate_partner_for_dian()
         self._insotech_sanitize_uom_codes()
 
-        self._insotech_swap_to_dian_name()
-        try:
-            return super().action_send_and_print(**kwargs)
-        except Exception:
-            self._insotech_swap_to_pre_inv_name()
-            raise
+        # FIX BUG #19: Do NOT swap to DIAN name here.
+        # The name swap happens inside _l10n_co_dian_send_invoice_xml()
+        # which is called later by the wizard when user clicks Send.
+        # Swapping here would leave the name as FE42 if the user
+        # cancels the wizard without sending.
+        return super().action_send_and_print(**kwargs)
 
     # -------------------------------------------------------------------------
     # USER ACTIONS
