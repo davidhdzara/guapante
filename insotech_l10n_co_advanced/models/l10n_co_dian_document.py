@@ -117,7 +117,7 @@ class L10nCoDianDocument(models.Model):
                 continue
             if not hasattr(move, 'insotech_dian_status'):
                 continue
-            if move.insotech_dian_status != 'pending':
+            if move.insotech_dian_status not in ('pending', 'rejected'):
                 continue
 
             state = doc.state
