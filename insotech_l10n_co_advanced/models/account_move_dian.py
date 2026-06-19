@@ -15,7 +15,7 @@ import re
 import logging
 
 from markupsafe import Markup
-from odoo import models, _
+from odoo import models, fields, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -536,9 +536,19 @@ class AccountMoveDian(models.Model):
         # the consecutive from being reassigned to another invoice.
         for move in self:
             if move.insotech_is_co_edi and not move.insotech_dian_xml_sent:
+                # Use autonomous transaction to prevent rollback on timeouts
+                with self.env.registry.cursor() as cr:
+                    env = self.env(cr=cr)
+                    env_move = env['account.move'].browse(move.id)
+                    env_move.with_context(
+                        skip_account_move_synchronization=True,
+                    ).write({'insotech_dian_xml_sent': True})
+                
+                # Update current transaction ORM cache
                 move.with_context(
                     skip_account_move_synchronization=True,
                 ).write({'insotech_dian_xml_sent': True})
+                
                 _logger.info(
                     "Insotech: Marked XML as sent for move %s "
                     "(reserved: %s) before DIAN submission.",
@@ -590,7 +600,10 @@ class AccountMoveDian(models.Model):
                     "estén pendientes o hayan sido rechazadas por la DIAN."
                 ))
             move._insotech_validate_license_before_dian()
-            move.write({'insotech_dian_status': 'pending'})
+            move.write({
+                'insotech_dian_status': 'pending',
+                'l10n_co_dian_post_time': fields.Datetime.now(),
+            })
             move.message_post(
                 body=Markup(
                     '🔄 <b>Reintento de envío a la DIAN</b>'
