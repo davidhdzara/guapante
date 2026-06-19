@@ -1,3 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_insotech_custom_holiday_user,insotech.custom.holiday user,model_insotech_custom_holiday,account.group_account_invoice,1,0,0,0
 access_insotech_custom_holiday_manager,insotech.custom.holiday manager,model_insotech_custom_holiday,account.group_account_manager,1,1,1,1
+access_insotech_radian_event_user,insotech.radian.event user,model_insotech_radian_event,account.group_account_invoice,1,0,0,0
+access_insotech_radian_event_manager,insotech.radian.event manager,model_insotech_radian_event,account.group_account_manager,1,1,1,1

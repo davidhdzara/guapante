@@ -23,6 +23,20 @@ class AccountMoveDraft(models.Model):
                 ))
                 
             if getattr(move, 'insotech_dian_status', False) == 'pending':
+                # FIX BUG #12: If XML was already sent to DIAN, block
+                # draft reset even for admins. The DIAN may have
+                # accepted the document during a timeout, and resetting
+                # would allow consecutive reuse → duplicate.
+                if getattr(move, 'insotech_dian_xml_sent', False):
+                    raise UserError(_(
+                        "⚠️ RIESGO DE DUPLICADO DIAN ⚠️\n\n"
+                        "Esta factura tiene el XML ya enviado a la DIAN "
+                        "(posible timeout de respuesta). No se puede "
+                        "restablecer a borrador porque la DIAN podría "
+                        "haberla procesado internamente.\n\n"
+                        "Use el botón 'Reintentar Envío DIAN' para "
+                        "obtener la respuesta definitiva."
+                    ))
                 if not self.env.user.has_group('account.group_account_manager'):
                     raise UserError(_(
                         "Solo un Administrador Contable puede restablecer a borrador "
@@ -36,9 +50,6 @@ class AccountMoveDraft(models.Model):
                 move.insotech_pre_inv_name = False
                 move.insotech_dian_status = 'not_applicable'
                 move.insotech_dian_xml_sent = False
-                # FIX: Same defense as 'rejected' — reset to '/' so
-                # SequenceMixin generates a fresh journal sequence on
-                # re-confirm, even if reserved was contaminated.
                 move.insotech_reserved_dian_name = False
                 move.name = '/'
                     
