@@ -22,6 +22,8 @@
         'security/security.xml',
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
+        'data/cron_contingency.xml',
+        'data/cron_radian_tacit.xml',
         'views/account_move_views.xml',
         'views/account_journal_views.xml',
         'views/report_invoice_document_inherit.xml',

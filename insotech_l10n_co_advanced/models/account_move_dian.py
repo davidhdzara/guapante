@@ -14,9 +14,11 @@ Handles:
 import re
 import logging
 
+from pytz import timezone
 from markupsafe import Markup
 from odoo import models, fields, _
 from odoo.exceptions import UserError
+from odoo.fields import datetime as fields_datetime
 
 _logger = logging.getLogger(__name__)
 
@@ -33,10 +35,11 @@ class AccountMoveDian(models.Model):
     def _insotech_process_dian_acceptance(self):
         """Process a DIAN acceptance: mutate PRE-INV → legal DIAN name."""
         for move in self:
-            if move.insotech_dian_status != 'pending':
+            if move.insotech_dian_status not in ('pending', 'rejected'):
                 _logger.warning(
                     "Insotech: Attempted to process DIAN acceptance for "
-                    "move %s which is not in 'pending' status (current: %s)",
+                    "move %s which is not in 'pending'/'rejected' status "
+                    "(current: %s)",
                     move.id, move.insotech_dian_status
                 )
                 continue
@@ -534,6 +537,10 @@ class AccountMoveDian(models.Model):
         # ── Mark XML as sent BEFORE the HTTP call ──
         # This flag persists even on timeout/rollback and prevents
         # the consecutive from being reassigned to another invoice.
+        # NOTE: On retries, insotech_dian_xml_sent is already True
+        # from the previous attempt. This is intentional — the flag
+        # must remain True to prevent consecutive reuse. The autonomous
+        # transaction only runs on the FIRST send attempt.
         for move in self:
             if move.insotech_is_co_edi and not move.insotech_dian_xml_sent:
                 # Use autonomous transaction to prevent rollback on timeouts
@@ -556,6 +563,24 @@ class AccountMoveDian(models.Model):
                 )
         # Flush ORM cache to SQL before the HTTP call
         self.env.flush_all()
+
+        # ── FIX #7: Protect docs with CUFE from native unlink() ──
+        # Native Odoo deletes invoice_rejected docs before retrying.
+        # We pre-emptively protect any doc that has a valid identifier
+        # (CUFE) because it may be needed for Regla 90 recovery.
+        for move in self:
+            docs_to_protect = move.l10n_co_dian_document_ids.filtered(
+                lambda d: d.state == 'invoice_rejected' and d.identifier
+            )
+            if docs_to_protect:
+                # Move them to 'invoice_sending_failed' temporarily so
+                # native unlink() (which targets 'invoice_rejected') skips them
+                docs_to_protect.write({'state': 'invoice_sending_failed'})
+                _logger.info(
+                    "Insotech: Protected %d rejected docs with CUFE "
+                    "for move %s from native unlink().",
+                    len(docs_to_protect), move.id,
+                )
 
         try:
             return super()._l10n_co_dian_send_invoice_xml(xml)
@@ -600,9 +625,16 @@ class AccountMoveDian(models.Model):
                     "estén pendientes o hayan sido rechazadas por la DIAN."
                 ))
             move._insotech_validate_license_before_dian()
+            # FIX #2: Use Colombia timezone (UTC-5) instead of UTC.
+            # The native _post() stores a naive Colombia datetime in
+            # l10n_co_dian_post_time. Using UTC here would cause the
+            # IssueDate in the XML to be wrong between 7PM-12AM COL,
+            # triggering DIAN rule FAD09e.
             move.write({
                 'insotech_dian_status': 'pending',
-                'l10n_co_dian_post_time': fields.Datetime.now(),
+                'l10n_co_dian_post_time': fields.Datetime.to_string(
+                    fields_datetime.now(tz=timezone('America/Bogota'))
+                ),
             })
             move.message_post(
                 body=Markup(
@@ -617,23 +649,27 @@ class AccountMoveDian(models.Model):
                 "Insotech: User requested DIAN retry for move %s (%s)",
                 move.id, move.name
             )
-            if hasattr(move, 'action_send_and_print'):
-                return move.action_send_and_print()
-            elif hasattr(move, 'action_l10n_co_dian_send'):
-                return move.action_l10n_co_dian_send()
-            elif hasattr(move, 'button_send_dian'):
-                return move.button_send_dian()
-            else:
-                return {
-                    'type': 'ir.actions.act_window',
-                    'res_model': 'account.move.send',
-                    'view_mode': 'form',
-                    'target': 'new',
-                    'context': {
-                        'active_ids': self.ids,
-                        'active_model': 'account.move',
-                    },
-                }
+        # FIX #12: Process all moves in the loop above, but only
+        # return the send action for the first move (UI limitation).
+        # Using self[:1] ensures we don't silently skip moves.
+        move = self[:1]
+        if hasattr(move, 'action_send_and_print'):
+            return move.action_send_and_print()
+        elif hasattr(move, 'action_l10n_co_dian_send'):
+            return move.action_l10n_co_dian_send()
+        elif hasattr(move, 'button_send_dian'):
+            return move.button_send_dian()
+        else:
+            return {
+                'type': 'ir.actions.act_window',
+                'res_model': 'account.move.send',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {
+                    'active_ids': self.ids,
+                    'active_model': 'account.move',
+                },
+            }
 
     def action_insotech_force_dian_accept(self):
         """Manual action: force DIAN acceptance (admin only)."""
