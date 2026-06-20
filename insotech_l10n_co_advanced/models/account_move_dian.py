@@ -632,22 +632,29 @@ class AccountMoveDian(models.Model):
     def action_send_and_print(self, **kwargs):
         """Pre-validate before opening the Send & Print wizard.
 
-        Note: ``super().action_send_and_print()`` only returns a dict
-        to open the wizard — no DIAN call happens here. The actual
-        submission occurs inside ``account.move.send`` which calls
-        ``_l10n_co_dian_send_invoice_xml()`` (hooked above).
+        The name swap MUST happen here because the UBL XML generator
+        uses ``move.name`` to build the invoice number in the XML.
+        The XML is generated BEFORE ``_l10n_co_dian_send_invoice_xml()``
+        is called, so the name must already be the DIAN name (e.g.
+        ``FE5221``) at this point.
+
+        If the swap happened only inside ``_l10n_co_dian_send_invoice_xml``,
+        the XML would contain ``PRE-INV/2026/05331`` which DIAN rejects
+        with error FAD05a (invalid format).
         """
         self._insotech_validate_license_before_dian()
         self._insotech_check_duplicate_consecutive()
         self._insotech_pre_validate_partner_for_dian()
         self._insotech_sanitize_uom_codes()
 
-        # FIX BUG #19: Do NOT swap to DIAN name here.
-        # The name swap happens inside _l10n_co_dian_send_invoice_xml()
-        # which is called later by the wizard when user clicks Send.
-        # Swapping here would leave the name as FE42 if the user
-        # cancels the wizard without sending.
-        return super().action_send_and_print(**kwargs)
+        # Swap name to DIAN format BEFORE the wizard generates the XML.
+        # This is required because _export_invoice() reads move.name.
+        self._insotech_swap_to_dian_name()
+        try:
+            return super().action_send_and_print(**kwargs)
+        except Exception:
+            self._insotech_swap_to_pre_inv_name()
+            raise
 
     # -------------------------------------------------------------------------
     # USER ACTIONS
