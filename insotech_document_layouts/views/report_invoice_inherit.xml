@@ -9,7 +9,8 @@
             <div t-attf-class="header o_company_#{company.id}_layout" t-att-style="report_header_style">
                 <div class="row align-items-center" style="margin-top: 15px;">
                     <div class="col-5">
-                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 130px; max-width: 100%; object-fit: contain;" alt="Logo"/>
+                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 130px; max-width: 100%; object-fit: contain;" alt="Logo Guapante BD"/>
+                        <img t-else="" src="/theme_guapante/static/src/img/logo_guapante.png" style="max-height: 130px; max-width: 100%; object-fit: contain;" alt="Logo Guapante Repo"/>
                     </div>
                     <div class="col-7 text-end" style="color: #495057; font-size: 13px; line-height: 1.3;">
                         <div name="company_address">
