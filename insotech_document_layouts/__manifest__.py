@@ -2,16 +2,16 @@
 # Copyright 2024-2026 InSoTech (https://www.insotech.it)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 {
-    'name': 'InSoTech Premium Document Layouts',
+    'name': 'Guapante Document Layouts',
     'version': '18.0.1.0.0',
     'category': 'Sales/Sales',
     'summary': 'Premium professional PDF report layouts with modern B2B typography, '
                'brand-aligned colors, and wkhtmltopdf-safe design.',
     'description': """
-InSoTech Premium Document Layouts
+Guapante Document Layouts
 ===================================
 
-A premium document layout for Odoo V19 that transforms your quotations,
+A premium document layout for Odoo V18 that transforms your quotations,
 invoices, and reports into professional B2B documents.
 
 **Key Features:**
