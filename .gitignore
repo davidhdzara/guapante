@@ -13,8 +13,8 @@
 !insotech_core/**
 !insotech_dian_wizard/
 !insotech_dian_wizard/**
-!insotech_l10n_co_advanced/
-!insotech_l10n_co_advanced/**
+!insotech_document_layouts/
+!insotech_document_layouts/**
 !insotech_account_colombia/
 !insotech_account_colombia/**
 !insotech_mcp_server/

@@ -1,0 +1,627 @@
+// =============================================================================
+// InSoTech Premium Layout — Report Styles (wkhtmltopdf-Safe)
+// =============================================================================
+// Brand Identity: Manual v2.0 InSoTech
+// Primary: #14532d (Azul Marino)  |  Accent: #22c55e (Azul Claro)
+// Text: #2D2D2D (Gris Grafito)   |  Muted: #6B7280
+// Typography: Montserrat (Display) | Open Sans (Body) | JetBrains Mono (Data)
+//
+// IMPORTANT: wkhtmltopdf uses OLD WebKit (circa 2012).
+// ❌ NO flexbox, NO CSS Grid, NO CSS3 gradients, NO calc(), NO CSS variables
+// ✅ float, display:table, border, padding, margin, @font-face (fixed weights)
+// =============================================================================
+
+// --- Local Font Faces (fixed weight declarations for wkhtmltopdf) ---
+// Montserrat — Display, Labels, Headings (Peso 600-800)
+@font-face {
+    font-family: 'Montserrat';
+    font-style: normal;
+    font-weight: 600;
+    src: url('/insotech_document_layouts/static/src/fonts/Montserrat-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Montserrat';
+    font-style: normal;
+    font-weight: 700;
+    src: url('/insotech_document_layouts/static/src/fonts/Montserrat-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Montserrat';
+    font-style: normal;
+    font-weight: 800;
+    src: url('/insotech_document_layouts/static/src/fonts/Montserrat-latin.woff2') format('woff2');
+}
+
+// Open Sans — Body text (Peso 400-700)
+@font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/insotech_document_layouts/static/src/fonts/OpenSans-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 600;
+    src: url('/insotech_document_layouts/static/src/fonts/OpenSans-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 700;
+    src: url('/insotech_document_layouts/static/src/fonts/OpenSans-latin.woff2') format('woff2');
+}
+
+// JetBrains Mono — Financial numbers, IDs, technical data (Peso 400-500)
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/insotech_document_layouts/static/src/fonts/JetBrainsMono-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    src: url('/insotech_document_layouts/static/src/fonts/JetBrainsMono-latin.woff2') format('woff2');
+}
+
+// =============================================================================
+// HEADER — Compact, professional, brand-aligned
+// Default accent: #14532d (Azul Marino InSoTech) — overridden by company colors
+// =============================================================================
+.o_report_layout_insotech_header {
+    padding-bottom: 10px !important;
+    border-bottom: 3px solid #14532d !important;
+
+    .o_company_logo {
+        max-height: 50px !important;
+        max-width: 180px !important;
+    }
+
+    // Brand DNA tagline: "Reinventa · Automatiza · Evoluciona"
+    // Manual v2.0 — LABEL/EYEBROW: 11px | Weight 600 | Tracking +12%
+    .o_company_tagline {
+        font-family: 'Montserrat', sans-serif !important;
+        font-size: 9px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1.2px !important;
+        color: #14532d !important;
+        margin-top: 4px !important;
+    }
+
+    // Company details on the right
+    .o_insotech_company_details {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        line-height: 1.4 !important;
+        color: #4B5563 !important;
+    }
+
+    // Company name — must override contact widget defaults
+    // Aggressive selectors to ensure Montserrat 800 Azul Marino
+    .o_insotech_company_name,
+    div[name="company_address"] span:first-child,
+    .col-7 .o_insotech_company_details > div:first-child,
+    .col-7 .o_insotech_company_details > t:first-child > div:first-child {
+        font-family: 'Montserrat', sans-serif !important;
+        font-size: 13px !important;
+        font-weight: 800 !important;
+        color: #14532d !important;
+        margin-bottom: 2px !important;
+    }
+
+    .o_insotech_company_vat {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        margin-top: 3px !important;
+
+        .o_vat_label {
+            color: #6B7280 !important;
+            font-weight: 400 !important;
+        }
+        .o_vat_value {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-weight: 500 !important;
+            color: #2D2D2D !important;
+        }
+    }
+}
+
+// =============================================================================
+// BODY / ARTICLE — Main content area
+// Manual v2.0 — Body text: Open Sans 400, Gris Grafito #2D2D2D
+// =============================================================================
+.o_report_layout_insotech {
+    font-family: 'Open Sans', sans-serif !important;
+    color: #2D2D2D !important;
+    font-size: 12px !important;
+
+    // --- Headings: Montserrat Bold, Azul Marino ---
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 700 !important;
+        color: #14532d !important;
+    }
+
+    // Document title — Manual v2.0 Heading 4: 18px, Weight 700
+    // Now appears BEFORE the address block (swap in template)
+    h2 {
+        font-size: 17px !important;
+        font-weight: 800 !important;
+        margin-top: 0 !important;
+        margin-bottom: 6px !important;
+        padding-top: 4px !important;
+        padding-bottom: 6px !important;
+        border-bottom: 1px solid #E6F4FC !important;
+        color: #14532d !important;
+    }
+
+    // --- Address Block — compact, left-aligned ---
+    .address {
+        margin-bottom: 4px !important;
+        margin-top: 4px !important;
+
+        // Remove ms-auto pushing address to the right
+        .col-5 {
+            margin-left: 0 !important;
+        }
+
+        div[name="address"] {
+            font-family: 'Open Sans', sans-serif !important;
+            font-size: 11px !important;
+            line-height: 1.4 !important;
+
+            // Partner name — Montserrat Bold
+            .fw-bold,
+            strong {
+                font-family: 'Montserrat', sans-serif !important;
+                font-weight: 700 !important;
+                font-size: 12px !important;
+                color: #2D2D2D !important;
+            }
+
+            // Address text muted
+            address {
+                font-style: normal !important;
+                color: #4B5563 !important;
+                margin-bottom: 0 !important;
+            }
+        }
+    }
+
+    // --- Informations Block (Date, Expiry, Salesperson) ---
+    // Uses display:table for wkhtmltopdf compatibility (NO flexbox).
+    // Brand identity: left accent bar + soft tint from --p-100
+    #informations {
+        display: table !important;
+        width: 100% !important;
+        table-layout: fixed !important;
+        margin-bottom: 10px !important;
+        padding: 6px 0 6px 8px !important;
+        border-top: 1px solid #E5E7EB !important;
+        border-bottom: 1px solid #E5E7EB !important;
+        border-left: 3px solid #14532d !important;
+        background-color: #F8FBFF !important;
+
+        > .col,
+        > [class*="col-"] {
+            display: table-cell !important;
+            float: none !important;
+            vertical-align: top !important;
+            padding: 4px 8px !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            max-width: none !important;
+            width: auto !important;
+
+            // Labels — LABEL/EYEBROW style from Manual v2.0
+            // 11px | Weight 600 | Tracking +12%
+            strong {
+                font-family: 'Montserrat', sans-serif !important;
+                font-weight: 600 !important;
+                font-size: 9px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 1px !important;
+                color: #14532d !important;
+                display: block !important;
+                margin-bottom: 2px !important;
+            }
+
+            // Values
+            > div,
+            > span {
+                font-family: 'Open Sans', sans-serif !important;
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                color: #2D2D2D !important;
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+            }
+        }
+    }
+
+    // --- Main Product Table ---
+    // Premium B2B aesthetic with clear visual hierarchy
+    table.table:not(.o_ignore_layout_styling) {
+        font-size: 11px !important;
+        border-collapse: collapse !important;
+        width: 100% !important;
+
+        // Table header — Manual v2.0 LABEL/EYEBROW style
+        thead {
+            th {
+                font-family: 'Montserrat', sans-serif !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+                font-size: 9px !important;
+                letter-spacing: 0.8px !important;
+                color: #14532d !important;
+                padding: 8px 6px !important;
+                border-top: none !important;
+                border-bottom: 2px solid #14532d !important;
+                vertical-align: bottom !important;
+            }
+        }
+
+        // Table body
+        tbody {
+            tr {
+                page-break-inside: avoid !important;
+
+                // Zebra striping — Manual v2.0 F1F3F5 (Gris Claro)
+                &:nth-child(even) {
+                    td {
+                        background-color: #F8F9FA !important;
+                    }
+                }
+
+                td {
+                    padding: 7px 6px !important;
+                    vertical-align: middle !important;
+                    border-top: 1px solid #F3F4F6 !important;
+                    font-family: 'Open Sans', sans-serif !important;
+                    font-size: 11px !important;
+                    color: #2D2D2D !important;
+
+                    // JetBrains Mono for financial numbers
+                    &.text-end,
+                    &.o_price_total {
+                        font-family: 'JetBrains Mono', monospace !important;
+                        font-weight: 500 !important;
+                        font-size: 10px !important;
+                        color: #2D2D2D !important;
+                    }
+                }
+
+                // Section rows — Azul Marino accent bar
+                &.o_line_section {
+                    td {
+                        font-family: 'Montserrat', sans-serif !important;
+                        font-weight: 700 !important;
+                        font-size: 11px !important;
+                        text-transform: uppercase !important;
+                        letter-spacing: 0.5px !important;
+                        padding: 8px 6px 6px 10px !important;
+                        border-top: none !important;
+                        border-bottom: none !important;
+                        color: #14532d !important;
+                        border-left: 3px solid #14532d !important;
+                        background-color: #E6F4FC !important;
+
+                        // Section amount — JetBrains Mono bold for visual weight
+                        &.text-end,
+                        &.o_price_total {
+                            font-family: 'JetBrains Mono', monospace !important;
+                            font-weight: 700 !important;
+                            font-size: 11px !important;
+                            color: #14532d !important;
+                        }
+                    }
+                }
+
+                // Subsection rows
+                &.o_line_subsection {
+                    td {
+                        font-family: 'Open Sans', sans-serif !important;
+                        font-weight: 600 !important;
+                        font-size: 10.5px !important;
+                        font-style: italic !important;
+                        color: #4B5563 !important;
+                    }
+                }
+
+                // Note rows
+                &.o_line_note {
+                    td {
+                        font-size: 10px !important;
+                        color: #6B7280 !important;
+                        font-style: italic !important;
+                    }
+                }
+
+                // Last row bottom border
+                &:last-child td {
+                    border-bottom: 1px solid #E5E7EB !important;
+                }
+            }
+        }
+    }
+
+    // --- Total Block ---
+    // Grand total in Azul Marino with JetBrains Mono for impact
+    #total {
+        margin-top: 6px !important;
+
+        .o_total_table {
+            tr {
+                td {
+                    padding: 5px 6px !important;
+                    font-family: 'Open Sans', sans-serif !important;
+                    font-size: 11px !important;
+                    color: #4B5563 !important;
+
+                    // Numbers — JetBrains Mono
+                    &.text-end,
+                    &:last-child {
+                        font-family: 'JetBrains Mono', monospace !important;
+                        font-weight: 500 !important;
+                        font-size: 10.5px !important;
+                        color: #2D2D2D !important;
+                    }
+                }
+            }
+
+            // Grand total row — Prominent, brand color
+            .o_total {
+                td {
+                    padding-top: 8px !important;
+                    border-top: 2px solid #14532d !important;
+                    font-family: 'Montserrat', sans-serif !important;
+                    font-weight: 800 !important;
+                    font-size: 13px !important;
+                    color: #14532d !important;
+
+                    strong {
+                        font-family: 'Montserrat', sans-serif !important;
+                        font-weight: 800 !important;
+                        color: #14532d !important;
+                    }
+
+                    // Total amount — large JetBrains Mono
+                    &.text-end,
+                    &:last-child {
+                        font-family: 'JetBrains Mono', monospace !important;
+                        font-weight: 700 !important;
+                        font-size: 14px !important;
+                        color: #14532d !important;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Notes and Payment Terms ---
+    // Caption style from Manual v2.0: 12px | Weight 400 | Tracking +2%
+    div[name="order_note"],
+    div[name="comment"],
+    div[name="payment_term"] {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        color: #6B7280 !important;
+        line-height: 1.55 !important;
+        letter-spacing: 0.2px !important;
+        margin-top: 10px !important;
+    }
+}
+
+// =============================================================================
+// FOOTER — Clean, minimal, brand-aligned
+// Default accent: Azul Marino
+// =============================================================================
+.o_report_layout_insotech_footer {
+    font-family: 'Open Sans', sans-serif !important;
+    border-top: 2px solid #14532d !important;
+
+    .o_footer_content {
+        font-size: 9px !important;
+        color: #6B7280 !important;
+        line-height: 1.4 !important;
+        padding-top: 4px !important;
+    }
+}
+
+// =============================================================================
+// INVOICE-SPECIFIC PREMIUM STYLES
+// Applies to reports rendered within the InSoTech layout
+// =============================================================================
+.o_report_layout_insotech {
+
+    // --- Vendedor/Cliente 2-column section ---
+    .o_insotech_partes {
+        border-collapse: collapse !important;
+
+        .o_insotech_parte_label {
+            font-family: 'Montserrat', sans-serif !important;
+            font-size: 8px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.18em !important;
+            text-transform: uppercase !important;
+            color: #14532d !important;
+            margin-bottom: 6px !important;
+        }
+    }
+
+    // --- #informations as premium metadata grid ---
+    .o_insotech_meta {
+        display: table !important;
+        width: 100% !important;
+        table-layout: fixed !important;
+        border: 1px solid #E5E7EB !important;
+        background: #F9FAFB !important;
+        margin-bottom: 12px !important;
+        border-left: 3px solid #14532d !important;
+
+        > .col,
+        > [class*="col-"] {
+            display: table-cell !important;
+            float: none !important;
+            vertical-align: top !important;
+            padding: 8px 12px !important;
+            border-right: 1px solid #E5E7EB !important;
+
+            strong {
+                font-family: 'Montserrat', sans-serif !important;
+                font-weight: 700 !important;
+                font-size: 8px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.15em !important;
+                color: #8F8F8F !important;
+                display: block !important;
+                margin-bottom: 3px !important;
+            }
+
+            div, span {
+                font-family: 'JetBrains Mono', monospace !important;
+                font-size: 11px !important;
+                font-weight: 500 !important;
+                color: #2D2D2D !important;
+            }
+        }
+    }
+
+    // --- Invoice table with blue header ---
+    table.o_main_table {
+
+        thead {
+            tr {
+                background-color: #14532d !important;
+            }
+
+            th {
+                font-family: 'Montserrat', sans-serif !important;
+                font-size: 8px !important;
+                font-weight: 700 !important;
+                letter-spacing: 0.15em !important;
+                text-transform: uppercase !important;
+                color: #FFFFFF !important;
+                padding: 9px 10px !important;
+                border: none !important;
+                background-color: #14532d !important;
+            }
+        }
+
+        // Even rows — subtle zebra
+        tbody tr:nth-child(even) td {
+            background-color: #F9FAFB !important;
+        }
+
+        // Numbers right-aligned with JetBrains Mono
+        tbody td.text-end,
+        tbody td.o_price_total {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 10px !important;
+            font-weight: 500 !important;
+        }
+    }
+
+    // --- Total section with blue bar ---
+    .o_insotech_total {
+
+        table.o_total_table {
+            // Subtotal/tax rows
+            tr.o_subtotal td,
+            tr.o_taxes td {
+                font-family: 'Open Sans', sans-serif !important;
+                font-size: 11px !important;
+                color: #8F8F8F !important;
+                border-bottom: 1px solid #E5E7EB !important;
+                padding: 8px 10px !important;
+
+                &.text-end {
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-weight: 500 !important;
+                }
+            }
+
+            // Grand total row — Blue bar
+            tr.o_total td {
+                background-color: #14532d !important;
+                color: #FFFFFF !important;
+                font-family: 'Montserrat', sans-serif !important;
+                font-weight: 700 !important;
+                font-size: 13px !important;
+                padding: 10px 12px !important;
+                border: none !important;
+
+                strong {
+                    color: #FFFFFF !important;
+                    font-family: 'Montserrat', sans-serif !important;
+                    font-weight: 700 !important;
+                }
+
+                &.text-end strong,
+                &:last-child strong {
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-size: 14px !important;
+                    font-weight: 700 !important;
+                    color: #FFFFFF !important;
+                }
+            }
+        }
+    }
+
+    // --- Payment communication styled ---
+    p[name="payment_communication"] {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        color: #6B7280 !important;
+        margin-top: 10px !important;
+        padding: 8px 10px !important;
+        border-left: 3px solid #14532d !important;
+        background: #F9FAFB !important;
+    }
+
+    // --- Payment terms and narration ---
+    div#payment_term,
+    div[name="comment"] {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        color: #6B7280 !important;
+        line-height: 1.6 !important;
+        margin-top: 8px !important;
+    }
+
+    // --- Colombian fields from insotech_l10n_co_advanced ---
+    // Restyle the injected DIAN/NIT/régimen blocks
+    // These are typically divs injected before #informations
+    div[name="emisor_info"],
+    div[name="adquiriente_info"] {
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 10px !important;
+        color: #4B5563 !important;
+        line-height: 1.6 !important;
+
+        strong {
+            font-family: 'Montserrat', sans-serif !important;
+            font-weight: 600 !important;
+            color: #2D2D2D !important;
+        }
+    }
+
+    // --- RADIAN traceability section ---
+    .s_radian_traceability {
+        border: 1px solid #E5E7EB !important;
+        padding: 10px !important;
+        margin-top: 12px !important;
+        font-family: 'Open Sans', sans-serif !important;
+        font-size: 9px !important;
+        color: #6B7280 !important;
+
+        strong {
+            color: #14532d !important;
+            font-family: 'Montserrat', sans-serif !important;
+        }
+    }
+}

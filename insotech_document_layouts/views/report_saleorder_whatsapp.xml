@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ════════════════════════════════════════════════════════
+         REPORTE NUEVO: Confirmación de Pedido (WhatsApp)
+         100% independiente — NO hereda de sale.report_saleorder_document
+         Solo muestra: Producto + Cantidad (SIN PRECIOS)
+         ════════════════════════════════════════════════════════ -->
+
+    <!-- 1. ACCIÓN DE REPORTE (ir.actions.report) -->
+    <record id="action_report_saleorder_whatsapp" model="ir.actions.report">
+        <field name="name">Confirmación de Pedido (WhatsApp)</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">insotech_document_layouts.report_saleorder_whatsapp</field>
+        <field name="report_file">insotech_document_layouts.report_saleorder_whatsapp</field>
+        <field name="print_report_name">'Pedido_%s' % (object.name or '').replace('/','_')</field>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- 2. TEMPLATE WRAPPER (como sale.report_saleorder) -->
+    <template id="report_saleorder_whatsapp">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="insotech_document_layouts.report_saleorder_whatsapp_document" t-lang="doc.partner_id.lang"/>
+            </t>
+        </t>
+    </template>
+
+    <!-- 3. TEMPLATE DEL DOCUMENTO (standalone, sin herencia) -->
+    <template id="report_saleorder_whatsapp_document">
+        <t t-call="insotech_document_layouts.external_layout_guapante">
+            <t t-set="o" t-value="doc"/>
+
+            <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+
+                <!-- ══════ CSS PREMIUM ══════ -->
+                <style type="text/css">
+                    .gpt-order-title {
+                        font-size: 22px;
+                        font-weight: 900;
+                        color: #14532d;
+                        letter-spacing: 1px;
+                        text-transform: uppercase;
+                        margin: 0;
+                        line-height: 1.2;
+                    }
+                    .gpt-order-subtitle {
+                        font-size: 18px;
+                        font-weight: 800;
+                        color: #22c55e;
+                        text-transform: uppercase;
+                        line-height: 1.2;
+                    }
+                    .gpt-order-number {
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #495057;
+                        margin-top: 2px;
+                    }
+                    .gpt-accent-bar {
+                        height: 3px;
+                        background: #14532d;
+                        border: none;
+                        margin: 12px 0 20px 0;
+                    }
+
+                    /* Info Grid */
+                    .gpt-info-grid {
+                        display: table;
+                        width: 100%;
+                        border: 1px solid #e5e7eb;
+                        border-left: 3px solid #14532d;
+                        margin-bottom: 20px;
+                        background: #fafbfc;
+                    }
+                    .gpt-info-row { display: table-row; }
+                    .gpt-info-label {
+                        display: table-cell;
+                        width: 35%;
+                        padding: 7px 12px;
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.08em;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+                    .gpt-info-value {
+                        display: table-cell;
+                        width: 65%;
+                        padding: 7px 12px;
+                        font-size: 12px;
+                        color: #2d2d2d;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+
+                    /* Section Title */
+                    .gpt-section-title {
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.15em;
+                        margin-bottom: 8px;
+                        padding-bottom: 4px;
+                        border-bottom: 1px solid #e5e7eb;
+                    }
+
+                    /* Product Table */
+                    .gpt-product-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 11px;
+                        margin-bottom: 15px;
+                    }
+                    .gpt-product-table thead th {
+                        background-color: #14532d;
+                        color: white;
+                        font-size: 9px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.1em;
+                        padding: 8px 10px;
+                        border: none;
+                    }
+                    .gpt-product-table tbody td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid #e5e7eb;
+                        color: #374151;
+                        font-size: 11px;
+                    }
+                    .gpt-product-table tbody tr:nth-child(even) td {
+                        background-color: #f9fafb;
+                    }
+                    .gpt-row-num {
+                        display: inline-block;
+                        width: 20px;
+                        height: 20px;
+                        line-height: 20px;
+                        text-align: center;
+                        background: #14532d;
+                        color: white;
+                        font-size: 8px;
+                        font-weight: 700;
+                        border-radius: 50%;
+                        margin-right: 6px;
+                    }
+                    .gpt-section-row td {
+                        background-color: #f0fdf4 !important;
+                        font-weight: 700;
+                        color: #14532d !important;
+                        font-size: 11px;
+                        border-left: 3px solid #14532d;
+                    }
+                    .gpt-note-row td {
+                        font-style: italic;
+                        color: #9ca3af !important;
+                        font-size: 10px;
+                        padding-left: 36px !important;
+                    }
+                    /* Variant tags */
+                    .gpt-variant-tag {
+                        display: inline-block;
+                        background: #f0fdf4;
+                        border: 1px solid #bbf7d0;
+                        color: #14532d;
+                        font-size: 8.5px;
+                        font-weight: 600;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        margin-right: 4px;
+                        margin-top: 3px;
+                    }
+                    .gpt-variant-label {
+                        color: #6b7280;
+                        font-weight: 400;
+                    }
+
+                    /* Total Items Bar */
+                    .gpt-total-bar {
+                        background-color: #14532d;
+                        color: white;
+                        padding: 12px 20px;
+                        display: table;
+                        width: 100%;
+                        margin-top: 5px;
+                    }
+                    .gpt-total-label {
+                        display: table-cell;
+                        font-size: 12px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.15em;
+                        vertical-align: middle;
+                    }
+                    .gpt-total-amount {
+                        display: table-cell;
+                        text-align: right;
+                        font-size: 18px;
+                        font-weight: 900;
+                        letter-spacing: 0.5px;
+                        vertical-align: middle;
+                    }
+
+                    .gpt-footer-note {
+                        font-size: 8px;
+                        color: #9ca3af;
+                        text-align: center;
+                        margin-top: 25px;
+                        padding-top: 10px;
+                        border-top: 1px solid #e5e7eb;
+                    }
+                </style>
+
+                <!-- ══════ TÍTULO ══════ -->
+                <div style="margin-bottom: 5px;">
+                    <t t-if="doc.state in ['draft','sent']">
+                        <div class="gpt-order-title">Cotización</div>
+                    </t>
+                    <t t-else="">
+                        <div class="gpt-order-title">Orden</div>
+                        <div class="gpt-order-subtitle">de Compra</div>
+                    </t>
+                    <div class="gpt-order-number">
+                        No. <span t-field="doc.name"/>
+                    </div>
+                </div>
+                <div class="gpt-accent-bar"/>
+
+                <!-- ══════ GRID INFORMACIÓN ══════ -->
+                <div class="gpt-info-grid">
+                    <div class="gpt-info-row" t-if="doc.date_order">
+                        <div class="gpt-info-label">Fecha</div>
+                        <div class="gpt-info-value">
+                            <span t-field="doc.date_order" t-options='{"widget": "date"}'/>
+                        </div>
+                    </div>
+                    <div class="gpt-info-row" t-if="doc.partner_id">
+                        <div class="gpt-info-label">Cliente</div>
+                        <div class="gpt-info-value">
+                            <strong><span t-field="doc.partner_id.name"/></strong>
+                            <t t-if="doc.partner_id.vat">
+                                <br/><span style="font-size: 10px; color: #6b7280;">NIT: <span t-field="doc.partner_id.vat"/></span>
+                            </t>
+                        </div>
+                    </div>
+                    <div class="gpt-info-row" t-if="doc.partner_id.phone or doc.partner_id.mobile">
+                        <div class="gpt-info-label">Teléfono</div>
+                        <div class="gpt-info-value">
+                            <span t-if="doc.partner_id.mobile" t-field="doc.partner_id.mobile"/>
+                            <span t-elif="doc.partner_id.phone" t-field="doc.partner_id.phone"/>
+                        </div>
+                    </div>
+                    <div class="gpt-info-row" t-if="doc.partner_shipping_id and doc.partner_shipping_id != doc.partner_id">
+                        <div class="gpt-info-label">Envío</div>
+                        <div class="gpt-info-value">
+                            <span t-field="doc.partner_shipping_id" t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
+                        </div>
+                    </div>
+                    <div class="gpt-info-row" t-if="doc.client_order_ref">
+                        <div class="gpt-info-label">Referencia</div>
+                        <div class="gpt-info-value"><span t-field="doc.client_order_ref"/></div>
+                    </div>
+                </div>
+
+                <!-- ══════ TABLA DE PRODUCTOS (SIN PRECIOS) ══════ -->
+                <div class="gpt-section-title">Productos Solicitados</div>
+
+                <t t-set="lines_to_report" t-value="doc._get_order_lines_to_report()"/>
+                <t t-set="line_counter" t-value="0"/>
+
+                <table class="gpt-product-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">#</th>
+                            <th style="width: 62%;">Producto</th>
+                            <th style="width: 30%;" class="text-end">Cantidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="lines_to_report" t-as="line">
+                            <!-- Section row -->
+                            <t t-if="line.display_type == 'line_section' or line.product_type == 'combo'">
+                                <tr class="gpt-section-row">
+                                    <td colspan="3"><span t-field="line.name"/></td>
+                                </tr>
+                            </t>
+                            <!-- Note row -->
+                            <t t-elif="line.display_type == 'line_note'">
+                                <tr class="gpt-note-row">
+                                    <td colspan="3"><span t-field="line.name"/></td>
+                                </tr>
+                            </t>
+                            <!-- Product row (SIN PRECIOS) -->
+                            <t t-else="">
+                                <t t-set="line_counter" t-value="line_counter + 1"/>
+                                <tr>
+                                    <td>
+                                        <span class="gpt-row-num" t-esc="line_counter"/>
+                                    </td>
+                                    <td>
+                                        <strong><span t-field="line.product_id.name"/></strong>
+                                        <!-- Variantes no_variant: Grado de Madurez, Tamaño -->
+                                        <t t-set="ptavs" t-value="line.product_no_variant_attribute_value_ids"/>
+                                        <t t-if="ptavs">
+                                            <br/>
+                                            <t t-foreach="ptavs" t-as="ptav">
+                                                <span class="gpt-variant-tag">
+                                                    <span class="gpt-variant-label"><t t-esc="ptav.attribute_id.name"/>:</span>
+                                                    <t t-esc="ptav.name"/>
+                                                </span>
+                                            </t>
+                                        </t>
+                                        <t t-if="line.product_id.default_code">
+                                            <br/><span style="font-size: 9px; color: #9ca3af;">Ref: <span t-field="line.product_id.default_code"/></span>
+                                        </t>
+                                    </td>
+                                    <td class="text-end" style="font-weight: 600; font-size: 13px; color: #14532d;">
+                                        <!-- visual_qty si existe (Guapante custom), si no product_uom_qty -->
+                                        <t t-if="'visual_qty' in line._fields">
+                                            <span t-esc="line.visual_qty"/>
+                                        </t>
+                                        <t t-else="">
+                                            <span t-field="line.product_uom_qty"/>
+                                        </t>
+                                        <span style="font-size: 10px; font-weight: 400; color: #6b7280;">
+                                            <t t-if="'uom_mode' in line._fields and line.uom_mode">
+                                                <t t-if="line.uom_mode == 'kg'">Kg</t>
+                                                <t t-elif="line.uom_mode == 'g'">g</t>
+                                                <t t-elif="line.uom_mode == 'unit'">Unidades</t>
+                                                <t t-else="">
+                                                    <span t-esc="dict(line._fields['uom_mode'].selection).get(line.uom_mode)"/>
+                                                </t>
+                                            </t>
+                                            <t t-else="">
+                                                <span t-field="line.product_uom"/>
+                                            </t>
+                                        </span>
+                                    </td>
+                                </tr>
+                            </t>
+                        </t>
+                    </tbody>
+                </table>
+
+                <!-- ══════ BARRA TOTAL ITEMS ══════ -->
+                <div class="gpt-total-bar">
+                    <div class="gpt-total-label">Total Productos</div>
+                    <div class="gpt-total-amount">
+                        <span t-esc="line_counter"/> ítems
+                    </div>
+                </div>
+
+                <!-- ══════ NOTAS ══════ -->
+                <t t-if="doc.note and not is_html_empty(doc.note)">
+                    <div style="margin-top: 15px; padding: 12px 14px; border: 1px solid #e5e7eb; border-left: 3px solid #14532d; background: #fafbfc;">
+                        <div style="font-size: 9px; font-weight: 700; color: #14532d; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px;">Observaciones</div>
+                        <div style="font-size: 10px; color: #6b7280; line-height: 1.7;">
+                            <span t-field="doc.note"/>
+                        </div>
+                    </div>
+                </t>
+
+                <!-- ══════ NOTA LEGAL ══════ -->
+                <div class="gpt-footer-note">
+                    <span t-field="doc.company_id.name"/>
+                    · NIT <span t-esc="doc.company_id.vat"/>
+                    <br/>
+                    Este documento es una confirmación de pedido. Los precios están sujetos a la cotización vigente.
+                </div>
+
+            </div>
+        </t>
+    </template>
+
+</odoo>
