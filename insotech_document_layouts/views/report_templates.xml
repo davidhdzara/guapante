@@ -116,50 +116,52 @@
         <xpath expr="//t[@t-foreach='company_ids']" position="inside">
             <t t-if="layout == 'insotech_document_layouts.external_layout_insotech'">
                 /* InSoTech Layout — Dynamic company colors */
-                &amp;.o_report_layout_insotech_header {
-                    border-bottom-color: <t t-esc="primary"/> !important;
-                }
-
-                &amp;.o_report_layout_insotech {
-
-                    h2 {
-                        color: <t t-esc="primary"/>;
+                .o_company_<t t-esc="company.id"/>_layout {
+                    &amp;.o_report_layout_insotech_header {
+                        border-bottom-color: <t t-esc="primary"/> !important;
                     }
 
-                    /* Informations labels + accent bar */
-                    #informations {
-                        border-left-color: <t t-esc="primary"/> !important;
+                    &amp;.o_report_layout_insotech {
 
-                        strong {
+                        h2 {
                             color: <t t-esc="primary"/>;
+                        }
+
+                        /* Informations labels + accent bar */
+                        #informations {
+                            border-left-color: <t t-esc="primary"/> !important;
+
+                            strong {
+                                color: <t t-esc="primary"/>;
+                            }
+                        }
+
+                        /* Table header bottom border */
+                        .o_main_table thead th {
+                            border-bottom-color: <t t-esc="secondary"/>;
+                        }
+
+                        /* Section rows — accent bar + tinted background */
+                        .o_line_section td {
+                            border-left-color: <t t-esc="primary"/> !important;
+                            background-color: mix(white, <t t-esc="primary"/>, 94%) !important;
+                            color: <t t-esc="primary"/> !important;
+                        }
+
+                        /* Total row emphasis */
+                        .o_total td {
+                            border-top-color: <t t-esc="primary"/> !important;
+
+                            strong {
+                                color: <t t-esc="primary"/>;
+                            }
                         }
                     }
 
-                    /* Table header bottom border */
-                    .o_main_table thead th {
-                        border-bottom-color: <t t-esc="secondary"/>;
+                    /* Footer line */
+                    &amp;.o_report_layout_insotech_footer {
+                        border-top-color: mix(white, <t t-esc="secondary"/>, 50%) !important;
                     }
-
-                    /* Section rows — accent bar + tinted background */
-                    .o_line_section td {
-                        border-left-color: <t t-esc="primary"/> !important;
-                        background-color: mix(white, <t t-esc="primary"/>, 94%) !important;
-                        color: <t t-esc="primary"/> !important;
-                    }
-
-                    /* Total row emphasis */
-                    .o_total td {
-                        border-top-color: <t t-esc="primary"/> !important;
-
-                        strong {
-                            color: <t t-esc="primary"/>;
-                        }
-                    }
-                }
-
-                /* Footer line */
-                &amp;.o_report_layout_insotech_footer {
-                    border-top-color: mix(white, <t t-esc="secondary"/>, 50%) !important;
                 }
             </t>
         </xpath>
