@@ -15,6 +15,11 @@ class StockPicking(models.Model):
         store=True,
         readonly=True,
     )
+    extra_validation = fields.Boolean(
+        string='Validación Adicional',
+        help='Checkbox informativo para otra validación, no bloqueante.',
+        default=False,
+    )
 
     is_recolectar_operation = fields.Boolean(
         string='Es operación Recolectar',

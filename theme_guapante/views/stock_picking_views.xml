@@ -5,6 +5,11 @@
         <field name="model">stock.picking</field>
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
+            <!-- Checkbox de Validación Extra en el header -->
+            <xpath expr="//header" position="inside">
+                <field name="extra_validation" widget="boolean_toggle" nolabel="0" class="oe_inline ms-2 me-2 align-middle"/>
+            </xpath>
+
             <!-- Caja # junto al documento origen -->
             <xpath expr="//field[@name='origin']" position="after">
                 <field name="daily_sequence" invisible="daily_sequence == 0"/>
