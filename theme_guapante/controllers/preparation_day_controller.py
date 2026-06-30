@@ -26,29 +26,32 @@ class PreparationDayExport(http.Controller):
             desc = line.product_description or ''
             uom_mode = line.uom_mode or 'unit'
             pkg_name = line.packaging_name or ''
+            cust_name = line.main_customer_name or 'Sin Cliente'
 
-            key = (pid, desc, uom_mode, pkg_name)
+            key = (pid, desc, uom_mode, pkg_name, cust_name)
             if key not in demand:
                 demand[key] = {
                     'product_id': line.product_product_id,
                     'description': desc,
                     'uom_mode': uom_mode,
                     'packaging_name': pkg_name,
+                    'customer_name': cust_name,
                     'total_kg': 0.0,
                     'lines': [],
                 }
             demand[key]['total_kg'] += line.estimated_kg
             demand[key]['lines'].append(line)
 
-        # Calcular cantidades visuales (pedidas por el cliente)
+        # Calcular cantidades visuales (pedidas por el cliente) y pre-cargar stock
         weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
+        unique_product_ids = list(set(d['product_id'].id for d in demand.values()))
+        products = request.env['product.product'].sudo().browse(unique_product_ids)
+        stock_dict = {p.id: p.virtual_available for p in products}
+
         for key, data in demand.items():
             total_visual_qty = 0.0
-            clients_summary = {}
             for line in data['lines']:
-                cust_name = line.main_customer_name or 'Sin Cliente'
                 line_visual_qty = 0.0
-
                 sol = line.sale_line_id
                 if not sol:
                     try:
@@ -79,17 +82,8 @@ class PreparationDayExport(http.Controller):
                             line_visual_qty = qty
 
                 total_visual_qty += line_visual_qty
-                if cust_name not in clients_summary:
-                    clients_summary[cust_name] = 0.0
-                clients_summary[cust_name] += line_visual_qty
 
             data['total_visual_qty'] = total_visual_qty
-            
-            client_strings = []
-            for client, c_qty in clients_summary.items():
-                c_qty_formatted = str(int(c_qty)) if c_qty == int(c_qty) else str(round(c_qty, 2))
-                client_strings.append(f"{client} ({c_qty_formatted})")
-            data['clients_str'] = ", ".join(client_strings)
 
         # Crear archivo Excel en memoria
         output = io.BytesIO()
@@ -154,19 +148,19 @@ class PreparationDayExport(http.Controller):
         headers = [
             'Producto', 
             'Especificaciones / Atributos', 
-            'Cantidad Pedida (Cliente)', 
+            'Cliente',
+            'Cantidad Pedida', 
             'UdM Cliente', 
             'Total en Kilogramos', 
             'Disponible en Bodega (Kg)', 
-            'Cantidad de Pedidos',
-            'Clientes (Detalle)'
+            'Cantidad de Pedidos'
         ]
         
         for col_num, header in enumerate(headers):
             worksheet.write(2, col_num, header, header_format)
 
-        # Ordenar datos: Primero por nombre de producto, luego por especificación
-        sorted_demand = sorted(demand.values(), key=lambda x: (x['product_id'].name or '', x['description'] or ''))
+        # Ordenar datos: Primero por nombre de producto, luego por cliente, luego especificación
+        sorted_demand = sorted(demand.values(), key=lambda x: (x['product_id'].name or '', x['customer_name'] or '', x['description'] or ''))
 
         # Rellenar datos
         row_idx = 3
@@ -174,6 +168,7 @@ class PreparationDayExport(http.Controller):
             product = data['product_id']
             desc = data['description']
             pkg = data['packaging_name']
+            cust = data['customer_name']
             
             spec = desc
             if pkg and pkg not in desc:
@@ -189,15 +184,14 @@ class PreparationDayExport(http.Controller):
 
             worksheet.write(row_idx, 0, product.name or '', cell_format)
             worksheet.write(row_idx, 1, spec or '', cell_format)
-            worksheet.write(row_idx, 2, data['total_visual_qty'], number_format_qty)
-            worksheet.write(row_idx, 3, uom_label, cell_center_format)
-            worksheet.write(row_idx, 4, data['total_kg'], number_format_kg)
-            # virtual_available del producto
-            worksheet.write(row_idx, 5, product.virtual_available, number_format_kg)
-            # Cantidad de órdenes únicas
+            worksheet.write(row_idx, 2, cust or '', cell_format)
+            worksheet.write(row_idx, 3, data['total_visual_qty'], number_format_qty)
+            worksheet.write(row_idx, 4, uom_label, cell_center_format)
+            worksheet.write(row_idx, 5, data['total_kg'], number_format_kg)
+            worksheet.write(row_idx, 6, stock_dict.get(product.id, 0.0), number_format_kg)
+            
             order_count = len(set(line.sale_order_id.id for line in data['lines']))
-            worksheet.write(row_idx, 6, order_count, cell_center_format)
-            worksheet.write(row_idx, 7, data.get('clients_str', ''), cell_format)
+            worksheet.write(row_idx, 7, order_count, cell_center_format)
             
             row_idx += 1
 
@@ -207,16 +201,17 @@ class PreparationDayExport(http.Controller):
             product_name = data['product_id'].name or ''
             desc = data['description']
             pkg = data['packaging_name']
+            cust = data['customer_name']
             spec = f"{desc} ({pkg})" if pkg and pkg not in desc else desc
 
             col_widths[0] = max(col_widths[0], len(product_name))
             col_widths[1] = max(col_widths[1], len(spec))
-            col_widths[2] = max(col_widths[2], len(str(round(data['total_visual_qty'], 2))))
-            col_widths[3] = max(col_widths[3], 10) # 'unidades' o 'kg'
-            col_widths[4] = max(col_widths[4], len(str(round(data['total_kg'], 3))))
-            col_widths[5] = max(col_widths[5], len(str(round(data['product_id'].virtual_available, 3))))
-            col_widths[6] = max(col_widths[6], 15)
-            col_widths[7] = max(col_widths[7], len(data.get('clients_str', '')))
+            col_widths[2] = max(col_widths[2], len(cust))
+            col_widths[3] = max(col_widths[3], len(str(round(data['total_visual_qty'], 2))))
+            col_widths[4] = max(col_widths[4], 10) # 'unidades' o 'kg'
+            col_widths[5] = max(col_widths[5], len(str(round(data['total_kg'], 3))))
+            col_widths[6] = max(col_widths[6], len(str(round(stock_dict.get(data['product_id'].id, 0.0), 3))))
+            col_widths[7] = max(col_widths[7], 15)
 
         for col_num, width in enumerate(col_widths):
             worksheet.set_column(col_num, col_num, width + 3)
