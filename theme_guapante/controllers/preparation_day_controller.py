@@ -44,37 +44,52 @@ class PreparationDayExport(http.Controller):
         weight_categ = request.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False).sudo()
         for key, data in demand.items():
             total_visual_qty = 0.0
+            clients_summary = {}
             for line in data['lines']:
+                cust_name = line.main_customer_name or 'Sin Cliente'
+                line_visual_qty = 0.0
+
                 sol = line.sale_line_id
                 if not sol:
                     try:
-                        total_visual_qty += float(line.customer_qty_display)
-                    except:
+                        line_visual_qty = float(line.customer_qty_display)
+                    except (ValueError, TypeError):
                         pass
-                    continue
+                else:
+                    qty = sol.product_uom_qty
+                    mode = sol.uom_mode or 'unit'
+                    is_weight = weight_categ and sol.product_id.uom_id.category_id == weight_categ
 
-                qty = sol.product_uom_qty
-                mode = sol.uom_mode or 'unit'
-                is_weight = weight_categ and sol.product_id.uom_id.category_id == weight_categ
-
-                if mode == 'g':
-                    total_visual_qty += qty * 1000.0
-                elif mode == 'kg':
-                    total_visual_qty += qty
-                else: # unit
-                    if is_weight:
-                        packaging = sol.product_packaging_id
-                        if not packaging:
-                            packaging = sol.product_id.packaging_ids.filtered(
-                                lambda p: p.sales and p.qty > 0
-                            )[:1]
-                        if packaging and packaging.qty > 0:
-                            total_visual_qty += round(qty / packaging.qty)
+                    if mode == 'g':
+                        line_visual_qty = qty * 1000.0
+                    elif mode == 'kg':
+                        line_visual_qty = qty
+                    else: # unit
+                        if is_weight:
+                            packaging = sol.product_packaging_id
+                            if not packaging:
+                                packaging = sol.product_id.packaging_ids.filtered(
+                                    lambda p: p.sales and p.qty > 0
+                                )[:1]
+                            if packaging and packaging.qty > 0:
+                                line_visual_qty = round(qty / packaging.qty)
+                            else:
+                                line_visual_qty = qty
                         else:
-                            total_visual_qty += qty
-                    else:
-                        total_visual_qty += qty
+                            line_visual_qty = qty
+
+                total_visual_qty += line_visual_qty
+                if cust_name not in clients_summary:
+                    clients_summary[cust_name] = 0.0
+                clients_summary[cust_name] += line_visual_qty
+
             data['total_visual_qty'] = total_visual_qty
+            
+            client_strings = []
+            for client, c_qty in clients_summary.items():
+                c_qty_formatted = str(int(c_qty)) if c_qty == int(c_qty) else str(round(c_qty, 2))
+                client_strings.append(f"{client} ({c_qty_formatted})")
+            data['clients_str'] = ", ".join(client_strings)
 
         # Crear archivo Excel en memoria
         output = io.BytesIO()
@@ -143,7 +158,8 @@ class PreparationDayExport(http.Controller):
             'UdM Cliente', 
             'Total en Kilogramos', 
             'Disponible en Bodega (Kg)', 
-            'Cantidad de Pedidos'
+            'Cantidad de Pedidos',
+            'Clientes (Detalle)'
         ]
         
         for col_num, header in enumerate(headers):
@@ -181,6 +197,7 @@ class PreparationDayExport(http.Controller):
             # Cantidad de órdenes únicas
             order_count = len(set(line.sale_order_id.id for line in data['lines']))
             worksheet.write(row_idx, 6, order_count, cell_center_format)
+            worksheet.write(row_idx, 7, data.get('clients_str', ''), cell_format)
             
             row_idx += 1
 
@@ -199,6 +216,7 @@ class PreparationDayExport(http.Controller):
             col_widths[4] = max(col_widths[4], len(str(round(data['total_kg'], 3))))
             col_widths[5] = max(col_widths[5], len(str(round(data['product_id'].virtual_available, 3))))
             col_widths[6] = max(col_widths[6], 15)
+            col_widths[7] = max(col_widths[7], len(data.get('clients_str', '')))
 
         for col_num, width in enumerate(col_widths):
             worksheet.set_column(col_num, col_num, width + 3)
