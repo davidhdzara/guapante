@@ -23,6 +23,28 @@ class GuapanteKardexDaily(models.Model):
         ('unique_daily_product_location', 'unique(date, product_id, location_id)', 'Solo puede haber un snapshot por producto, ubicación y fecha.')
     ]
 
+    @api.model
+    def _get_tracked_locations(self):
+        """
+        Retorna SOLO las ubicaciones de almacenamiento principal (WH/Stock y sus hijos).
+        Excluye WH/Entrada y WH/Salida que son zonas de transito y causan doble conteo.
+        """
+        warehouse = self.env['stock.warehouse'].search([], limit=1)
+        if not warehouse:
+            return self.env['stock.location']
+        
+        # lot_stock_id es la ubicacion principal del almacen (WH/Stock)
+        main_stock = warehouse.lot_stock_id
+        if not main_stock:
+            return self.env['stock.location']
+        
+        # Buscar WH/Stock y todas sus sub-ubicaciones (Cava, General, Oficina)
+        tracked = self.env['stock.location'].search([
+            ('id', 'child_of', main_stock.id),
+            ('usage', '=', 'internal'),
+        ])
+        return tracked
+
     @api.depends('qty_start', 'qty_in', 'qty_out', 'qty_scrap', 'date')
     def _compute_totals(self):
         for record in self:
@@ -46,20 +68,19 @@ class GuapanteKardexDaily(models.Model):
         """
         Cron job method. Se ejecuta a las 00:01 para crear el registro del nuevo dia
         basado en el stock real del quant en este instante.
+        Solo rastrea ubicaciones de almacenamiento principal (WH/Stock y sub-ubicaciones).
         """
         today = fields.Date.context_today(self)
-        # Todas las ubicaciones internas (compatible con multi-almacen)
-        internal_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
-        if not internal_locations:
+        tracked_locations = self._get_tracked_locations()
+        if not tracked_locations:
             return
 
         quants = self.env['stock.quant'].search([
-            ('location_id', 'in', internal_locations.ids),
+            ('location_id', 'in', tracked_locations.ids),
             ('quantity', '!=', 0)
         ])
 
         for quant in quants:
-            # Crear snapshot del dia con el inventario actual
             existing = self.search([
                 ('date', '=', today),
                 ('product_id', '=', quant.product_id.id),
@@ -80,39 +101,52 @@ class GuapanteKardexDaily(models.Model):
     def _sync_moves(self, moves):
         """
         Llamado desde stock.move _action_done para actualizar in/out/scrap del dia.
-        Clasifica los movimientos:
-          - Entrada (in): Proveedor/Produccion -> Interno
-          - Venta (out): Interno -> Cliente
-          - Desperdicio (scrap): Interno -> Desecho o Ajuste negativo de inventario
+        
+        SOLO rastrea movimientos que entran o salen de WH/Stock (y sub-ubicaciones).
+        Ignora movimientos entre zonas de transito (WH/Entrada, WH/Salida).
+        
+        Clasificacion:
+          - Compra (in): Algo entra a WH/Stock desde FUERA de WH/Stock
+          - Venta (out): Algo sale de WH/Stock hacia clientes
+          - Desperdicio (scrap): Algo sale de WH/Stock hacia desecho/ajuste inventario
+          - Interno (ignorado): Movimientos dentro de WH/Stock (ej: Stock -> Stock/Cava)
         """
         today = fields.Date.context_today(self)
+        tracked_locations = self._get_tracked_locations()
+        tracked_ids = set(tracked_locations.ids)
+        
         for move in moves.filtered(lambda m: m.state == 'done'):
-            # Detectar si es entrada o salida de una ubicacion interna
-            is_in = move.location_dest_id.usage == 'internal'
-            is_out = move.location_id.usage == 'internal'
+            src_tracked = move.location_id.id in tracked_ids
+            dest_tracked = move.location_dest_id.id in tracked_ids
             
-            if not (is_in or is_out):
+            # Caso 1: Movimiento interno entre ubicaciones rastreadas (ej: Stock -> Stock/Cava)
+            # IGNORAR - no es ni compra ni venta
+            if src_tracked and dest_tracked:
                 continue
-
-            # Procesar entrada a ubicacion interna
-            if is_in:
-                self._update_kardex_line(today, move.product_id.id, move.location_dest_id.id, 'in', move.product_uom_qty)
-
-            # Procesar salida de ubicacion interna
-            if is_out:
-                # Clasificar el tipo de salida
+            
+            # Caso 2: Algo ENTRA a una ubicacion rastreada desde afuera
+            # = COMPRA (sin importar si viene de proveedor, WH/Entrada, produccion, etc.)
+            if dest_tracked and not src_tracked:
+                self._update_kardex_line(
+                    today, move.product_id.id, move.location_dest_id.id, 
+                    'in', move.product_uom_qty
+                )
+            
+            # Caso 3: Algo SALE de una ubicacion rastreada hacia afuera
+            if src_tracked and not dest_tracked:
                 dest = move.location_dest_id
                 if dest.usage == 'customer':
-                    # Es una venta real
                     direction = 'out'
                 elif dest.scrap_location or dest.usage == 'inventory':
-                    # Es un desperdicio o ajuste de inventario negativo
                     direction = 'scrap'
                 else:
-                    # Cualquier otra salida (transferencias entre bodegas, produccion, etc.)
+                    # Salida hacia WH/Salida u otra zona de transito = es una venta en proceso
                     direction = 'out'
                 
-                self._update_kardex_line(today, move.product_id.id, move.location_id.id, direction, move.product_uom_qty)
+                self._update_kardex_line(
+                    today, move.product_id.id, move.location_id.id, 
+                    direction, move.product_uom_qty
+                )
 
     def _update_kardex_line(self, today, product_id, location_id, direction, qty):
         """
