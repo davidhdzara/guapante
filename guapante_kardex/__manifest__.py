@@ -17,6 +17,7 @@
     'depends': ['stock', 'product'],
     'data': [
         'security/ir.model.access.csv',
+        'data/ir_cron.xml',
         'views/kardex_views.xml',
     ],
     'installable': True,
