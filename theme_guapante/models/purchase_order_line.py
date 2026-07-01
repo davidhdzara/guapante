@@ -23,6 +23,16 @@ class PurchaseOrderLine(models.Model):
         store=True,
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
+        for vals in vals_list:
+            if 'product_id' in vals and 'uom_mode' not in vals:
+                product = self.env['product.product'].browse(vals['product_id'])
+                is_weight = weight_categ and product.uom_id.category_id == weight_categ
+                vals['uom_mode'] = 'kg' if is_weight else 'unit'
+        return super(PurchaseOrderLine, self).create(vals_list)
+
     @api.onchange('product_id')
     def _onchange_product_id_uom_mode(self):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
