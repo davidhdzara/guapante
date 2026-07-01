@@ -13,6 +13,7 @@ class GuapanteKardexDaily(models.Model):
     qty_start = fields.Float(string='Con cuanto inicie', required=True, default=0.0)
     qty_in = fields.Float(string='Cuanto se compro', default=0.0)
     qty_out = fields.Float(string='Cuanto se vendio', default=0.0)
+    qty_scrap = fields.Float(string='Desperdicios', default=0.0)
     
     qty_theoretical = fields.Float(string='Total que debo de tener', compute='_compute_totals', store=True)
     qty_real = fields.Float(string='Total en inventario', compute='_compute_totals', store=True)
@@ -22,10 +23,10 @@ class GuapanteKardexDaily(models.Model):
         ('unique_daily_product_location', 'unique(date, product_id, location_id)', 'Solo puede haber un snapshot por producto, ubicación y fecha.')
     ]
 
-    @api.depends('qty_start', 'qty_in', 'qty_out', 'date')
+    @api.depends('qty_start', 'qty_in', 'qty_out', 'qty_scrap', 'date')
     def _compute_totals(self):
         for record in self:
-            record.qty_theoretical = record.qty_start + record.qty_in - record.qty_out
+            record.qty_theoretical = record.qty_start + record.qty_in - record.qty_out - record.qty_scrap
             
             # Si es el registro de hoy, obtener el stock actual real
             if record.date == date.today():
@@ -35,9 +36,7 @@ class GuapanteKardexDaily(models.Model):
                 ], limit=1)
                 record.qty_real = quant.quantity if quant else 0.0
             else:
-                # Si es un dia pasado, asumimos que el real quedo estatico en lo que diga el historial
-                # Para simplificar y no hacer queries pesados al pasado, asumimos real = theoretical si no se actualizo
-                # En un sistema real, un cron de fin de dia congelaria qty_real.
+                # Para dias pasados, el stock real ya fue congelado por el cron de cierre
                 record.qty_real = record.qty_theoretical
                 
             record.difference = record.qty_real - record.qty_theoretical
@@ -49,13 +48,13 @@ class GuapanteKardexDaily(models.Model):
         basado en el stock real del quant en este instante.
         """
         today = date.today()
-        # Solo ubicaciones internas principales
-        wh_stock = self.env['stock.location'].search([('complete_name', '=', 'WH/Stock')], limit=1)
-        if not wh_stock:
+        # Todas las ubicaciones internas (compatible con multi-almacen)
+        internal_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
+        if not internal_locations:
             return
 
         quants = self.env['stock.quant'].search([
-            ('location_id', '=', wh_stock.id),
+            ('location_id', 'in', internal_locations.ids),
             ('quantity', '!=', 0)
         ])
 
@@ -64,64 +63,93 @@ class GuapanteKardexDaily(models.Model):
             existing = self.search([
                 ('date', '=', today),
                 ('product_id', '=', quant.product_id.id),
-                ('location_id', '=', wh_stock.id)
+                ('location_id', '=', quant.location_id.id)
             ])
             if not existing:
                 self.create({
                     'date': today,
                     'product_id': quant.product_id.id,
-                    'location_id': wh_stock.id,
+                    'location_id': quant.location_id.id,
                     'qty_start': quant.quantity,
                     'qty_in': 0.0,
                     'qty_out': 0.0,
+                    'qty_scrap': 0.0,
                 })
 
     @api.model
     def _sync_moves(self, moves):
         """
-        Llamado desde stock.move _action_done para actualizar in/out del dia.
+        Llamado desde stock.move _action_done para actualizar in/out/scrap del dia.
+        Clasifica los movimientos:
+          - Entrada (in): Proveedor/Produccion -> Interno
+          - Venta (out): Interno -> Cliente
+          - Desperdicio (scrap): Interno -> Desecho o Ajuste negativo de inventario
         """
         today = date.today()
         for move in moves.filtered(lambda m: m.state == 'done'):
-            # Solo movimientos desde o hacia WH/Stock
-            is_in = move.location_dest_id.complete_name == 'WH/Stock'
-            is_out = move.location_id.complete_name == 'WH/Stock'
+            # Detectar si es entrada o salida de una ubicacion interna
+            is_in = move.location_dest_id.usage == 'internal'
+            is_out = move.location_id.usage == 'internal'
             
             if not (is_in or is_out):
                 continue
-                
-            loc_id = move.location_dest_id.id if is_in else move.location_id.id
-            
-            # Buscar o crear el kardex del dia
-            kardex = self.search([
-                ('date', '=', today),
-                ('product_id', '=', move.product_id.id),
-                ('location_id', '=', loc_id)
-            ], limit=1)
-            
-            if not kardex:
-                # Obtener el stock real ANTES de este movimiento (aproximado)
-                quant = self.env['stock.quant'].search([
-                    ('product_id', '=', move.product_id.id),
-                    ('location_id', '=', loc_id)
-                ], limit=1)
-                
-                start_qty = quant.quantity if quant else 0.0
-                if is_in:
-                    start_qty -= move.product_uom_qty
-                if is_out:
-                    start_qty += move.product_uom_qty
-                    
-                kardex = self.create({
-                    'date': today,
-                    'product_id': move.product_id.id,
-                    'location_id': loc_id,
-                    'qty_start': start_qty,
-                })
-                
-            # Sumar al kardex
-            if is_in:
-                kardex.qty_in += move.product_uom_qty
-            if is_out:
-                kardex.qty_out += move.product_uom_qty
 
+            # Procesar entrada a ubicacion interna
+            if is_in:
+                self._update_kardex_line(today, move.product_id.id, move.location_dest_id.id, 'in', move.product_uom_qty)
+
+            # Procesar salida de ubicacion interna
+            if is_out:
+                # Clasificar el tipo de salida
+                dest = move.location_dest_id
+                if dest.usage == 'customer':
+                    # Es una venta real
+                    direction = 'out'
+                elif dest.scrap_location or dest.usage == 'inventory':
+                    # Es un desperdicio o ajuste de inventario negativo
+                    direction = 'scrap'
+                else:
+                    # Cualquier otra salida (transferencias entre bodegas, produccion, etc.)
+                    direction = 'out'
+                
+                self._update_kardex_line(today, move.product_id.id, move.location_id.id, direction, move.product_uom_qty)
+
+    def _update_kardex_line(self, today, product_id, location_id, direction, qty):
+        """
+        Actualiza o crea la linea del kardex de forma atomica (evita race conditions).
+        direction: 'in', 'out', o 'scrap'
+        """
+        kardex = self.search([
+            ('date', '=', today),
+            ('product_id', '=', product_id),
+            ('location_id', '=', location_id)
+        ], limit=1)
+
+        if not kardex:
+            # Obtener el stock real ANTES de este movimiento (aproximado)
+            quant = self.env['stock.quant'].search([
+                ('product_id', '=', product_id),
+                ('location_id', '=', location_id)
+            ], limit=1)
+
+            start_qty = quant.quantity if quant else 0.0
+            if direction == 'in':
+                start_qty -= qty
+            else:
+                start_qty += qty
+
+            kardex = self.create({
+                'date': today,
+                'product_id': product_id,
+                'location_id': location_id,
+                'qty_start': start_qty,
+            })
+
+        # Actualizar de forma atomica con SQL para evitar race conditions
+        field_map = {'in': 'qty_in', 'out': 'qty_out', 'scrap': 'qty_scrap'}
+        field_name = field_map[direction]
+        self.env.cr.execute(
+            f"UPDATE guapante_kardex_daily SET {field_name} = {field_name} + %s WHERE id = %s",
+            (qty, kardex.id)
+        )
+        kardex.invalidate_recordset([field_name])

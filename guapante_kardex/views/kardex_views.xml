@@ -42,9 +42,10 @@
                 <field name="qty_start" sum="Total Inicial"/>
                 <field name="qty_in" sum="Total Comprado"/>
                 <field name="qty_out" sum="Total Vendido"/>
+                <field name="qty_scrap" sum="Total Desperdicios" decoration-warning="qty_scrap &gt; 0"/>
                 <field name="qty_theoretical" sum="Debe Tener"/>
                 <field name="qty_real" sum="En Inventario"/>
-                <field name="difference" sum="Diferencia" widget="monetary" decoration-danger="difference &lt; 0"/>
+                <field name="difference" sum="Diferencia" decoration-danger="difference &lt; 0"/>
             </tree>
         </field>
     </record>
@@ -60,6 +61,7 @@
                 <field name="qty_start" type="measure"/>
                 <field name="qty_in" type="measure"/>
                 <field name="qty_out" type="measure"/>
+                <field name="qty_scrap" type="measure"/>
                 <field name="qty_theoretical" type="measure"/>
                 <field name="qty_real" type="measure"/>
                 <field name="difference" type="measure"/>
