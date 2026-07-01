@@ -582,3 +582,11 @@ class TestPreparationDay(TransactionCase):
                 'guapante.preparation.day.line'
             ]._get_display_qty(sol)
             self.assertEqual(result, ('500', 'g'))
+
+    def test_action_export_excel(self):
+        """action_export_excel should return correct action url dict."""
+        session = self._create_session()
+        action = session.action_export_excel()
+        self.assertEqual(action['type'], 'ir.actions.act_url')
+        self.assertIn('/web/guapante/preparation_day/', action['url'])
+        self.assertIn('/export_excel', action['url'])

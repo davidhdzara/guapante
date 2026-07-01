@@ -26,6 +26,11 @@ class StockMove(models.Model):
             're-pesado en bodega y corroborado.'
         ),
     )
+    extra_validation = fields.Boolean(
+        string='Validación Extra',
+        default=False,
+        help='Checkbox informativo para validación secundaria por línea.',
+    )
 
     @api.depends('sale_line_id', 'purchase_line_id')
     def _compute_customer_uom_display(self) -> None:

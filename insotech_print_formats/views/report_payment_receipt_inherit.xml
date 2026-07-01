@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ════════════════════════════════════════════════════════
+         RECIBO DE PAGO — Diseño Premium Guapante
+         Hereda account.report_payment_receipt_document
+         ════════════════════════════════════════════════════════ -->
+
+    <template id="report_payment_receipt_document_guapante"
+              inherit_id="account.report_payment_receipt_document"
+              priority="99999">
+
+        <!-- BYPASS: Usar external_layout_guapante -->
+        <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
+            <attribute name="t-call">insotech_print_formats.external_layout_guapante</attribute>
+        </xpath>
+
+        <!-- REEMPLAZAR TODO EL CONTENIDO DE .page -->
+        <xpath expr="//div[@class='page']" position="replace">
+            <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+
+                <!-- ══════ CSS PREMIUM ══════ -->
+                <style type="text/css">
+                    /* Variables Guapante */
+                    .gpt-receipt-title {
+                        font-size: 22px;
+                        font-weight: 900;
+                        color: #14532d;
+                        letter-spacing: 1px;
+                        text-transform: uppercase;
+                        margin: 0;
+                        line-height: 1.2;
+                    }
+                    .gpt-receipt-number {
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #495057;
+                        margin-top: 2px;
+                    }
+                    .gpt-accent-bar {
+                        height: 3px;
+                        background: linear-gradient(90deg, #14532d 0%, #22c55e 100%);
+                        border: none;
+                        margin: 12px 0 20px 0;
+                    }
+
+                    /* Info Grid */
+                    .gpt-info-grid {
+                        display: table;
+                        width: 100%;
+                        border: 1px solid #e5e7eb;
+                        border-left: 3px solid #14532d;
+                        margin-bottom: 20px;
+                        background: #fafbfc;
+                    }
+                    .gpt-info-row {
+                        display: table-row;
+                    }
+                    .gpt-info-label {
+                        display: table-cell;
+                        width: 35%;
+                        padding: 7px 12px;
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.08em;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+                    .gpt-info-value {
+                        display: table-cell;
+                        width: 65%;
+                        padding: 7px 12px;
+                        font-size: 12px;
+                        color: #2d2d2d;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+
+                    /* Section Title */
+                    .gpt-section-title {
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.15em;
+                        margin-bottom: 8px;
+                        padding-bottom: 4px;
+                        border-bottom: 1px solid #e5e7eb;
+                    }
+
+                    /* Invoice Table */
+                    .gpt-invoice-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 11px;
+                        margin-bottom: 15px;
+                    }
+                    .gpt-invoice-table thead th {
+                        background-color: #14532d;
+                        color: white;
+                        font-size: 9px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.1em;
+                        padding: 8px 10px;
+                        border: none;
+                    }
+                    .gpt-invoice-table tbody td {
+                        padding: 7px 10px;
+                        border-bottom: 1px solid #e5e7eb;
+                        color: #374151;
+                        font-size: 11px;
+                    }
+                    .gpt-invoice-table tbody tr:nth-child(even) td {
+                        background-color: #f9fafb;
+                    }
+                    /* Balance row */
+                    .gpt-balance-row td {
+                        background-color: #f0fdf4 !important;
+                        font-weight: 600;
+                        color: #14532d !important;
+                        border-top: 1px solid #14532d;
+                    }
+
+                    /* Total Bar */
+                    .gpt-total-bar {
+                        background-color: #14532d;
+                        color: white;
+                        padding: 12px 20px;
+                        display: table;
+                        width: 100%;
+                        margin-top: 5px;
+                    }
+                    .gpt-total-label {
+                        display: table-cell;
+                        font-size: 12px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.15em;
+                        vertical-align: middle;
+                    }
+                    .gpt-total-amount {
+                        display: table-cell;
+                        text-align: right;
+                        font-size: 18px;
+                        font-weight: 900;
+                        letter-spacing: 0.5px;
+                        vertical-align: middle;
+                    }
+
+                    /* Footer note */
+                    .gpt-footer-note {
+                        font-size: 8px;
+                        color: #9ca3af;
+                        text-align: center;
+                        margin-top: 25px;
+                        padding-top: 10px;
+                        border-top: 1px solid #e5e7eb;
+                    }
+                </style>
+
+                <!-- ══════ TÍTULO ══════ -->
+                <div style="margin-bottom: 5px;">
+                    <div class="gpt-receipt-title">Recibo de Pago</div>
+                    <div class="gpt-receipt-number">
+                        No. <span t-field="o.name">PCSH1/2026/00228</span>
+                    </div>
+                </div>
+                <div class="gpt-accent-bar"/>
+
+                <!-- ══════ GRID INFORMACIÓN ══════ -->
+                <div class="gpt-info-grid">
+                    <div class="gpt-info-row" t-if="o.date">
+                        <div class="gpt-info-label">Fecha de Pago</div>
+                        <div class="gpt-info-value"><span t-field="o.date">2026-05-19</span></div>
+                    </div>
+                    <div class="gpt-info-row" t-if="o.partner_id">
+                        <div class="gpt-info-label">
+                            <t t-if="o.partner_type == 'customer'">Cliente</t>
+                            <t t-else="">Proveedor</t>
+                        </div>
+                        <div class="gpt-info-value">
+                            <strong><span t-field="o.partner_id">COFFEE DEVELOPMENT</span></strong>
+                            <t t-if="o.partner_id.vat">
+                                <br/><span style="font-size: 10px; color: #6b7280;">NIT: <span t-field="o.partner_id.vat"/></span>
+                            </t>
+                        </div>
+                    </div>
+                    <div class="gpt-info-row" t-if="values['display_payment_method'] and o.payment_method_id">
+                        <div class="gpt-info-label">Método de Pago</div>
+                        <div class="gpt-info-value"><span t-field="o.payment_method_id.name">Pago manual</span></div>
+                    </div>
+                    <div class="gpt-info-row" t-if="o.journal_id">
+                        <div class="gpt-info-label">Diario</div>
+                        <div class="gpt-info-value"><span t-field="o.journal_id.name">Banco</span></div>
+                    </div>
+                    <div class="gpt-info-row" t-if="o.memo">
+                        <div class="gpt-info-label">Memo / Referencia</div>
+                        <div class="gpt-info-value"><span t-field="o.memo">FE3293</span></div>
+                    </div>
+                    <div class="gpt-info-row">
+                        <div class="gpt-info-label">Importe Total</div>
+                        <div class="gpt-info-value" style="font-weight: 700; font-size: 14px; color: #14532d;">
+                            <span t-field="o.amount" t-options="{'widget': 'monetary', 'display_currency': o.currency_id}">$133.688,00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══════ FACTURAS APLICADAS ══════ -->
+                <t t-if="values['display_invoices']">
+                    <t t-set="invoices" t-value="o.reconciled_invoice_ids or o.reconciled_bill_ids"/>
+                    <t t-if="invoices">
+                        <div class="gpt-section-title">Facturas Aplicadas</div>
+
+                        <!-- Check if invoices include different currencies -->
+                        <t t-foreach="invoices" t-as="inv">
+                            <t t-if="any(inv.currency_id != par[2].currency_id for par in inv._get_reconciled_invoices_partials()[0])" t-set="otherCurrency" t-value="True"/>
+                        </t>
+
+                        <!-- Check if any invoice has retentions (negative taxes) -->
+                        <t t-set="has_retentions" t-value="any(inv.amount_tax != 0 for inv in invoices if inv.move_type != 'entry')"/>
+
+                        <table class="gpt-invoice-table">
+                            <thead>
+                                <tr>
+                                    <th>Factura</th>
+                                    <th>Fecha</th>
+                                    <th t-if="otherCurrency" class="text-end">Monto en Divisa</th>
+                                    <th t-if="has_retentions" class="text-end">Base</th>
+                                    <th t-if="has_retentions" class="text-end">Retención</th>
+                                    <th class="text-end">Total Neto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-set="total_base" t-value="0"/>
+                                <t t-set="total_retencion" t-value="0"/>
+                                <t t-set="total_neto" t-value="0"/>
+
+                                <t t-foreach="invoices" t-as="inv">
+                                    <t t-if="inv.move_type != 'entry'">
+                                        <t t-set="total_base" t-value="total_base + inv.amount_untaxed"/>
+                                        <t t-set="total_retencion" t-value="total_retencion + inv.amount_tax"/>
+                                        <t t-set="total_neto" t-value="total_neto + inv.amount_total"/>
+
+                                        <!-- For multi-currency: get applied amount -->
+                                        <t t-set="partials" t-value="inv._get_reconciled_invoices_partials()[0]"/>
+
+                                        <tr>
+                                            <td>
+                                                <strong><span t-field="inv.name">FVR22839</span></strong>
+                                                <t t-if="inv.ref">
+                                                    <br/><span style="font-size: 9px; color: #9ca3af;"><span t-field="inv.ref"/></span>
+                                                </t>
+                                            </td>
+                                            <td><span t-field="inv.invoice_date">15-05-2026</span></td>
+                                            <td t-if="otherCurrency" class="text-end">
+                                                <t t-foreach="partials" t-as="par">
+                                                    <t t-set="pay_line" t-value="par[2]"/>
+                                                    <t t-if="pay_line.move_id.id == o.move_id.id and pay_line.currency_id != inv.currency_id">
+                                                        <span t-out="abs(par[0].debit_amount_currency if par[2].debit > 0 else par[0].credit_amount_currency)"
+                                                              t-options="{'widget': 'monetary', 'display_currency': pay_line.currency_id}"/>
+                                                    </t>
+                                                </t>
+                                            </td>
+                                            <td t-if="has_retentions" class="text-end">
+                                                <span t-out="inv.amount_untaxed"
+                                                      t-options="{'widget': 'monetary', 'display_currency': inv.currency_id}">$1.295.000</span>
+                                            </td>
+                                            <td t-if="has_retentions" class="text-end" style="color: #dc2626;">
+                                                <t t-if="inv.amount_tax != 0">
+                                                    <span t-out="inv.amount_tax"
+                                                          t-options="{'widget': 'monetary', 'display_currency': inv.currency_id}">-$12.950</span>
+                                                </t>
+                                                <t t-else="">—</t>
+                                            </td>
+                                            <td class="text-end" style="font-weight: 600;">
+                                                <span t-field="inv.amount_total">$1.282.050</span>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </t>
+
+                                <!-- Totals row when retentions exist -->
+                                <t t-if="has_retentions">
+                                    <tr class="gpt-balance-row">
+                                        <td colspan="2" style="text-align: right;"><strong>Totales</strong></td>
+                                        <td t-if="otherCurrency"/>
+                                        <td class="text-end">
+                                            <strong><span t-out="total_base"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                        <td class="text-end" style="color: #dc2626 !important;">
+                                            <strong><span t-out="total_retencion"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                        <td class="text-end">
+                                            <strong><span t-out="total_neto"
+                                                          t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></strong>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </t>
+                </t>
+
+                <!-- ══════ BARRA TOTAL ══════ -->
+                <div class="gpt-total-bar">
+                    <div class="gpt-total-label">Total Pagado</div>
+                    <div class="gpt-total-amount">
+                        <span t-field="o.amount" t-options="{'widget': 'monetary', 'display_currency': o.currency_id}">$133.688,00</span>
+                    </div>
+                </div>
+
+                <!-- ══════ NOTA LEGAL ══════ -->
+                <div class="gpt-footer-note">
+                    <span t-field="o.company_id.name">COMERCIALIZADORA Y PRODUCTORA GUAPANTE S.A.S</span>
+                    · NIT <span t-esc="o.company_id.vat"/>
+                    <br/>
+                    Este documento es un comprobante de pago. No constituye factura de venta.
+                </div>
+
+            </div>
+        </xpath>
+
+    </template>
+
+</odoo>

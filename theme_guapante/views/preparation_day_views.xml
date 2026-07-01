@@ -33,6 +33,14 @@
                         string="Reabrir Sesión"
                         invisible="state != 'done'"
                     />
+                    <button
+                        name="action_export_excel"
+                        type="object"
+                        string="Exportar Excel Compras"
+                        class="btn-info"
+                        invisible="state == 'draft'"
+                        icon="fa-file-excel-o"
+                    />
                     <field name="state" widget="statusbar" statusbar_visible="draft,loaded,done"/>
                 </header>
 
