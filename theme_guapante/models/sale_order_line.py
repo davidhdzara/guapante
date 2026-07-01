@@ -35,7 +35,9 @@ class SaleOrderLine(models.Model):
     def create(self, vals_list):
         weight_categ = self.env.ref('uom.product_uom_categ_kgm', raise_if_not_found=False)
         for vals in vals_list:
-            if 'product_id' in vals and 'uom_mode' not in vals:
+            # If visual_qty is not in vals, this line was created programmatically
+            # (e.g. from the Variant Grid) and we must enforce the correct uom_mode.
+            if 'product_id' in vals and 'visual_qty' not in vals:
                 product = self.env['product.product'].browse(vals['product_id'])
                 is_weight = weight_categ and product.uom_id.category_id == weight_categ
                 vals['uom_mode'] = 'kg' if is_weight else 'unit'
