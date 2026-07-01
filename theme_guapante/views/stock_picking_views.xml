@@ -5,11 +5,6 @@
         <field name="model">stock.picking</field>
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
-            <!-- Checkbox de Validación Extra en el header -->
-            <xpath expr="//header" position="inside">
-                <field name="extra_validation" widget="boolean_toggle" nolabel="0" class="oe_inline ms-2 me-2 align-middle"/>
-            </xpath>
-
             <!-- Caja # junto al documento origen -->
             <xpath expr="//field[@name='origin']" position="after">
                 <field name="daily_sequence" invisible="daily_sequence == 0"/>
@@ -33,6 +28,10 @@
             <!-- Checkbox de peso al final de la linea despues de cantidad -->
             <xpath expr="//field[@name='move_ids_without_package']//field[@name='quantity']" position="after">
                 <field name="is_weight_confirmed" 
+                       widget="boolean_toggle"
+                       column_invisible="parent.is_recolectar_operation == False"
+                       readonly="parent.state in ('done', 'cancel')"/>
+                <field name="extra_validation" 
                        widget="boolean_toggle"
                        column_invisible="parent.is_recolectar_operation == False"
                        readonly="parent.state in ('done', 'cancel')"/>
