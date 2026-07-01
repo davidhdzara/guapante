@@ -11,8 +11,8 @@
         <field name="name">Confirmación de Pedido (WhatsApp)</field>
         <field name="model">sale.order</field>
         <field name="report_type">qweb-pdf</field>
-        <field name="report_name">insotech_print_formats.report_saleorder_whatsapp</field>
-        <field name="report_file">insotech_print_formats.report_saleorder_whatsapp</field>
+        <field name="report_name">insotech_document_layouts.report_saleorder_whatsapp</field>
+        <field name="report_file">insotech_document_layouts.report_saleorder_whatsapp</field>
         <field name="print_report_name">'Pedido_%s' % (object.name or '').replace('/','_')</field>
         <field name="binding_model_id" ref="sale.model_sale_order"/>
         <field name="binding_type">report</field>
@@ -22,14 +22,14 @@
     <template id="report_saleorder_whatsapp">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
-                <t t-call="insotech_print_formats.report_saleorder_whatsapp_document" t-lang="doc.partner_id.lang"/>
+                <t t-call="insotech_document_layouts.report_saleorder_whatsapp_document" t-lang="doc.partner_id.lang"/>
             </t>
         </t>
     </template>
 
     <!-- 3. TEMPLATE DEL DOCUMENTO (standalone, sin herencia) -->
     <template id="report_saleorder_whatsapp_document">
-        <t t-call="insotech_print_formats.external_layout_guapante">
+        <t t-call="insotech_document_layouts.external_layout_guapante">
             <t t-set="o" t-value="doc"/>
 
             <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">

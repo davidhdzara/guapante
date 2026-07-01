@@ -11,7 +11,7 @@
 
         <!-- BYPASS: Usar external_layout_guapante -->
         <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
-            <attribute name="t-call">insotech_print_formats.external_layout_guapante</attribute>
+            <attribute name="t-call">insotech_document_layouts.external_layout_guapante</attribute>
         </xpath>
 
         <!-- REEMPLAZAR TODO EL CONTENIDO DE .page -->

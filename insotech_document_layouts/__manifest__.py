@@ -1,5 +1,5 @@
 {
-    'name': 'InSoTech Print Formats - Guapante',
+    'name': 'InSoTech Document Layouts - Guapante',
     'version': '18.0.1.0.0',
     'category': 'Accounting/Localizations',
     'summary': 'Custom print formats for invoices, payment receipts, and sale orders',
