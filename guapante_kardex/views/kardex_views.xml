@@ -30,12 +30,12 @@
         </field>
     </record>
 
-    <!-- Vista de Arbol (Lista) para el Reporte -->
-    <record id="view_guapante_kardex_daily_tree" model="ir.ui.view">
-        <field name="name">guapante.kardex.daily.tree</field>
+    <!-- Vista de Lista para el Reporte -->
+    <record id="view_guapante_kardex_daily_list" model="ir.ui.view">
+        <field name="name">guapante.kardex.daily.list</field>
         <field name="model">guapante.kardex.daily</field>
         <field name="arch" type="xml">
-            <tree string="Kardex" create="false" edit="false" delete="false" default_order="date desc">
+            <list string="Kardex" create="false" edit="false" delete="false" default_order="date desc">
                 <field name="date"/>
                 <field name="product_id"/>
                 <field name="location_id" optional="hide"/>
@@ -46,7 +46,7 @@
                 <field name="qty_theoretical" sum="Debe Tener"/>
                 <field name="qty_real" sum="En Inventario"/>
                 <field name="difference" sum="Diferencia" decoration-danger="difference &lt; 0"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -55,7 +55,7 @@
         <field name="name">guapante.kardex.daily.pivot</field>
         <field name="model">guapante.kardex.daily</field>
         <field name="arch" type="xml">
-            <pivot string="Kardex" disable_linking="True">
+            <pivot string="Kardex" disable_linking="True" sample="1">
                 <field name="date" type="col"/>
                 <field name="product_id" type="row"/>
                 <field name="qty_start" type="measure"/>
@@ -85,7 +85,7 @@
     <record id="action_guapante_kardex_daily" model="ir.actions.act_window">
         <field name="name">Kardex Guapante</field>
         <field name="res_model">guapante.kardex.daily</field>
-        <field name="view_mode">pivot,tree,graph</field>
+        <field name="view_mode">pivot,list,graph</field>
         <field name="search_view_id" ref="view_guapante_kardex_daily_search"/>
         <field name="context">{'search_default_filter_today': 1}</field>
     </record>
