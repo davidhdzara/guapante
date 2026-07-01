@@ -138,8 +138,18 @@ class SaleOrderLine(models.Model):
                 }
 
             # ── Conversion / Preservation ─────────────────
-            if is_weight and mode in ('kg', 'g'):
-                # CONVERT: recalculate visual_qty from product_uom_qty
+            old_mode = (
+                line._origin.uom_mode
+                if line._origin and line._origin.uom_mode
+                else None
+            )
+
+            # CONVERT only when switching directly between kg ↔ g
+            if (
+                old_mode in ('kg', 'g')
+                and mode in ('kg', 'g')
+                and old_mode != mode
+            ):
                 if mode == 'kg':
                     line.visual_qty = line.product_uom_qty
                 else:  # g

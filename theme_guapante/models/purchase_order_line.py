@@ -138,22 +138,31 @@ class PurchaseOrderLine(models.Model):
                 }
 
             # ── Conversion / Preservation ─────────────────
-            if is_weight and mode in ('kg', 'g'):
-                # CONVERT: recalculate visual_qty from product_qty
-                # using the new mode.  product_qty stays unchanged.
-                # 12 kg → 12000 g,  12000 g → 12 kg
+            # Determine the PREVIOUS mode to decide strategy.
+            # _origin holds the record state before the current edit.
+            old_mode = (
+                line._origin.uom_mode
+                if line._origin and line._origin.uom_mode
+                else None
+            )
+
+            # CONVERT only when switching directly between kg ↔ g
+            # (both old and new mode are weight modes).
+            if (
+                old_mode in ('kg', 'g')
+                and mode in ('kg', 'g')
+                and old_mode != mode
+            ):
+                # Same physical quantity, different scale.
+                # product_qty stays unchanged.
                 if mode == 'kg':
                     line.visual_qty = line.product_qty
                 else:  # g
                     line.visual_qty = line.product_qty * 1000.0
             else:
-                # PRESERVE: keep visual_qty number, recalc product_qty
-                # 12 kg → 12 units (product_qty changes)
+                # PRESERVE: keep visual_qty, recalculate product_qty.
+                # Covers: unit→kg, unit→g, kg→unit, g→unit
                 line._inverse_visual_qty()
-
-        # Trigger Odoo's native price recalculation
-        if hasattr(super(PurchaseOrderLine, self), '_onchange_quantity'):
-            super(PurchaseOrderLine, self)._onchange_quantity()
 
     # ── Compute & Inverse ─────────────────────────────────────────
 
