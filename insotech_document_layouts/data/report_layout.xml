@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <record id="layout_insotech" model="report.layout">
-        <field name="name">Guapante</field>
-        <field name="sequence">1</field>
-        <field name="view_id" ref="insotech_document_layouts.external_layout_insotech"/>
-        <field name="image">/insotech_document_layouts/static/src/img/layout_preview.png</field>
-    </record>
-</odoo>
