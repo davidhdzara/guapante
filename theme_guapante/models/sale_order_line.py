@@ -49,57 +49,21 @@ class SaleOrderLine(models.Model):
             and product.uom_id.category_id == weight_categ
         )
 
-    def _guapante_ensure_uom_mode(self):
-        """Auto-correct uom_mode for weight products stuck on default.
-
-        The variant grid (product matrix) creates virtual NewId records
-        via ``@api.onchange('grid')``.  During that onchange the ORM
-        never calls ``create()`` and never triggers individual
-        ``@api.onchange('product_id')`` callbacks on each line.
-        This means ``uom_mode`` stays at its field default ``'unit'``
-        even for products whose native UoM is kg.
-
-        This helper detects that inconsistency and silently flips
-        ``uom_mode`` to ``'kg'`` **before** the compute runs, so
-        ``visual_qty`` always equals ``product_uom_qty`` for weight
-        items coming from the grid.
-        """
-        weight_categ = self._guapante_weight_categ()
-        for line in self:
-            if not line.product_id:
-                continue
-            is_weight = self._guapante_is_weight_product(
-                line.product_id, weight_categ,
-            )
-            mode = line.uom_mode or 'unit'
-
-            # Weight product stuck on 'unit' → switch to 'kg'
-            if is_weight and mode == 'unit':
-                if not line.product_packaging_id:
-                    line.uom_mode = 'kg'
-
-            # Non-weight product stuck on 'kg'/'g' → switch to 'unit'
-            elif not is_weight and mode in ('kg', 'g'):
-                line.uom_mode = 'unit'
-
     # ── ORM overrides ─────────────────────────────────────────────
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Set correct uom_mode on programmatic creation (e.g. save).
+        """Set correct uom_mode on programmatic creation.
 
         Only injects uom_mode when the caller did NOT explicitly
-        include it in the vals dict (pure programmatic creation,
-        e.g. from an API or a wizard).  When the form UI saves,
-        uom_mode IS always present because the field is on the view,
-        so we respect the user's choice.
+        include it in the vals dict.
         """
         weight_categ = self._guapante_weight_categ()
         for vals in vals_list:
             if 'product_id' not in vals:
                 continue
             if 'uom_mode' in vals:
-                continue  # User/UI set it explicitly — respect it
+                continue
             product = self.env['product.product'].browse(vals['product_id'])
             is_weight = self._guapante_is_weight_product(
                 product, weight_categ,
@@ -111,6 +75,7 @@ class SaleOrderLine(models.Model):
 
     @api.onchange('product_id')
     def _onchange_product_id_uom_mode(self) -> None:
+        """Set uom_mode when user selects a product manually."""
         weight_categ = self._guapante_weight_categ()
         for line in self:
             if not line.product_id:
@@ -118,22 +83,21 @@ class SaleOrderLine(models.Model):
             is_weight = self._guapante_is_weight_product(
                 line.product_id, weight_categ,
             )
-            # Siempre ajustar al cambiar producto:
-            # peso → kg, no-peso → unit
             line.uom_mode = 'kg' if is_weight else 'unit'
 
-    @api.onchange('visual_qty', 'uom_mode')
-    def _onchange_visual_qty_uom_mode_sync(self) -> None:
-        """Preservación visual: mantiene el número al cambiar modo.
-
-        Al cambiar uom_mode, el inverse toma el visual_qty actual
-        y recalcula product_uom_qty para el nuevo modo.
-        Ej: 7 en modo 'unit' → puq = 7 × 0.65 = 4.55 kg.
-        """
+    @api.onchange('visual_qty')
+    def _onchange_visual_qty_sync(self) -> None:
+        """When user edits visual_qty, recalculate product_uom_qty."""
         self._inverse_visual_qty()
 
     @api.onchange('uom_mode')
-    def _onchange_uom_mode_warning(self):
+    def _onchange_uom_mode_handler(self) -> None:
+        """Handle unit mode switches with validation and conversion.
+
+        Conversion rules:
+          kg ↔ g   → CONVERT visual_qty (same physical quantity)
+          kg/g ↔ u → PRESERVE visual_qty (recalculate product_uom_qty)
+        """
         weight_categ = self._guapante_weight_categ()
         for line in self:
             if not line.product_id or not line.uom_mode:
@@ -141,13 +105,15 @@ class SaleOrderLine(models.Model):
             is_weight = self._guapante_is_weight_product(
                 line.product_id, weight_categ,
             )
+            mode = line.uom_mode
             has_packaging = bool(
                 line.product_id.packaging_ids.filtered(
                     lambda p: p.sales and p.qty > 0
                 )
             )
 
-            if is_weight and line.uom_mode == 'unit' and not has_packaging:
+            # ── Validation ────────────────────────────────
+            if is_weight and mode == 'unit' and not has_packaging:
                 line.uom_mode = 'kg'
                 return {
                     'warning': {
@@ -159,7 +125,7 @@ class SaleOrderLine(models.Model):
                         ),
                     },
                 }
-            elif not is_weight and line.uom_mode in ['kg', 'g']:
+            elif not is_weight and mode in ['kg', 'g']:
                 line.uom_mode = 'unit'
                 return {
                     'warning': {
@@ -171,22 +137,25 @@ class SaleOrderLine(models.Model):
                     },
                 }
 
+            # ── Conversion / Preservation ─────────────────
+            if is_weight and mode in ('kg', 'g'):
+                # CONVERT: recalculate visual_qty from product_uom_qty
+                if mode == 'kg':
+                    line.visual_qty = line.product_uom_qty
+                else:  # g
+                    line.visual_qty = line.product_uom_qty * 1000.0
+            else:
+                # PRESERVE: keep visual_qty, recalculate product_uom_qty
+                line._inverse_visual_qty()
+
     # ── Compute & Inverse ─────────────────────────────────────────
 
     @api.depends('product_uom_qty', 'product_id', 'product_packaging_id')
     def _compute_visual_qty(self) -> None:
         """Convert internal product_uom_qty → visual_qty for display.
 
-        CRITICAL: auto-corrects uom_mode for lines created by the
-        variant grid (product matrix), which bypasses create() and
-        all per-line onchanges.
-
-        Strategy:
-          1. Try to write the corrected uom_mode on the record
-             (works for virtual/NewId records in onchange context).
-          2. Also use a local 'effective_mode' variable for the
-             calculation (works even if the ORM silently discards
-             the field write on persisted records).
+        Auto-corrects uom_mode for lines created by the variant grid
+        (product matrix), which bypasses create() and all onchanges.
         """
         weight_categ = self._guapante_weight_categ()
         for line in self:
@@ -199,7 +168,7 @@ class SaleOrderLine(models.Model):
                 line.product_id, weight_categ,
             )
 
-            # ── Auto-correct uom_mode ─────────────────────────
+            # ── Auto-correct uom_mode (grid fix) ─────────
             effective_mode = mode
             if is_weight and mode == 'unit' and not line.product_packaging_id:
                 effective_mode = 'kg'
@@ -208,7 +177,7 @@ class SaleOrderLine(models.Model):
                 effective_mode = 'unit'
                 line.uom_mode = 'unit'
 
-            # ── Calculate visual_qty ──────────────────────────
+            # ── Calculate visual_qty ──────────────────────
             if effective_mode == 'g':
                 line.visual_qty = line.product_uom_qty * 1000.0
             elif effective_mode == 'kg':
@@ -241,8 +210,6 @@ class SaleOrderLine(models.Model):
         se ignora para evitar que el peso del operario pise la
         cantidad pedida por el cliente.
         """
-        # Si estamos en un flujo de inventario/preparación, NO ejecutar
-        # el inverse para proteger product_uom_qty del cliente.
         if self.env.context.get('skip_inverse_visual_qty'):
             return
 
