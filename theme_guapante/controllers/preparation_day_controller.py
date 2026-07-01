@@ -18,6 +18,8 @@ class PreparationDayExport(http.Controller):
             return request.not_found()
 
         # Agrupar las líneas de preparación
+        # Incluir zone_name en la clave para no fusionar
+        # líneas de distintas sedes/zonas del mismo cliente.
         demand = {}
         for line in session.line_ids:
             pid = line.product_product_id.id
@@ -27,8 +29,9 @@ class PreparationDayExport(http.Controller):
             uom_mode = line.uom_mode or 'unit'
             pkg_name = line.packaging_name or ''
             cust_name = line.main_customer_name or 'Sin Cliente'
+            zone = line.zone_name or ''
 
-            key = (pid, desc, uom_mode, pkg_name, cust_name)
+            key = (pid, desc, uom_mode, pkg_name, cust_name, zone)
             if key not in demand:
                 demand[key] = {
                     'product_id': line.product_product_id,
@@ -36,6 +39,7 @@ class PreparationDayExport(http.Controller):
                     'uom_mode': uom_mode,
                     'packaging_name': pkg_name,
                     'customer_name': cust_name,
+                    'zone_name': zone,
                     'total_kg': 0.0,
                     'lines': [],
                 }
@@ -149,6 +153,7 @@ class PreparationDayExport(http.Controller):
             'Producto', 
             'Especificaciones / Atributos', 
             'Cliente',
+            'Zona',
             'Cantidad Pedida', 
             'UdM Cliente', 
             'Total en Kilogramos', 
@@ -160,7 +165,12 @@ class PreparationDayExport(http.Controller):
             worksheet.write(2, col_num, header, header_format)
 
         # Ordenar datos: Primero por nombre de producto, luego por cliente, luego especificación
-        sorted_demand = sorted(demand.values(), key=lambda x: (x['product_id'].name or '', x['customer_name'] or '', x['description'] or ''))
+        sorted_demand = sorted(demand.values(), key=lambda x: (
+            x['product_id'].name or '',
+            x['customer_name'] or '',
+            x['zone_name'] or '',
+            x['description'] or '',
+        ))
 
         # Rellenar datos
         row_idx = 3
@@ -169,6 +179,7 @@ class PreparationDayExport(http.Controller):
             desc = data['description']
             pkg = data['packaging_name']
             cust = data['customer_name']
+            zone = data['zone_name']
             
             spec = desc
             if pkg and pkg not in desc:
@@ -185,13 +196,14 @@ class PreparationDayExport(http.Controller):
             worksheet.write(row_idx, 0, product.name or '', cell_format)
             worksheet.write(row_idx, 1, spec or '', cell_format)
             worksheet.write(row_idx, 2, cust or '', cell_format)
-            worksheet.write(row_idx, 3, data['total_visual_qty'], number_format_qty)
-            worksheet.write(row_idx, 4, uom_label, cell_center_format)
-            worksheet.write(row_idx, 5, data['total_kg'], number_format_kg)
-            worksheet.write(row_idx, 6, stock_dict.get(product.id, 0.0), number_format_kg)
+            worksheet.write(row_idx, 3, zone or '', cell_format)
+            worksheet.write(row_idx, 4, data['total_visual_qty'], number_format_qty)
+            worksheet.write(row_idx, 5, uom_label, cell_center_format)
+            worksheet.write(row_idx, 6, data['total_kg'], number_format_kg)
+            worksheet.write(row_idx, 7, stock_dict.get(product.id, 0.0), number_format_kg)
             
             order_count = len(set(line.sale_order_id.id for line in data['lines']))
-            worksheet.write(row_idx, 7, order_count, cell_center_format)
+            worksheet.write(row_idx, 8, order_count, cell_center_format)
             
             row_idx += 1
 
@@ -202,16 +214,18 @@ class PreparationDayExport(http.Controller):
             desc = data['description']
             pkg = data['packaging_name']
             cust = data['customer_name']
+            zone = data['zone_name']
             spec = f"{desc} ({pkg})" if pkg and pkg not in desc else desc
 
             col_widths[0] = max(col_widths[0], len(product_name))
             col_widths[1] = max(col_widths[1], len(spec))
             col_widths[2] = max(col_widths[2], len(cust))
-            col_widths[3] = max(col_widths[3], len(str(round(data['total_visual_qty'], 2))))
-            col_widths[4] = max(col_widths[4], 10) # 'unidades' o 'kg'
-            col_widths[5] = max(col_widths[5], len(str(round(data['total_kg'], 3))))
-            col_widths[6] = max(col_widths[6], len(str(round(stock_dict.get(data['product_id'].id, 0.0), 3))))
-            col_widths[7] = max(col_widths[7], 15)
+            col_widths[3] = max(col_widths[3], len(zone))
+            col_widths[4] = max(col_widths[4], len(str(round(data['total_visual_qty'], 2))))
+            col_widths[5] = max(col_widths[5], 10)
+            col_widths[6] = max(col_widths[6], len(str(round(data['total_kg'], 3))))
+            col_widths[7] = max(col_widths[7], len(str(round(stock_dict.get(data['product_id'].id, 0.0), 3))))
+            col_widths[8] = max(col_widths[8], 15)
 
         for col_num, width in enumerate(col_widths):
             worksheet.set_column(col_num, col_num, width + 3)
