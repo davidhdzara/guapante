@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vista de Arbol (Lista) para el Reporte -->
+    <record id="view_guapante_kardex_report_tree" model="ir.ui.view">
+        <field name="name">guapante.kardex.report.tree</field>
+        <field name="model">guapante.kardex.report</field>
+        <field name="arch" type="xml">
+            <tree string="Kardex" create="false" edit="false" delete="false">
+                <field name="product_id"/>
+                <field name="product_uom_id" groups="uom.group_uom"/>
+                <field name="initial_qty" sum="Total Inicial"/>
+                <field name="in_qty" sum="Total Comprado"/>
+                <field name="out_qty" sum="Total Vendido"/>
+                <field name="theoretical_qty" sum="Debe Tener"/>
+                <field name="real_qty" sum="En Inventario"/>
+                <field name="difference" sum="Diferencia"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Vista de Pivot para el Reporte (Similar a Analisis de Movimientos) -->
+    <record id="view_guapante_kardex_report_pivot" model="ir.ui.view">
+        <field name="name">guapante.kardex.report.pivot</field>
+        <field name="model">guapante.kardex.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Kardex" disable_linking="True">
+                <field name="product_id" type="row"/>
+                <field name="initial_qty" type="measure"/>
+                <field name="in_qty" type="measure"/>
+                <field name="out_qty" type="measure"/>
+                <field name="theoretical_qty" type="measure"/>
+                <field name="real_qty" type="measure"/>
+                <field name="difference" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Vista Formulario del Wizard -->
+    <record id="view_guapante_kardex_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.kardex.wizard.form</field>
+        <field name="model">guapante.kardex.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Generar Kardex">
+                <group>
+                    <group>
+                        <field name="date_from"/>
+                        <field name="date_to"/>
+                    </group>
+                    <group>
+                        <field name="location_id"/>
+                    </group>
+                </group>
+                <footer>
+                    <button string="Generar Reporte" name="generate_kardex" type="object" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Accion para abrir el Wizard -->
+    <record id="action_guapante_kardex_wizard" model="ir.actions.act_window">
+        <field name="name">Kardex Guapante</field>
+        <field name="res_model">guapante.kardex.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Menu en Inventario -> Reportes -->
+    <menuitem id="menu_guapante_kardex_report"
+              name="Kardex Guapante"
+              parent="stock.menu_warehouse_report"
+              action="action_guapante_kardex_wizard"
+              sequence="100"/>
+
+</odoo>
