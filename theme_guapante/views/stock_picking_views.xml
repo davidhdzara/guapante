@@ -32,7 +32,6 @@
                        column_invisible="parent.is_recolectar_operation == False"
                        readonly="parent.state in ('done', 'cancel')"/>
                 <field name="extra_validation" 
-                       widget="boolean_toggle"
                        column_invisible="parent.is_recolectar_operation == False"
                        readonly="parent.state in ('done', 'cancel')"/>
             </xpath>
