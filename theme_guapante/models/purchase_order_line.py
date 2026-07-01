@@ -169,12 +169,19 @@ class PurchaseOrderLine(models.Model):
     def _compute_visual_qty(self):
         """Convert internal product_qty → visual_qty for display.
 
-        CRITICAL: calls _guapante_ensure_uom_mode() FIRST to auto-fix
-        the uom_mode for lines created by the variant grid, which
-        bypasses create() and all onchanges.
-        """
-        self._guapante_ensure_uom_mode()
+        CRITICAL: auto-corrects uom_mode for lines created by the
+        variant grid (product matrix), which bypasses create() and
+        all per-line onchanges.  The grid creates virtual NewId
+        records where uom_mode keeps its default 'unit' even for
+        weight products (kg).
 
+        Strategy:
+          1. Try to write the corrected uom_mode on the record
+             (works for virtual/NewId records in onchange context).
+          2. Also use a local 'effective_mode' variable for the
+             calculation (works even if the ORM silently discards
+             the field write on persisted records).
+        """
         weight_categ = self._guapante_weight_categ()
         for line in self:
             if not line.product_qty:
@@ -186,9 +193,21 @@ class PurchaseOrderLine(models.Model):
                 line.product_id, weight_categ,
             )
 
-            if mode == 'g':
+            # ── Auto-correct uom_mode ─────────────────────────
+            effective_mode = mode
+            if is_weight and mode == 'unit' and not line.product_packaging_id:
+                # Weight product stuck on default 'unit' with no
+                # packaging → came from the grid.  Fix to 'kg'.
+                effective_mode = 'kg'
+                line.uom_mode = 'kg'  # Update record for UI display
+            elif not is_weight and mode in ('kg', 'g'):
+                effective_mode = 'unit'
+                line.uom_mode = 'unit'
+
+            # ── Calculate visual_qty ──────────────────────────
+            if effective_mode == 'g':
                 line.visual_qty = line.product_qty * 1000.0
-            elif mode == 'kg':
+            elif effective_mode == 'kg':
                 line.visual_qty = line.product_qty
             else:  # unit
                 if is_weight:
