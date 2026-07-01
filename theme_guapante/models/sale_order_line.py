@@ -86,17 +86,25 @@ class SaleOrderLine(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Set correct uom_mode on programmatic creation (e.g. save)."""
+        """Set correct uom_mode on programmatic creation (e.g. save).
+
+        Only injects uom_mode when the caller did NOT explicitly
+        include it in the vals dict (pure programmatic creation,
+        e.g. from an API or a wizard).  When the form UI saves,
+        uom_mode IS always present because the field is on the view,
+        so we respect the user's choice.
+        """
         weight_categ = self._guapante_weight_categ()
         for vals in vals_list:
             if 'product_id' not in vals:
                 continue
+            if 'uom_mode' in vals:
+                continue  # User/UI set it explicitly — respect it
             product = self.env['product.product'].browse(vals['product_id'])
             is_weight = self._guapante_is_weight_product(
                 product, weight_categ,
             )
-            if 'uom_mode' not in vals or vals.get('uom_mode') == 'unit':
-                vals['uom_mode'] = 'kg' if is_weight else 'unit'
+            vals['uom_mode'] = 'kg' if is_weight else 'unit'
         return super().create(vals_list)
 
     # ── Onchanges ─────────────────────────────────────────────────
