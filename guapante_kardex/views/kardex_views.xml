@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vista de Busqueda (Filtros requeridos) -->
+    <record id="view_guapante_kardex_daily_search" model="ir.ui.view">
+        <field name="name">guapante.kardex.daily.search</field>
+        <field name="model">guapante.kardex.daily</field>
+        <field name="arch" type="xml">
+            <search string="Buscar en Kardex">
+                <field name="date"/>
+                <field name="product_id"/>
+                <field name="location_id"/>
+                
+                <filter string="Hoy" name="filter_today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="Esta Semana" name="filter_this_week" domain="[
+                    ('date', '&gt;=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d')),
+                    ('date', '&lt;=', (context_today() + datetime.timedelta(days=6 - context_today().weekday())).strftime('%Y-%m-%d'))
+                ]"/>
+                <filter string="Este Mes" name="filter_this_month" domain="[
+                    ('date', '&gt;=', context_today().strftime('%Y-%m-01')),
+                    ('date', '&lt;', (context_today() + relativedelta(months=1)).strftime('%Y-%m-01'))
+                ]"/>
+                
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Fecha" name="group_by_date" context="{'group_by':'date'}"/>
+                    <filter string="Producto" name="group_by_product" context="{'group_by':'product_id'}"/>
+                    <filter string="Ubicación" name="group_by_location" context="{'group_by':'location_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Vista de Lista para el Reporte -->
+    <record id="view_guapante_kardex_daily_list" model="ir.ui.view">
+        <field name="name">guapante.kardex.daily.list</field>
+        <field name="model">guapante.kardex.daily</field>
+        <field name="arch" type="xml">
+            <list string="Kardex" create="false" edit="false" delete="false" default_order="date desc">
+                <field name="date"/>
+                <field name="product_id"/>
+                <field name="location_id" optional="hide"/>
+                <field name="qty_start" sum="Total Inicial"/>
+                <field name="qty_in" sum="Total Comprado"/>
+                <field name="qty_out" sum="Total Vendido"/>
+                <field name="qty_scrap" sum="Total Desperdicios" decoration-warning="qty_scrap &gt; 0"/>
+                <field name="qty_theoretical" sum="Debe Tener"/>
+                <field name="qty_real" sum="En Inventario"/>
+                <field name="difference" sum="Diferencia" decoration-danger="difference &lt; 0"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vista de Pivot para el Reporte (Mismo diseño que Análisis de Movimientos) -->
+    <record id="view_guapante_kardex_daily_pivot" model="ir.ui.view">
+        <field name="name">guapante.kardex.daily.pivot</field>
+        <field name="model">guapante.kardex.daily</field>
+        <field name="arch" type="xml">
+            <pivot string="Kardex" disable_linking="True" sample="1">
+                <field name="date" type="col"/>
+                <field name="product_id" type="row"/>
+                <field name="qty_start" type="measure"/>
+                <field name="qty_in" type="measure"/>
+                <field name="qty_out" type="measure"/>
+                <field name="qty_scrap" type="measure"/>
+                <field name="qty_theoretical" type="measure"/>
+                <field name="qty_real" type="measure"/>
+                <field name="difference" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Vista Graph -->
+    <record id="view_guapante_kardex_daily_graph" model="ir.ui.view">
+        <field name="name">guapante.kardex.daily.graph</field>
+        <field name="model">guapante.kardex.daily</field>
+        <field name="arch" type="xml">
+            <graph string="Kardex">
+                <field name="date"/>
+                <field name="difference" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Accion para abrir el modelo -->
+    <record id="action_guapante_kardex_daily" model="ir.actions.act_window">
+        <field name="name">Kardex Guapante</field>
+        <field name="res_model">guapante.kardex.daily</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_guapante_kardex_daily_search"/>
+        <field name="context">{'search_default_filter_today': 1}</field>
+    </record>
+
+    <!-- Menu en Inventario -> Reportes -->
+    <menuitem id="menu_guapante_kardex_report"
+              name="Kardex Guapante"
+              parent="stock.menu_warehouse_report"
+              action="action_guapante_kardex_daily"
+              sequence="100"/>
+
+</odoo>

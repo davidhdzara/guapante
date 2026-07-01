@@ -27,6 +27,8 @@
 !l10n_co_bank_payment_export/**
 !insotech_document_layouts/
 !insotech_document_layouts/**
+!guapante_kardex/
+!guapante_kardex/**
 !requirements.txt
 
 # Always ignore compiled Python files
