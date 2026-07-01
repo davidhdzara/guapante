@@ -29,7 +29,7 @@ class GuapanteKardexDaily(models.Model):
             record.qty_theoretical = record.qty_start + record.qty_in - record.qty_out - record.qty_scrap
             
             # Si es el registro de hoy, obtener el stock actual real
-            if record.date == date.today():
+            if record.date == fields.Date.context_today(self):
                 quant = self.env['stock.quant'].search([
                     ('product_id', '=', record.product_id.id),
                     ('location_id', '=', record.location_id.id)
@@ -47,7 +47,7 @@ class GuapanteKardexDaily(models.Model):
         Cron job method. Se ejecuta a las 00:01 para crear el registro del nuevo dia
         basado en el stock real del quant en este instante.
         """
-        today = date.today()
+        today = fields.Date.context_today(self)
         # Todas las ubicaciones internas (compatible con multi-almacen)
         internal_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
         if not internal_locations:
@@ -85,7 +85,7 @@ class GuapanteKardexDaily(models.Model):
           - Venta (out): Interno -> Cliente
           - Desperdicio (scrap): Interno -> Desecho o Ajuste negativo de inventario
         """
-        today = date.today()
+        today = fields.Date.context_today(self)
         for move in moves.filtered(lambda m: m.state == 'done'):
             # Detectar si es entrada o salida de una ubicacion interna
             is_in = move.location_dest_id.usage == 'internal'

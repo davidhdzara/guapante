@@ -46,29 +46,40 @@ class PurchaseOrderLine(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Set correct uom_mode on programmatic creation.
+        """Set correct uom_mode and ensure a reference price.
 
         Only injects uom_mode when the caller did NOT explicitly
-        include it in the vals dict.
+        include it in the vals dict.  Also sets price_unit from the
+        product's standard_price if no price was provided.
         """
         weight_categ = self._guapante_weight_categ()
         for vals in vals_list:
             if 'product_id' not in vals:
                 continue
-            if 'uom_mode' in vals:
-                continue
             product = self.env['product.product'].browse(vals['product_id'])
-            is_weight = self._guapante_is_weight_product(
-                product, weight_categ,
-            )
-            vals['uom_mode'] = 'kg' if is_weight else 'unit'
+
+            # Set uom_mode if not explicitly provided
+            if 'uom_mode' not in vals:
+                is_weight = self._guapante_is_weight_product(
+                    product, weight_categ,
+                )
+                vals['uom_mode'] = 'kg' if is_weight else 'unit'
+
+            # Set price from product cost if no price provided
+            if not vals.get('price_unit') and product.standard_price:
+                vals['price_unit'] = product.standard_price
+
         return super().create(vals_list)
 
     # ── Onchanges ─────────────────────────────────────────────────
 
     @api.onchange('product_id')
     def _onchange_product_id_uom_mode(self):
-        """Set uom_mode when user selects a product manually."""
+        """Set uom_mode and ensure a reference price when product changes.
+
+        If Odoo's native onchange didn't set a price (e.g. no supplier
+        on the PO), fall back to the product's standard_price (cost).
+        """
         weight_categ = self._guapante_weight_categ()
         for line in self:
             if not line.product_id:
@@ -77,6 +88,10 @@ class PurchaseOrderLine(models.Model):
                 line.product_id, weight_categ,
             )
             line.uom_mode = 'kg' if is_weight else 'unit'
+
+            # Ensure a reference price exists
+            if not line.price_unit and line.product_id.standard_price:
+                line.price_unit = line.product_id.standard_price
 
     @api.onchange('visual_qty')
     def _onchange_visual_qty_sync(self):
