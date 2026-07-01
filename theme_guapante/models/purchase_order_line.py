@@ -92,9 +92,11 @@ class PurchaseOrderLine(models.Model):
             is_weight = weight_categ and line.product_id and line.product_id.uom_id.category_id == weight_categ
             
             if mode == 'g':
+                line.product_packaging_qty = 0.0
                 line.product_qty = qty / 1000.0
                 line.product_packaging_id = False
             elif mode == 'kg':
+                line.product_packaging_qty = 0.0
                 line.product_qty = qty
                 line.product_packaging_id = False
             else: # unit
@@ -103,12 +105,15 @@ class PurchaseOrderLine(models.Model):
                     if not packaging:
                         packaging = line.product_id.packaging_ids.filtered(lambda p: p.purchase and p.qty > 0)[:1]
                     if packaging:
+                        line.product_packaging_qty = qty
                         line.product_qty = qty * packaging.qty
                         line.product_packaging_id = packaging.id
                     else:
+                        line.product_packaging_qty = 0.0
                         line.product_qty = qty
                         line.product_packaging_id = False
                 else:
+                    line.product_packaging_qty = 0.0
                     line.product_qty = qty
                     line.product_packaging_id = False
 
