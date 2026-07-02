@@ -11,6 +11,7 @@
                 <field name="product_id"/>
                 <field name="categ_id"/>
                 <field name="partner_id"/>
+                <field name="invoice_id"/>
                 <field name="user_id"/>
                 <filter string="Fecha" name="filter_date" date="date"/>
                 
@@ -20,6 +21,7 @@
                     <filter string="Producto" name="group_by_product" context="{'group_by':'product_id'}"/>
                     <filter string="Categoría" name="group_by_categ" context="{'group_by':'categ_id'}"/>
                     <filter string="Cliente" name="group_by_partner" context="{'group_by':'partner_id'}"/>
+                    <filter string="Factura" name="group_by_invoice" context="{'group_by':'invoice_id'}"/>
                     <filter string="Vendedor" name="group_by_user" context="{'group_by':'user_id'}"/>
                 </group>
             </search>
@@ -61,6 +63,7 @@
             <list string="Ganancia Diaria" create="false" edit="false" delete="false" default_order="date desc">
                 <field name="date"/>
                 <field name="partner_id" optional="show"/>
+                <field name="invoice_id" optional="show"/>
                 <field name="product_id"/>
                 <field name="categ_id" optional="hide"/>
                 <field name="user_id" optional="hide"/>

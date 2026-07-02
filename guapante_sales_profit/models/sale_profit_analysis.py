@@ -10,6 +10,7 @@ class SaleProfitAnalysis(models.Model):
     product_id = fields.Many2one('product.product', string='Producto', readonly=True)
     categ_id = fields.Many2one('product.category', string='Categoría de Producto', readonly=True)
     partner_id = fields.Many2one('res.partner', string='Cliente', readonly=True)
+    invoice_id = fields.Many2one('account.move', string='Factura', readonly=True)
     user_id = fields.Many2one('res.users', string='Vendedor', readonly=True)
     company_id = fields.Many2one('res.company', string='Compañía', readonly=True)
 
@@ -30,6 +31,7 @@ class SaleProfitAnalysis(models.Model):
                     aml.product_id AS product_id,
                     pt.categ_id AS categ_id,
                     am.partner_id AS partner_id,
+                    am.id AS invoice_id,
                     am.invoice_user_id AS user_id,
                     am.company_id AS company_id,
                     
@@ -77,6 +79,7 @@ class SaleProfitAnalysis(models.Model):
                     aml.product_id,
                     pt.categ_id,
                     am.partner_id,
+                    am.id,
                     am.invoice_user_id,
                     am.company_id
             )
