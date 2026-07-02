@@ -19,7 +19,6 @@ class SaleProfitAnalysis(models.Model):
     total_sales = fields.Float(string='Total Ventas (Ingreso)', readonly=True)
     total_cost = fields.Float(string='Total Compras (Costo)', readonly=True)
     profit = fields.Float(string='Ganancia del Día', readonly=True)
-    margin_percent = fields.Float(string='Margen %', readonly=True, group_operator='avg')
 
     def init(self):
         tools.drop_view_if_exists(self.env.cr, self._table)
@@ -60,17 +59,7 @@ class SaleProfitAnalysis(models.Model):
                     - SUM(CASE WHEN am.move_type = 'out_invoice' 
                           THEN COALESCE(sol.purchase_price, CAST(pp.standard_price->>am.company_id::text AS numeric), 0) * aml.quantity
                           ELSE -(COALESCE(sol.purchase_price, CAST(pp.standard_price->>am.company_id::text AS numeric), 0) * aml.quantity) 
-                      END)) AS profit,
-                      
-                    -- Cálculo de Margen porcentual seguro
-                    CASE WHEN SUM(CASE WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal ELSE -aml.price_subtotal END) != 0
-                         THEN ((SUM(CASE WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal ELSE -aml.price_subtotal END)
-                              - SUM(CASE WHEN am.move_type = 'out_invoice' 
-                                    THEN COALESCE(sol.purchase_price, CAST(pp.standard_price->>am.company_id::text AS numeric), 0) * aml.quantity
-                                    ELSE -(COALESCE(sol.purchase_price, CAST(pp.standard_price->>am.company_id::text AS numeric), 0) * aml.quantity) 
-                                END)) / SUM(CASE WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal ELSE -aml.price_subtotal END)) * 100
-                         ELSE 0
-                    END AS margin_percent
+                      END)) AS profit
 
                 FROM account_move_line aml
                 JOIN account_move am ON am.id = aml.move_id
