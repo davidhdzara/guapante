@@ -62,7 +62,7 @@ class SaleProfitAnalysis(models.Model):
                           ELSE -(COALESCE(sol.purchase_price, CAST(pp.standard_price->>am.company_id::text AS numeric), 0) * aml.quantity) 
                       END)) AS profit,
                       
-                    -- Cálculo de Margen % seguro
+                    -- Cálculo de Margen porcentual seguro
                     CASE WHEN SUM(CASE WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal ELSE -aml.price_subtotal END) != 0
                          THEN ((SUM(CASE WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal ELSE -aml.price_subtotal END)
                               - SUM(CASE WHEN am.move_type = 'out_invoice' 
