@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Search View -->
+    <record id="view_sale_profit_analysis_search" model="ir.ui.view">
+        <field name="name">sale.profit.analysis.search</field>
+        <field name="model">sale.profit.analysis</field>
+        <field name="arch" type="xml">
+            <search string="Análisis de Ganancia Diaria">
+                <field name="date"/>
+                <field name="product_id"/>
+                <field name="categ_id"/>
+                <field name="partner_id"/>
+                <field name="invoice_id"/>
+                <field name="user_id"/>
+                <filter string="Fecha" name="filter_date" date="date"/>
+                
+                <separator/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Fecha" name="group_by_date" context="{'group_by':'date'}"/>
+                    <filter string="Producto" name="group_by_product" context="{'group_by':'product_id'}"/>
+                    <filter string="Categoría" name="group_by_categ" context="{'group_by':'categ_id'}"/>
+                    <filter string="Cliente" name="group_by_partner" context="{'group_by':'partner_id'}"/>
+                    <filter string="Factura" name="group_by_invoice" context="{'group_by':'invoice_id'}"/>
+                    <filter string="Vendedor" name="group_by_user" context="{'group_by':'user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Pivot View -->
+    <record id="view_sale_profit_analysis_pivot" model="ir.ui.view">
+        <field name="name">sale.profit.analysis.pivot</field>
+        <field name="model">sale.profit.analysis</field>
+        <field name="arch" type="xml">
+            <pivot string="Ganancia Diaria" disable_linking="True" sample="1">
+                <field name="date" type="col"/>
+                <field name="product_id" type="row"/>
+                <field name="total_cost" type="measure"/>
+                <field name="total_sales" type="measure"/>
+                <field name="profit" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Graph View -->
+    <record id="view_sale_profit_analysis_graph" model="ir.ui.view">
+        <field name="name">sale.profit.analysis.graph</field>
+        <field name="model">sale.profit.analysis</field>
+        <field name="arch" type="xml">
+            <graph string="Ganancia Diaria" type="bar" sample="1">
+                <field name="date"/>
+                <field name="profit" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- List View -->
+    <record id="view_sale_profit_analysis_list" model="ir.ui.view">
+        <field name="name">sale.profit.analysis.list</field>
+        <field name="model">sale.profit.analysis</field>
+        <field name="arch" type="xml">
+            <list string="Ganancia Diaria" create="false" edit="false" delete="false" default_order="date desc">
+                <field name="date"/>
+                <field name="partner_id" optional="show"/>
+                <field name="invoice_id" optional="show"/>
+                <field name="product_id"/>
+                <field name="categ_id" optional="hide"/>
+                <field name="user_id" optional="hide"/>
+                <field name="quantity" sum="Total Cantidad" optional="show"/>
+                <field name="total_cost" sum="Total Compras"/>
+                <field name="total_sales" sum="Total Ventas"/>
+                <field name="profit" sum="Total Ganancia" decoration-success="profit &gt; 0" decoration-danger="profit &lt; 0"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_sale_profit_analysis" model="ir.actions.act_window">
+        <field name="name">Análisis de Ganancia Diaria</field>
+        <field name="res_model">sale.profit.analysis</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="search_view_id" ref="view_sale_profit_analysis_search"/>
+        <field name="context">{'search_default_filter_date': 1, 'search_default_group_by_date': 1}</field>
+    </record>
+
+    <!-- Menu Accounting -->
+    <menuitem id="menu_account_sale_profit_analysis"
+              name="Análisis de Ganancia Diaria"
+              parent="account.account_reports_management_menu"
+              action="action_sale_profit_analysis"
+              sequence="100"/>
+
+    <!-- Menu Sales -->
+    <menuitem id="menu_sale_profit_analysis"
+              name="Análisis de Ganancia Diaria"
+              parent="sale.menu_sale_report"
+              action="action_sale_profit_analysis"
+              sequence="100"/>
+
+</odoo>
