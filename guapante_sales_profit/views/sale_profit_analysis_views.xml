@@ -12,7 +12,7 @@
                 <field name="categ_id"/>
                 <field name="partner_id"/>
                 <field name="user_id"/>
-                <filter string="Fecha" name="filter_date" date="date" default_period="this_month"/>
+                <filter string="Fecha" name="filter_date" date="date"/>
                 
                 <separator/>
                 <group expand="0" string="Agrupar Por">
