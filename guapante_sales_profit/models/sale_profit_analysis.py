@@ -44,7 +44,7 @@ class SaleProfitAnalysis(models.Model):
 
                     SUM(CASE 
                         WHEN am.move_type = 'out_invoice' THEN aml.price_subtotal
-                        WHEN am.move_type = 'out_refund'  THEN -am.price_subtotal -- aml.price_subtotal usually positive for refunds, so minus
+                        WHEN am.move_type = 'out_refund'  THEN -aml.price_subtotal -- aml.price_subtotal usually positive for refunds, so minus
                         ELSE 0
                     END) AS total_sales,
                     
