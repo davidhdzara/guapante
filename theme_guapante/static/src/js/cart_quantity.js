@@ -106,7 +106,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
     _getStep: function () {
         switch (this.uomMode) {
             case 'kg': return 0.5;
-            case 'g': return 50;
+            case 'g': return 10;
             default: return 1;
         }
     },
@@ -114,7 +114,7 @@ publicWidget.registry.GuapanteCartQuantity = publicWidget.Widget.extend({
     _getMin: function () {
         switch (this.uomMode) {
             case 'kg': return 0.1;
-            case 'g': return 50;
+            case 'g': return 10;
             default: return 1;
         }
     },

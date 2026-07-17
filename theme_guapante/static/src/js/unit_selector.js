@@ -114,7 +114,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         } else if (previousMode === 'unit' && this.currentMode === 'kg') {
             $qtyInput.val(this._formatValue(Math.max(0.1, currentVal)));
         } else if (previousMode === 'unit' && this.currentMode === 'g') {
-            $qtyInput.val(this._formatValue(Math.max(50, Math.round(currentVal * 1000))));
+            $qtyInput.val(this._formatValue(Math.max(10, Math.round(currentVal * 1000))));
         }
         this._updateUIBasedOnMode();
     },
@@ -141,9 +141,9 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
                 $unitLabel.text('Kg').removeClass('d-none');
                 break;
             case 'g':
-                $qtyInput.attr('step', '50').attr('min', '50');
+                $qtyInput.attr('step', '10').attr('min', '10');
                 let val = this._parseValue($qtyInput.val());
-                if (val < 50) $qtyInput.val(this._formatValue(500));
+                if (val < 10) $qtyInput.val(this._formatValue(500));
                 else $qtyInput.val(this._formatValue(Math.round(val)));
                 $packagingSelector.addClass('d-none');
                 $packagingInfo.addClass('d-none');
@@ -207,7 +207,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         let val = this._parseValue(this.$('.guapante-qty-input').val());
         let step = 1;
         if (this.currentMode === 'kg') step = 0.5;
-        if (this.currentMode === 'g') step = 50;
+        if (this.currentMode === 'g') step = 10;
 
         this.$('.guapante-qty-input').val(this._formatValue(val + step)).trigger('change');
     },
@@ -216,7 +216,7 @@ publicWidget.registry.GuapanteUnitSelector = publicWidget.Widget.extend({
         let val = this._parseValue(this.$('.guapante-qty-input').val());
         let step = 1;
         if (this.currentMode === 'kg') step = 0.5;
-        if (this.currentMode === 'g') step = 50;
+        if (this.currentMode === 'g') step = 10;
 
         let newVal = val - step;
         const min = parseFloat(this.$('.guapante-qty-input').attr('min'));

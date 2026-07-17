@@ -355,7 +355,7 @@ publicWidget.registry.GuapanteSearchOverlay = publicWidget.Widget.extend({
                 $pkgSelect.addClass('d-none');
                 break;
             case 'g':
-                $qtyInput.val('500').attr('data-step', '50').attr('data-min', '50');
+                $qtyInput.val('500').attr('data-step', '10').attr('data-min', '10');
                 $pkgSelect.addClass('d-none');
                 break;
             case 'unit':
