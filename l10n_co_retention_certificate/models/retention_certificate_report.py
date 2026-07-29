@@ -3,13 +3,19 @@ import json
 
 from odoo import models, _
 from odoo.tools import SQL
+from odoo.tools.translate import _lt
 
-
+# _lt (traducción perezosa), no _ : este dict se evalúa una sola vez al
+# importar el módulo, sin contexto de idioma/request todavía. Usar _()
+# aquí generaba un warning ("no translation language detected") y
+# congelaba el valor en el idioma que hubiera en ese instante. _lt()
+# devuelve un objeto que se traduce cada vez que se usa (str(...)),
+# ya con el idioma real del usuario.
 RETENTION_TYPE_LABELS = {
-    'retefuente': _('Retención en la Fuente'),
-    'reteiva': _('Retención de IVA'),
-    'reteica': _('Retención de ICA'),
-    'parafiscal': _('Contribución Parafiscal'),
+    'retefuente': _lt('Retención en la Fuente'),
+    'reteiva': _lt('Retención de IVA'),
+    'reteica': _lt('Retención de ICA'),
+    'parafiscal': _lt('Contribución Parafiscal'),
 }
 
 # Orden de presentación de las secciones dentro del certificado, tal como

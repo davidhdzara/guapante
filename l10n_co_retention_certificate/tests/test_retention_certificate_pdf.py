@@ -145,7 +145,7 @@ class TestRetentionCertificatePdf(TransactionCase):
         })
 
         render_model = self.env[
-            'report.l10n_co_retention_certificate.report_retention_certificate'
+            'report.l10n_co_retention_certificate.document'
         ].with_context(options=options)
         values = render_model._get_report_values(
             [], data={'wizard_values': {

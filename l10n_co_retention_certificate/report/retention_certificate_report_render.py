@@ -21,7 +21,14 @@ class RetentionCertificateReport(models.AbstractModel):
     un nivel de detalle bajo el tercero.
     """
 
-    _name = 'report.l10n_co_retention_certificate.report_retention_certificate'
+    # Nombre corto a propósito: 'report.' + nombre del módulo
+    # (l10n_co_retention_certificate, ya 30 caracteres) + este último
+    # segmento se convierte en el nombre de tabla interno de Postgres
+    # (los puntos se cambian por guion bajo). Con un segmento largo aquí
+    # se supera el límite de 63 caracteres de Postgres para nombres de
+    # tabla — ya ocurrió una vez con 'report_retention_certificate' y
+    # tumbó la instalación del módulo. 'document' deja margen de sobra.
+    _name = 'report.l10n_co_retention_certificate.document'
     _description = 'Certificado de Retenciones - Render'
 
     def _get_report_values(self, docids, data=None):
