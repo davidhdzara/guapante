@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <template id="report_retention_certificate">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="partner">
+                    <t t-call="web.external_layout">
+                        <div class="page" style="font-size: 11px;">
+
+                            <h2 style="text-align: center; padding-top: 10px;">
+                                CERTIFICADO DE RETENCIONES
+                            </h2>
+                            <div class="row" style="text-align: center; margin-bottom: 15px;">
+                                <div class="col-12">
+                                    <strong>Año Gravable:</strong> <t t-out="current_year"/>
+                                    &#160;&#160;
+                                    <strong>De:</strong>
+                                    <span t-out="date_from" t-options="{'widget': 'date'}"/>
+                                    &#160;&#160;
+                                    <strong>A:</strong>
+                                    <span t-out="date_to" t-options="{'widget': 'date'}"/>
+                                </div>
+                            </div>
+
+                            <!-- Bloque Retenedor -->
+                            <div class="row" style="border: 1px solid black; margin: 0 0 8px 0; padding: 6px;">
+                                <div class="col-12">
+                                    <strong>Retenedor:</strong> <t t-out="company.display_name"/>
+                                </div>
+                                <div class="col-6">
+                                    <strong>NIT:</strong> <t t-out="company.vat"/>
+                                </div>
+                                <div class="col-6">
+                                    <strong>Dirección:</strong> <t t-out="company.street or ''"/>
+                                </div>
+                            </div>
+
+                            <!-- Bloque Retenido -->
+                            <div class="row" style="border: 1px solid black; margin: 0 0 15px 0; padding: 6px;">
+                                <div class="col-12">
+                                    <strong>Retuvo a:</strong> <t t-out="partner['partner_id'].display_name"/>
+                                </div>
+                                <div class="col-6">
+                                    <strong>NIT:</strong> <t t-out="partner['partner_id'].vat"/>
+                                </div>
+                                <div class="col-6">
+                                    <strong>Ciudad:</strong> <t t-out="partner['partner_id'].city or ''"/>
+                                </div>
+                                <div class="col-12">
+                                    <strong>Dirección:</strong> <t t-out="partner['partner_id'].street or ''"/>
+                                </div>
+                            </div>
+
+                            <!-- Una tabla por sección (tipo de retención) presente -->
+                            <t t-foreach="partner['sections']" t-as="section">
+                                <h4 style="margin-top: 10px; margin-bottom: 4px;">
+                                    <t t-out="section['name']"/>
+                                </h4>
+                                <table class="table o_ignore_layout_styling" style="border: 1px solid black; margin-bottom: 4px;">
+                                    <colgroup>
+                                        <col style="width: 70%;"/>
+                                        <col style="width: 15%;"/>
+                                        <col style="width: 15%;"/>
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="border: 1px solid black; padding: 3px;">
+                                                <strong>Concepto de la Retención</strong>
+                                            </th>
+                                            <th style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <strong>Monto Total sujeto a Retención</strong>
+                                            </th>
+                                            <th style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <strong>Valor Total Retención</strong>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="section['concepts']" t-as="concept">
+                                            <td style="border: 1px solid black; padding: 3px;">
+                                                <t t-out="concept.get('concept_name')"/>
+                                            </td>
+                                            <td style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <span t-out="concept.get('tax_base_amount', 0.0)"
+                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                            </td>
+                                            <td style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <span t-out="concept.get('balance', 0.0)"
+                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style="font-weight: bold;">
+                                            <td style="border: 1px solid black; padding: 3px;">
+                                                Subtotal <t t-out="section['name']"/>
+                                            </td>
+                                            <td style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <span t-out="section.get('tax_base_amount', 0.0)"
+                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                            </td>
+                                            <td style="border: 1px solid black; padding: 3px; text-align: right;">
+                                                <span t-out="section.get('balance', 0.0)"
+                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </t>
+
+                            <!-- Gran Total -->
+                            <div class="row" style="margin-top: 10px;">
+                                <div class="offset-4 col-8" style="border: 2px solid black; padding: 6px;">
+                                    <div class="text-center">
+                                        <strong>TOTAL DE IMPUESTOS DESCONTABLES</strong>
+                                    </div>
+                                    <div class="col-6" style="display: inline-block; width: 49%;">
+                                        <div><strong>MONTO DEL PAGO SUJETO A:</strong></div>
+                                        <span t-out="partner.get('tax_base_amount', 0.0)"
+                                              t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                    </div>
+                                    <div class="col-6" style="display: inline-block; width: 49%;">
+                                        <div><strong>RETENIDO Y CONSIGNADO:</strong></div>
+                                        <span t-out="partner.get('balance', 0.0)"
+                                              t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row" style="margin-top: 15px;">
+                                <div class="col-12">
+                                    <strong>Ciudad donde se consignó la retención:</strong>
+                                    <t t-out="company.city or ''"/>
+                                </div>
+                            </div>
+
+                            <!-- Notas legales, una por sección presente -->
+                            <div class="row" style="margin-top: 15px;">
+                                <div class="col-12">
+                                    <t t-set="section_types" t-value="[s['type_code'] for s in partner['sections']]"/>
+
+                                    <p t-if="'retefuente' in section_types">
+                                        Se expide para dar cumplimiento a lo previsto en el artículo 381 del
+                                        Estatuto Tributario. Dicha retención en la fuente fue consignada
+                                        oportunamente a nombre de la Dirección de Impuestos y Aduanas
+                                        Nacionales en la ciudad de <t t-out="company.city or ''"/>.
+                                    </p>
+                                    <p t-if="'reteiva' in section_types">
+                                        La retención de IVA se practicó de conformidad con el artículo 615-1
+                                        del Estatuto Tributario. Fue consignada oportunamente a nombre de la
+                                        Dirección de Impuestos y Aduanas Nacionales en la ciudad de
+                                        <t t-out="company.city or ''"/>.
+                                    </p>
+                                    <p t-if="'reteica' in section_types">
+                                        La retención de Industria y Comercio (ICA) se practicó de conformidad
+                                        con el estatuto tributario municipal vigente. Fue consignada
+                                        oportunamente a nombre de la Secretaría de Hacienda del municipio de
+                                        <t t-out="company.city or ''"/>.
+                                    </p>
+                                    <p t-if="'parafiscal' in section_types">
+                                        La contribución parafiscal fue retenida de conformidad con la Ley 101
+                                        de 1993 y sus decretos reglamentarios, con destino al fondo de fomento
+                                        correspondiente.
+                                    </p>
+                                    <p>
+                                        Señor contribuyente: tenga en cuenta que la base certificada por
+                                        nosotros corresponde a la sometida a retención durante el período
+                                        gravable según las normas vigentes sobre la materia, y podría ser
+                                        diferente a lo facturado por usted durante el mismo período.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Firma -->
+                            <div class="row" style="margin-top: 30px;">
+                                <div class="col-6" style="border-top: 1px solid black; padding-top: 4px;">
+                                    Firma Autorizada
+                                </div>
+                            </div>
+                            <div class="row" style="margin-top: 10px;">
+                                <div class="col-12">
+                                    NO REQUIERE FIRMA AUTÓGRAFA.
+                                    <t t-out="options.get('article', '')"/>
+                                </div>
+                            </div>
+
+                        </div>
+                    </t>
+                </t>
+            </t>
+        </template>
+
+        <record id="action_report_retention_certificate" model="ir.actions.report">
+            <field name="name">Certificado de Retenciones</field>
+            <field name="model">l10n_co_retention_certificate.certification_report</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">l10n_co_retention_certificate.report_retention_certificate</field>
+            <field name="report_file">l10n_co_retention_certificate.report_retention_certificate</field>
+            <field name="groups_id" eval="[(4, ref('account.group_account_readonly'))]"/>
+        </record>
+    </data>
+</odoo>
