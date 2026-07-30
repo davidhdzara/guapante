@@ -11,14 +11,20 @@
         <field name="filter_partner" eval="True"/>
         <field name="filter_date_range" eval="True"/>
         <field name="default_opening_date_filter">this_year</field>
-        <!-- search_bar eliminado (2026-07-30): la caja de búsqueda libre
-             NO se aplica automáticamente al dominio de la consulta (a
-             diferencia de filter_partner, que sí); cada handler debe
-             implementarla a mano, y este no lo hacía, por lo que buscar
-             ahí no filtraba nada (bug real reportado por el usuario).
-             filter_partner (abajo) es el mecanismo que sí funciona:
-             menú Filtros -> Tercero, admite selección múltiple con
+        <!-- search_bar desactivado explícitamente (2026-07-30): omitir la
+             etiqueta <field> NO revierte el valor a False en un registro
+             ya existente (Odoo solo toca los campos listados al hacer
+             -u; lo que se omite se queda con el valor previo) — por eso
+             hace falta eval="False" explícito, no solo quitar la línea.
+             La caja de búsqueda libre NO se aplica automáticamente al
+             dominio de la consulta (a diferencia de filter_partner, que
+             sí); cada handler debe implementarla a mano, y este no lo
+             hacía, por lo que buscar ahí no filtraba nada (bug real
+             reportado por el usuario). filter_partner (abajo) es el
+             mecanismo que sí funciona: menú Filtros -> Tercero, admite
+             selección múltiple con
              búsqueda por nombre/NIT. -->
+        <field name="search_bar" eval="False"/>
         <field name="custom_handler_model_id" ref="model_l10n_co_retention_certificate_report_handler"/>
         <field name="column_ids">
             <record id="retention_certificate_col_concept" model="account.report.column">
