@@ -49,14 +49,32 @@ class TestRetentionCertificateReport(TransactionCase):
         self.assertTrue(self.report.filter_partner)
         self.assertTrue(self.report.filter_date_range)
         self.assertTrue(self.report.filter_unfold_all)
-        self.assertTrue(self.report.search_bar)
         self.assertEqual(self.report.default_opening_date_filter, 'this_year')
+
+    def test_search_bar_disabled(self):
+        """El search_bar libre no se aplicaba al dominio de la consulta
+        (a diferencia de filter_partner, que sí es automático) y buscar
+        ahí no filtraba nada — bug real reportado por el usuario el
+        2026-07-30. Se eliminó en vez de implementarlo, porque
+        filter_partner ya cubre la necesidad de buscar/seleccionar
+        proveedores.
+        """
+        self.assertFalse(self.report.search_bar)
 
     def test_options_generation(self):
         options = self.report.get_options(previous_options={})
         self.assertIn('date', options)
         self.assertIn('columns', options)
         self.assertIn('column_groups', options)
+
+    def test_ignore_totals_below_sections(self):
+        """Sin este flag, el framework inserta una línea 'Total <sección>'
+        extra debajo de cada tipo de retención desplegado, duplicando los
+        datos — bug real reportado por el usuario el 2026-07-30
+        ("CONTRIBUCIÓN PARAFISCAL" aparecía dos veces en el PDF).
+        """
+        options = self.report.get_options(previous_options={})
+        self.assertTrue(options.get('ignore_totals_below_sections'))
 
     def test_lines_generation_without_data(self):
         """No debe fallar aunque no haya ninguna retención en el período."""

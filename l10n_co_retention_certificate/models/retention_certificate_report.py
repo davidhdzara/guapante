@@ -55,6 +55,16 @@ class RetentionCertificateReportHandler(models.AbstractModel):
 
     def _custom_options_initializer(self, report, options, previous_options):
         super()._custom_options_initializer(report, options, previous_options=previous_options)
+
+        # FIX: sin esto, el framework inserta automáticamente una línea
+        # "Total <sección>" extra debajo de cada tipo de retención
+        # desplegado, duplicando los datos (bug real reportado por el
+        # usuario el 2026-07-30: "CONTRIBUCIÓN PARAFISCAL" aparecía dos
+        # veces, la segunda como "TOTAL CONTRIBUCIÓN PARAFISCAL"). Mismo
+        # fix que ya existe en account_partner_balance.py (módulo de
+        # referencia) — se me quedó por fuera al escribir este handler.
+        options['ignore_totals_below_sections'] = True
+
         if options.get('export_mode') == 'print' and not options.get('unfolded_lines'):
             # Estado por defecto: todo desplegado (matiz D2 #2 — "todas las
             # líneas nacen marcadas"). Si el usuario ya plegó algo a mano

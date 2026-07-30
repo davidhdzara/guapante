@@ -142,6 +142,21 @@
                                 }
                             </style>
 
+                            <!-- Logo: se referencia el mismo archivo estático que usa
+                                 insotech_document_layouts (theme_guapante), en vez de
+                                 depender de company.logo vía web.external_layout. Ese
+                                 módulo YA tiene un bypass para evitar el mecanismo
+                                 estándar de logo — indicio de que no renderiza bien en
+                                 wkhtmltopdf en este entorno (el logo configurado en
+                                 Ajustes es un SVG; el archivo de theme_guapante es PNG).
+                                 No agrega dependencia real: el archivo se sirve por ruta
+                                 estática igual que lo hace insotech_document_layouts,
+                                 que tampoco depende de theme_guapante en su manifest. -->
+                            <div style="text-align: center; margin-bottom: 4px;">
+                                <img src="/theme_guapante/static/src/img/logo_guapante.png"
+                                     style="max-height: 70px; max-width: 220px;" alt="Logo Guapante"/>
+                            </div>
+
                             <div class="rc-title">Certificado de Retenciones</div>
                             <div class="rc-subtitle">
                                 Año Gravable: <t t-out="current_year"/>
