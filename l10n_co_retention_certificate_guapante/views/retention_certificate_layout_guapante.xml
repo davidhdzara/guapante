@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Encabezado/pie propios de Guapante para el Certificado de
+             Retenciones. NO usa web.external_layout: Odoo extrae los divs
+             class="header"/"footer" del HTML completo y los renderiza como
+             documentos SEPARADOS para wkhtmltopdf (ver ir_actions_report.py:
+             _prepare_html), por lo que el CSS del cuerpo no puede tocar el
+             bloque de dirección que mete web.external_layout_standard ahí.
+
+             Inspirado en insotech_document_layouts.external_layout_guapante,
+             pero parametrizado solo con 'company' (ese módulo depende de un
+             registro 'o' por documento — o.company_id —, que un certificado
+             con varios proveedores no tiene). El encabezado solo trae el
+             logo: el nombre/NIT/dirección de la compañía ya los certifica el
+             bloque "Retenedor" del cuerpo del módulo base. -->
+        <template id="external_layout_guapante_cert">
+            <div t-attf-class="header o_company_#{company.id}_layout" style="padding: 10px 20px 0 20px;">
+                <div style="text-align: center;">
+                    <img src="/theme_guapante/static/src/img/logo_guapante.png"
+                         style="max-height: 110px; max-width: 260px;" alt="Logo Guapante"/>
+                </div>
+                <div style="border-bottom: 2px solid #14532d; margin-top: 10px; width: 100%;"/>
+            </div>
+
+            <div t-attf-class="article o_report_layout_standard o_company_#{company.id}_layout" style="padding: 0 20px;">
+                <t t-out="0"/>
+            </div>
+
+            <div t-attf-class="footer o_company_#{company.id}_layout" style="padding: 0 20px;">
+                <div style="border-top: 1px solid #14532d; padding-top: 8px; text-align: center;">
+                    <span class="text-muted" style="font-size: 10px;">
+                        Página <span class="page"/> / <span class="topage"/>
+                    </span>
+                </div>
+            </div>
+        </template>
+
+        <!-- Bypass: mismo patrón que insotech_document_layouts usa para
+             facturas y recibos de pago. Reemplaza el layout gris neutro del
+             módulo comercial por el propio de Guapante, y recolorea el
+             cuerpo (mismos selectores .rc-*, solo cambian los valores). -->
+        <template id="document_guapante_branding" inherit_id="l10n_co_retention_certificate.document">
+            <xpath expr="//t[@t-call='web.external_layout']" position="attributes">
+                <attribute name="t-call">l10n_co_retention_certificate_guapante.external_layout_guapante_cert</attribute>
+            </xpath>
+            <xpath expr="//style" position="replace">
+                <style type="text/css">
+                    .rc-title {
+                        font-size: 20px;
+                        font-weight: 900;
+                        color: #14532d;
+                        letter-spacing: 1px;
+                        text-transform: uppercase;
+                        text-align: center;
+                        margin: 8px 0 2px 0;
+                    }
+                    .rc-subtitle {
+                        text-align: center;
+                        font-size: 11px;
+                        color: #495057;
+                        margin-bottom: 4px;
+                    }
+                    .rc-accent-bar {
+                        height: 3px;
+                        background: linear-gradient(90deg, #14532d 0%, #22c55e 100%);
+                        border: none;
+                        margin: 8px 0 16px 0;
+                    }
+                    .rc-info-grid {
+                        display: table;
+                        width: 100%;
+                        border: 1px solid #e5e7eb;
+                        border-left: 3px solid #14532d;
+                        margin-bottom: 14px;
+                        background: #fafbfc;
+                    }
+                    .rc-info-row { display: table-row; }
+                    .rc-info-label {
+                        display: table-cell;
+                        width: 25%;
+                        padding: 6px 10px;
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.06em;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+                    .rc-info-value {
+                        display: table-cell;
+                        width: 75%;
+                        padding: 6px 10px;
+                        font-size: 11px;
+                        color: #2d2d2d;
+                        border-bottom: 1px solid #f0f0f0;
+                        vertical-align: middle;
+                    }
+                    .rc-section-title {
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: #14532d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.1em;
+                        margin: 14px 0 4px 0;
+                        padding-bottom: 3px;
+                        border-bottom: 1px solid #e5e7eb;
+                    }
+                    .rc-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 10.5px;
+                        margin-bottom: 4px;
+                    }
+                    .rc-table thead th {
+                        background-color: #14532d;
+                        color: white;
+                        font-weight: 700;
+                        padding: 6px 8px;
+                        border: none;
+                        text-transform: uppercase;
+                        letter-spacing: 0.04em;
+                        font-size: 9.5px;
+                    }
+                    .rc-table tbody td {
+                        padding: 5px 8px;
+                        border-bottom: 1px solid #e5e7eb;
+                        color: #374151;
+                    }
+                    .rc-table tbody tr.rc-concept-row:nth-child(even) td {
+                        background-color: #f9fafb;
+                    }
+                    .rc-subtotal-row td {
+                        background-color: #f0fdf4 !important;
+                        font-weight: 700;
+                        color: #14532d !important;
+                        border-top: 1px solid #14532d;
+                    }
+                    .rc-total-bar {
+                        background-color: #14532d;
+                        color: white;
+                        padding: 10px 16px;
+                        display: table;
+                        width: 100%;
+                        margin-top: 10px;
+                    }
+                    .rc-total-cell {
+                        display: table-cell;
+                        width: 50%;
+                        vertical-align: middle;
+                    }
+                    .rc-total-label {
+                        font-size: 10px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.1em;
+                        display: block;
+                    }
+                    .rc-total-amount {
+                        font-size: 15px;
+                        font-weight: 900;
+                    }
+                    .rc-legal-note {
+                        font-size: 9.5px;
+                        color: #6b7280;
+                        margin-top: 6px;
+                    }
+                    .rc-signature-box {
+                        margin-top: 30px;
+                        border-top: 1px solid #14532d;
+                        padding-top: 6px;
+                        width: 50%;
+                        font-size: 10px;
+                        color: #495057;
+                    }
+                </style>
+            </xpath>
+        </template>
+    </data>
+</odoo>

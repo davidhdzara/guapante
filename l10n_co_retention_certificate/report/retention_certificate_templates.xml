@@ -4,39 +4,24 @@
         <template id="document">
             <t t-call="web.html_container">
                 <t t-foreach="docs" t-as="partner">
-
-                    <!-- Header/footer propios, NO web.external_layout: Odoo extrae
-                         los divs class="header"/"footer" del HTML completo y los
-                         renderiza como documentos SEPARADOS para wkhtmltopdf (flags
-                         de línea de comandos "header html" / "footer html", ver
-                         ir_actions_report.py: _prepare_html) — por eso el CSS del
-                         cuerpo no puede ocultar ni tocar el bloque de dirección que
-                         web.external_layout_standard mete ahí. Se construye el
-                         encabezado con la MISMA técnica que
-                         insotech_document_layouts.external_layout_guapante (solo el
-                         logo, sin repetir nombre/NIT/dirección de la compañía — eso
-                         ya lo certifica el bloque "Retenedor" del cuerpo, tal como en
-                         el modelo de Siigo), parametrizado solo con 'company' (no
-                         requiere un registro 'o' por documento). -->
-                    <div t-attf-class="header o_company_#{company.id}_layout" style="padding: 10px 20px 0 20px;">
-                        <div style="text-align: center;">
-                            <img src="/theme_guapante/static/src/img/logo_guapante.png"
-                                 style="max-height: 110px; max-width: 260px;" alt="Logo Guapante"/>
-                        </div>
-                        <div style="border-bottom: 2px solid #14532d; margin-top: 10px; width: 100%;"/>
-                    </div>
-
-                    <div t-attf-class="article o_report_layout_standard o_company_#{company.id}_layout" style="padding: 0 20px;">
+                    <t t-call="web.external_layout">
                         <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px;">
 
-                            <!-- Paleta e idioma visual tomados de insotech_document_layouts
-                                 (mismo verde corporativo #14532d que facturas y recibos de
-                                 pago de Guapante). -->
+                            <!-- Módulo genérico y comercial: usa web.external_layout tal
+                                 cual, para respetar el Document Layout y el logo que cada
+                                 cliente configure en Ajustes → Compañías. No asume ninguna
+                                 marca. Un cliente que necesite una identidad visual propia
+                                 (colores, logo hardcodeado, encabezado a medida) debe
+                                 construir un módulo de extensión aparte que herede esta
+                                 plantilla (record id="document") y reemplace este bloque
+                                 <style> y el t-call="web.external_layout" — mismo patrón de
+                                 "bypass" que ya usan otros módulos de layout de InSoTech.
+                                 Paleta neutra (gris oscuro), sin asumir marca alguna. -->
                             <style type="text/css">
                                 .rc-title {
                                     font-size: 20px;
                                     font-weight: 900;
-                                    color: #14532d;
+                                    color: #1f2937;
                                     letter-spacing: 1px;
                                     text-transform: uppercase;
                                     text-align: center;
@@ -45,12 +30,12 @@
                                 .rc-subtitle {
                                     text-align: center;
                                     font-size: 11px;
-                                    color: #495057;
+                                    color: #6b7280;
                                     margin-bottom: 4px;
                                 }
                                 .rc-accent-bar {
                                     height: 3px;
-                                    background: linear-gradient(90deg, #14532d 0%, #22c55e 100%);
+                                    background-color: #1f2937;
                                     border: none;
                                     margin: 8px 0 16px 0;
                                 }
@@ -58,9 +43,9 @@
                                     display: table;
                                     width: 100%;
                                     border: 1px solid #e5e7eb;
-                                    border-left: 3px solid #14532d;
+                                    border-left: 3px solid #1f2937;
                                     margin-bottom: 14px;
-                                    background: #fafbfc;
+                                    background: #f9fafb;
                                 }
                                 .rc-info-row { display: table-row; }
                                 .rc-info-label {
@@ -69,7 +54,7 @@
                                     padding: 6px 10px;
                                     font-size: 10px;
                                     font-weight: 700;
-                                    color: #14532d;
+                                    color: #1f2937;
                                     text-transform: uppercase;
                                     letter-spacing: 0.06em;
                                     border-bottom: 1px solid #f0f0f0;
@@ -87,7 +72,7 @@
                                 .rc-section-title {
                                     font-size: 11px;
                                     font-weight: 700;
-                                    color: #14532d;
+                                    color: #1f2937;
                                     text-transform: uppercase;
                                     letter-spacing: 0.1em;
                                     margin: 14px 0 4px 0;
@@ -101,7 +86,7 @@
                                     margin-bottom: 4px;
                                 }
                                 .rc-table thead th {
-                                    background-color: #14532d;
+                                    background-color: #1f2937;
                                     color: white;
                                     font-weight: 700;
                                     padding: 6px 8px;
@@ -119,13 +104,13 @@
                                     background-color: #f9fafb;
                                 }
                                 .rc-subtotal-row td {
-                                    background-color: #f0fdf4 !important;
+                                    background-color: #f3f4f6 !important;
                                     font-weight: 700;
-                                    color: #14532d !important;
-                                    border-top: 1px solid #14532d;
+                                    color: #1f2937 !important;
+                                    border-top: 1px solid #1f2937;
                                 }
                                 .rc-total-bar {
-                                    background-color: #14532d;
+                                    background-color: #1f2937;
                                     color: white;
                                     padding: 10px 16px;
                                     display: table;
@@ -155,7 +140,7 @@
                                 }
                                 .rc-signature-box {
                                     margin-top: 30px;
-                                    border-top: 1px solid #14532d;
+                                    border-top: 1px solid #1f2937;
                                     padding-top: 6px;
                                     width: 50%;
                                     font-size: 10px;
@@ -174,9 +159,10 @@
                             <hr class="rc-accent-bar"/>
 
                             <!-- Bloques Retenedor / Retenido: display:table en vez de
-                                 Bootstrap row/col (wkhtmltopdf no soporta flexbox y
-                                 desbordaba el contenido de las celdas). Misma técnica que
-                                 insotech_document_layouts usa en sus recibos de pago. -->
+                                 Bootstrap row/col — wkhtmltopdf no soporta bien el grid de
+                                 flexbox de Bootstrap 5 y desbordaba el contenido de las
+                                 celdas cuando se le agregaba un borde. display:table es
+                                 CSS2.1 clásico, soportado de forma confiable. -->
                             <div class="rc-info-grid">
                                 <div class="rc-info-row">
                                     <div class="rc-info-label">Retenedor</div>
@@ -303,16 +289,7 @@
                             </div>
 
                         </div>
-                    </div>
-
-                    <div t-attf-class="footer o_company_#{company.id}_layout" style="padding: 0 20px;">
-                        <div style="border-top: 1px solid #14532d; padding-top: 8px; text-align: center;">
-                            <span class="text-muted" style="font-size: 10px;">
-                                Página <span class="page"/> / <span class="topage"/>
-                            </span>
-                        </div>
-                    </div>
-
+                    </t>
                 </t>
             </t>
         </template>

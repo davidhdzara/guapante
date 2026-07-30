@@ -12,21 +12,20 @@ Certificado de retenciones practicadas a proveedores, agrupado por concepto
 (impuesto) en lugar de por cuenta contable, para no depender de cómo esté
 configurado el PUC de cada cliente.
 
-Fase 1: clasificador automático de impuestos colombianos de retención
-(`account.tax`) en Retención en la Fuente / ReteIVA / ReteICA / Parafiscal.
-
-Fase 2: motor de datos — reporte account.report propio con jerarquía
-Tercero → Tipo de Retención → Concepto, agrupando por impuesto
-(tax_line_id) en lugar de por cuenta contable. Menú: Contabilidad →
-Reportes → Estados de cuenta colombianos → Certificado de Retenciones.
-
-Fase 3 y 4 (esta versión): emisión en PDF. Se reutiliza el wizard nativo
-de l10n_co_reports (fechas de expedición/declaración + artículo) sin
-agregarle campos ni vista nueva — la selección de proveedores y de qué
-retenciones incluir se resuelve con el propio filtro de tercero y el
-estado de plegado/desplegado del reporte, no con un wizard dedicado.
-Plantilla QWeb propia con secciones por tipo (Fuente/IVA/ICA/Parafiscal),
-cada una con su nota legal correspondiente.
+- Clasificador automático de impuestos colombianos de retención
+  (`account.tax`) en Retención en la Fuente / ReteIVA / ReteICA / Parafiscal.
+- Reporte propio (account.report) con jerarquía Tercero → Tipo de Retención
+  → Concepto. Menú: Contabilidad → Reportes → Estados de cuenta colombianos
+  → Certificado de Retenciones.
+- Emisión en PDF reutilizando el wizard nativo de l10n_co_reports (fechas
+  de expedición/declaración + artículo); la selección de proveedores y de
+  qué retenciones incluir se resuelve con el filtro de tercero y el estado
+  de plegado/desplegado del reporte.
+- Plantilla QWeb propia con secciones por tipo (Fuente/IVA/ICA/Parafiscal),
+  cada una con su nota legal, sobre web.external_layout — respeta el
+  Document Layout y el logo que cada cliente configure, sin branding
+  hardcodeado. Un cliente que necesite identidad visual propia debe
+  construir un módulo de extensión aparte (ver README).
     """,
     'author': 'David Hernández',
     'website': 'https://github.com/davidhdzara/insotech_accounting',
