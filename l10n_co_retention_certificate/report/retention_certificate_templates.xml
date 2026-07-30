@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <template id="document">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="partner">
+
+                    <!-- Header/footer propios, NO web.external_layout: Odoo extrae
+                         los divs class="header"/"footer" del HTML completo y los
+                         renderiza como documentos SEPARADOS para wkhtmltopdf (flags
+                         de línea de comandos "header html" / "footer html", ver
+                         ir_actions_report.py: _prepare_html) — por eso el CSS del
+                         cuerpo no puede ocultar ni tocar el bloque de dirección que
+                         web.external_layout_standard mete ahí. Se construye el
+                         encabezado con la MISMA técnica que
+                         insotech_document_layouts.external_layout_guapante (solo el
+                         logo, sin repetir nombre/NIT/dirección de la compañía — eso
+                         ya lo certifica el bloque "Retenedor" del cuerpo, tal como en
+                         el modelo de Siigo), parametrizado solo con 'company' (no
+                         requiere un registro 'o' por documento). -->
+                    <div t-attf-class="header o_company_#{company.id}_layout" style="padding: 10px 20px 0 20px;">
+                        <div style="text-align: center;">
+                            <img src="/theme_guapante/static/src/img/logo_guapante.png"
+                                 style="max-height: 110px; max-width: 260px;" alt="Logo Guapante"/>
+                        </div>
+                        <div style="border-bottom: 2px solid #14532d; margin-top: 10px; width: 100%;"/>
+                    </div>
+
+                    <div t-attf-class="article o_report_layout_standard o_company_#{company.id}_layout" style="padding: 0 20px;">
+                        <div class="page" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px;">
+
+                            <!-- Paleta e idioma visual tomados de insotech_document_layouts
+                                 (mismo verde corporativo #14532d que facturas y recibos de
+                                 pago de Guapante). -->
+                            <style type="text/css">
+                                .rc-title {
+                                    font-size: 20px;
+                                    font-weight: 900;
+                                    color: #14532d;
+                                    letter-spacing: 1px;
+                                    text-transform: uppercase;
+                                    text-align: center;
+                                    margin: 8px 0 2px 0;
+                                }
+                                .rc-subtitle {
+                                    text-align: center;
+                                    font-size: 11px;
+                                    color: #495057;
+                                    margin-bottom: 4px;
+                                }
+                                .rc-accent-bar {
+                                    height: 3px;
+                                    background: linear-gradient(90deg, #14532d 0%, #22c55e 100%);
+                                    border: none;
+                                    margin: 8px 0 16px 0;
+                                }
+                                .rc-info-grid {
+                                    display: table;
+                                    width: 100%;
+                                    border: 1px solid #e5e7eb;
+                                    border-left: 3px solid #14532d;
+                                    margin-bottom: 14px;
+                                    background: #fafbfc;
+                                }
+                                .rc-info-row { display: table-row; }
+                                .rc-info-label {
+                                    display: table-cell;
+                                    width: 25%;
+                                    padding: 6px 10px;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: #14532d;
+                                    text-transform: uppercase;
+                                    letter-spacing: 0.06em;
+                                    border-bottom: 1px solid #f0f0f0;
+                                    vertical-align: middle;
+                                }
+                                .rc-info-value {
+                                    display: table-cell;
+                                    width: 75%;
+                                    padding: 6px 10px;
+                                    font-size: 11px;
+                                    color: #2d2d2d;
+                                    border-bottom: 1px solid #f0f0f0;
+                                    vertical-align: middle;
+                                }
+                                .rc-section-title {
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: #14532d;
+                                    text-transform: uppercase;
+                                    letter-spacing: 0.1em;
+                                    margin: 14px 0 4px 0;
+                                    padding-bottom: 3px;
+                                    border-bottom: 1px solid #e5e7eb;
+                                }
+                                .rc-table {
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    font-size: 10.5px;
+                                    margin-bottom: 4px;
+                                }
+                                .rc-table thead th {
+                                    background-color: #14532d;
+                                    color: white;
+                                    font-weight: 700;
+                                    padding: 6px 8px;
+                                    border: none;
+                                    text-transform: uppercase;
+                                    letter-spacing: 0.04em;
+                                    font-size: 9.5px;
+                                }
+                                .rc-table tbody td {
+                                    padding: 5px 8px;
+                                    border-bottom: 1px solid #e5e7eb;
+                                    color: #374151;
+                                }
+                                .rc-table tbody tr.rc-concept-row:nth-child(even) td {
+                                    background-color: #f9fafb;
+                                }
+                                .rc-subtotal-row td {
+                                    background-color: #f0fdf4 !important;
+                                    font-weight: 700;
+                                    color: #14532d !important;
+                                    border-top: 1px solid #14532d;
+                                }
+                                .rc-total-bar {
+                                    background-color: #14532d;
+                                    color: white;
+                                    padding: 10px 16px;
+                                    display: table;
+                                    width: 100%;
+                                    margin-top: 10px;
+                                }
+                                .rc-total-cell {
+                                    display: table-cell;
+                                    width: 50%;
+                                    vertical-align: middle;
+                                }
+                                .rc-total-label {
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    text-transform: uppercase;
+                                    letter-spacing: 0.1em;
+                                    display: block;
+                                }
+                                .rc-total-amount {
+                                    font-size: 15px;
+                                    font-weight: 900;
+                                }
+                                .rc-legal-note {
+                                    font-size: 9.5px;
+                                    color: #6b7280;
+                                    margin-top: 6px;
+                                }
+                                .rc-signature-box {
+                                    margin-top: 30px;
+                                    border-top: 1px solid #14532d;
+                                    padding-top: 6px;
+                                    width: 50%;
+                                    font-size: 10px;
+                                    color: #495057;
+                                }
+                            </style>
+
+                            <div class="rc-title">Certificado de Retenciones</div>
+                            <div class="rc-subtitle">
+                                Año Gravable: <t t-out="current_year"/>
+                                &#160;·&#160; De:
+                                <span t-out="date_from" t-options="{'widget': 'date'}"/>
+                                &#160;A:&#160;
+                                <span t-out="date_to" t-options="{'widget': 'date'}"/>
+                            </div>
+                            <hr class="rc-accent-bar"/>
+
+                            <!-- Bloques Retenedor / Retenido: display:table en vez de
+                                 Bootstrap row/col (wkhtmltopdf no soporta flexbox y
+                                 desbordaba el contenido de las celdas). Misma técnica que
+                                 insotech_document_layouts usa en sus recibos de pago. -->
+                            <div class="rc-info-grid">
+                                <div class="rc-info-row">
+                                    <div class="rc-info-label">Retenedor</div>
+                                    <div class="rc-info-value">
+                                        <strong t-out="company.display_name"/>
+                                        <span style="color: #6b7280;"> — NIT <t t-out="company.vat"/></span>
+                                    </div>
+                                </div>
+                                <div class="rc-info-row" t-if="company.street or company.city">
+                                    <div class="rc-info-label">Dirección</div>
+                                    <div class="rc-info-value">
+                                        <t t-out="company.street or ''"/>
+                                        <t t-if="company.city">, <t t-out="company.city"/></t>
+                                    </div>
+                                </div>
+                                <div class="rc-info-row">
+                                    <div class="rc-info-label">Retuvo a</div>
+                                    <div class="rc-info-value">
+                                        <strong t-out="partner['partner_id'].display_name"/>
+                                        <span style="color: #6b7280;"> — NIT <t t-out="partner['partner_id'].vat"/></span>
+                                    </div>
+                                </div>
+                                <div class="rc-info-row" t-if="partner['partner_id'].street or partner['partner_id'].city">
+                                    <div class="rc-info-label">Dirección</div>
+                                    <div class="rc-info-value">
+                                        <t t-out="partner['partner_id'].street or ''"/>
+                                        <t t-if="partner['partner_id'].city">, <t t-out="partner['partner_id'].city"/></t>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Una tabla por sección (tipo de retención) presente -->
+                            <t t-foreach="partner['sections']" t-as="section">
+                                <div class="rc-section-title"><t t-out="section['name']"/></div>
+                                <table class="rc-table">
+                                    <colgroup>
+                                        <col style="width: 70%;"/>
+                                        <col style="width: 15%;"/>
+                                        <col style="width: 15%;"/>
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>Concepto de la Retención</th>
+                                            <th class="text-end">Monto Sujeto a Retención</th>
+                                            <th class="text-end">Valor Retenido</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="section['concepts']" t-as="concept" class="rc-concept-row">
+                                            <td><t t-out="concept.get('concept_name')"/></td>
+                                            <td class="text-end"><t t-out="concept.get('tax_base_amount', 0.0)"/></td>
+                                            <td class="text-end" style="color: #dc2626;"><t t-out="concept.get('balance', 0.0)"/></td>
+                                        </tr>
+                                        <tr class="rc-subtotal-row">
+                                            <td>Subtotal <t t-out="section['name']"/></td>
+                                            <td class="text-end"><t t-out="section.get('tax_base_amount', 0.0)"/></td>
+                                            <td class="text-end"><t t-out="section.get('balance', 0.0)"/></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </t>
+
+                            <!-- Gran Total -->
+                            <div class="rc-total-bar">
+                                <div class="rc-total-cell">
+                                    <span class="rc-total-label">Monto Total Sujeto a Retención</span>
+                                    <span class="rc-total-amount"><t t-out="partner.get('tax_base_amount', 0.0)"/></span>
+                                </div>
+                                <div class="rc-total-cell" style="text-align: right;">
+                                    <span class="rc-total-label">Total Retenido y Consignado</span>
+                                    <span class="rc-total-amount"><t t-out="partner.get('balance', 0.0)"/></span>
+                                </div>
+                            </div>
+
+                            <div class="rc-legal-note">
+                                <strong>Ciudad donde se consignó la retención:</strong>
+                                <t t-out="company.city or ''"/>
+                            </div>
+
+                            <!-- Notas legales, una por sección presente -->
+                            <div class="rc-legal-note">
+                                <t t-set="section_types" t-value="[s['type_code'] for s in partner['sections']]"/>
+
+                                <p t-if="'retefuente' in section_types">
+                                    Se expide para dar cumplimiento a lo previsto en el artículo 381 del
+                                    Estatuto Tributario. Dicha retención en la fuente fue consignada
+                                    oportunamente a nombre de la Dirección de Impuestos y Aduanas
+                                    Nacionales en la ciudad de <t t-out="company.city or ''"/>.
+                                </p>
+                                <p t-if="'reteiva' in section_types">
+                                    La retención de IVA se practicó en calidad de agente retenedor de
+                                    conformidad con los artículos 437-1 y 437-2 del Estatuto Tributario.
+                                    El presente certificado se expide dando cumplimiento a los requisitos
+                                    del artículo 381 del Estatuto Tributario, según lo ordena el parágrafo
+                                    2 del artículo 615 del mismo Estatuto. Fue consignada oportunamente a
+                                    nombre de la Dirección de Impuestos y Aduanas Nacionales en la ciudad
+                                    de <t t-out="company.city or ''"/>.
+                                </p>
+                                <p t-if="'reteica' in section_types">
+                                    La retención de Industria y Comercio (ICA) se practicó de conformidad
+                                    con el estatuto tributario municipal vigente en cada municipio donde
+                                    se causó la retención. Fue consignada oportunamente a nombre de la
+                                    Secretaría de Hacienda municipal correspondiente.
+                                </p>
+                                <p t-if="'parafiscal' in section_types">
+                                    La contribución parafiscal fue retenida de conformidad con la Ley 101
+                                    de 1993 y sus decretos reglamentarios, con destino al fondo de fomento
+                                    correspondiente.
+                                </p>
+                                <p>
+                                    Señor contribuyente: tenga en cuenta que la base certificada por
+                                    nosotros corresponde a la sometida a retención durante el período
+                                    gravable según las normas vigentes sobre la materia, y podría ser
+                                    diferente a lo facturado por usted durante el mismo período.
+                                </p>
+                            </div>
+
+                            <!-- Firma -->
+                            <div class="rc-signature-box">Firma Autorizada</div>
+                            <div class="rc-legal-note" style="margin-top: 6px;">
+                                Este documento no requiere firma autógrafa para su validez, de
+                                conformidad con el <t t-out="options.get('article', '')"/>, compilado
+                                en el artículo 1.6.1.12.12 del Decreto Único Reglamentario 1625 de 2016.
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div t-attf-class="footer o_company_#{company.id}_layout" style="padding: 0 20px;">
+                        <div style="border-top: 1px solid #14532d; padding-top: 8px; text-align: center;">
+                            <span class="text-muted" style="font-size: 10px;">
+                                Página <span class="page"/> / <span class="topage"/>
+                            </span>
+                        </div>
+                    </div>
+
+                </t>
+            </t>
+        </template>
+
+        <record id="action_report_retention_certificate" model="ir.actions.report">
+            <field name="name">Certificado de Retenciones</field>
+            <field name="model">l10n_co_retention_certificate.certification_report</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">l10n_co_retention_certificate.document</field>
+            <field name="report_file">l10n_co_retention_certificate.document</field>
+            <field name="groups_id" eval="[(4, ref('account.group_account_readonly'))]"/>
+        </record>
+    </data>
+</odoo>

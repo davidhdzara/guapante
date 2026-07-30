@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo auto_sequence="1">
+    <record id="retention_certificate_report" model="account.report">
+        <field name="name">Certificado de Retenciones</field>
+        <field name="filter_show_draft" eval="False"/>
+        <field name="filter_unreconciled" eval="False"/>
+        <field name="filter_period_comparison" eval="False"/>
+        <field name="filter_journals" eval="False"/>
+        <field name="filter_analytic" eval="False"/>
+        <field name="filter_unfold_all" eval="True"/>
+        <field name="filter_partner" eval="True"/>
+        <field name="filter_date_range" eval="True"/>
+        <field name="default_opening_date_filter">this_year</field>
+        <!-- search_bar desactivado explícitamente (2026-07-30): omitir la
+             etiqueta <field> NO revierte el valor a False en un registro
+             ya existente (Odoo solo toca los campos listados al hacer
+             -u; lo que se omite se queda con el valor previo) — por eso
+             hace falta eval="False" explícito, no solo quitar la línea.
+             La caja de búsqueda libre NO se aplica automáticamente al
+             dominio de la consulta (a diferencia de filter_partner, que
+             sí); cada handler debe implementarla a mano, y este no lo
+             hacía, por lo que buscar ahí no filtraba nada (bug real
+             reportado por el usuario). filter_partner (abajo) es el
+             mecanismo que sí funciona: menú Filtros -> Tercero, admite
+             selección múltiple con
+             búsqueda por nombre/NIT. -->
+        <field name="search_bar" eval="False"/>
+        <field name="custom_handler_model_id" ref="model_l10n_co_retention_certificate_report_handler"/>
+        <field name="column_ids">
+            <record id="retention_certificate_col_concept" model="account.report.column">
+                <field name="name">Concepto de Retención</field>
+                <field name="expression_label">concept_name</field>
+                <field name="figure_type">string</field>
+            </record>
+            <record id="retention_certificate_col_base" model="account.report.column">
+                <field name="name">Monto del Pago Sujeto a Retención</field>
+                <field name="expression_label">tax_base_amount</field>
+            </record>
+            <record id="retention_certificate_col_balance" model="account.report.column">
+                <field name="name">Retenido y Consignado</field>
+                <field name="expression_label">balance</field>
+                <field name="blank_if_zero" eval="True"/>
+            </record>
+        </field>
+    </record>
+
+    <record id="action_retention_certificate_report" model="ir.actions.client">
+        <field name="name">Certificado de Retenciones</field>
+        <field name="tag">account_report</field>
+        <field name="context" eval="{'report_id': ref('l10n_co_retention_certificate.retention_certificate_report')}"/>
+    </record>
+
+    <menuitem id="menu_retention_certificate_report"
+        name="Certificado de Retenciones"
+        parent="l10n_co_reports.account_reports_co_statements_menu"
+        action="action_retention_certificate_report"
+        groups="account.group_account_readonly,account.group_account_basic"
+        sequence="10"/>
+</odoo>

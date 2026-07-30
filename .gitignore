@@ -29,6 +29,8 @@
 !insotech_document_layouts/**
 !guapante_kardex/
 !guapante_kardex/**
+!l10n_co_retention_certificate/
+!l10n_co_retention_certificate/**
 !requirements.txt
 
 # Always ignore compiled Python files
