@@ -18,13 +18,25 @@ ACCOUNT_PREFIX_TO_RETENTION_TYPE = [
 # Regla 3 — patrón en el nombre del impuesto -> tipo de retención.
 # Se evalúa en este orden: 'parafiscal' primero porque nombres como
 # "Rte Paraf Asohofrucol" no deben caer en ninguna otra regla por accidente.
-NAME_PATTERN_TO_RETENTION_TYPE = [
+#
+# 'ICA'/'IVA'/'VAT' se buscan en MAYÚSCULAS y sin usar .lower(), porque
+# así se escriben siempre en este dominio (RteICA, RteIVA/RteVAT) y
+# buscarlas en minúsculas genera falsos positivos: la subcadena 'ica'
+# aparece dentro de palabras españolas comunes como "genérica",
+# "básica", "técnica". Bug real encontrado en staging_dev el 2026-07-29
+# (test_rule3_name_pattern_retefuente clasificaba "Retención en la
+# Fuente Genérica" como reteica por culpa de "genÉRICA").
+NAME_PATTERN_TO_RETENTION_TYPE_CI = [
     (
         ('paraf', 'fomento', 'asohofrucol', 'fedepapa', 'cereales', 'leguminosas', 'soya'),
         'parafiscal',
     ),
-    (('ica',), 'reteica'),
-    (('iva', 'vat'), 'reteiva'),
+]
+NAME_PATTERN_TO_RETENTION_TYPE_CS = [
+    (('ICA',), 'reteica'),
+    (('IVA', 'VAT'), 'reteiva'),
+]
+NAME_PATTERN_TO_RETENTION_TYPE_CI_TAIL = [
     (('rtefte', 'fuente'), 'retefuente'),
 ]
 
@@ -133,10 +145,26 @@ class AccountTax(models.Model):
     def _l10n_co_retention_type_from_name(self):
         """Regla 3: infiere el tipo desde patrones en el nombre del
         impuesto, como último recurso antes de dejarlo sin clasificar.
+
+        Orden: parafiscal -> ICA -> IVA -> fuente (no alterar). ICA/IVA
+        se buscan case-sensitive (ver comentario junto a las constantes);
+        parafiscal y fuente se buscan case-insensitive porque no generan
+        los mismos falsos positivos.
         """
         self.ensure_one()
-        name = (self.name or '').lower()
-        for keywords, retention_type in NAME_PATTERN_TO_RETENTION_TYPE:
+        name = self.name or ''
+        name_lower = name.lower()
+
+        for keywords, retention_type in NAME_PATTERN_TO_RETENTION_TYPE_CI:
+            if any(keyword in name_lower for keyword in keywords):
+                return retention_type
+
+        for keywords, retention_type in NAME_PATTERN_TO_RETENTION_TYPE_CS:
             if any(keyword in name for keyword in keywords):
                 return retention_type
+
+        for keywords, retention_type in NAME_PATTERN_TO_RETENTION_TYPE_CI_TAIL:
+            if any(keyword in name_lower for keyword in keywords):
+                return retention_type
+
         return False

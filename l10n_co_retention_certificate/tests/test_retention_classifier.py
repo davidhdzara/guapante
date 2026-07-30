@@ -9,6 +9,15 @@ class TestRetentionClassifier(TransactionCase):
 
     Ver ESPEC §4 Fase 1 para la justificación de cada regla y el orden
     en que deben evaluarse.
+
+    Nota: estas pruebas corren tanto en una base de datos vacía (CI)
+    como en clones de la base de datos real de Guapante (staging_dev),
+    donde ya existen cuentas PUC e impuestos con nombres reales que
+    coinciden con los que usa esta suite como ejemplo. Por eso:
+    - las cuentas se obtienen con get-or-create (_get_or_create_account),
+      no con create() directo, para no chocar con códigos ya usados;
+    - todos los nombres de impuesto de prueba llevan el prefijo 'TEST '
+      para no chocar con la restricción de nombre único por compañía.
     """
 
     @classmethod
@@ -16,7 +25,13 @@ class TestRetentionClassifier(TransactionCase):
         super().setUpClass()
         cls.company = cls.env.company
 
-    def _create_account(self, code, account_type='liability_current'):
+    def _get_or_create_account(self, code, account_type='liability_current'):
+        account = self.env['account.account'].search([
+            ('code', '=', code),
+            ('company_ids', 'in', self.company.id),
+        ], limit=1)
+        if account:
+            return account
         return self.env['account.account'].create({
             'name': 'Test Account %s' % code,
             'code': code,
@@ -32,7 +47,7 @@ class TestRetentionClassifier(TransactionCase):
             'account_id': account.id if account else False,
         }))
         return self.env['account.tax'].create({
-            'name': name,
+            'name': 'TEST %s' % name,
             'amount_type': 'percent',
             'amount': amount,
             'type_tax_use': 'purchase',
@@ -46,25 +61,25 @@ class TestRetentionClassifier(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_rule2_account_prefix_retefuente(self):
-        account = self._create_account('23651517')
+        account = self._get_or_create_account('23651517')
         tax = self._create_purchase_tax('RteFte General (1%)', amount=-1.0, account=account)
         tax._l10n_co_compute_retention_type()
         self.assertEqual(tax.l10n_co_retention_type, 'retefuente')
 
     def test_rule2_account_prefix_reteiva(self):
-        account = self._create_account('236700')
+        account = self._get_or_create_account('236700')
         tax = self._create_purchase_tax('15% RteVAT 19%', amount=-2.85, account=account)
         tax._l10n_co_compute_retention_type()
         self.assertEqual(tax.l10n_co_retention_type, 'reteiva')
 
     def test_rule2_account_prefix_reteica(self):
-        account = self._create_account('236800')
+        account = self._get_or_create_account('236800')
         tax = self._create_purchase_tax('0.966% RteICA', amount=-0.966, account=account)
         tax._l10n_co_compute_retention_type()
         self.assertEqual(tax.l10n_co_retention_type, 'reteica')
 
     def test_rule2_account_prefix_parafiscal(self):
-        account = self._create_account('24601001')
+        account = self._get_or_create_account('24601001')
         tax = self._create_purchase_tax('1% CFH Asohofrucol', amount=-1.0, account=account)
         tax._l10n_co_compute_retention_type()
         self.assertEqual(tax.l10n_co_retention_type, 'parafiscal')
@@ -82,13 +97,13 @@ class TestRetentionClassifier(TransactionCase):
                 'insotech_account_colombia no está instalado en este entorno de test'
             )
 
-        account = self._create_account('23652501')
+        account = self._get_or_create_account('23652501')
         tax = self._create_purchase_tax(
             'RteICA Comercio Bogotá (9.66x1000)', amount=-0.966, account=account
         )
 
         self.env['insotech.retention.concept'].create({
-            'name': 'RteICA Comercio Bogotá (9.66x1000)',
+            'name': tax.name,
             'type': 'reteica',
             'direction': 'purchase',
             'percentage': 0.966,
@@ -127,7 +142,12 @@ class TestRetentionClassifier(TransactionCase):
     def test_rule3_name_pattern_retefuente(self):
         tax = self._create_purchase_tax('Retención en la Fuente Genérica', amount=-1.0, account=None)
         tax._l10n_co_compute_retention_type()
-        self.assertEqual(tax.l10n_co_retention_type, 'retefuente')
+        self.assertEqual(
+            tax.l10n_co_retention_type, 'retefuente',
+            'Bug encontrado en staging_dev 2026-07-29: "Genérica" no debe '
+            'clasificarse como reteica solo porque contiene la subcadena '
+            '"ica" en minúsculas.'
+        )
 
     # ------------------------------------------------------------------
     # Regla 4 — sin clasificar cuando nada aplica.
@@ -143,9 +163,9 @@ class TestRetentionClassifier(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_scope_sale_tax_is_never_classified(self):
-        account = self._create_account('13551517')
+        account = self._get_or_create_account('13551517')
         tax = self.env['account.tax'].create({
-            'name': 'RteFte General (1%) Ventas',
+            'name': 'TEST RteFte General (1%) Ventas',
             'amount_type': 'percent',
             'amount': -1.0,
             'type_tax_use': 'sale',
@@ -159,7 +179,7 @@ class TestRetentionClassifier(TransactionCase):
         self.assertFalse(tax.l10n_co_retention_type)
 
     def test_scope_positive_amount_is_never_classified(self):
-        account = self._create_account('23651517')
+        account = self._get_or_create_account('23651517')
         tax = self._create_purchase_tax('RteFte Positivo (error de captura)', amount=1.0, account=account)
         tax._l10n_co_compute_retention_type()
         self.assertFalse(tax.l10n_co_retention_type)

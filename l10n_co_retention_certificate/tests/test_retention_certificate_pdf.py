@@ -23,15 +23,24 @@ class TestRetentionCertificatePdf(TransactionCase):
         cls.native_fuente_report = cls.env.ref('l10n_co_reports.l10n_co_reports_fuente')
         cls.company = cls.env.company
 
-    def _create_classified_purchase_tax(self, name, amount, retention_type, account_code):
-        account = self.env['account.account'].create({
-            'name': 'Test %s' % account_code,
-            'code': account_code,
-            'account_type': 'liability_current',
+    def _get_or_create_account(self, code, account_type='liability_current'):
+        account = self.env['account.account'].search([
+            ('code', '=', code),
+            ('company_ids', 'in', self.company.id),
+        ], limit=1)
+        if account:
+            return account
+        return self.env['account.account'].create({
+            'name': 'Test %s' % code,
+            'code': code,
+            'account_type': account_type,
             'company_ids': [(6, 0, [self.company.id])],
         })
+
+    def _create_classified_purchase_tax(self, name, amount, retention_type, account_code):
+        account = self._get_or_create_account(account_code)
         return self.env['account.tax'].create({
-            'name': name,
+            'name': 'TEST %s' % name,
             'amount_type': 'percent',
             'amount': amount,
             'type_tax_use': 'purchase',

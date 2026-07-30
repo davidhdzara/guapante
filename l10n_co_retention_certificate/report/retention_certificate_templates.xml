@@ -81,12 +81,10 @@
                                                 <t t-out="concept.get('concept_name')"/>
                                             </td>
                                             <td style="border: 1px solid black; padding: 3px; text-align: right;">
-                                                <span t-out="concept.get('tax_base_amount', 0.0)"
-                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                                <span t-out="concept.get('tax_base_amount', 0.0)"/>
                                             </td>
                                             <td style="border: 1px solid black; padding: 3px; text-align: right;">
-                                                <span t-out="concept.get('balance', 0.0)"
-                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                                <span t-out="concept.get('balance', 0.0)"/>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -96,12 +94,10 @@
                                                 Subtotal <t t-out="section['name']"/>
                                             </td>
                                             <td style="border: 1px solid black; padding: 3px; text-align: right;">
-                                                <span t-out="section.get('tax_base_amount', 0.0)"
-                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                                <span t-out="section.get('tax_base_amount', 0.0)"/>
                                             </td>
                                             <td style="border: 1px solid black; padding: 3px; text-align: right;">
-                                                <span t-out="section.get('balance', 0.0)"
-                                                      t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                                <span t-out="section.get('balance', 0.0)"/>
                                             </td>
                                         </tr>
                                     </tfoot>
@@ -116,13 +112,11 @@
                                     </div>
                                     <div class="col-6" style="display: inline-block; width: 49%;">
                                         <div><strong>MONTO DEL PAGO SUJETO A:</strong></div>
-                                        <span t-out="partner.get('tax_base_amount', 0.0)"
-                                              t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                        <span t-out="partner.get('tax_base_amount', 0.0)"/>
                                     </div>
                                     <div class="col-6" style="display: inline-block; width: 49%;">
                                         <div><strong>RETENIDO Y CONSIGNADO:</strong></div>
-                                        <span t-out="partner.get('balance', 0.0)"
-                                              t-options="{'widget': 'monetary', 'display_currency': company.currency_id}"/>
+                                        <span t-out="partner.get('balance', 0.0)"/>
                                     </div>
                                 </div>
                             </div>
