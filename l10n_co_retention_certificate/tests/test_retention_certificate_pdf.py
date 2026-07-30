@@ -176,3 +176,63 @@ class TestRetentionCertificatePdf(TransactionCase):
         self.assertEqual(section['type_code'], 'retefuente')
         self.assertTrue(section['concepts'], 'La sección debe tener al menos un concepto.')
         self.assertEqual(section['concepts'][0]['concept_name'], tax.name)
+
+    def test_render_shows_concepts_even_if_only_partner_was_unfolded(self):
+        """Regresión del bug reportado por el usuario el 2026-07-30: si en
+        pantalla solo se desplegó el tercero (Nivel 1) pero no el tipo de
+        retención (Nivel 2), el PDF igual debe mostrar el detalle de
+        conceptos (Nivel 3) — no debe depender del estado de plegado que
+        haya quedado en el reporte. _get_report_values debe forzar
+        unfold_all internamente.
+        """
+        tax = self._create_classified_purchase_tax(
+            'RteFte Test Parcial (3.5%)', amount=-3.5,
+            retention_type='retefuente', account_code='23659996',
+        )
+        partner = self.env['res.partner'].create({
+            'name': 'Proveedor Test Plegado Parcial',
+            'vat': '900111333',
+        })
+        move = self.env['account.move'].create({
+            'move_type': 'in_invoice',
+            'partner_id': partner.id,
+            'invoice_date': fields.Date.today(),
+            'invoice_line_ids': [(0, 0, {
+                'name': 'Servicio de prueba plegado parcial',
+                'quantity': 1,
+                'price_unit': 1000000.0,
+                'tax_ids': [(6, 0, [tax.id])],
+            })],
+        })
+        move.action_post()
+
+        options = self.report.get_options(previous_options={
+            'date': {
+                'date_from': fields.Date.today().replace(month=1, day=1),
+                'date_to': fields.Date.today().replace(month=12, day=31),
+                'mode': 'range',
+            },
+        })
+        # Simula exactamente el escenario del bug: el usuario desplegó el
+        # tercero (por eso su line_id está en unfolded_lines) pero NUNCA
+        # desplegó el tipo de retención debajo, y unfold_all quedó False.
+        options['unfold_all'] = False
+        options['unfolded_lines'] = [
+            self.report._get_generic_line_id('res.partner', partner.id)
+        ]
+
+        render_model = self.env[
+            'report.l10n_co_retention_certificate.document'
+        ].with_context(options=options)
+        values = render_model._get_report_values(
+            [], data={'wizard_values': {'article': 'ART. 10 DECRETO 836/91'}}
+        )
+
+        docs = [doc for doc in values['docs'] if doc['partner_id'].id == partner.id]
+        self.assertTrue(docs)
+        self.assertTrue(docs[0]['sections'])
+        self.assertTrue(
+            docs[0]['sections'][0]['concepts'],
+            'El PDF debe mostrar el detalle de conceptos aunque en pantalla '
+            'solo se haya desplegado el tercero, no el tipo de retención.'
+        )

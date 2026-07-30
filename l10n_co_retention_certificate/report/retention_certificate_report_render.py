@@ -32,8 +32,22 @@ class RetentionCertificateReport(models.AbstractModel):
     _description = 'Certificado de Retenciones - Render'
 
     def _get_report_values(self, docids, data=None):
-        options = self._context.get('options')
+        options = dict(self._context.get('options') or {})
         report = self.env['account.report'].browse(options['report_id'])
+
+        # El PDF SIEMPRE debe mostrar el detalle completo (tercero -> tipo
+        # -> concepto) de los terceros seleccionados, sin depender del
+        # estado de plegado/desplegado que haya quedado en la pantalla del
+        # reporte. Confiar en ese estado resultó frágil: si el usuario
+        # desplegaba el tercero pero no cada tipo de retención dentro de
+        # él, el PDF salía con el subtotal de la sección pero SIN las
+        # líneas de concepto debajo (bug real reportado por el usuario el
+        # 2026-07-30 con la sección de Contribución Parafiscal). La
+        # selección de QUÉ terceros entran al certificado se sigue
+        # resolviendo con el filtro de tercero del reporte (filter_partner,
+        # sin tocar); lo que se elimina es la posibilidad de excluir una
+        # retención puntual plegándola, que nunca fue confiable.
+        options['unfold_all'] = True
         lines = report._filter_out_folded_children(report._get_lines(options))
 
         docs = self._build_docs(report, options, lines)
