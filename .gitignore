@@ -31,6 +31,8 @@
 !guapante_kardex/**
 !l10n_co_retention_certificate/
 !l10n_co_retention_certificate/**
+!l10n_co_retention_certificate_guapante/
+!l10n_co_retention_certificate_guapante/**
 !requirements.txt
 
 # Always ignore compiled Python files
