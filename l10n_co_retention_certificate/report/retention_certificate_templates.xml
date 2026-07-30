@@ -267,16 +267,19 @@
                                     Nacionales en la ciudad de <t t-out="company.city or ''"/>.
                                 </p>
                                 <p t-if="'reteiva' in section_types">
-                                    La retención de IVA se practicó de conformidad con el artículo 615-1
-                                    del Estatuto Tributario. Fue consignada oportunamente a nombre de la
-                                    Dirección de Impuestos y Aduanas Nacionales en la ciudad de
-                                    <t t-out="company.city or ''"/>.
+                                    La retención de IVA se practicó en calidad de agente retenedor de
+                                    conformidad con los artículos 437-1 y 437-2 del Estatuto Tributario.
+                                    El presente certificado se expide dando cumplimiento a los requisitos
+                                    del artículo 381 del Estatuto Tributario, según lo ordena el parágrafo
+                                    2 del artículo 615 del mismo Estatuto. Fue consignada oportunamente a
+                                    nombre de la Dirección de Impuestos y Aduanas Nacionales en la ciudad
+                                    de <t t-out="company.city or ''"/>.
                                 </p>
                                 <p t-if="'reteica' in section_types">
                                     La retención de Industria y Comercio (ICA) se practicó de conformidad
-                                    con el estatuto tributario municipal vigente. Fue consignada
-                                    oportunamente a nombre de la Secretaría de Hacienda del municipio de
-                                    <t t-out="company.city or ''"/>.
+                                    con el estatuto tributario municipal vigente en cada municipio donde
+                                    se causó la retención. Fue consignada oportunamente a nombre de la
+                                    Secretaría de Hacienda municipal correspondiente.
                                 </p>
                                 <p t-if="'parafiscal' in section_types">
                                     La contribución parafiscal fue retenida de conformidad con la Ley 101
@@ -294,8 +297,9 @@
                             <!-- Firma -->
                             <div class="rc-signature-box">Firma Autorizada</div>
                             <div class="rc-legal-note" style="margin-top: 6px;">
-                                NO REQUIERE FIRMA AUTÓGRAFA.
-                                <t t-out="options.get('article', '')"/>
+                                Este documento no requiere firma autógrafa para su validez, de
+                                conformidad con el <t t-out="options.get('article', '')"/>, compilado
+                                en el artículo 1.6.1.12.12 del Decreto Único Reglamentario 1625 de 2016.
                             </div>
 
                         </div>
