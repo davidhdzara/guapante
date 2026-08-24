@@ -313,7 +313,7 @@
                                     <field name="estimated_kg" column_invisible="1"/>
                                     <field name="needs_weighing" column_invisible="1"/>
                                     <field name="is_done" column_invisible="1"/>
-                                    <field name="actual_kg" string="Peso real (kg)" digits="[10,3]"/>
+                                    <field name="actual_kg" string="Peso real (kg)" digits="[10,3]" widget="scale_weight"/>
                                     <button name="action_save_line_weight_from_ui" type="object" icon="fa-check" title="Confirmar peso" class="btn btn-sm btn-success fw-bold"/>
                                 </list>
                             </field>
