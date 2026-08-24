@@ -31,13 +31,15 @@ class ScaleWeightField extends Component {
                     <i class="fa fa-balance-scale" role="img" aria-label="Tomar peso"/>
                 </button>
             </div>
-            <small t-if="state.message"
-                   t-attf-class="d-block {{ state.status === 'error' ? 'text-danger' : 'text-muted' }}">
-                <t t-esc="state.message"/>
-            </small>
-            <small t-elif="!state.hasAttempted" class="d-block text-muted">
-                <t t-esc="firstUseHint"/>
-            </small>
+            <div class="small" style="min-height: 1.2em; line-height: 1.2em;">
+                <span t-if="state.message"
+                      t-attf-class="{{ state.status === 'error' ? 'text-danger' : 'text-muted' }}">
+                    <t t-esc="state.message"/>
+                </span>
+                <span t-elif="!state.hasAttempted" class="text-muted">
+                    <t t-esc="firstUseHint"/>
+                </span>
+            </div>
         </div>
     `;
     static components = { FloatField };
