@@ -7,10 +7,16 @@ import { Component, xml, useState } from "@odoo/owl";
 // Agent solo escucha en 127.0.0.1, sin puerto público. No hay ir.config_parameter para esto:
 // la decisión de Fase 9 fue no persistir nada de básculas del lado de Odoo.
 const SCALE_AGENT_URL = "http://127.0.0.1:8787";
-const FETCH_TIMEOUT_MS = 3000;
+// 15s, no 3s: la primera vez por sesión de Chrome, el fetch queda pendiente hasta que el
+// operario acepta el prompt nativo de "Local Network Access" — confirmado en staging_dev real
+// (David, 2026-08-24). Un timeout corto cortaba ese fetch como si fuera un error.
+const FETCH_TIMEOUT_MS = 15000;
 const ERROR_MESSAGE =
     "No se pudo leer la báscula. Verifica que el Agent esté corriendo y que el " +
     "navegador tenga permiso de red local.";
+const FIRST_USE_HINT =
+    "La primera vez, Chrome puede pedir permiso de acceso a la red local — acéptalo " +
+    "para que funcione.";
 
 class ScaleWeightField extends Component {
     static template = xml`
@@ -29,13 +35,17 @@ class ScaleWeightField extends Component {
                    t-attf-class="d-block {{ state.status === 'error' ? 'text-danger' : 'text-muted' }}">
                 <t t-esc="state.message"/>
             </small>
+            <small t-elif="!state.hasAttempted" class="d-block text-muted">
+                <t t-esc="firstUseHint"/>
+            </small>
         </div>
     `;
     static components = { FloatField };
     static props = { ...standardFieldProps };
 
     setup() {
-        this.state = useState({ status: "idle", message: "" });
+        this.state = useState({ status: "idle", message: "", hasAttempted: false });
+        this.firstUseHint = FIRST_USE_HINT;
     }
 
     get isButtonDisabled() {
@@ -45,6 +55,7 @@ class ScaleWeightField extends Component {
     async onTakeWeight() {
         this.state.status = "loading";
         this.state.message = "";
+        this.state.hasAttempted = true;
 
         let readings;
         try {
