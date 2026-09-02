@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Datos iniciales: Retención en la Fuente — Colombia.
+
+    Crea el registro de UVT para el año 2024 con el valor oficial
+    fijado por la DIAN: $47.065 (Resolución 001264 del 18/11/2023).
+
+    Procedimiento por defecto: Procedimiento 1 (Art. 383 ET).
+-->
+<odoo>
+    <data noupdate="1">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             UVT 2024 — Valor $47.065 — Procedimiento 1
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_retefuente_uvt_2024" model="l10n.co.retefuente.uvt">
+            <field name="year">2024</field>
+            <field name="uvt_value">47065.0</field>
+            <field name="procedure">1</field>
+            <field name="percentage_procedure2">0.0</field>
+            <field name="active" eval="True"/>
+            <field name="notes">Valor UVT 2024 fijado por la DIAN mediante Resolución 001264 del 18 de noviembre de 2023. Procedimiento 1 — Art. 383 Estatuto Tributario. Tabla marginal aplicable mes a mes.</field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             UVT 2025 — Valor $49.799 — Procedimiento 1
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_retefuente_uvt_2025" model="l10n.co.retefuente.uvt">
+            <field name="year">2025</field>
+            <field name="uvt_value">49799.0</field>
+            <field name="procedure">1</field>
+            <field name="percentage_procedure2">0.0</field>
+            <field name="active" eval="True"/>
+            <field name="notes">Valor UVT 2025 fijado por la DIAN mediante Resolución 001312 del 22 de noviembre de 2024. Procedimiento 1 — Art. 383 Estatuto Tributario.</field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             UVT 2026 — Valor $52.374 — Procedimiento 1
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_retefuente_uvt_2026" model="l10n.co.retefuente.uvt">
+            <field name="year">2026</field>
+            <field name="uvt_value">52374.0</field>
+            <field name="procedure">1</field>
+            <field name="percentage_procedure2">0.0</field>
+            <field name="active" eval="True"/>
+            <field name="notes">Valor UVT 2026 fijado por la DIAN mediante Resolución 000238 del 20 de noviembre de 2025. Procedimiento 1 — Art. 383 Estatuto Tributario.</field>
+        </record>
+
+    </data>
+</odoo>

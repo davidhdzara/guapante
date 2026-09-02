@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Liquidación Definitiva - Form View                           -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_liquidacion_form" model="ir.ui.view">
+        <field name="name">l10n.co.hr.liquidacion.form</field>
+        <field name="model">l10n.co.hr.liquidacion</field>
+        <field name="arch" type="xml">
+            <form string="Liquidación Definitiva de Contrato">
+                <header>
+                    <button name="action_calculate"
+                            string="Calcular"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-calculator"
+                            invisible="state != 'draft'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_calculate"
+                            string="Recalcular"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="state != 'calculated'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_approve"
+                            string="Aprobar"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-thumbs-up"
+                            confirm="¿Está seguro de aprobar esta liquidación? Una vez aprobada solo podrá revertirse a borrador."
+                            invisible="state != 'calculated'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_pay"
+                            string="Registrar Pago"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-money"
+                            confirm="¿Confirma que el pago de esta liquidación ha sido realizado? Esta acción es irreversible."
+                            invisible="state != 'approved'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_draft"
+                            string="Volver a Borrador"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-undo"
+                            invisible="state in ('draft', 'paid')"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <field name="state"
+                           widget="statusbar"
+                           statusbar_visible="draft,calculated,approved,paid"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+
+                    <!-- ──── Datos del Empleado y Contrato ──── -->
+                    <group>
+                        <group string="Empleado y Contrato">
+                            <field name="employee_id"
+                                   readonly="state != 'draft'"/>
+                            <field name="contract_id"
+                                   readonly="state != 'draft'"
+                                   domain="[('employee_id', '=', employee_id)]"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                            <field name="contract_type"
+                                   readonly="state != 'draft'"/>
+                        </group>
+                        <group string="Fechas y Causa">
+                            <field name="date_start"
+                                   readonly="state != 'draft'"/>
+                            <field name="date_end"
+                                   readonly="state != 'draft'"/>
+                            <field name="days_worked"/>
+                            <field name="cause"
+                                   readonly="state != 'draft'"/>
+                        </group>
+                    </group>
+
+                    <!-- ──── Información Salarial ──── -->
+                    <group string="Información Salarial">
+                        <group>
+                            <field name="base_salary"
+                                   readonly="state not in ('draft', 'calculated')"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                            <field name="aux_transporte"
+                                   readonly="state not in ('draft', 'calculated')"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                        </group>
+                        <group>
+                            <field name="base_prestacional"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                        </group>
+                    </group>
+
+                    <!-- ──── Conceptos de Liquidación ──── -->
+                    <group string="Conceptos de Liquidación"
+                           invisible="state == 'draft'">
+                        <group>
+                            <field name="salario_pendiente"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                            <field name="prima_proporcional"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                            <field name="cesantias_proporcionales"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                            <field name="intereses_cesantias"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                        </group>
+                        <group>
+                            <field name="vacaciones_proporcionales"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                            <field name="vacaciones_pendientes"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                            <field name="indemnizacion"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   readonly="state in ('approved', 'paid')"/>
+                        </group>
+                    </group>
+
+                    <!-- ──── Total ──── -->
+                    <group invisible="state == 'draft'">
+                        <group>
+                            <div class="oe_subtotal_footer_separator">
+                                <field name="total_liquidacion"
+                                       class="oe_subtotal_footer_separator"
+                                       widget="monetary"
+                                       options="{'currency_field': 'currency_id'}"/>
+                            </div>
+                        </group>
+                    </group>
+
+                    <!-- ──── Observaciones ──── -->
+                    <notebook>
+                        <page string="Observaciones" name="notes">
+                            <field name="notes"
+                                   placeholder="Notas internas sobre la liquidación..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Liquidación Definitiva - Tree/List View                      -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_liquidacion_tree" model="ir.ui.view">
+        <field name="name">l10n.co.hr.liquidacion.tree</field>
+        <field name="model">l10n.co.hr.liquidacion</field>
+        <field name="arch" type="xml">
+            <list string="Liquidaciones de Contrato"
+                  decoration-info="state == 'draft'"
+                  decoration-warning="state == 'calculated'"
+                  decoration-success="state == 'approved'"
+                  decoration-muted="state == 'paid'">
+                <field name="name" string="Referencia"/>
+                <field name="employee_id" string="Empleado"/>
+                <field name="contract_type" string="Tipo Contrato"/>
+                <field name="date_start" string="Inicio" optional="show"/>
+                <field name="date_end" string="Retiro"/>
+                <field name="cause" string="Causa" optional="show"/>
+                <field name="days_worked" string="Días" optional="hide"/>
+                <field name="total_liquidacion"
+                       string="Total"
+                       widget="monetary"
+                       options="{'currency_field': 'currency_id'}"/>
+                <field name="state" string="Estado"
+                       widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-warning="state == 'calculated'"
+                       decoration-success="state == 'approved'"
+                       decoration-muted="state == 'paid'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Liquidación Definitiva - Search View                         -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_liquidacion_search" model="ir.ui.view">
+        <field name="name">l10n.co.hr.liquidacion.search</field>
+        <field name="model">l10n.co.hr.liquidacion</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Liquidaciones">
+                <field name="name"/>
+                <field name="employee_id"/>
+                <field name="contract_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <separator/>
+                <filter name="filter_draft"
+                        string="Borrador"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter name="filter_calculated"
+                        string="Calculadas"
+                        domain="[('state', '=', 'calculated')]"/>
+                <filter name="filter_approved"
+                        string="Aprobadas"
+                        domain="[('state', '=', 'approved')]"/>
+                <filter name="filter_paid"
+                        string="Pagadas"
+                        domain="[('state', '=', 'paid')]"/>
+                <separator/>
+                <filter name="filter_current_year"
+                        string="Año Actual"
+                        domain="[('date_end', '&gt;=', (context_today()).strftime('%Y-01-01')),
+                                 ('date_end', '&lt;=', (context_today()).strftime('%Y-12-31'))]"/>
+                <separator/>
+                <filter name="date_end_filter" string="Fecha de Retiro" date="date_end"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_employee"
+                            string="Empleado"
+                            context="{'group_by': 'employee_id'}"/>
+                    <filter name="group_cause"
+                            string="Causa"
+                            context="{'group_by': 'cause'}"/>
+                    <filter name="group_state"
+                            string="Estado"
+                            context="{'group_by': 'state'}"/>
+                    <filter name="group_date_end"
+                            string="Fecha de Retiro"
+                            context="{'group_by': 'date_end:month'}"/>
+                    <filter name="group_company"
+                            string="Compañía"
+                            context="{'group_by': 'company_id'}"
+                            groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Liquidación Definitiva - Action                              -->
+    <!-- ============================================================ -->
+    <record id="action_l10n_co_hr_liquidacion" model="ir.actions.act_window">
+        <field name="name">Liquidaciones de Contrato</field>
+        <field name="res_model">l10n.co.hr.liquidacion</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_l10n_co_hr_liquidacion_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crear nueva liquidación de contrato
+            </p>
+            <p>
+                Calcule y registre la liquidación definitiva de contrato
+                de sus empleados, incluyendo prima, cesantías, intereses,
+                vacaciones e indemnización según la legislación colombiana.
+            </p>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu Items                                                    -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_l10n_co_liquidaciones_root"
+              name="Liquidaciones"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_root"
+              sequence="60"/>
+
+    <menuitem id="menu_l10n_co_liquidaciones_list"
+              name="Liquidaciones de Contrato"
+              parent="menu_l10n_co_liquidaciones_root"
+              action="action_l10n_co_hr_liquidacion"
+              sequence="10"
+              groups="hr_payroll.group_hr_payroll_user"/>
+
+</odoo>

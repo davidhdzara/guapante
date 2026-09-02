@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- PILA Wizard v2 - Form View (Multi-step)                       -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_pila_wizard_v2_form" model="ir.ui.view">
+        <field name="name">l10n.co.hr.pila.wizard.v2.form</field>
+        <field name="model">l10n.co.hr.pila.wizard.v2</field>
+        <field name="arch" type="xml">
+            <form string="Generar Archivo PILA Completo">
+
+                <!-- Campo state oculto para controlar visibilidad -->
+                <field name="state" invisible="1"/>
+                <field name="validation_ok" invisible="1"/>
+                <field name="currency_id" invisible="1"/>
+
+                <!-- ================================================ -->
+                <!-- PASO 1: Seleccion de periodo y parametros         -->
+                <!-- ================================================ -->
+                <div invisible="state != 'draft'">
+                    <div class="alert alert-info" role="alert">
+                        <strong>Paso 1 de 3: Seleccion de Periodo</strong>
+                        <br/>
+                        Seleccione el periodo de cotizacion y los parametros
+                        de la planilla. Al hacer clic en "Validar", se
+                        verificaran los datos de los empleados.
+                    </div>
+                    <group>
+                        <group string="Periodo de Cotizacion">
+                            <field name="year" string="Ano"/>
+                            <field name="month" string="Mes"/>
+                        </group>
+                        <group string="Tipo de Planilla">
+                            <field name="tipo_planilla"/>
+                            <field name="modalidad_planilla"/>
+                            <field name="company_id"
+                                   string="Compania"
+                                   groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Correccion (solo para planilla tipo N)"
+                           invisible="tipo_planilla != 'N'">
+                        <group>
+                            <field name="numero_planilla_asociada"/>
+                            <field name="fecha_pago_asociada"/>
+                        </group>
+                    </group>
+                </div>
+
+                <!-- ================================================ -->
+                <!-- PASO 2: Validacion y resumen                      -->
+                <!-- ================================================ -->
+                <div invisible="state != 'validated'">
+
+                    <!-- Errores de validacion -->
+                    <div class="alert alert-danger" role="alert"
+                         invisible="validation_ok">
+                        <strong>Se encontraron errores de validacion:</strong>
+                        <br/><br/>
+                        <field name="validation_errors"
+                               readonly="1"
+                               widget="text"/>
+                        <br/>
+                        Corrija los errores en la configuracion de los
+                        empleados y vuelva a validar.
+                    </div>
+
+                    <!-- Validacion exitosa + Resumen -->
+                    <div class="alert alert-success" role="alert"
+                         invisible="not validation_ok">
+                        <strong>Validacion exitosa</strong>
+                        <br/>
+                        Todos los empleados tienen los datos PILA requeridos.
+                        Revise el resumen y haga clic en "Generar Archivo PILA".
+                    </div>
+
+                    <div invisible="not validation_ok">
+                        <group string="Resumen de la Planilla">
+                            <group>
+                                <field name="summary_total_employees"
+                                       string="Total Cotizantes"/>
+                                <field name="summary_total_nomina"
+                                       string="Total Nomina"/>
+                                <field name="summary_total_ibc"
+                                       string="Total IBC Pension"/>
+                            </group>
+                            <group>
+                                <field name="summary_total_general"
+                                       string="Total General Aportes"/>
+                            </group>
+                        </group>
+                        <group string="Detalle de Aportes">
+                            <group>
+                                <field name="summary_total_pension"
+                                       string="Pension"/>
+                                <field name="summary_total_salud"
+                                       string="Salud"/>
+                                <field name="summary_total_arl"
+                                       string="ARL"/>
+                            </group>
+                            <group>
+                                <field name="summary_total_ccf"
+                                       string="CCF"/>
+                                <field name="summary_total_sena"
+                                       string="SENA"/>
+                                <field name="summary_total_icbf"
+                                       string="ICBF"/>
+                            </group>
+                        </group>
+                    </div>
+
+                    <!-- Info del periodo seleccionado -->
+                    <group string="Periodo Seleccionado" invisible="not validation_ok">
+                        <group>
+                            <field name="year" string="Ano" readonly="1"/>
+                            <field name="month" string="Mes" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="tipo_planilla" readonly="1"/>
+                            <field name="modalidad_planilla" readonly="1"/>
+                        </group>
+                    </group>
+                </div>
+
+                <!-- ================================================ -->
+                <!-- PASO 3: Descargar archivo generado                -->
+                <!-- ================================================ -->
+                <div invisible="state != 'generated'">
+                    <div class="alert alert-success" role="alert">
+                        <strong>Archivo PILA generado exitosamente.</strong>
+                        <br/>
+                        Haga clic en el boton de descarga para obtener
+                        el archivo TXT listo para cargar en su operador
+                        de informacion PILA (SuAporte, SOI, Mi Planilla).
+                        <br/><br/>
+                        El archivo contiene registros Tipo 01 (encabezado)
+                        y Tipo 02 (detalle por cotizante).
+                    </div>
+                    <group>
+                        <group>
+                            <field name="file_data"
+                                   filename="file_name"
+                                   string="Archivo PILA"/>
+                            <field name="file_name" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Resumen Final">
+                        <group>
+                            <field name="summary_total_employees"
+                                   string="Total Cotizantes" readonly="1"/>
+                            <field name="summary_total_general"
+                                   string="Total Aportes" readonly="1"/>
+                        </group>
+                    </group>
+                </div>
+
+                <!-- ================================================ -->
+                <!-- Botones del footer                                -->
+                <!-- ================================================ -->
+                <footer>
+                    <!-- Paso 1: Validar -->
+                    <button name="action_validate"
+                            string="Validar Datos"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'draft'"/>
+
+                    <!-- Paso 2: Generar (solo si validacion OK) -->
+                    <button name="action_generate_pila"
+                            string="Generar Archivo PILA"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'validated' or not validation_ok"/>
+
+                    <!-- Paso 2: Volver a validar (si hay errores) -->
+                    <button name="action_validate"
+                            string="Volver a Validar"
+                            type="object"
+                            class="btn-warning"
+                            invisible="state != 'validated' or validation_ok"/>
+
+                    <!-- Paso 2: Volver a seleccion de periodo -->
+                    <button name="action_back_to_draft"
+                            string="Volver"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="state != 'validated'"/>
+
+                    <!-- Paso 3: Volver al resumen -->
+                    <button name="action_back_to_validated"
+                            string="Volver al Resumen"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="state != 'generated'"/>
+
+                    <!-- Cerrar (siempre visible) -->
+                    <button string="Cerrar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- PILA Wizard v2 - Action                                       -->
+    <!-- ============================================================ -->
+    <record id="action_l10n_co_hr_pila_wizard_v2" model="ir.actions.act_window">
+        <field name="name">Generar PILA Completo</field>
+        <field name="res_model">l10n.co.hr.pila.wizard.v2</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- PILA v2 - Menu Item                                           -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_l10n_co_hr_pila_wizard_v2"
+              name="Generar PILA Completo"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_root"
+              action="action_l10n_co_hr_pila_wizard_v2"
+              sequence="61"/>
+
+</odoo>

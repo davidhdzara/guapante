@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Payslip Form View                                             -->
+    <!-- ============================================================ -->
+    <record id="view_payslip_form_ne" model="ir.ui.view">
+        <field name="name">hr.payslip.form.ne</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+
+            <!-- Header buttons -->
+            <xpath expr="//header" position="inside">
+                <button name="%(action_hr_payslip_send)d"
+                        string="Enviar y Procesar"
+                        type="action"
+                        class="oe_highlight"
+                        invisible="l10n_co_ne_state not in ('draft', 'generated', 'rejected') or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_generate_ne_xml"
+                        string="Generar XML"
+                        type="object"
+                        class="btn-primary"
+                        invisible="l10n_co_ne_state != 'draft' or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_send_ne_dian"
+                        string="Enviar a DIAN"
+                        type="object"
+                        class="btn-primary"
+                        invisible="l10n_co_ne_state != 'generated' or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_check_dian_status"
+                        string="Consultar Estado"
+                        type="object"
+                        class="btn-secondary"
+                        invisible="l10n_co_ne_state not in ('sent', 'generated', 'rejected') or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_create_adjustment"
+                        string="Nota de Ajuste"
+                        type="object"
+                        class="btn-secondary"
+                        invisible="l10n_co_ne_state != 'accepted' or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+
+            </xpath>
+
+            <!-- NE Status bar -->
+            <xpath expr="//header" position="after">
+                <div class="oe_title" name="ne_statusbar">
+                    <field name="l10n_co_ne_state"
+                           widget="statusbar"
+                           statusbar_visible="draft,generated,sent,accepted"
+                           readonly="1"/>
+                </div>
+
+                <!-- Banner de Pendiente de Procesamiento -->
+                <div class="alert alert-warning text-center mb-0"
+                     role="alert"
+                     invisible="l10n_co_ne_state != 'sent'">
+                    <strong><i class="fa fa-clock-o"/> Pendiente de validación DIAN</strong>
+                    <br/>
+                    La nómina electrónica ha sido transmitida y está en espera de la validación del webservice.
+                </div>
+
+                <!-- Banner de Rechazo de la DIAN -->
+                <div class="alert alert-danger text-center mb-0"
+                     role="alert"
+                     invisible="l10n_co_ne_state != 'rejected'">
+                    <strong><i class="fa fa-exclamation-triangle"/> Nómina Rechazada por la DIAN</strong>
+                    <br/>
+                    Revise los detalles del error en el chatter a continuación. Corrija los datos correspondientes en el empleado, contrato o compañía, y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo (sin desperdiciar números).
+                </div>
+            </xpath>
+
+            <!-- Notebook page for NE details -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Nómina Electrónica" name="nomina_electronica">
+                    <group>
+                        <group string="Datos de Transmisión">
+                            <field name="l10n_co_ne_consecutive"
+                                   string="Consecutivo NE"
+                                   readonly="1"/>
+                            <field name="l10n_co_ne_cune"
+                                   string="CUNE"
+                                   readonly="1"/>
+                            <field name="l10n_co_ne_is_salarial"
+                                   readonly="state != 'draft'"/>
+                        </group>
+                        <group string="Estado DIAN">
+                            <field name="l10n_co_ne_state"
+                                   string="Estado NE"
+                                   readonly="1"
+                                   widget="badge"
+                                   decoration-info="l10n_co_ne_state == 'draft'"
+                                   decoration-warning="l10n_co_ne_state in ('generated','sent')"
+                                   decoration-success="l10n_co_ne_state == 'accepted'"
+                                   decoration-danger="l10n_co_ne_state == 'rejected'"/>
+                            <field name="l10n_co_ne_xml_attachment_id"
+                                   string="Archivo XML"
+                                   readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Novedades y Ausencias (DIAN)">
+                        <group>
+                            <field name="l10n_co_ne_dias_incapacidad"/>
+                            <field name="l10n_co_ne_dias_licencia_mat"/>
+                            <field name="l10n_co_ne_dias_licencia_rem"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_dias_vacaciones"/>
+                            <field name="l10n_co_ne_dias_licencia_nr"/>
+                            <button name="action_detect_leaves"
+                                    string="Detectar Novedades"
+                                    type="object"
+                                    class="btn-secondary"/>
+                        </group>
+                        <field name="l10n_co_ne_leave_summary" readonly="1" colspan="2"/>
+                    </group>
+                    <group string="Nota de Ajuste"
+                           invisible="not l10n_co_ne_is_adjustment">
+                        <field name="l10n_co_ne_is_adjustment"
+                               string="Es Nota de Ajuste"
+                               readonly="1"/>
+                        <field name="l10n_co_ne_adjustment_ref_cune"
+                               string="CUNE Nómina Original"
+                               readonly="l10n_co_ne_state != 'draft'"/>
+                    </group>
+                    <group string="Respuesta DIAN">
+                        <field name="l10n_co_ne_dian_response"
+                               string="Respuesta DIAN"
+                               readonly="1"
+                               nolabel="1"
+                               colspan="4"/>
+                    </group>
+                </page>
+            </xpath>
+
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Payslip Tree View                                             -->
+    <!-- ============================================================ -->
+    <record id="view_payslip_tree_ne" model="ir.ui.view">
+        <field name="name">hr.payslip.tree.ne</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='state']" position="after">
+                <field name="l10n_co_ne_state"
+                       string="Estado NE"
+                       optional="show"
+                       widget="badge"
+                       decoration-info="l10n_co_ne_state == 'draft'"
+                       decoration-warning="l10n_co_ne_state in ('generated','sent')"
+                       decoration-success="l10n_co_ne_state == 'accepted'"
+                       decoration-danger="l10n_co_ne_state == 'rejected'"/>
+                <field name="l10n_co_ne_cune"
+                       string="CUNE"
+                       optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Payslip Search View                                           -->
+    <!-- ============================================================ -->
+    <record id="view_hr_payslip_filter_ne" model="ir.ui.view">
+        <field name="name">hr.payslip.select.ne</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_filter"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <field name="l10n_co_ne_state" string="Estado NE"/>
+                <field name="l10n_co_ne_consecutive" string="Consecutivo NE"/>
+                <separator/>
+                <filter string="NE Borrador" name="ne_draft" domain="[('l10n_co_ne_state', '=', 'draft')]"/>
+                <filter string="NE Generado" name="ne_generated" domain="[('l10n_co_ne_state', '=', 'generated')]"/>
+                <filter string="NE Transmitido" name="ne_sent" domain="[('l10n_co_ne_state', '=', 'sent')]"/>
+                <filter string="NE Aceptado" name="ne_accepted" domain="[('l10n_co_ne_state', '=', 'accepted')]"/>
+                <filter string="NE Rechazado" name="ne_rejected" domain="[('l10n_co_ne_state', '=', 'rejected')]"/>
+                <separator/>
+                <filter string="Es Nota de Ajuste" name="ne_is_adjustment" domain="[('l10n_co_ne_is_adjustment', '=', True)]"/>
+                <separator/>
+                <filter name="date_filter" string="Fecha Desde" date="date_from"/>
+                <filter name="date_to_filter" string="Fecha Hasta" date="date_to"/>
+            </xpath>
+            <xpath expr="//group" position="inside">
+                <filter string="Estado NE" name="group_by_l10n_co_ne_state" context="{'group_by': 'l10n_co_ne_state'}"/>
+                <filter string="Es Nota de Ajuste" name="group_by_l10n_co_ne_is_adjustment" context="{'group_by': 'l10n_co_ne_is_adjustment'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Server Actions for Mass Processing                            -->
+    <!-- ============================================================ -->
+    <record id="action_mass_generate_ne_xml" model="ir.actions.server">
+        <field name="name">Generar XML Masivo</field>
+        <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">records.action_mass_generate_ne_xml()</field>
+    </record>
+
+    <record id="action_mass_send_ne_dian" model="ir.actions.server">
+        <field name="name">Enviar a DIAN Masivo</field>
+        <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">records.action_mass_send_ne_dian()</field>
+    </record>
+
+    <record id="action_send_test_set" model="ir.actions.server">
+        <field name="name">Enviar Set de Pruebas DIAN</field>
+        <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">records.action_send_test_set()</field>
+    </record>
+
+</odoo>

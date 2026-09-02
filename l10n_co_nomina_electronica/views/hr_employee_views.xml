@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_employee_form_ne" model="ir.ui.view">
+        <field name="name">hr.employee.form.ne</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Nómina Electrónica" name="nomina_electronica">
+
+                    <group string="Identificación DIAN" name="dian_identification">
+                        <group>
+                            <field name="l10n_co_ne_document_type"
+                                   string="Tipo Documento DIAN"/>
+                            <field name="l10n_co_ne_worker_type"
+                                   string="Tipo Trabajador"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_worker_subtype"
+                                   string="Subtipo Trabajador"/>
+                            <field name="l10n_co_ne_high_risk_pension"
+                                   string="Pensión Alto Riesgo"/>
+                        </group>
+                    </group>
+
+                    <group string="Ubicación Laboral" name="work_location">
+                        <group>
+                            <field name="l10n_co_ne_dane_city_id"
+                                   string="Municipio DANE (Lugar de Trabajo)"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_foreigner_no_pension"
+                                   string="Extranjero sin Pensión en Colombia"/>
+                            <field name="l10n_co_ne_colombian_abroad"
+                                   string="Colombiano en el Exterior"/>
+                        </group>
+                    </group>
+
+                    <group string="Datos de Pago" name="payment_data">
+                        <group>
+                            <field name="l10n_co_ne_payment_method"
+                                   string="Medio de Pago"/>
+                            <field name="l10n_co_ne_bank_name"
+                                   string="Nombre del Banco"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_bank_account_type"
+                                   string="Tipo de Cuenta"/>
+                            <field name="l10n_co_ne_bank_account"
+                                   string="Número de Cuenta"/>
+                        </group>
+                    </group>
+
+                    <group string="PILA - Administradoras" name="pila_administradoras">
+                        <group>
+                            <field name="l10n_co_pila_eps_code"/>
+                            <field name="l10n_co_pila_afp_code"/>
+                            <field name="l10n_co_pila_ccf_code"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_pila_afp_traslado"/>
+                            <field name="l10n_co_pila_eps_traslado"/>
+                            <field name="l10n_co_pila_colombiano_exterior"/>
+                            <field name="l10n_co_pila_fecha_radicacion_ext"
+                                   invisible="not l10n_co_pila_colombiano_exterior"/>
+                        </group>
+                    </group>
+
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

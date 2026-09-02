@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_salary_rule_form_ne" model="ir.ui.view">
+        <field name="name">hr.salary.rule.form.ne</field>
+        <field name="model">hr.salary.rule</field>
+        <field name="inherit_id" ref="hr_payroll.hr_salary_rule_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Clasificación Colombia" name="clasificacion_colombia">
+
+                    <group string="Concepto DIAN - Nómina Electrónica" name="dian_concept">
+                        <group>
+                            <field name="l10n_co_ne_dian_concept"
+                                   string="Concepto DIAN"/>
+                        </group>
+                    </group>
+
+                    <group string="Clasificación UGPP" name="ugpp_classification">
+                        <group>
+                            <field name="l10n_co_ugpp_payment_type"
+                                   string="Tipo de Pago UGPP"/>
+                            <field name="l10n_co_ugpp_non_salary_class"
+                                   string="Clase Pago No Salarial"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ugpp_accounts"
+                                   string="Cuentas UGPP"/>
+                        </group>
+                    </group>
+
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

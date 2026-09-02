@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Datos iniciales: Parámetros Anuales de Nómina — Colombia.
+
+    Crea los registros de SMMLV, Auxilio de Transporte y UVT
+    para los años 2024, 2025 y 2026 con los valores oficiales
+    del Gobierno Nacional y la DIAN.
+
+    noupdate="1" garantiza que si el usuario modifica los valores,
+    NO serán sobrescritos al actualizar el módulo.
+-->
+<odoo>
+    <data noupdate="1">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Año 2024
+             - SMMLV: Decreto 2292/2023
+             - Aux. Transporte: Decreto 2293/2023
+             - UVT: Resolución DIAN 001264/2023
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_payroll_annual_params_2024" model="l10n.co.payroll.annual.params">
+            <field name="year">2024</field>
+            <field name="smmlv">1300000</field>
+            <field name="aux_transporte">162000</field>
+            <field name="uvt">47065</field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Año 2025
+             - SMMLV: Decreto 1468/2024
+             - Aux. Transporte: Decreto 1469/2024
+             - UVT: Resolución DIAN 001312/2024
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_payroll_annual_params_2025" model="l10n.co.payroll.annual.params">
+            <field name="year">2025</field>
+            <field name="smmlv">1423500</field>
+            <field name="aux_transporte">200000</field>
+            <field name="uvt">49799</field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Año 2026
+             - SMMLV: Decreto 1469/2025
+             - Aux. Transporte: Decreto 1470/2025
+             - UVT: Resolución DIAN 000238/2025
+             ═══════════════════════════════════════════════════════════ -->
+        <record id="l10n_co_payroll_annual_params_2026" model="l10n.co.payroll.annual.params">
+            <field name="year">2026</field>
+            <field name="smmlv">1750905</field>
+            <field name="aux_transporte">249095</field>
+            <field name="uvt">52374</field>
+        </record>
+
+    </data>
+</odoo>

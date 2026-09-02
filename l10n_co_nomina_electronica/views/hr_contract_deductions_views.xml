@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_contract_form_ne_deductions" model="ir.ui.view">
+        <field name="name">hr.contract.form.ne.deductions</field>
+        <field name="model">hr.contract</field>
+        <field name="inherit_id" ref="hr_payroll.hr_contract_form_inherit"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Deducciones Fijas" name="deducciones_fijas">
+                    <group string="Deducciones configuradas en el contrato"
+                           name="deductions_main">
+                        <group string="Deducciones Legales"
+                               name="deductions_legal">
+                            <field name="l10n_co_ne_libranza"/>
+                            <field name="l10n_co_ne_sindicato"/>
+                        </group>
+                        <group string="Ahorro y Prevision"
+                               name="deductions_savings">
+                            <field name="l10n_co_ne_afc"/>
+                            <field name="l10n_co_ne_pension_voluntaria"/>
+                            <field name="l10n_co_ne_plan_complementario"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Otros Descuentos"
+                               name="deductions_other">
+                            <field name="l10n_co_ne_cooperativa"/>
+                            <field name="l10n_co_ne_educacion"/>
+                        </group>
+                        <group>
+                            <!-- Espacio reservado para futuras deducciones -->
+                        </group>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        <strong>Nota:</strong> Los valores configurados aqui se aplican
+                        automaticamente en cada nomina. Si se requiere un ajuste puntual
+                        para un mes, ingrese el valor manualmente como input en la nomina
+                        y este tendra prioridad sobre el valor del contrato.
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

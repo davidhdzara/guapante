@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Tree View -->
+    <record id="l10n_co_payroll_annual_params_tree" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.annual.params.tree</field>
+        <field name="model">l10n.co.payroll.annual.params</field>
+        <field name="arch" type="xml">
+            <list string="Parametros Anuales" editable="bottom">
+                <field name="year"/>
+                <field name="smmlv" widget="monetary"/>
+                <field name="aux_transporte" widget="monetary"/>
+                <field name="uvt" widget="monetary"/>
+                <field name="currency_id" column_invisible="True"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="l10n_co_payroll_annual_params_form" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.annual.params.form</field>
+        <field name="model">l10n.co.payroll.annual.params</field>
+        <field name="arch" type="xml">
+            <form string="Parametros Anuales de Nomina">
+                <sheet>
+                    <group>
+                        <group string="Periodo">
+                            <field name="year"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                        <group string="Valores Legales">
+                            <field name="smmlv" widget="monetary"/>
+                            <field name="aux_transporte" widget="monetary"/>
+                            <field name="uvt" widget="monetary"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="l10n_co_payroll_annual_params_search" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.annual.params.search</field>
+        <field name="model">l10n.co.payroll.annual.params</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Parámetros Anuales">
+                <field name="year"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Año" name="group_by_year" context="{'group_by': 'year'}"/>
+                    <filter string="Compañía" name="group_by_company" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_l10n_co_payroll_annual_params" model="ir.actions.act_window">
+        <field name="name">Parametros Anuales</field>
+        <field name="res_model">l10n.co.payroll.annual.params</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configurar parametros anuales de nomina
+            </p>
+            <p>
+                Defina los valores de SMMLV, auxilio de transporte y UVT
+                para cada ano fiscal. Estos valores se utilizan en el
+                calculo de nomina, provisiones y liquidaciones.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu item under Payroll > Configuration -->
+    <menuitem id="menu_l10n_co_payroll_annual_params"
+              name="Parametros Anuales"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
+              action="action_l10n_co_payroll_annual_params"
+              sequence="5"/>
+
+</odoo>

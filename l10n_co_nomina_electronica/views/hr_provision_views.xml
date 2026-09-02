@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Provision - Form View                                         -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_provision_form" model="ir.ui.view">
+        <field name="name">l10n.co.hr.provision.form</field>
+        <field name="model">l10n.co.hr.provision</field>
+        <field name="arch" type="xml">
+            <form string="Provisión de Prestaciones Sociales">
+                <header>
+                    <button name="action_compute_provisions"
+                            string="Calcular Provisiones"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state == 'posted'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_post"
+                            string="Contabilizar"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'confirmed'"
+                            groups="hr_payroll.group_hr_payroll_manager"
+                            confirm="¿Está seguro de contabilizar esta provisión? Esta acción no se puede revertir."/>
+                    <button name="action_reset_draft"
+                            string="Volver a Borrador"
+                            type="object"
+                            invisible="state != 'confirmed'"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <field name="state"
+                           widget="statusbar"
+                           statusbar_visible="draft,confirmed,posted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Período">
+                            <field name="year" string="Año"
+                                   readonly="state != 'draft'"/>
+                            <field name="month" string="Mes"
+                                   readonly="state != 'draft'"/>
+                        </group>
+                        <group string="Información">
+                            <field name="company_id" string="Compañía"
+                                   groups="base.group_multi_company"
+                                   readonly="state != 'draft'"/>
+                        </group>
+                    </group>
+
+                    <!-- Totales -->
+                    <group string="Resumen de Provisiones"
+                           invisible="state == 'draft'">
+                        <group>
+                            <field name="total_prima"
+                                   string="Total Prima"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                            <field name="total_cesantias"
+                                   string="Total Cesantías"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                        </group>
+                        <group>
+                            <field name="total_intereses"
+                                   string="Total Intereses Cesantías"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                            <field name="total_vacaciones"
+                                   string="Total Vacaciones"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                        </group>
+                    </group>
+
+                    <!-- Líneas de provisión -->
+                    <notebook>
+                        <page string="Detalle por Empleado" name="provision_lines">
+                            <field name="line_ids"
+                                   readonly="state == 'posted'">
+                                <list string="Provisiones por Empleado"
+                                      editable="bottom">
+                                    <field name="employee_id"
+                                           string="Empleado"/>
+                                    <field name="contract_id"
+                                           string="Contrato"/>
+                                    <field name="wage"
+                                           string="Salario Base"
+                                           sum="Total Salarios"/>
+                                    <field name="aux_transporte"
+                                           string="Aux. Transporte"
+                                           sum="Total Aux."/>
+                                    <field name="base_prestacional"
+                                           string="Base Prestacional"
+                                           sum="Total Base"/>
+                                    <field name="prima"
+                                           string="Prima"
+                                           sum="Total Prima"/>
+                                    <field name="cesantias"
+                                           string="Cesantías"
+                                           sum="Total Cesantías"/>
+                                    <field name="intereses_cesantias"
+                                           string="Int. Cesantías"
+                                           sum="Total Int."/>
+                                    <field name="vacaciones"
+                                           string="Vacaciones"
+                                           sum="Total Vac."/>
+                                    <field name="total"
+                                           string="Total"
+                                           sum="Gran Total"
+                                           decoration-bf="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Provision - Tree View                                         -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_provision_tree" model="ir.ui.view">
+        <field name="name">l10n.co.hr.provision.tree</field>
+        <field name="model">l10n.co.hr.provision</field>
+        <field name="arch" type="xml">
+            <list string="Provisiones de Prestaciones Sociales"
+                  decoration-muted="state == 'draft'"
+                  decoration-info="state == 'confirmed'"
+                  decoration-success="state == 'posted'">
+                <field name="name" string="Nombre"/>
+                <field name="year" string="Año"/>
+                <field name="month" string="Mes"/>
+                <field name="total_prima"
+                       string="Total Prima"
+                       sum="Suma Prima"/>
+                <field name="total_cesantias"
+                       string="Total Cesantías"
+                       sum="Suma Cesantías"/>
+                <field name="total_intereses"
+                       string="Total Intereses"
+                       sum="Suma Intereses"/>
+                <field name="total_vacaciones"
+                       string="Total Vacaciones"
+                       sum="Suma Vacaciones"/>
+                <field name="state" string="Estado"
+                       widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-warning="state == 'confirmed'"
+                       decoration-success="state == 'posted'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Provision - Search View                                       -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_provision_search" model="ir.ui.view">
+        <field name="name">l10n.co.hr.provision.search</field>
+        <field name="model">l10n.co.hr.provision</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Provisiones">
+                <field name="name"/>
+                <field name="year"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <separator/>
+                <filter name="filter_draft"
+                        string="Borrador"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter name="filter_confirmed"
+                        string="Confirmado"
+                        domain="[('state', '=', 'confirmed')]"/>
+                <filter name="filter_posted"
+                        string="Contabilizado"
+                        domain="[('state', '=', 'posted')]"/>
+                <separator/>
+                <filter name="filter_current_year"
+                        string="Año Actual"
+                        domain="[('year', '=', str(context_today().year))]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_year"
+                            string="Año"
+                            context="{'group_by': 'year'}"/>
+                    <filter name="group_month"
+                            string="Mes"
+                            context="{'group_by': 'month'}"/>
+                    <filter name="group_state"
+                            string="Estado"
+                            context="{'group_by': 'state'}"/>
+                    <filter name="group_company"
+                            string="Compañía"
+                            context="{'group_by': 'company_id'}"
+                            groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Provision - Action                                            -->
+    <!-- ============================================================ -->
+    <record id="action_l10n_co_hr_provision" model="ir.actions.act_window">
+        <field name="name">Provisiones de Prestaciones</field>
+        <field name="res_model">l10n.co.hr.provision</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_l10n_co_hr_provision_search"/>
+        <field name="context">{'search_default_filter_current_year': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crear una nueva provisión de prestaciones sociales
+            </p>
+            <p>
+                Calcule las provisiones mensuales de prima, cesantías, intereses
+                a cesantías y vacaciones para todos los empleados con contrato
+                activo. Se recomienda ejecutar este proceso mensualmente.
+            </p>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu Items: Nómina → Provisiones                              -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_l10n_co_nomina_provisiones_root"
+              name="Provisiones"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_root"
+              sequence="50"/>
+
+    <menuitem id="menu_l10n_co_nomina_provisiones_list"
+              name="Provisiones de Prestaciones"
+              parent="menu_l10n_co_nomina_provisiones_root"
+              action="action_l10n_co_hr_provision"
+              sequence="10"
+              groups="hr_payroll.group_hr_payroll_user"/>
+
+</odoo>

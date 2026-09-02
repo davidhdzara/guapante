@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Vistas para el modelo l10n.co.retefuente.uvt — Retención en la Fuente.
+
+    Incluye:
+    - Vista tree (listado de configuraciones de UVT)
+    - Vista form (formulario de configuración)
+    - Acción de ventana
+    - Menú de acceso en Nómina > Configuración > Retención en la Fuente
+-->
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         VISTA TREE — Listado de configuraciones de UVT
+         ═══════════════════════════════════════════════════════════════ -->
+    <record id="l10n_co_retefuente_uvt_tree" model="ir.ui.view">
+        <field name="name">l10n.co.retefuente.uvt.tree</field>
+        <field name="model">l10n.co.retefuente.uvt</field>
+        <field name="arch" type="xml">
+            <list string="Retención en la Fuente — UVT"
+                  decoration-muted="not active"
+                  default_order="year desc">
+                <field name="year" string="Año Fiscal"/>
+                <field name="uvt_value" string="Valor UVT ($)" widget="monetary"
+                       options="{'currency_field': 'currency_id'}"/>
+                <field name="procedure" string="Procedimiento"/>
+                <field name="percentage_procedure2" string="% Proc. 2"
+                       invisible="procedure != '2'"/>
+                <field name="company_id" string="Compañía"
+                       optional="show" groups="base.group_multi_company"/>
+                <field name="active" string="Activo" widget="boolean_toggle"/>
+                <field name="currency_id" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         VISTA FORM — Formulario de configuración UVT
+         ═══════════════════════════════════════════════════════════════ -->
+    <record id="l10n_co_retefuente_uvt_form" model="ir.ui.view">
+        <field name="name">l10n.co.retefuente.uvt.form</field>
+        <field name="model">l10n.co.retefuente.uvt</field>
+        <field name="arch" type="xml">
+            <form string="Retención en la Fuente — Configuración UVT">
+                <header>
+                    <button name="action_compute_example"
+                            string="Calcular Ejemplo ($5M)"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-calculator"
+                            help="Calcula la retención para un salario de $5.000.000 usando esta configuración de UVT. Útil para verificar que la tabla marginal funciona correctamente."/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <field name="active" widget="boolean_button"
+                               options="{'terminology': 'archive'}"/>
+                    </div>
+                    <div class="oe_title">
+                        <label for="year"/>
+                        <h1>
+                            <field name="year" placeholder="2024"
+                                   style="max-width: 200px;"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Valor UVT">
+                            <field name="uvt_value" widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                        <group string="Procedimiento de Retención">
+                            <field name="procedure" widget="radio"/>
+                            <field name="percentage_procedure2"
+                                   widget="percentage"
+                                   invisible="procedure != '2'"/>
+                        </group>
+                    </group>
+                    <group string="Configuración Adicional">
+                        <group>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <separator string="Tabla Marginal — Art. 383 ET (Procedimiento 1)"/>
+                    <div class="alert alert-info" role="alert"
+                         invisible="procedure != '1'">
+                        <p><strong>Rangos de retención en la fuente (Art. 383 ET):</strong></p>
+                        <table class="table table-sm table-bordered mt-2">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Rango en UVT</th>
+                                    <th>Tarifa Marginal</th>
+                                    <th>Instrucción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>&gt; 0 hasta 95</td>
+                                    <td>0%</td>
+                                    <td>0</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 95 hasta 150</td>
+                                    <td>19%</td>
+                                    <td>(Ingreso UVT − 95) × 19%</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 150 hasta 360</td>
+                                    <td>28%</td>
+                                    <td>(Ingreso UVT − 150) × 28% + 10 UVT</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 360 hasta 640</td>
+                                    <td>33%</td>
+                                    <td>(Ingreso UVT − 360) × 33% + 69 UVT</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 640 hasta 945</td>
+                                    <td>35%</td>
+                                    <td>(Ingreso UVT − 640) × 35% + 162 UVT</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 945 hasta 2300</td>
+                                    <td>37%</td>
+                                    <td>(Ingreso UVT − 945) × 37% + 268 UVT</td>
+                                </tr>
+                                <tr>
+                                    <td>&gt; 2300</td>
+                                    <td>39%</td>
+                                    <td>(Ingreso UVT − 2300) × 39% + 770 UVT</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <group string="Notas">
+                        <field name="notes" nolabel="1"
+                               placeholder="Notas internas o referencias legales adicionales..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         VISTA SEARCH — Búsqueda y agrupación de UVT
+         ═══════════════════════════════════════════════════════════════ -->
+    <record id="l10n_co_retefuente_uvt_search" model="ir.ui.view">
+        <field name="name">l10n.co.retefuente.uvt.search</field>
+        <field name="model">l10n.co.retefuente.uvt</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Retención en la Fuente — UVT">
+                <field name="year" string="Año"/>
+                <field name="procedure" string="Procedimiento"/>
+                <field name="company_id" string="Compañía" groups="base.group_multi_company"/>
+                <separator/>
+                <filter string="Procedimiento 1" name="proc_1" domain="[('procedure', '=', '1')]"/>
+                <filter string="Procedimiento 2" name="proc_2" domain="[('procedure', '=', '2')]"/>
+                <separator/>
+                <filter string="Activo" name="active" domain="[('active', '=', True)]"/>
+                <filter string="Archivado" name="inactive" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Año" name="group_by_year" context="{'group_by': 'year'}"/>
+                    <filter string="Procedimiento" name="group_by_procedure" context="{'group_by': 'procedure'}"/>
+                    <filter string="Compañía" name="group_by_company" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCIÓN DE VENTANA
+         ═══════════════════════════════════════════════════════════════ -->
+    <record id="l10n_co_retefuente_uvt_action" model="ir.actions.act_window">
+        <field name="name">Retención en la Fuente</field>
+        <field name="res_model">l10n.co.retefuente.uvt</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configurar Retención en la Fuente
+            </p>
+            <p>
+                Configure el valor de la UVT para cada año fiscal y seleccione
+                el procedimiento de retención aplicable (Procedimiento 1 o 2).
+            </p>
+            <p>
+                <strong>Procedimiento 1</strong> (Art. 383 ET): Tabla marginal
+                aplicada mes a mes sobre la base gravable depurada.
+            </p>
+            <p>
+                <strong>Procedimiento 2</strong> (Art. 386 ET): Porcentaje fijo
+                calculado semestralmente sobre el promedio de pagos gravables.
+            </p>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MENÚ — Nómina > Configuración > Retención en la Fuente
+         ═══════════════════════════════════════════════════════════════ -->
+    <menuitem id="l10n_co_retefuente_menu"
+              name="Retención en la Fuente"
+              action="l10n_co_retefuente_uvt_action"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
+              sequence="40"/>
+
+</odoo>

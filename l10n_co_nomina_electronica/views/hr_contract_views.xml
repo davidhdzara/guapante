@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_contract_form_ne" model="ir.ui.view">
+        <field name="name">hr.contract.form.ne</field>
+        <field name="model">hr.contract</field>
+        <field name="inherit_id" ref="hr_payroll.hr_contract_form_inherit"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='contract_details']" position="inside">
+                <field name="l10n_co_ne_contract_type"
+                       string="Tipo Contrato DIAN"/>
+                <field name="l10n_co_ne_integral_salary"
+                       string="Salario Integral"/>
+                <field name="l10n_co_payroll_period"
+                       string="Periodo de Nómina"/>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="PILA" name="pila">
+                    <group string="PILA - Cotización" name="pila_cotizacion">
+                        <group>
+                            <field name="l10n_co_pila_tipo_cotizante"/>
+                            <field name="l10n_co_pila_subtipo_cotizante"/>
+                            <field name="l10n_co_pila_salario_variable"/>
+                            <field name="l10n_co_pila_clase_riesgo"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_pila_centro_trabajo"/>
+                            <field name="l10n_co_pila_actividad_economica"/>
+                            <field name="l10n_co_pila_indicador_alto_riesgo"/>
+                            <field name="l10n_co_pila_tarifa_especial_afp"/>
+                            <field name="l10n_co_pila_exonerado_parafiscales"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
