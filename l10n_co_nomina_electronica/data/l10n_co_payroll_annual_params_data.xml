@@ -1,54 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    Datos iniciales: Parámetros Anuales de Nómina — Colombia.
-
-    Crea los registros de SMMLV, Auxilio de Transporte y UVT
-    para los años 2024, 2025 y 2026 con los valores oficiales
-    del Gobierno Nacional y la DIAN.
-
-    noupdate="1" garantiza que si el usuario modifica los valores,
-    NO serán sobrescritos al actualizar el módulo.
--->
 <odoo>
     <data noupdate="1">
 
-        <!-- ═══════════════════════════════════════════════════════════
-             Año 2024
-             - SMMLV: Decreto 2292/2023
-             - Aux. Transporte: Decreto 2293/2023
-             - UVT: Resolución DIAN 001264/2023
-             ═══════════════════════════════════════════════════════════ -->
-        <record id="l10n_co_payroll_annual_params_2024" model="l10n.co.payroll.annual.params">
+        <!--
+            2024 y 2025: valores historicos, solo para que
+            l10n.co.retefuente.uvt (relacionado 1 a 1 por year+company)
+            resuelva su UVT en instalaciones nuevas. No se deben
+            modificar: las nominas historicas se calcularon con estos
+            valores. Fuente: correcciones_normativas_2026/05_actualizacion_parametros_anuales_2026.md,
+            tabla "Historico de parametros".
+        -->
+        <record id="annual_params_2024" model="l10n.co.payroll.annual.params">
             <field name="year">2024</field>
             <field name="smmlv">1300000</field>
             <field name="aux_transporte">162000</field>
             <field name="uvt">47065</field>
         </record>
 
-        <!-- ═══════════════════════════════════════════════════════════
-             Año 2025
-             - SMMLV: Decreto 1468/2024
-             - Aux. Transporte: Decreto 1469/2024
-             - UVT: Resolución DIAN 001312/2024
-             ═══════════════════════════════════════════════════════════ -->
-        <record id="l10n_co_payroll_annual_params_2025" model="l10n.co.payroll.annual.params">
+        <record id="annual_params_2025" model="l10n.co.payroll.annual.params">
             <field name="year">2025</field>
             <field name="smmlv">1423500</field>
             <field name="aux_transporte">200000</field>
             <field name="uvt">49799</field>
         </record>
 
-        <!-- ═══════════════════════════════════════════════════════════
-             Año 2026
-             - SMMLV: Decreto 1469/2025
-             - Aux. Transporte: Decreto 1470/2025
-             - UVT: Resolución DIAN 000238/2025
-             ═══════════════════════════════════════════════════════════ -->
-        <record id="l10n_co_payroll_annual_params_2026" model="l10n.co.payroll.annual.params">
+        <record id="annual_params_2026" model="l10n.co.payroll.annual.params">
+            <!-- Base -->
             <field name="year">2026</field>
             <field name="smmlv">1750905</field>
             <field name="aux_transporte">249095</field>
             <field name="uvt">52374</field>
+
+            <!-- Seguridad Social -->
+            <field name="pct_salud_empleado">4.0</field>
+            <field name="pct_salud_empleador">8.5</field>
+            <field name="pct_pension_empleado">4.0</field>
+            <field name="pct_pension_empleador">12.0</field>
+            <field name="pct_arl_default">0.522</field>
+
+            <!-- Parafiscales -->
+            <field name="pct_ccf">4.0</field>
+            <field name="pct_sena">2.0</field>
+            <field name="pct_icbf">3.0</field>
+            <field name="tope_exoneracion_smmlv">10</field>
+
+            <!-- Prestaciones -->
+            <field name="pct_intereses_cesantias">12.0</field>
+            <field name="factor_integral_salary">0.70</field>
+            <field name="dias_mes_comercial">30</field>
+            <field name="dias_anio_comercial">360</field>
+            <field name="divisor_vacaciones">720</field>
+
+            <!-- Incapacidades -->
+            <field name="dias_incapacidad_empleador">2</field>
+            <field name="pct_incapacidad_3_90">66.67</field>
+            <field name="pct_incapacidad_91_mas">50.0</field>
+
+            <!-- Embargos -->
+            <field name="pct_tope_embargo_alimentos">50.0</field>
+            <field name="factor_embargo_civil">0.20</field>
+
+            <!-- Retención en la Fuente -->
+            <field name="pct_renta_exenta">25.0</field>
+            <field name="max_renta_exenta_uvt">240.0</field>
+            <field name="pct_deduccion_dependientes">10.0</field>
+            <field name="max_dependientes_uvt">32.5</field>
+            <field name="max_vol_pension_pct">25.0</field>
+            <field name="max_afc_pct">30.0</field>
         </record>
 
     </data>

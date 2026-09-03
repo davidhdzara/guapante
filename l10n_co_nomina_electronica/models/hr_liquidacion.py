@@ -168,31 +168,36 @@ class L10nCoHrLiquidacion(models.Model):
         string='Salario Pendiente',
         digits='Account',
         help='Días trabajados del último mes no pagados: '
-             '(salario / 30) × días_pendientes.',
+             '(salario / dias_mes_comercial) × días_pendientes.',
     )
     prima_proporcional = fields.Float(
         string='Prima de Servicios Proporcional',
         digits='Account',
         help='Prima proporcional al semestre laborado: '
-             'base_prestacional × días_semestre / 360 (Art. 306 CST).',
+             'base_prestacional × días_semestre / dias_anio_comercial '
+             '(Art. 306 CST). Divisor en Parámetros Anuales.',
     )
     cesantias_proporcionales = fields.Float(
         string='Cesantías Proporcionales',
         digits='Account',
         help='Cesantías proporcionales al tiempo laborado en el año: '
-             'base_prestacional × días_año / 360 (Art. 249 CST).',
+             'base_prestacional × días_año / dias_anio_comercial '
+             '(Art. 249 CST). Divisor en Parámetros Anuales.',
     )
     intereses_cesantias = fields.Float(
         string='Intereses sobre Cesantías',
         digits='Account',
-        help='Intereses del 12%% anual sobre cesantías proporcionales: '
-             'cesantías × 12%% × días_año / 360 (Ley 52/1975).',
+        help='Intereses anuales sobre cesantías proporcionales: '
+             'cesantías × pct_intereses_cesantias × días_año / '
+             'dias_anio_comercial (Ley 52/1975). % y divisor en '
+             'Parámetros Anuales.',
     )
     vacaciones_proporcionales = fields.Float(
         string='Vacaciones Proporcionales',
         digits='Account',
-        help='Vacaciones proporcionales: salario × días_laborados / 720 '
-             '(Art. 186 CST: 15 días hábiles por año = salario / 24 por mes).',
+        help='Vacaciones proporcionales: salario × días_laborados / '
+             'divisor_vacaciones (Art. 186 CST: 15 días hábiles por año). '
+             'Divisor en Parámetros Anuales.',
     )
     vacaciones_pendientes = fields.Float(
         string='Vacaciones Pendientes',
@@ -354,14 +359,16 @@ class L10nCoHrLiquidacion(models.Model):
             salary = rec.base_salary
             params = rec.company_id._get_co_payroll_params(rec.date_end)
             smmlv = params.smmlv
-            years = rec.days_worked / 365.0
+            years = rec.days_worked / params.dias_anio_comercial
+
+            dias_mes = params.dias_mes_comercial
 
             if rec.contract_type == 'fijo':
                 # Contrato fijo: salario × días faltantes del contrato
                 # Simplificación: mínimo 15 días de salario
                 rec.indemnizacion = max(
                     salary / 2,
-                    salary / 30 * 15,
+                    salary / dias_mes * 15,
                 )
             elif rec.contract_type == 'indefinido':
                 if salary < smmlv * 10:
@@ -370,16 +377,16 @@ class L10nCoHrLiquidacion(models.Model):
                         rec.indemnizacion = salary
                     else:
                         rec.indemnizacion = (
-                            salary + (salary / 30 * 20 * (years - 1))
+                            salary + (salary / dias_mes * 20 * (years - 1))
                         )
                 else:
                     # ≥ 10 SMMLV: 20 días primer año + 15 días por año adicional
                     if years <= 1:
-                        rec.indemnizacion = salary / 30 * 20
+                        rec.indemnizacion = salary / dias_mes * 20
                     else:
                         rec.indemnizacion = (
-                            (salary / 30 * 20)
-                            + (salary / 30 * 15 * (years - 1))
+                            (salary / dias_mes * 20)
+                            + (salary / dias_mes * 15 * (years - 1))
                         )
             else:
                 # Obra, aprendizaje u otros: sin indemnización estándar
@@ -395,12 +402,12 @@ class L10nCoHrLiquidacion(models.Model):
         Actualiza todos los campos monetarios y transiciona el estado
         a 'calculated'.
 
-        Fórmulas aplicadas:
-            • Salario pendiente = (salario / 30) × días_pendientes_mes
-            • Prima proporcional = base_prestacional × días_semestre / 360
-            • Cesantías proporcionales = base_prestacional × días_año / 360
-            • Intereses cesantías = cesantías × 12% × días_año / 360
-            • Vacaciones proporcionales = salario × días_laborados / 720
+        Fórmulas aplicadas (divisores y % desde Parámetros Anuales):
+            • Salario pendiente = (salario / dias_mes) × días_pendientes_mes
+            • Prima proporcional = base_prestacional × días_semestre / dias_anio
+            • Cesantías proporcionales = base_prestacional × días_año / dias_anio
+            • Intereses cesantías = cesantías × pct_intereses × días_año / dias_anio
+            • Vacaciones proporcionales = salario × días_laborados / divisor_vacaciones
             • Indemnización: según Art. 64 CST
         """
         for rec in self:
@@ -420,11 +427,14 @@ class L10nCoHrLiquidacion(models.Model):
             date_start = rec.date_start
             date_end = rec.date_end
             days_worked = rec.days_worked
+            params = rec.company_id._get_co_payroll_params(date_end)
+            dias_mes = params.dias_mes_comercial
+            dias_anio = params.dias_anio_comercial
 
             # ── Salario pendiente ──────────────────────────────────
             # Días del último mes que no se han pagado
             day_of_month = date_end.day
-            rec.salario_pendiente = (salary / 30.0) * day_of_month
+            rec.salario_pendiente = (salary / dias_mes) * day_of_month
 
             # ── Prima de servicios proporcional ────────────────────
             # Semestre: ene-jun o jul-dic
@@ -436,7 +446,7 @@ class L10nCoHrLiquidacion(models.Model):
             effective_start = max(date_start, semester_start)
             days_semester = (date_end - effective_start).days
             days_semester = max(days_semester, 0)
-            rec.prima_proporcional = base * days_semester / 360.0
+            rec.prima_proporcional = base * days_semester / dias_anio
 
             # ── Cesantías proporcionales ───────────────────────────
             # Se liquidan desde el 1 de enero del año en curso (o inicio
@@ -445,17 +455,21 @@ class L10nCoHrLiquidacion(models.Model):
             effective_year_start = max(date_start, year_start)
             days_year = (date_end - effective_year_start).days
             days_year = max(days_year, 0)
-            rec.cesantias_proporcionales = base * days_year / 360.0
+            rec.cesantias_proporcionales = base * days_year / dias_anio
 
             # ── Intereses sobre cesantías ──────────────────────────
             rec.intereses_cesantias = (
-                rec.cesantias_proporcionales * 0.12 * days_year / 360.0
+                rec.cesantias_proporcionales
+                * (params.pct_intereses_cesantias / 100)
+                * days_year / dias_anio
             )
 
             # ── Vacaciones proporcionales ──────────────────────────
             # Art. 186 CST: 15 días hábiles por año = salario / 24 / mes
-            # Fórmula simplificada: salario × días_laborados / 720
-            rec.vacaciones_proporcionales = salary * days_worked / 720.0
+            # Fórmula simplificada: salario × días_laborados / divisor_vacaciones
+            rec.vacaciones_proporcionales = (
+                salary * days_worked / params.divisor_vacaciones
+            )
 
             # ── Vacaciones pendientes ──────────────────────────────
             # Se mantiene el valor ingresado manualmente si existe;

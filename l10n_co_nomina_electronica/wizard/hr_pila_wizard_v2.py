@@ -631,6 +631,8 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             line = payslip.line_ids.filtered(lambda l: l.code == code)
             return abs(line.total) if line else 0.0
 
+        _params = self.company_id._get_co_payroll_params(payslip.date_from)
+
         # Datos del contrato
         salario = contract.wage or 0
         integral = bool(
@@ -639,15 +641,15 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         # Cálculo del IBC
         ibc_base = get_line('CO_BRUTO') or salario
         if integral:
-            # Salario integral: IBC = 70% del salario
-            ibc_base = salario * 0.70
+            # Salario integral: IBC = factor_integral_salary del salario
+            ibc_base = salario * _params.factor_integral_salary
 
         # Días trabajados
-        dias = 30  # Default: mes completo
+        dias = _params.dias_mes_comercial  # Default: mes completo
         worked = payslip.worked_days_line_ids.filtered(
             lambda w: w.code == 'WORK100')
         if worked:
-            dias = min(int(worked.number_of_days), 30)
+            dias = min(int(worked.number_of_days), _params.dias_mes_comercial)
 
         # Aportes desde líneas de nómina
         salud_emp = get_line('CO_SALUD_EMP')
@@ -660,22 +662,23 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         icbf = get_line('CO_ICBF_CIA')
         ccf = get_line('CO_CCF_CIA')
 
-        # Tarifas por defecto
-        tarifa_afp = 0.16       # 16% total pensión
-        tarifa_eps = 0.125      # 12.5% total salud
-        tarifa_arl = 0.00522   # Riesgo I por defecto
-        tarifa_ccf = 0.04      # 4% CCF
-        tarifa_sena = 0.02     # 2% SENA
-        tarifa_icbf = 0.03     # 3% ICBF
+        # Tarifas (Parámetros Anuales)
+        tarifa_afp = _params.pct_pension_total / 100
+        tarifa_eps = _params.pct_salud_total / 100
+        tarifa_arl = _params.pct_arl_default / 100  # Riesgo I por defecto
+        tarifa_ccf = _params.pct_ccf / 100
+        tarifa_sena = _params.pct_sena / 100
+        tarifa_icbf = _params.pct_icbf / 100
 
         # Detectar novedades del período
         novedades = self._detect_novedades(payslip)
 
-        # Indicador de exoneración parafiscales (Ley 1607)
-        exonerado = 'N'
-        if hasattr(contract, 'l10n_co_pila_exonerado_parafiscales'):
-            exonerado = 'S' if contract.l10n_co_pila_exonerado_parafiscales \
-                else 'N'
+        # Indicador de exoneración parafiscales (Art. 114-1 ET, Ley 1607/2012)
+        # -- mismo criterio centralizado que usan las reglas salariales
+        # CO_SENA_CIA/CO_ICBF_CIA/CO_SALUD_CIA, para que PILA y nómina no
+        # puedan divergir para el mismo empleado.
+        exonerado = 'S' if self.company_id._is_exonerado_parafiscales(
+            ibc_base, payslip.date_from) else 'N'
 
         # Cálculos de aportes
         cotizacion_pension = round(ibc_base * tarifa_afp)

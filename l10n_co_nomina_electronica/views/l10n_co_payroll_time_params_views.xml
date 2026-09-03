@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Tree View -->
+    <record id="l10n_co_payroll_time_params_tree" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.time.params.tree</field>
+        <field name="model">l10n.co.payroll.time.params</field>
+        <field name="arch" type="xml">
+            <list string="Jornada y Recargos" editable="bottom">
+                <field name="date_from"/>
+                <field name="horas_semanales"/>
+                <field name="horas_mensuales"/>
+                <field name="factor_hed"/>
+                <field name="factor_hen"/>
+                <field name="factor_hrn"/>
+                <field name="factor_hrddf"/>
+                <field name="factor_heddf"/>
+                <field name="factor_hendf"/>
+                <field name="factor_hrndf"/>
+                <field name="hora_inicio_franja_nocturna"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="l10n_co_payroll_time_params_form" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.time.params.form</field>
+        <field name="model">l10n.co.payroll.time.params</field>
+        <field name="arch" type="xml">
+            <form string="Jornada y Recargos de Nomina">
+                <sheet>
+                    <group>
+                        <group string="Vigencia">
+                            <field name="date_from"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Jornada">
+                            <field name="horas_semanales"/>
+                            <field name="horas_mensuales"/>
+                            <field name="hora_inicio_franja_nocturna"/>
+                        </group>
+                    </group>
+                    <group string="Horas Extra y Recargos">
+                        <group>
+                            <field name="factor_hed"/>
+                            <field name="factor_hen"/>
+                            <field name="factor_hrn"/>
+                        </group>
+                        <group>
+                            <field name="factor_hrddf"/>
+                            <field name="factor_heddf"/>
+                            <field name="factor_hendf"/>
+                            <field name="factor_hrndf"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="l10n_co_payroll_time_params_search" model="ir.ui.view">
+        <field name="name">l10n.co.payroll.time.params.search</field>
+        <field name="model">l10n.co.payroll.time.params</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Jornada y Recargos">
+                <field name="date_from"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Compañía" name="group_by_company" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_l10n_co_payroll_time_params" model="ir.actions.act_window">
+        <field name="name">Jornada y Recargos</field>
+        <field name="res_model">l10n.co.payroll.time.params</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configurar jornada y recargos de nomina
+            </p>
+            <p>
+                Defina la jornada semanal, el divisor de horas mensuales y
+                los factores de recargo/hora extra vigentes desde cada
+                fecha. A diferencia de los Parametros Anuales, estos
+                valores pueden cambiar a mitad de ano cuando la ley entra
+                en vigencia en una fecha distinta al 1 de enero.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu item under Payroll > Configuration -->
+    <menuitem id="menu_l10n_co_payroll_time_params"
+              name="Jornada y Recargos"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
+              action="action_l10n_co_payroll_time_params"
+              sequence="6"/>
+
+</odoo>

@@ -29,7 +29,6 @@
                             <field name="l10n_co_pila_actividad_economica"/>
                             <field name="l10n_co_pila_indicador_alto_riesgo"/>
                             <field name="l10n_co_pila_tarifa_especial_afp"/>
-                            <field name="l10n_co_pila_exonerado_parafiscales"/>
                         </group>
                     </group>
                 </page>

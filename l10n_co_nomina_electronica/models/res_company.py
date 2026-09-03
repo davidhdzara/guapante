@@ -180,6 +180,73 @@ class ResCompany(models.Model):
             )
         return params
 
+    def _is_exonerado_parafiscales(self, ibc, date):
+        """Determina si un IBC está exonerado de SENA/ICBF/Salud Empleador.
+
+        Único criterio del Art. 114-1 ET (Ley 1607/2012): la compañía debe
+        tener activada la exoneración (`l10n_co_ne_exoneration_1607`) y el
+        IBC del empleado debe ser menor a 10 SMMLV del año de `date`.
+
+        Antes de esto, este criterio estaba duplicado por separado en las
+        reglas salariales de CO_SENA_CIA/CO_ICBF_CIA/CO_SALUD_CIA y el
+        wizard de PILA tenía una cuarta versión desconectada (un booleano
+        manual en el contrato) -- este método es ahora la única fuente de
+        verdad, para que nómina y PILA no puedan divergir para el mismo
+        empleado en el mismo periodo.
+
+        Args:
+            ibc: float - IBC ya ajustado por el llamador (p.ej. con el
+                factor de salario integral si aplica) -- este método no
+                conoce el contrato, solo aplica el criterio de la norma.
+            date: Fecha (date, datetime o string YYYY-MM-DD) que determina
+                el SMMLV vigente.
+
+        Returns:
+            bool - True si el IBC está exonerado.
+        """
+        if not self.l10n_co_ne_exoneration_1607:
+            return False
+        _params = self._get_co_payroll_params(date)
+        return ibc < _params.smmlv * 10
+
+    def _get_co_payroll_time_params(self, date):
+        """Obtiene la jornada y los recargos vigentes a la fecha dada.
+
+        A diferencia de _get_co_payroll_params (por año), busca el
+        registro l10n.co.payroll.time.params más reciente cuyo
+        date_from sea <= date, porque jornada y recargos pueden cambiar
+        a mitad de año (ver Ley 2101/2021 y Ley 2466/2025 en 2026).
+
+        Args:
+            date: Fecha (date, datetime o string YYYY-MM-DD) de la nómina.
+
+        Returns:
+            Registro l10n.co.payroll.time.params con campos:
+            horas_mensuales, factor_hed/hen/hrn/hrddf/heddf/hendf/hrndf,
+            hora_inicio_franja_nocturna.
+
+        Raises:
+            UserError: Si no existe ningún registro vigente para la fecha.
+        """
+        from odoo.exceptions import UserError
+        if hasattr(date, 'isoformat'):
+            date_value = date
+        else:
+            date_value = fields.Date.from_string(str(date)[:10])
+        params = self.env['l10n.co.payroll.time.params'].search([
+            ('company_id', '=', self.id),
+            ('date_from', '<=', date_value),
+        ], order='date_from desc', limit=1)
+        if not params:
+            raise UserError(
+                'No se encontraron parámetros de jornada/recargos vigentes '
+                'para la fecha %s.\n\n'
+                'Vaya a Nómina > Configuración > Jornada y Recargos y '
+                'configure un registro con date_from anterior o igual a '
+                'esa fecha.' % date_value.isoformat()
+            )
+        return params
+
     # ──────────────────────────────────────────────────────────────────
     # PILA — Datos del Aportante
     # ──────────────────────────────────────────────────────────────────

@@ -36,6 +36,63 @@
                             <field name="uvt" widget="monetary"/>
                         </group>
                     </group>
+                    <notebook>
+                        <page string="Seguridad Social">
+                            <group>
+                                <group>
+                                    <field name="pct_salud_empleado"/>
+                                    <field name="pct_salud_empleador"/>
+                                    <field name="pct_salud_total"/>
+                                </group>
+                                <group>
+                                    <field name="pct_pension_empleado"/>
+                                    <field name="pct_pension_empleador"/>
+                                    <field name="pct_pension_total"/>
+                                    <field name="pct_arl_default"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Parafiscales">
+                            <group>
+                                <field name="pct_ccf"/>
+                                <field name="pct_sena"/>
+                                <field name="pct_icbf"/>
+                                <field name="tope_exoneracion_smmlv"/>
+                            </group>
+                        </page>
+                        <page string="Prestaciones Sociales">
+                            <group>
+                                <field name="pct_intereses_cesantias"/>
+                                <field name="factor_integral_salary"/>
+                                <field name="dias_mes_comercial"/>
+                                <field name="dias_anio_comercial"/>
+                                <field name="divisor_vacaciones"/>
+                            </group>
+                        </page>
+                        <page string="Incapacidades">
+                            <group>
+                                <field name="dias_incapacidad_empleador"/>
+                                <field name="pct_incapacidad_3_90"/>
+                                <field name="pct_incapacidad_91_mas"/>
+                            </group>
+                        </page>
+                        <page string="Embargos">
+                            <group>
+                                <field name="pct_tope_embargo_alimentos"/>
+                                <field name="factor_embargo_civil"/>
+                            </group>
+                        </page>
+                        <page string="Retención en la Fuente">
+                            <group>
+                                <field name="pct_renta_exenta"/>
+                                <field name="max_renta_exenta_uvt"/>
+                                <field name="pct_deduccion_dependientes"/>
+                                <field name="max_dependientes_uvt"/>
+                                <field name="max_vol_pension_pct"/>
+                                <field name="max_afc_pct"/>
+                            </group>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

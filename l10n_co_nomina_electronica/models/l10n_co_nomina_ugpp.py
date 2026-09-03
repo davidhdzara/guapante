@@ -458,16 +458,18 @@ class L10nCoNominaUgpp(models.Model):
     # ──────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _compute_ibc(total_salarial, total_no_salarial, contract, smmlv):
+    def _compute_ibc(total_salarial, total_no_salarial, contract, smmlv,
+                      factor_integral_salary=0.70):
         """Calcula el IBC según normativa colombiana.
 
-        - Art. 132 CST: Salario integral → IBC = 70% del salario.
+        - Art. 132 CST: Salario integral → IBC = factor_integral_salary
+          del salario (Parámetros Anuales, 70% por defecto).
         - Art. 127/128 CST + Art. 30 Ley 1393/2010: pagos no salariales
           se excluyen hasta el 40% de la remuneración total.
         - Decreto 780/2016: piso 1 SMMLV, techo 25 SMMLV.
         """
         if contract and contract.l10n_co_ne_integral_salary:
-            ibc = contract.wage * 0.70
+            ibc = contract.wage * factor_integral_salary
         else:
             total_remuneracion = total_salarial + total_no_salarial
             limite_no_salarial = total_remuneracion * 0.40
@@ -731,6 +733,7 @@ class L10nCoNominaUgpp(models.Model):
             # ═════════════════════════════════════════════════════════
             ibc = self._compute_ibc(
                 total_salarial, total_no_salarial, contract, smmlv,
+                factor_integral_salary=params.factor_integral_salary,
             )
             ibc_data = [ibc, ibc, ibc, ibc]
 

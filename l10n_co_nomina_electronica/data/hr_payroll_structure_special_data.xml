@@ -64,10 +64,11 @@ result = rules['CO_PRIMA_BASE'] and rules['CO_PRIMA_BASE'].total &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Prima = base * dias_trabajados_semestre / 360
+# Prima = base * dias_trabajados_semestre / dias_anio_comercial
 # Calculo automatico del semestre segun fecha del payslip
 from datetime import date as dt_date
 
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _fecha_ref = payslip.date_from
 _year = _fecha_ref.year
 
@@ -94,9 +95,9 @@ if _dias &lt; 0:
 # Tope maximo: 180 dias (un semestre completo)
 _dias = min(_dias, 180)
 
-# Prima = base * dias / 360 (equivale a 30 dias de salario por semestre de 180 dias)
+# Prima = base * dias / dias_anio_comercial (equivale a 30 dias de salario por semestre de 180 dias)
 _base = rules['CO_PRIMA_BASE'].total
-result = _base * _dias / 360
+result = _base * _dias / _params.dias_anio_comercial
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Primas</field>
@@ -117,8 +118,9 @@ result = rules.get('CO_PRIMA_VALOR') and rules['CO_PRIMA_VALOR'].total &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 4% de descuento sobre el valor de la prima
-result = -abs(rules['CO_PRIMA_VALOR'].total * 0.04)
+# Descuento de salud sobre el valor de la prima
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
+result = -abs(rules['CO_PRIMA_VALOR'].total * _params.pct_salud_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Salud</field>
@@ -139,8 +141,9 @@ result = (rules.get('CO_PRIMA_VALOR') and rules['CO_PRIMA_VALOR'].total &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 4% de descuento sobre el valor de la prima
-result = -abs(rules['CO_PRIMA_VALOR'].total * 0.04)
+# Descuento de pension sobre el valor de la prima
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
+result = -abs(rules['CO_PRIMA_VALOR'].total * _params.pct_pension_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoPension</field>
@@ -237,14 +240,15 @@ result = categories['PREST'] + categories['SS_EMP'] + categories['DEDU']
             <field name="amount_python_compute">
 # Salarios pendientes: dias del ultimo periodo trabajado
 # Se calcula con base en la fecha de terminacion (date_to del payslip)
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _fecha_fin = payslip.date_to
 _dia_fin = _fecha_fin.day
 
-# Dias trabajados en el ultimo mes (base 30 dias)
-# Si el mes tiene 31 dias, se cuenta como 30
-_dias = min(_dia_fin, 30)
+# Dias trabajados en el ultimo mes (base dias_mes_comercial dias)
+# Si el mes tiene mas dias, se cuenta como dias_mes_comercial
+_dias = min(_dia_fin, _params.dias_mes_comercial)
 
-result = contract.wage / 30 * _dias
+result = contract.wage / _params.dias_mes_comercial * _dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Sueldo</field>
@@ -265,7 +269,7 @@ result = not contract.l10n_co_ne_integral_salary
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Prima proporcional = (salario + aux_transporte) * dias_semestre / 360
+# Prima proporcional = (salario + aux_transporte) * dias_semestre / dias_anio_comercial
 # Se calcula la prima no pagada del semestre actual
 from datetime import date as dt_date
 
@@ -295,7 +299,7 @@ if _dias &lt; 0:
 _dias = min(_dias, 180)
 
 # Prima proporcional
-result = _base * _dias / 360
+result = _base * _dias / _params.dias_anio_comercial
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Primas</field>
@@ -316,7 +320,7 @@ result = not contract.l10n_co_ne_integral_salary
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Cesantias = (salario + aux_transporte) * dias_trabajados_ano / 360
+# Cesantias = (salario + aux_transporte) * dias_trabajados_ano / dias_anio_comercial
 # Se calculan las cesantias no consignadas del periodo actual (1 Ene - fecha fin)
 from datetime import date as dt_date
 
@@ -339,10 +343,10 @@ _inicio_efectivo = max(contract.date_start, _inicio_periodo)
 _dias = (_fecha_fin - _inicio_efectivo).days + 1
 if _dias &lt; 0:
     _dias = 0
-_dias = min(_dias, 360)
+_dias = min(_dias, _params.dias_anio_comercial)
 
 # Cesantias proporcionales
-result = _base * _dias / 360
+result = _base * _dias / _params.dias_anio_comercial
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Cesantias</field>
@@ -364,9 +368,10 @@ result = (not contract.l10n_co_ne_integral_salary
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Intereses = cesantias * 12% * dias / 360 (Ley 52 de 1975)
+# Intereses = cesantias * pct_intereses_cesantias * dias / dias_anio_comercial (Ley 52 de 1975)
 from datetime import date as dt_date
 
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _cesantias = rules['CO_LIQ_CESANTIAS'].total
 _fecha_fin = payslip.date_to
 _year = _fecha_fin.year
@@ -378,10 +383,10 @@ _inicio_efectivo = max(contract.date_start, _inicio_periodo)
 _dias = (_fecha_fin - _inicio_efectivo).days + 1
 if _dias &lt; 0:
     _dias = 0
-_dias = min(_dias, 360)
+_dias = min(_dias, _params.dias_anio_comercial)
 
-# Intereses sobre cesantias: 12% anual proporcional
-result = _cesantias * 0.12 * _dias / 360
+# Intereses sobre cesantias: pct_intereses_cesantias% anual proporcional
+result = _cesantias * (_params.pct_intereses_cesantias / 100) * _dias / _params.dias_anio_comercial
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">InteresesCesantias</field>
@@ -398,10 +403,10 @@ result = _cesantias * 0.12 * _dias / 360
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Vacaciones compensadas = salario * dias_trabajados / 720
+# Vacaciones compensadas = salario * dias_trabajados / divisor_vacaciones
 # 15 dias habiles por cada ano de servicio (Art. 186 CST)
 # Base: salario sin auxilio de transporte (Art. 192 CST)
-
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _salario = contract.wage
 _fecha_fin = payslip.date_to
 _fecha_inicio = contract.date_start
@@ -412,9 +417,10 @@ if _dias_totales &lt; 0:
     _dias_totales = 0
 
 # Vacaciones compensadas proporcionales
-# Formula: salario_mensual * dias_trabajados / 720
-# (720 = 360 dias * 2, porque son 15 dias de vacaciones por 360 dias de trabajo)
-result = _salario * _dias_totales / 720
+# Formula: salario_mensual * dias_trabajados / divisor_vacaciones
+# (divisor_vacaciones = dias_anio_comercial * 2, porque son 15 dias de
+# vacaciones por dias_anio_comercial dias de trabajo)
+result = _salario * _dias_totales / _params.divisor_vacaciones
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">VacacionesCompensadas</field>
@@ -448,39 +454,40 @@ _fecha_fin = payslip.date_to
 
 # Dias trabajados totales
 _dias_totales = (_fecha_fin - _fecha_inicio).days + 1
-_anos = _dias_totales / 360
+_anos = _dias_totales / _params.dias_anio_comercial
 _anos_completos = int(_anos)
+_valor_dia = _salario / _params.dias_mes_comercial
 
 if _tipo_contrato == '1':
     # ── Contrato a termino fijo ──
     # Indemnizacion = salarios correspondientes al tiempo restante del contrato
     # Se usa el input como numero de dias restantes
     _dias_restantes = inputs['CO_LIQ_INDEMNIZ'].amount
-    result = (_salario / 30) * _dias_restantes
+    result = _valor_dia * _dias_restantes
 
 elif _tipo_contrato == '3':
     # ── Contrato por obra o labor ──
     # Igual que termino fijo: tiempo restante estimado
     _dias_restantes = inputs['CO_LIQ_INDEMNIZ'].amount
-    result = (_salario / 30) * _dias_restantes
+    result = _valor_dia * _dias_restantes
 
 else:
     # ── Contrato a termino indefinido (Art. 64 CST) ──
     if _salario &lt; _params.smmlv * 10:
         # Menos de 10 SMMLV:
         # 30 dias por el primer ano + 20 dias por cada ano adicional o proporcion
-        _indem = (_salario / 30) * 30  # Primer ano
+        _indem = _valor_dia * _params.dias_mes_comercial  # Primer ano
         if _anos &gt; 1:
             _anos_adicionales = _anos - 1
-            _indem += (_salario / 30) * 20 * _anos_adicionales
+            _indem += _valor_dia * 20 * _anos_adicionales
         result = _indem
     else:
         # 10 SMMLV o mas:
         # 20 dias por el primer ano + 15 dias por cada ano adicional o proporcion
-        _indem = (_salario / 30) * 20  # Primer ano
+        _indem = _valor_dia * 20  # Primer ano
         if _anos &gt; 1:
             _anos_adicionales = _anos - 1
-            _indem += (_salario / 30) * 15 * _anos_adicionales
+            _indem += _valor_dia * 15 * _anos_adicionales
         result = _indem
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -505,10 +512,11 @@ El calculo diferencia entre salarios menores y mayores o iguales a 10 SMMLV.</fi
             <field name="amount_python_compute">
 # Descuento salud sobre IBC (devengados salariales)
 # En la liquidacion, el IBC incluye los salarios pendientes
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _ibc = categories['DEV_SAL']
 if contract.l10n_co_ne_integral_salary:
-    _ibc = contract.wage * 0.70
-result = -abs(_ibc * 0.04)
+    _ibc = contract.wage * _params.factor_integral_salary
+result = -abs(_ibc * _params.pct_salud_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Salud</field>
@@ -529,10 +537,11 @@ result = not employee.l10n_co_ne_foreigner_no_pension
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento pension sobre IBC
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _ibc = categories['DEV_SAL']
 if contract.l10n_co_ne_integral_salary:
-    _ibc = contract.wage * 0.70
-result = -abs(_ibc * 0.04)
+    _ibc = contract.wage * _params.factor_integral_salary
+result = -abs(_ibc * _params.pct_pension_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoPension</field>
@@ -571,10 +580,11 @@ if not _rete_cfg:
     ], limit=1)
 
 # Bruto total de la liquidacion
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _gross = categories['DEV'] if categories.get('DEV') else 0
 _ibc = categories.get('DEV_SAL', contract.wage)
 if contract.l10n_co_ne_integral_salary:
-    _ibc = contract.wage * 0.70
+    _ibc = contract.wage * _params.factor_integral_salary
 
 _rete_result = _rete_cfg.compute_retefuente(
     employee, _gross, _ibc, _ibc, employee.company_id
@@ -661,9 +671,10 @@ result = (payslip.l10n_co_ne_is_salarial
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 4% de descuento de salud sobre el valor de la bonificacion
+# Descuento de salud sobre el valor de la bonificacion
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _valor_bon = rules['CO_BON_VALOR'].total
-result = -abs(_valor_bon * 0.04)
+result = -abs(_valor_bon * _params.pct_salud_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Salud</field>
@@ -685,9 +696,10 @@ result = (payslip.l10n_co_ne_is_salarial
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 4% de descuento de pension sobre el valor de la bonificacion
+# Descuento de pension sobre el valor de la bonificacion
+_params = employee.company_id._get_co_payroll_params(payslip.date_from)
 _valor_bon = rules['CO_BON_VALOR'].total
-result = -abs(_valor_bon * 0.04)
+result = -abs(_valor_bon * _params.pct_pension_empleado / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoPension</field>

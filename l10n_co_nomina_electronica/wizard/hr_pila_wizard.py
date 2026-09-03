@@ -275,6 +275,8 @@ class L10nCoHrPilaWizard(models.TransientModel):
             line = payslip.line_ids.filtered(lambda l: l.code == code)
             return abs(line.total) if line else 0.0
 
+        _params = self.company_id._get_co_payroll_params(payslip.date_from)
+
         salario = contract.wage or 0
         integral = bool(
             getattr(contract, 'l10n_co_ne_integral_salary', False))
@@ -282,10 +284,10 @@ class L10nCoHrPilaWizard(models.TransientModel):
         # IBC
         ibc_sal = get_line('CO_BRUTO') or salario
         if integral:
-            ibc_sal = salario * 0.70
+            ibc_sal = salario * _params.factor_integral_salary
 
         # Días trabajados
-        dias = 30  # Default mensual
+        dias = _params.dias_mes_comercial  # Default mensual
         worked = payslip.worked_days_line_ids.filtered(
             lambda w: w.code == 'WORK100')
         if worked:
@@ -302,22 +304,22 @@ class L10nCoHrPilaWizard(models.TransientModel):
         icbf = get_line('CO_ICBF_CIA')
         ccf = get_line('CO_CCF_CIA')
 
-        # Tarifas
-        tarifa_afp = 0.16  # 16% total
-        tarifa_eps = 0.125  # 12.5% total
-        tarifa_arl = 0.00522  # Default riesgo I
-        tarifa_ccf = 0.04
-        tarifa_sena = 0.02
-        tarifa_icbf = 0.03
+        # Tarifas (Parámetros Anuales)
+        tarifa_afp = _params.pct_pension_total / 100
+        tarifa_eps = _params.pct_salud_total / 100
+        tarifa_arl = _params.pct_arl_default / 100  # Default riesgo I
+        tarifa_ccf = _params.pct_ccf / 100
+        tarifa_sena = _params.pct_sena / 100
+        tarifa_icbf = _params.pct_icbf / 100
 
         # Novedades (detectar de hr.leave del período)
         novedades = self._detect_novedades(payslip)
 
-        # Exonerado
-        exonerado = 'N'
-        if hasattr(contract, 'l10n_co_pila_exonerado_parafiscales'):
-            exonerado = 'S' if contract.l10n_co_pila_exonerado_parafiscales \
-                else 'N'
+        # Exonerado (Art. 114-1 ET) -- mismo criterio centralizado que usan
+        # las reglas salariales CO_SENA_CIA/CO_ICBF_CIA/CO_SALUD_CIA, para
+        # que PILA y nómina no puedan divergir para el mismo empleado.
+        exonerado = 'S' if self.company_id._is_exonerado_parafiscales(
+            ibc_sal, payslip.date_from) else 'N'
 
         return {
             'tipo_registro': '2',

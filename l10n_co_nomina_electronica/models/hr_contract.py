@@ -137,8 +137,3 @@ class HrContract(models.Model):
         string='Tarifa Especial AFP',
         help='Tarifa especial de AFP si aplica.',
     )
-    l10n_co_pila_exonerado_parafiscales = fields.Boolean(
-        string='Exonerado Parafiscales (Ley 1607)',
-        default=False,
-        help='Exoneración de aportes parafiscales y salud (Art. 114-1 ET).',
-    )
