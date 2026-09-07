@@ -93,11 +93,11 @@
         </field>
     </record>
 
-    <!-- Menu item under Payroll > Configuration -->
+    <!-- Menu item under Payroll > Configuration > Nómina Colombia -->
     <menuitem id="menu_l10n_co_payroll_time_params"
               name="Jornada y Recargos"
-              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
+              parent="menu_l10n_co_nomina_colombia_config"
               action="action_l10n_co_payroll_time_params"
-              sequence="6"/>
+              sequence="30"/>
 
 </odoo>

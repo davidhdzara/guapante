@@ -194,12 +194,21 @@
     </record>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         MENÚ — Nómina > Configuración > Retención en la Fuente
+         MENÚ — Nómina > Configuración > Nómina Colombia
+         Submenú que agrupa toda la configuración específica de Colombia
+         (antes dispersa directo bajo Configuración): Retención en la
+         Fuente, Parámetros Anuales, Jornada y Recargos, Cuentas
+         Contables. Ver correcciones_normativas_2026/12 sección 4.
          ═══════════════════════════════════════════════════════════════ -->
+    <menuitem id="menu_l10n_co_nomina_colombia_config"
+              name="Nómina Colombia"
+              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
+              sequence="60"/>
+
     <menuitem id="l10n_co_retefuente_menu"
               name="Retención en la Fuente"
               action="l10n_co_retefuente_uvt_action"
-              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_configuration"
-              sequence="40"/>
+              parent="menu_l10n_co_nomina_colombia_config"
+              sequence="10"/>
 
 </odoo>

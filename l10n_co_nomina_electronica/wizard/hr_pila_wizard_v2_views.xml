@@ -218,8 +218,8 @@
     <!-- ============================================================ -->
     <menuitem id="menu_l10n_co_hr_pila_wizard_v2"
               name="Generar PILA Completo"
-              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_root"
+              parent="menu_l10n_co_nomina_reportes"
               action="action_l10n_co_hr_pila_wizard_v2"
-              sequence="61"/>
+              sequence="21"/>
 
 </odoo>

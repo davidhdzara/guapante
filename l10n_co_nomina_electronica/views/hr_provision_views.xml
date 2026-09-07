@@ -227,7 +227,7 @@
     <!-- ============================================================ -->
     <menuitem id="menu_l10n_co_nomina_provisiones_root"
               name="Provisiones"
-              parent="hr_work_entry_contract_enterprise.menu_hr_payroll_root"
+              parent="hr_payroll.menu_hr_payroll_payslips"
               sequence="50"/>
 
     <menuitem id="menu_l10n_co_nomina_provisiones_list"
