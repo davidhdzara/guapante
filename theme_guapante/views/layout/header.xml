@@ -36,6 +36,15 @@
                              </a>
                         </div>
 
+                        <!-- MOBILE PSE BUTTON -->
+                        <div class="d-flex align-items-center d-lg-none me-3">
+                            <a href="https://portalpagos.davivienda.com/#/comercio/16521/COMERCIALIZADORA%20Y%20PRODUCTORA%20GUAPANTE%20S.A.S" target="_blank" class="btn btn-dark d-flex align-items-center gap-1 rounded-3 px-2 py-1 shadow-sm transition-base">
+                                <span class="bg-white text-dark rounded-pill fw-bold d-flex align-items-center justify-content-center" style="font-size: 0.6rem; height: 16px; padding: 0 4px; line-height: 1;">PSE</span>
+                                <span class="fw-bold" style="font-size: 0.75rem;">Pagar</span>
+                                <i class="fa fa-lock text-success" style="font-size: 0.75rem;"></i>
+                            </a>
+                        </div>
+
                         <!-- Mobile Toggler -->
                         <button class="navbar-toggler border-0 p-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarGuapante">
                             <span class="fa fa-bars fs-2 text-dark"></span>
