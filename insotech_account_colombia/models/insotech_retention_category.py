@@ -11,7 +11,7 @@ class InsotechRetentionCategory(models.Model):
 
     name = fields.Char('Nombre de Categoría', required=True, translate=True)
     parent_id = fields.Many2one('insotech.retention.category', 'Categoría Padre', index=True, ondelete='cascade')
-    parent_path = fields.Char(index=True, unaccent=False)
+    parent_path = fields.Char(index=True)
     child_ids = fields.One2many('insotech.retention.category', 'parent_id', 'Categorías Hijas')
     
     complete_name = fields.Char(
