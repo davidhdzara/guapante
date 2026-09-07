@@ -62,12 +62,12 @@ class L10nCoRetefuenteUvt(models.Model):
         help='Año gravable al que corresponde el valor de la UVT. '
              'Ejemplo: 2024.',
     )
-    uvt_value = fields.Float(
+    uvt_value = fields.Monetary(
         string='Valor UVT ($)',
         related='annual_params_id.uvt',
         store=True,
         readonly=True,
-        digits=(12, 2),
+        currency_field='currency_id',
         help='Valor de la Unidad de Valor Tributario (UVT) fijado por la '
              'DIAN para el año fiscal correspondiente. Se toma de '
              'Parámetros Anuales — única fuente de verdad para el UVT, '
