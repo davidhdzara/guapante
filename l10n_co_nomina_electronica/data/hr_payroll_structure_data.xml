@@ -953,8 +953,10 @@ result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) o
 # cooperativa (Art. 156) antes que civil/ordinario (Art. 155) -- y se
 # reduce el de menor prelacion hasta que el remanente (salario_neto -
 # total_embargado) no baje del SMMLV. El input manual CO_EMBARGO
-# (override de RRHH) queda fuera de este piso a proposito -- es una
-# instruccion explicita, no un calculo automatico.
+# (override de RRHH) tambien respeta este piso (2026-09-07, confirmado
+# via QA): la cita de la Corte Suprema no distingue el mecanismo del
+# descuento -- protege el remanente del trabajador sin importar si el
+# monto vino del calculo automatico o de un valor digitado a mano.
 #
 # Base = salario NETO (devengados - deducciones ya calculadas hasta aqui),
 # no el bruto -- mismo criterio que usa CO_NETO (categories['DEV'] + categories['DEDU']).
@@ -977,7 +979,9 @@ for embargo in _embargos_ordenados:
     _espacio_antes_del_piso = max(0.0, (_salario_neto - _total_embargo) - _smmlv)
     _total_embargo += min(_monto_individual, _espacio_antes_del_piso)
 if inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0:
-    _total_embargo = max(_total_embargo, inputs['CO_EMBARGO'].amount)
+    _tope_minimo_vital = max(0.0, _salario_neto - _smmlv)
+    _monto_manual = min(inputs['CO_EMBARGO'].amount, _tope_minimo_vital)
+    _total_embargo = max(_total_embargo, _monto_manual)
 result = -abs(_total_embargo) if _total_embargo &gt; 0 else 0
             </field>
             <field name="appears_on_payslip" eval="True"/>
