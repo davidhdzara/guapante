@@ -1,0 +1,829 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Parámetros de nómina colombiana sobre el framework nativo
+        hr.rule.parameter / hr.rule.parameter.value (Odoo Enterprise,
+        hr_payroll). Reemplaza los modelos propios l10n.co.payroll.annual.params
+        y l10n.co.payroll.time.params (doc 10/10a), ver
+        correcciones_normativas_2026/13_migracion_hr_rule_parameter.md.
+
+        Un hr.rule.parameter por valor escalar (Opción A del doc 13, fiel al
+        patrón oficial de l10n_mx_hr_payroll/data/hr_rule_parameters_data.xml,
+        verificado en el servidor de Guapante). Cada valor se versiona con
+        hr.rule.parameter.value (date_from). Lookup nativo:
+        payslip._rule_parameter(code, date) / hr.rule.parameter._get_parameter_from_code(code, date).
+
+        Sin noupdate="1": igual que el patrón oficial de México, una
+        actualización del módulo (ej. nuevo SMMLV/UVT por Decreto/Resolución)
+        se refleja agregando un nuevo hr.rule.parameter.value con su propio
+        External ID, nunca se edita un registro ya publicado.
+    -->
+
+    <!-- ════════════════════════════════════════════════════════════════
+         SMMLV, auxilio de transporte, UVT — versionados por año (1 enero)
+         ════════════════════════════════════════════════════════════════ -->
+
+    <record id="rule_parameter_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: SMMLV</field>
+        <field name="code">l10n_co_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html">
+<p>Salario Mínimo Mensual Legal Vigente, fijado anualmente por Decreto del
+Gobierno Nacional (Art. 8 Ley 278/1996).</p>
+<h3 class="mt-5">Fuente</h3>
+<p>correcciones_normativas_2026/00_INDICE.md</p>
+<h3 class="mt-5">Formato del dato</h3>
+<pre><em>Valor</em> -&gt; <strong>Int ($)</strong></pre>
+        </field>
+    </record>
+    <record id="rule_parameter_smmlv_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1300000</field>
+        <field name="rule_parameter_id" ref="rule_parameter_smmlv"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_smmlv_2025" model="hr.rule.parameter.value">
+        <field name="parameter_value">1423500</field>
+        <field name="rule_parameter_id" ref="rule_parameter_smmlv"/>
+        <field name="date_from" eval="datetime(2025, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_smmlv_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">1750905</field>
+        <field name="rule_parameter_id" ref="rule_parameter_smmlv"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_aux_transporte" model="hr.rule.parameter">
+        <field name="name">Colombia: Auxilio de Transporte</field>
+        <field name="code">l10n_co_aux_transporte</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html">
+<p>Auxilio de transporte mensual, fijado anualmente por Decreto. Aplica a
+trabajadores con salario &lt;= 2 SMMLV que no devenguen salario integral.</p>
+<h3 class="mt-5">Fuente</h3>
+<p>correcciones_normativas_2026/00_INDICE.md</p>
+<h3 class="mt-5">Formato del dato</h3>
+<pre><em>Valor</em> -&gt; <strong>Int ($)</strong></pre>
+        </field>
+    </record>
+    <record id="rule_parameter_aux_transporte_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">162000</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aux_transporte"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_aux_transporte_2025" model="hr.rule.parameter.value">
+        <field name="parameter_value">200000</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aux_transporte"/>
+        <field name="date_from" eval="datetime(2025, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_aux_transporte_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">249095</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aux_transporte"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_uvt" model="hr.rule.parameter">
+        <field name="name">Colombia: UVT</field>
+        <field name="code">l10n_co_uvt</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html">
+<p>Unidad de Valor Tributario, fijada anualmente por la DIAN. Base de la
+tabla marginal de retención en la fuente (Art. 383 ET) y de varios topes
+de depuración (Art. 387 ET).</p>
+<h3 class="mt-5">Fuente</h3>
+<p>correcciones_normativas_2026/00_INDICE.md</p>
+<h3 class="mt-5">Formato del dato</h3>
+<pre><em>Valor</em> -&gt; <strong>Int ($)</strong></pre>
+        </field>
+    </record>
+    <record id="rule_parameter_uvt_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">47065</field>
+        <field name="rule_parameter_id" ref="rule_parameter_uvt"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_uvt_2025" model="hr.rule.parameter.value">
+        <field name="parameter_value">49799</field>
+        <field name="rule_parameter_id" ref="rule_parameter_uvt"/>
+        <field name="date_from" eval="datetime(2025, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_uvt_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">52374</field>
+        <field name="rule_parameter_id" ref="rule_parameter_uvt"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Tasas y factores — constantes desde 2024, sin variación histórica
+         ════════════════════════════════════════════════════════════════ -->
+
+    <record id="rule_parameter_pct_salud_empleado" model="hr.rule.parameter">
+        <field name="name">Colombia: % Salud Empleado</field>
+        <field name="code">l10n_co_pct_salud_empleado</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte a salud a cargo del empleado (Ley 100/1993).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_salud_empleado_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">4.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_salud_empleado"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_salud_empleador" model="hr.rule.parameter">
+        <field name="name">Colombia: % Salud Empleador</field>
+        <field name="code">l10n_co_pct_salud_empleador</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte a salud a cargo del empleador (Ley 100/1993). Sujeto
+a exoneración Art. 114-1 ET para salarios &lt; 10 SMMLV.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_salud_empleador_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">8.5</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_salud_empleador"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_pension_empleado" model="hr.rule.parameter">
+        <field name="name">Colombia: % Pensión Empleado</field>
+        <field name="code">l10n_co_pct_pension_empleado</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte a pensión a cargo del empleado (Ley 100/1993).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_pension_empleado_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">4.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_pension_empleado"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_pension_empleador" model="hr.rule.parameter">
+        <field name="name">Colombia: % Pensión Empleador</field>
+        <field name="code">l10n_co_pct_pension_empleador</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte a pensión a cargo del empleador (Ley 100/1993).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_pension_empleador_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">12.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_pension_empleador"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_arl_default" model="hr.rule.parameter">
+        <field name="name">Colombia: % ARL (Riesgo I por defecto)</field>
+        <field name="code">l10n_co_pct_arl_default</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa mínima de cotización ARL para Clase de Riesgo I (Decreto
+1772/1994). Las reglas salariales usan la cotización real de la línea de
+nómina cuando existe; este valor es el fallback.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_arl_default_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">0.522</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_arl_default"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_ccf" model="hr.rule.parameter">
+        <field name="name">Colombia: % Caja de Compensación Familiar</field>
+        <field name="code">l10n_co_pct_ccf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte parafiscal a la CCF (Ley 21/1982). No está sujeto
+a la exoneración Art. 114-1 ET.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_ccf_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">4.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_ccf"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_sena" model="hr.rule.parameter">
+        <field name="name">Colombia: % SENA</field>
+        <field name="code">l10n_co_pct_sena</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte parafiscal al SENA. Sujeto a exoneración Art.
+114-1 ET (Ley 1607/2012) para salarios &lt; 10 SMMLV.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_sena_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_sena"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_icbf" model="hr.rule.parameter">
+        <field name="name">Colombia: % ICBF</field>
+        <field name="code">l10n_co_pct_icbf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de aporte parafiscal al ICBF. Sujeto a exoneración Art.
+114-1 ET (Ley 1607/2012) para salarios &lt; 10 SMMLV.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_icbf_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">3.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_icbf"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_tope_exoneracion_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Exoneración Parafiscales (SMMLV)</field>
+        <field name="code">l10n_co_tope_exoneracion_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV por debajo del cual aplica la exoneración de aportes
+a SENA, ICBF y salud-empleador (Art. 114-1 ET, Ley 1607/2012).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_tope_exoneracion_smmlv_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">10</field>
+        <field name="rule_parameter_id" ref="rule_parameter_tope_exoneracion_smmlv"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_intereses_cesantias" model="hr.rule.parameter">
+        <field name="name">Colombia: % Intereses sobre Cesantías</field>
+        <field name="code">l10n_co_pct_intereses_cesantias</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje anual de intereses sobre el saldo de cesantías (Ley 52/1975).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_intereses_cesantias_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">12.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_intereses_cesantias"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_integral_salary" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Base Prestacional Salario Integral</field>
+        <field name="code">l10n_co_factor_integral_salary</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Fracción del salario integral que constituye el factor prestacional /
+base de IBC (Art. 132 CST: mínimo 70%).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (fracción)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_integral_salary_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">0.70</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_integral_salary"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_mes_comercial" model="hr.rule.parameter">
+        <field name="name">Colombia: Días Mes Comercial</field>
+        <field name="code">l10n_co_dias_mes_comercial</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días considerados por mes para prorrateo de salario y prestaciones
+(convención comercial colombiana).</p>
+<pre><em>Valor</em> -&gt; <strong>Int</strong></pre></field>
+    </record>
+    <record id="rule_parameter_dias_mes_comercial_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">30</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_mes_comercial"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_anio_comercial" model="hr.rule.parameter">
+        <field name="name">Colombia: Días Año Comercial</field>
+        <field name="code">l10n_co_dias_anio_comercial</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días considerados por año para el cálculo proporcional de cesantías,
+prima e indemnización (12 meses comerciales de 30 días, doctrina CSJ).</p>
+<pre><em>Valor</em> -&gt; <strong>Int</strong></pre></field>
+    </record>
+    <record id="rule_parameter_dias_anio_comercial_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">360</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_anio_comercial"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_divisor_vacaciones" model="hr.rule.parameter">
+        <field name="name">Colombia: Divisor Vacaciones</field>
+        <field name="code">l10n_co_divisor_vacaciones</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Divisor para el cálculo proporcional de vacaciones: 15 días hábiles por
+año (Art. 186 CST) = salario × días_laborados / 720.</p>
+<pre><em>Valor</em> -&gt; <strong>Int</strong></pre></field>
+    </record>
+    <record id="rule_parameter_divisor_vacaciones_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">720</field>
+        <field name="rule_parameter_id" ref="rule_parameter_divisor_vacaciones"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_incapacidad_empleador" model="hr.rule.parameter">
+        <field name="name">Colombia: Días Incapacidad a Cargo del Empleador</field>
+        <field name="code">l10n_co_dias_incapacidad_empleador</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Primeros días de incapacidad por enfermedad general pagados al 100%
+por el empleador antes de que la EPS asuma el pago (Art. 227 CST).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (días)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_dias_incapacidad_empleador_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">2</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_incapacidad_empleador"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_incapacidad_3_90" model="hr.rule.parameter">
+        <field name="name">Colombia: % Incapacidad Días 3-90</field>
+        <field name="code">l10n_co_pct_incapacidad_3_90</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS entre el día 3 y el día 90 de
+incapacidad por enfermedad general (Decreto 1406/1999, Art. 3).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_incapacidad_3_90_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">66.67</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_incapacidad_3_90"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_incapacidad_91_mas" model="hr.rule.parameter">
+        <field name="name">Colombia: % Incapacidad Día 91+</field>
+        <field name="code">l10n_co_pct_incapacidad_91_mas</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS a partir del día 91 de
+incapacidad por enfermedad general.</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_incapacidad_91_mas_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">50.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_incapacidad_91_mas"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_tope_embargo_alimentos" model="hr.rule.parameter">
+        <field name="name">Colombia: % Tope Embargo Alimentos/Cooperativa</field>
+        <field name="code">l10n_co_pct_tope_embargo_alimentos</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje máximo embargable del salario para embargos de alimentos o
+de cooperativa (Art. 156 CST).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_tope_embargo_alimentos_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">50.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_tope_embargo_alimentos"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_embargo_civil" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Embargo Civil/Ordinario</field>
+        <field name="code">l10n_co_factor_embargo_civil</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Fracción máxima embargable del excedente sobre 1 SMMLV para embargos
+civiles/ordinarios (Art. 155 CST).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (fracción)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_embargo_civil_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">0.20</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_embargo_civil"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_renta_exenta" model="hr.rule.parameter">
+        <field name="name">Colombia: % Renta Exenta</field>
+        <field name="code">l10n_co_pct_renta_exenta</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje de renta exenta aplicable al subtotal depurado en la
+retención en la fuente (Art. 206 num. 10 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_renta_exenta_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">25.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_renta_exenta"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_max_renta_exenta_uvt" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Renta Exenta (UVT/mes)</field>
+        <field name="code">l10n_co_max_renta_exenta_uvt</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tope mensual de renta exenta expresado en UVT (Art. 206 num. 10 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (UVT)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_max_renta_exenta_uvt_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">240.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_max_renta_exenta_uvt"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_deduccion_dependientes" model="hr.rule.parameter">
+        <field name="name">Colombia: % Deducción por Dependientes</field>
+        <field name="code">l10n_co_pct_deduccion_dependientes</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje del ingreso bruto deducible por dependientes económicos en
+la retención en la fuente (Art. 387 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_pct_deduccion_dependientes_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">10.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_deduccion_dependientes"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_max_dependientes_uvt" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Deducción Dependientes (UVT/mes)</field>
+        <field name="code">l10n_co_max_dependientes_uvt</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tope mensual de la deducción por dependientes expresado en UVT
+(Art. 387 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (UVT)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_max_dependientes_uvt_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">32.5</field>
+        <field name="rule_parameter_id" ref="rule_parameter_max_dependientes_uvt"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_max_vol_pension_pct" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Aporte Voluntario Pensión (% Ingreso)</field>
+        <field name="code">l10n_co_max_vol_pension_pct</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje máximo del ingreso bruto deducible por aportes voluntarios a
+pensión en la depuración de retención en la fuente (Art. 126-1 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_max_vol_pension_pct_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">25.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_max_vol_pension_pct"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_max_afc_pct" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Aporte AFC (% Ingreso)</field>
+        <field name="code">l10n_co_max_afc_pct</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje máximo del ingreso bruto deducible por aportes a cuentas AFC
+en la depuración de retención en la fuente (Art. 126-4 ET).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_max_afc_pct_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">30.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_max_afc_pct"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Fondo de Solidaridad Pensional (FSP) — Art. 27 Ley 100/1993
+         (mod. Ley 797/2003) + Decreto 4982/2007. Tarifa base desde 4
+         SMMLV, escala adicional (subcuenta de subsistencia) por tramos
+         desde 16 SMMLV. No entró en el alcance de ningún ciclo anterior
+         (doc 10/10a no lo cubría), CO_FSP en hr_payroll_structure_data.xml.
+         ════════════════════════════════════════════════════════════════ -->
+
+    <record id="rule_parameter_fsp_umbral_base" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Base (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_base</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV de IBC a partir del cual aplica el aporte al Fondo
+de Solidaridad Pensional (Art. 27 Ley 100/1993).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_base_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">4</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_base"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_pct_base" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Base</field>
+        <field name="code">l10n_co_fsp_pct_base</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa base del aporte al FSP para IBC entre 4 y 16 SMMLV
+(Art. 27 Ley 100/1993).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_base_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_base"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_umbral_tier1" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Tramo 1 (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_tier1</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV a partir del cual aplica la tarifa del tramo 1 de
+subsistencia del FSP (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_tier1_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">16</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_tier1"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier1" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Tramo 1</field>
+        <field name="code">l10n_co_fsp_pct_tier1</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa del FSP para IBC entre 16 y 17 SMMLV (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier1_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.2</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_tier1"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_umbral_tier2" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Tramo 2 (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_tier2</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV a partir del cual aplica la tarifa del tramo 2 de
+subsistencia del FSP (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_tier2_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">17</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_tier2"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier2" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Tramo 2</field>
+        <field name="code">l10n_co_fsp_pct_tier2</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa del FSP para IBC entre 17 y 18 SMMLV (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier2_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.4</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_tier2"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_umbral_tier3" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Tramo 3 (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_tier3</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV a partir del cual aplica la tarifa del tramo 3 de
+subsistencia del FSP (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_tier3_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">18</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_tier3"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier3" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Tramo 3</field>
+        <field name="code">l10n_co_fsp_pct_tier3</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa del FSP para IBC entre 18 y 19 SMMLV (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier3_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.6</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_tier3"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_umbral_tier4" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Tramo 4 (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_tier4</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV a partir del cual aplica la tarifa del tramo 4 de
+subsistencia del FSP (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_tier4_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">19</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_tier4"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier4" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Tramo 4</field>
+        <field name="code">l10n_co_fsp_pct_tier4</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa del FSP para IBC entre 19 y 20 SMMLV (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier4_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.8</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_tier4"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_fsp_umbral_tier5" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - Umbral Tramo 5 (SMMLV)</field>
+        <field name="code">l10n_co_fsp_umbral_tier5</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV a partir del cual aplica la tarifa máxima (tramo 5)
+de subsistencia del FSP (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (múltiplo de SMMLV)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_umbral_tier5_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">20</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_umbral_tier5"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier5" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Tramo 5 (máxima)</field>
+        <field name="code">l10n_co_fsp_pct_tier5</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa máxima del FSP para IBC >= 20 SMMLV (Decreto 4982/2007).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (%)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_tier5_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_tier5"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Jornada y recargos — transición 2026 (Ley 2101/2021, Ley 2466/2025)
+         Reemplaza el modelo l10n.co.payroll.time.params (doc 10a) completo.
+         ════════════════════════════════════════════════════════════════ -->
+
+    <record id="rule_parameter_horas_semanales" model="hr.rule.parameter">
+        <field name="name">Colombia: Horas Semanales Jornada Máxima Legal</field>
+        <field name="code">l10n_co_horas_semanales</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Jornada máxima legal semanal (Art. 161 CST, reducida por Ley
+2101/2021: 46h hasta 2026-07-14, 42h desde 2026-07-15).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (horas)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_horas_semanales_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">46</field>
+        <field name="rule_parameter_id" ref="rule_parameter_horas_semanales"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_horas_semanales_2026_jul15" model="hr.rule.parameter.value">
+        <field name="parameter_value">42</field>
+        <field name="rule_parameter_id" ref="rule_parameter_horas_semanales"/>
+        <field name="date_from" eval="datetime(2026, 7, 15).date()"/>
+    </record>
+
+    <record id="rule_parameter_horas_mensuales" model="hr.rule.parameter">
+        <field name="name">Colombia: Divisor Horas Mensuales</field>
+        <field name="code">l10n_co_horas_mensuales</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Divisor de horas mensuales para el valor-hora de horas extra y
+recargos (Ley 2101/2021: 230 hasta 2026-07-14, 210 desde 2026-07-15).</p>
+<pre><em>Valor</em> -&gt; <strong>Int (horas)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_horas_mensuales_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">230</field>
+        <field name="rule_parameter_id" ref="rule_parameter_horas_mensuales"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_horas_mensuales_2026_jul15" model="hr.rule.parameter.value">
+        <field name="parameter_value">210</field>
+        <field name="rule_parameter_id" ref="rule_parameter_horas_mensuales"/>
+        <field name="date_from" eval="datetime(2026, 7, 15).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hed" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Hora Extra Diurna</field>
+        <field name="code">l10n_co_factor_hed</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de recargo para hora extra diurna (Art. 168 CST: 25%).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hed_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.25</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hed"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hen" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Hora Extra Nocturna</field>
+        <field name="code">l10n_co_factor_hen</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de recargo para hora extra nocturna (Art. 168 CST: 75%).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hen_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.75</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hen"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hrn" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Recargo Nocturno</field>
+        <field name="code">l10n_co_factor_hrn</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de recargo nocturno ordinario (Art. 168 CST: 35%).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hrn_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">0.35</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrn"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hrddf" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Recargo Diurno Dominical/Festivo</field>
+        <field name="code">l10n_co_factor_hrddf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de recargo diurno dominical/festivo (Art. 179 CST, subido de 75%
+a 90% por la Ley 2466/2025 desde 2026-07-01).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hrddf_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.75</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrddf"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hrddf_2026_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.90</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrddf"/>
+        <field name="date_from" eval="datetime(2026, 7, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hrddf_2027_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.00</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrddf"/>
+        <field name="date_from" eval="datetime(2027, 7, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_heddf" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Hora Extra Diurna Dominical/Festivo</field>
+        <field name="code">l10n_co_factor_heddf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de hora extra diurna en dominical/festivo (Ley 2466/2025 desde
+2026-07-01).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_heddf_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.00</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_heddf"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_heddf_2026_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.15</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_heddf"/>
+        <field name="date_from" eval="datetime(2026, 7, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_heddf_2027_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.25</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_heddf"/>
+        <field name="date_from" eval="datetime(2027, 7, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hendf" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Hora Extra Nocturna Dominical/Festivo</field>
+        <field name="code">l10n_co_factor_hendf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de hora extra nocturna en dominical/festivo (Ley 2466/2025 desde
+2026-07-01).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hendf_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.50</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hendf"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hendf_2026_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.65</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hendf"/>
+        <field name="date_from" eval="datetime(2026, 7, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hendf_2027_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.75</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hendf"/>
+        <field name="date_from" eval="datetime(2027, 7, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_factor_hrndf" model="hr.rule.parameter">
+        <field name="name">Colombia: Factor Recargo Nocturno Dominical/Festivo</field>
+        <field name="code">l10n_co_factor_hrndf</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Factor de recargo nocturno en dominical/festivo (Ley 2466/2025 desde
+2026-07-01).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (factor)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_factor_hrndf_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.10</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrndf"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hrndf_2026_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.25</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrndf"/>
+        <field name="date_from" eval="datetime(2026, 7, 1).date()"/>
+    </record>
+    <record id="rule_parameter_factor_hrndf_2027_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.35</field>
+        <field name="rule_parameter_id" ref="rule_parameter_factor_hrndf"/>
+        <field name="date_from" eval="datetime(2027, 7, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_hora_inicio_franja_nocturna" model="hr.rule.parameter">
+        <field name="name">Colombia: Hora Inicio Franja Nocturna</field>
+        <field name="code">l10n_co_hora_inicio_franja_nocturna</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Hora de inicio de la franja nocturna (Art. 25 Ley 2466/2025: se adelanta
+de 9pm a 7pm desde 2026-07-01; hasta esa fecha rige el régimen anterior,
+9pm).</p>
+<pre><em>Valor</em> -&gt; <strong>Float (hora, 0-24)</strong></pre></field>
+    </record>
+    <record id="rule_parameter_hora_inicio_franja_nocturna_2026" model="hr.rule.parameter.value">
+        <field name="parameter_value">21.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_hora_inicio_franja_nocturna"/>
+        <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_hora_inicio_franja_nocturna_2026_jul1" model="hr.rule.parameter.value">
+        <field name="parameter_value">19.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_hora_inicio_franja_nocturna"/>
+        <field name="date_from" eval="datetime(2026, 7, 1).date()"/>
+    </record>
+
+</odoo>

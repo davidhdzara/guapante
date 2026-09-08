@@ -89,7 +89,6 @@ class L10nCoHrLiquidacionWizard(models.TransientModel):
             ))
 
         contract = self.contract_id
-        company = contract.company_id or self.env.company
 
         # Determinar tipo de contrato
         type_map = {
@@ -103,11 +102,14 @@ class L10nCoHrLiquidacionWizard(models.TransientModel):
         contract_type = type_map.get(dian_type, 'indefinido') if dian_type else 'indefinido'
 
         # Determinar auxilio de transporte
-        params = company._get_co_payroll_params(self.date_end)
+        RuleParameter = self.env['hr.rule.parameter']
+        smmlv = RuleParameter._get_parameter_from_code(
+            'l10n_co_smmlv', self.date_end)
         is_integral = contract.l10n_co_ne_integral_salary
         aux_transporte = 0.0
-        if not is_integral and (contract.wage or 0) <= params.smmlv * 2:
-            aux_transporte = params.aux_transporte
+        if not is_integral and (contract.wage or 0) <= smmlv * 2:
+            aux_transporte = RuleParameter._get_parameter_from_code(
+                'l10n_co_aux_transporte', self.date_end)
 
         liquidacion = self.env['l10n.co.hr.liquidacion'].create({
             'employee_id': self.employee_id.id,

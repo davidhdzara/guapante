@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            Advertencia en el Dashboard de Nómina cuando el año en curso no
+            tiene SMMLV/UVT/auxilio de transporte configurados en
+            hr.rule.parameter (doc 13). No es un error duro: el lookup
+            nativo (date_from <=, el más reciente gana) sigue funcionando
+            con el último valor vigente, así que el cálculo de nómina no
+            se detiene, pero eso significa que puede seguir corriendo
+            silenciosamente con valores de un año anterior si nadie
+            actualiza los parámetros a tiempo. Este warning es la mitigación
+            que David decidió (punto medio): se mantiene el comportamiento
+            nativo, pero se hace visible en vez de silencioso.
+
+            Verificado contra el código fuente real (hr_payslip.py,
+            get_dashboard_warnings): el evaluation_code corre con
+            self = self.env['hr.payslip'] y debe setear warning_count
+            (int) y, opcionalmente, warning_records/warning_action.
+
+            Se usa warning_action explícito (en vez de dejar que
+            _dashboard_default_action arme uno con warning_records) porque
+            hr.rule.parameter solo tiene vistas list/form registradas
+            (hr_rule_parameter_views.xml), no kanban, confirmado leyendo
+            ese archivo en el servidor. Con warning_action explícito no
+            dependemos de que el kanban por defecto que Odoo genera para
+            un modelo sin vista propia funcione bien.
+        -->
+        <record id="hr_payroll_dashboard_warning_co_params_ano_actual" model="hr.payroll.dashboard.warning">
+            <field name="name">Colombia: Parámetros del año en curso sin configurar</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="evaluation_code">
+codes_criticos = ['l10n_co_smmlv', 'l10n_co_uvt', 'l10n_co_aux_transporte']
+anio_actual = date.today().year
+RuleParameterValue = self.env['hr.rule.parameter.value']
+faltantes = [
+    code for code in codes_criticos
+    if not RuleParameterValue.search_count([
+        ('code', '=', code),
+        ('date_from', '>=', date(anio_actual, 1, 1)),
+    ])
+]
+if faltantes:
+    warning_count = len(faltantes)
+    warning_records = self.env['hr.rule.parameter'].search([('code', 'in', faltantes)])
+    warning_action = {
+        'type': 'ir.actions.act_window',
+        'name': 'Colombia: Parámetros del año en curso sin configurar',
+        'res_model': 'hr.rule.parameter',
+        'domain': [('code', 'in', faltantes)],
+        'views': [[False, 'list'], [False, 'form']],
+        'view_mode': 'list,form',
+    }
+            </field>
+        </record>
+
+    </data>
+</odoo>

@@ -552,8 +552,11 @@ class L10nCoNominaUgpp(models.Model):
         # ── Preparar mapeos ──────────────────────────────────────────
         from ..services import dian_utils
 
-        params = self.company_id._get_co_payroll_params(self.date_from)
-        smmlv = params.smmlv
+        RuleParameter = self.env['hr.rule.parameter']
+        smmlv = RuleParameter._get_parameter_from_code(
+            'l10n_co_smmlv', self.date_from)
+        factor_integral_salary = RuleParameter._get_parameter_from_code(
+            'l10n_co_factor_integral_salary', self.date_from)
         period_start = self.date_from
         period_end = self.date_to
 
@@ -733,7 +736,7 @@ class L10nCoNominaUgpp(models.Model):
             # ═════════════════════════════════════════════════════════
             ibc = self._compute_ibc(
                 total_salarial, total_no_salarial, contract, smmlv,
-                factor_integral_salary=params.factor_integral_salary,
+                factor_integral_salary=factor_integral_salary,
             )
             ibc_data = [ibc, ibc, ibc, ibc]
 

@@ -292,10 +292,14 @@ class L10nCoHrLiquidacion(models.Model):
             if dian_type:
                 self.contract_type = type_map.get(dian_type, 'indefinido')
             # Aux transporte: aplica si salario <= 2 SMMLV y no integral
-            params = self.company_id._get_co_payroll_params(self.date_end or self.date_start)
+            RuleParameter = self.env['hr.rule.parameter']
+            ref_date = self.date_end or self.date_start
+            smmlv = RuleParameter._get_parameter_from_code(
+                'l10n_co_smmlv', ref_date)
             is_integral = contract.l10n_co_ne_integral_salary
-            if not is_integral and (contract.wage or 0) <= params.smmlv * 2:
-                self.aux_transporte = params.aux_transporte
+            if not is_integral and (contract.wage or 0) <= smmlv * 2:
+                self.aux_transporte = RuleParameter._get_parameter_from_code(
+                    'l10n_co_aux_transporte', ref_date)
             else:
                 self.aux_transporte = 0.0
 
@@ -357,11 +361,15 @@ class L10nCoHrLiquidacion(models.Model):
                 continue
 
             salary = rec.base_salary
-            params = rec.company_id._get_co_payroll_params(rec.date_end)
-            smmlv = params.smmlv
-            years = rec.days_worked / params.dias_anio_comercial
+            RuleParameter = self.env['hr.rule.parameter']
 
-            dias_mes = params.dias_mes_comercial
+            def _p(code):
+                return RuleParameter._get_parameter_from_code(
+                    code, rec.date_end)
+
+            smmlv = _p('l10n_co_smmlv')
+            years = rec.days_worked / _p('l10n_co_dias_anio_comercial')
+            dias_mes = _p('l10n_co_dias_mes_comercial')
 
             if rec.contract_type == 'fijo':
                 # Contrato fijo: salario × días faltantes del contrato
@@ -427,9 +435,13 @@ class L10nCoHrLiquidacion(models.Model):
             date_start = rec.date_start
             date_end = rec.date_end
             days_worked = rec.days_worked
-            params = rec.company_id._get_co_payroll_params(date_end)
-            dias_mes = params.dias_mes_comercial
-            dias_anio = params.dias_anio_comercial
+            RuleParameter = self.env['hr.rule.parameter']
+
+            def _p(code):
+                return RuleParameter._get_parameter_from_code(code, date_end)
+
+            dias_mes = _p('l10n_co_dias_mes_comercial')
+            dias_anio = _p('l10n_co_dias_anio_comercial')
 
             # ── Salario pendiente ──────────────────────────────────
             # Días del último mes que no se han pagado
@@ -460,7 +472,7 @@ class L10nCoHrLiquidacion(models.Model):
             # ── Intereses sobre cesantías ──────────────────────────
             rec.intereses_cesantias = (
                 rec.cesantias_proporcionales
-                * (params.pct_intereses_cesantias / 100)
+                * (_p('l10n_co_pct_intereses_cesantias') / 100)
                 * days_year / dias_anio
             )
 
@@ -468,7 +480,7 @@ class L10nCoHrLiquidacion(models.Model):
             # Art. 186 CST: 15 días hábiles por año = salario / 24 / mes
             # Fórmula simplificada: salario × días_laborados / divisor_vacaciones
             rec.vacaciones_proporcionales = (
-                salary * days_worked / params.divisor_vacaciones
+                salary * days_worked / _p('l10n_co_divisor_vacaciones')
             )
 
             # ── Vacaciones pendientes ──────────────────────────────
