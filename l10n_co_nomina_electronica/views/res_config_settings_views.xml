@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.l10n_co_nomina_electronica</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="hr_payroll.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <block id="hr_payroll_settings" position="after">
+                <field name="company_country_code" invisible="1"/>
+                <t invisible="company_country_code != 'CO'">
+                    <block title="Nómina Electrónica DIAN" id="l10n_co_ne_settings_dian">
+                        <setting string="Software DIAN" help="Credenciales del software de nómina electrónica asignadas por la DIAN en el portal de habilitación.">
+                            <field name="l10n_co_ne_software_id"/>
+                            <field name="l10n_co_ne_software_pin" password="True"/>
+                            <field name="l10n_co_ne_test_set_id"/>
+                        </setting>
+                        <setting string="Ambiente" help="Producción emite documentos con validez legal; Habilitación es el ambiente de pruebas ante la DIAN.">
+                            <field name="l10n_co_ne_environment" widget="radio"/>
+                        </setting>
+                        <setting string="Consecutivos" help="Prefijos y secuencias usadas para los consecutivos de nómina y notas de ajuste.">
+                            <field name="l10n_co_ne_payroll_prefix"/>
+                            <field name="l10n_co_ne_adjust_prefix"/>
+                            <field name="l10n_co_ne_sequence_id"/>
+                            <field name="l10n_co_ne_pre_sequence_id"/>
+                        </setting>
+                    </block>
+                    <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">
+                        <setting help="Certificado usado para firmar los documentos de nómina electrónica (XAdES-BES). Reutiliza el certificado de facturación electrónica -- no requiere uno independiente.">
+                            <field name="l10n_co_ne_certificate_id"/>
+                        </setting>
+                    </block>
+                    <block title="UGPP" id="l10n_co_ne_settings_ugpp">
+                        <setting help="Clasificación del aportante ante la UGPP.">
+                            <field name="l10n_co_ugpp_legal_nature"/>
+                            <field name="l10n_co_ugpp_contributor_type"/>
+                            <field name="l10n_co_ugpp_special_autoretention"/>
+                        </setting>
+                    </block>
+                    <block title="Parámetros Nómina Colombia" id="l10n_co_ne_settings_params">
+                        <setting help="Exoneración de aportes a SENA/ICBF para empleados con salario inferior a 10 SMMLV (Art. 114-1 ET, Ley 1607/2012).">
+                            <field name="l10n_co_ne_exoneration_1607"/>
+                        </setting>
+                        <setting string="Otros Parámetros">
+                            <div class="mt8" id="l10n_co_ne_annual_params_text">
+                                Los valores de SMMLV, auxilio de transporte y UVT se configuran
+                                por año en Nómina › Configuración › Parámetros Anuales.
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="PILA" id="l10n_co_ne_settings_pila">
+                        <setting help="Datos del aportante para la Planilla Integrada de Liquidación de Aportes.">
+                            <field name="l10n_co_pila_tipo_aportante"/>
+                            <field name="l10n_co_pila_arl_code"/>
+                            <field name="l10n_co_pila_forma_presentacion"/>
+                            <field name="l10n_co_pila_codigo_sucursal"/>
+                            <field name="l10n_co_pila_nombre_sucursal"/>
+                            <field name="l10n_co_pila_operador_code"/>
+                        </setting>
+                    </block>
+                </t>
+            </block>
+        </field>
+    </record>
+
+</odoo>

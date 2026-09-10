@@ -59,24 +59,29 @@ else:
             <field name="condition_select">python</field>
             <field name="condition_python">
 # Solo aplica si hay base de prima (no salario integral)
-result = rules['CO_PRIMA_BASE'] and rules['CO_PRIMA_BASE'].total &gt; 0
+# rules['CODE'] es el registro hr.salary.rule (metadata, sin .total) --
+# el resultado ya calculado vive en result_rules['CODE']['total'] (dict).
+# Bug historico, nunca ejercitado (0 payslips reales contra esta
+# estructura hasta el ciclo de doc 18/provisiones que lo destapo).
+result = result_rules.get('CO_PRIMA_BASE') and result_rules['CO_PRIMA_BASE']['total'] &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Prima = base * dias_trabajados_semestre / dias_anio_comercial
 # Calculo automatico del semestre segun fecha del payslip
-from datetime import date as dt_date
-
+# date ya esta disponible en el contexto de la regla (hr_payslip.py
+# _get_base_local_dict) -- un "import" cualquiera esta prohibido por el
+# sandbox de safe_eval (opcode IMPORT_NAME/IMPORT_FROM), no hace falta.
 _fecha_ref = payslip.date_from
 _year = _fecha_ref.year
 
 # Determinar semestre: Ene-Jun o Jul-Dic
 if _fecha_ref.month &lt;= 6:
-    _inicio_sem = dt_date(_year, 1, 1)
-    _fin_sem = dt_date(_year, 6, 30)
+    _inicio_sem = date(_year, 1, 1)
+    _fin_sem = date(_year, 6, 30)
 else:
-    _inicio_sem = dt_date(_year, 7, 1)
-    _fin_sem = dt_date(_year, 12, 31)
+    _inicio_sem = date(_year, 7, 1)
+    _fin_sem = date(_year, 12, 31)
 
 # Fecha de inicio efectiva: la mayor entre inicio de contrato e inicio de semestre
 _inicio_contrato = contract.date_start
@@ -94,7 +99,7 @@ if _dias &lt; 0:
 _dias = min(_dias, 180)
 
 # Prima = base * dias / dias_anio_comercial (equivale a 30 dias de salario por semestre de 180 dias)
-_base = rules['CO_PRIMA_BASE'].total
+_base = result_rules['CO_PRIMA_BASE']['total']
 result = _base * _dias / payslip._rule_parameter('l10n_co_dias_anio_comercial', payslip.date_from)
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -112,12 +117,12 @@ result = _base * _dias / payslip._rule_parameter('l10n_co_dias_anio_comercial', 
             <field name="condition_select">python</field>
             <field name="condition_python">
 # Aplica si hay valor de prima calculado
-result = rules.get('CO_PRIMA_VALOR') and rules['CO_PRIMA_VALOR'].total &gt; 0
+result = result_rules.get('CO_PRIMA_VALOR') and result_rules['CO_PRIMA_VALOR']['total'] &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento de salud sobre el valor de la prima
-result = -abs(rules['CO_PRIMA_VALOR'].total * payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from) / 100)
+result = -abs(result_rules['CO_PRIMA_VALOR']['total'] * payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from) / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Salud</field>
@@ -133,13 +138,13 @@ result = -abs(rules['CO_PRIMA_VALOR'].total * payslip._rule_parameter('l10n_co_p
             <field name="condition_select">python</field>
             <field name="condition_python">
 # Aplica si hay valor de prima y el empleado no es extranjero exento de pension
-result = (rules.get('CO_PRIMA_VALOR') and rules['CO_PRIMA_VALOR'].total &gt; 0
+result = (result_rules.get('CO_PRIMA_VALOR') and result_rules['CO_PRIMA_VALOR']['total'] &gt; 0
           and not employee.l10n_co_ne_foreigner_no_pension)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento de pension sobre el valor de la prima
-result = -abs(rules['CO_PRIMA_VALOR'].total * payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from) / 100)
+result = -abs(result_rules['CO_PRIMA_VALOR']['total'] * payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from) / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoPension</field>
@@ -163,7 +168,7 @@ if not _rete_cfg:
     _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
         ('year', '=', str(payslip.date_from.year)),
     ], limit=1)
-result = bool(_rete_cfg) and rules.get('CO_PRIMA_VALOR') and rules['CO_PRIMA_VALOR'].total &gt; 0
+result = bool(_rete_cfg) and result_rules.get('CO_PRIMA_VALOR') and result_rules['CO_PRIMA_VALOR']['total'] &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -178,7 +183,7 @@ if not _rete_cfg:
         ('year', '=', str(payslip.date_from.year)),
     ], limit=1)
 
-_valor_prima = rules['CO_PRIMA_VALOR'].total
+_valor_prima = result_rules['CO_PRIMA_VALOR']['total']
 _ibc = _valor_prima
 
 _rete_result = _rete_cfg.compute_retefuente(
@@ -202,7 +207,13 @@ result = -abs(_valor) if _valor &gt; 0 else 0
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Neto = total prestaciones + total deducciones (deducciones son negativas)
-result = categories['PREST'] + categories['SS_EMP'] + categories['DEDU']
+# SS_EMP es categoria hija de DEDU -- Odoo suma el monto de una linea a su
+# categoria Y a todos sus ancestros, asi que categories['DEDU'] YA incluye
+# lo que sumo SS_EMP. Sumarlo aparte restaba el descuento de salud/pension
+# dos veces. Mismo patron correcto que ya usa CO_NETO en la estructura
+# principal (categories['DEV'] + categories['DEDU'], sin SS_CIA/SS_EMP
+# aparte). Hallazgo de Tech Lead depurando un payslip real de Prima.
+result = categories['PREST'] + categories['DEDU']
             </field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
@@ -266,8 +277,11 @@ result = not contract.l10n_co_ne_integral_salary
             <field name="amount_python_compute">
 # Prima proporcional = (salario + aux_transporte) * dias_semestre / dias_anio_comercial
 # Se calcula la prima no pagada del semestre actual
-from datetime import date as dt_date
-
+# date ya esta disponible en el contexto de la regla (hr_payslip.py
+# _get_base_local_dict) -- un "import" cualquiera esta prohibido por el
+# sandbox de safe_eval (opcode IMPORT_NAME/IMPORT_FROM), no hace falta.
+# Hallazgo de Tech Lead corriendo test_estructuras_especiales.sh contra
+# staging_produccion (T3): "forbidden opcode(s)... IMPORT_NAME, IMPORT_FROM".
 _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
@@ -281,9 +295,9 @@ _year = _fecha_fin.year
 
 # Inicio del semestre actual
 if _fecha_fin.month &lt;= 6:
-    _inicio_sem = dt_date(_year, 1, 1)
+    _inicio_sem = date(_year, 1, 1)
 else:
-    _inicio_sem = dt_date(_year, 7, 1)
+    _inicio_sem = date(_year, 7, 1)
 
 # Fecha efectiva de inicio: la mayor entre inicio contrato e inicio semestre
 _inicio_efectivo = max(contract.date_start, _inicio_sem)
@@ -316,8 +330,8 @@ result = not contract.l10n_co_ne_integral_salary
             <field name="amount_python_compute">
 # Cesantias = (salario + aux_transporte) * dias_trabajados_ano / dias_anio_comercial
 # Se calculan las cesantias no consignadas del periodo actual (1 Ene - fecha fin)
-from datetime import date as dt_date
-
+# date ya esta disponible en el contexto de la regla, un "import" esta
+# prohibido por el sandbox de safe_eval -- ver CO_LIQ_PRIMA mas arriba.
 _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
@@ -330,7 +344,7 @@ _fecha_fin = payslip.date_to
 _year = _fecha_fin.year
 
 # Inicio del periodo de cesantias: 1 de enero o fecha de ingreso
-_inicio_periodo = dt_date(_year, 1, 1)
+_inicio_periodo = date(_year, 1, 1)
 _inicio_efectivo = max(contract.date_start, _inicio_periodo)
 
 _dias = (_fecha_fin - _inicio_efectivo).days + 1
@@ -357,19 +371,19 @@ result = _base * _dias / payslip._rule_parameter('l10n_co_dias_anio_comercial', 
             <field name="condition_python">
 # Aplica solo si hay cesantias calculadas
 result = (not contract.l10n_co_ne_integral_salary
-          and rules.get('CO_LIQ_CESANTIAS') and rules['CO_LIQ_CESANTIAS'].total &gt; 0)
+          and result_rules.get('CO_LIQ_CESANTIAS') and result_rules['CO_LIQ_CESANTIAS']['total'] &gt; 0)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Intereses = cesantias * pct_intereses_cesantias * dias / dias_anio_comercial (Ley 52 de 1975)
-from datetime import date as dt_date
-
-_cesantias = rules['CO_LIQ_CESANTIAS'].total
+# date ya esta disponible en el contexto de la regla, un "import" esta
+# prohibido por el sandbox de safe_eval -- ver CO_LIQ_PRIMA mas arriba.
+_cesantias = result_rules['CO_LIQ_CESANTIAS']['total']
 _fecha_fin = payslip.date_to
 _year = _fecha_fin.year
 
 # Periodo de intereses: desde 1 enero o fecha de ingreso
-_inicio_periodo = dt_date(_year, 1, 1)
+_inicio_periodo = date(_year, 1, 1)
 _inicio_efectivo = max(contract.date_start, _inicio_periodo)
 
 _dias = (_fecha_fin - _inicio_efectivo).days + 1
@@ -594,7 +608,10 @@ result = -abs(_valor) if _valor &gt; 0 else 0
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Neto = Total devengados + total deducciones (deducciones son negativas)
-result = categories['DEV'] + categories['DEDU'] + categories['SS_EMP']
+# SS_EMP es categoria hija de DEDU -- categories['DEDU'] ya la incluye,
+# sumarla aparte restaba el descuento de salud/pension dos veces. Ver
+# CO_PRIMA_NETO mas arriba.
+result = categories['DEV'] + categories['DEDU']
             </field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
@@ -654,12 +671,12 @@ Si no es salarial, solo se aplica retencion en la fuente.</field>
             <field name="condition_python">
 # Solo aplica si la bonificacion es salarial
 result = (payslip.l10n_co_ne_is_salarial
-          and rules.get('CO_BON_VALOR') and rules['CO_BON_VALOR'].total &gt; 0)
+          and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento de salud sobre el valor de la bonificacion
-_valor_bon = rules['CO_BON_VALOR'].total
+_valor_bon = result_rules['CO_BON_VALOR']['total']
 result = -abs(_valor_bon * payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from) / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -677,13 +694,13 @@ result = -abs(_valor_bon * payslip._rule_parameter('l10n_co_pct_salud_empleado',
             <field name="condition_python">
 # Solo aplica si la bonificacion es salarial y no es extranjero exento
 result = (payslip.l10n_co_ne_is_salarial
-          and rules.get('CO_BON_VALOR') and rules['CO_BON_VALOR'].total &gt; 0
+          and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
           and not employee.l10n_co_ne_foreigner_no_pension)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento de pension sobre el valor de la bonificacion
-_valor_bon = rules['CO_BON_VALOR'].total
+_valor_bon = result_rules['CO_BON_VALOR']['total']
 result = -abs(_valor_bon * payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from) / 100)
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -708,7 +725,7 @@ if not _rete_cfg:
     _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
         ('year', '=', str(payslip.date_from.year)),
     ], limit=1)
-result = bool(_rete_cfg) and rules.get('CO_BON_VALOR') and rules['CO_BON_VALOR'].total &gt; 0
+result = bool(_rete_cfg) and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -722,7 +739,7 @@ if not _rete_cfg:
         ('year', '=', str(payslip.date_from.year)),
     ], limit=1)
 
-_valor_bon = rules['CO_BON_VALOR'].total
+_valor_bon = result_rules['CO_BON_VALOR']['total']
 _ibc = _valor_bon if payslip.l10n_co_ne_is_salarial else 0
 
 _rete_result = _rete_cfg.compute_retefuente(
@@ -745,8 +762,11 @@ result = -abs(_valor) if _valor &gt; 0 else 0
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Neto = valor bonificacion + descuentos (SS_EMP y DEDU son negativos)
-result = categories['DEV'] + categories['SS_EMP'] + categories['DEDU']
+# Neto = valor bonificacion + descuentos (DEDU es negativo)
+# SS_EMP es categoria hija de DEDU -- categories['DEDU'] ya la incluye,
+# sumarla aparte restaba el descuento de salud/pension dos veces. Ver
+# CO_PRIMA_NETO mas arriba.
+result = categories['DEV'] + categories['DEDU']
             </field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
