@@ -279,10 +279,15 @@ class HrPayslip(models.Model):
         )
 
         # Firmar XML con XAdES-BES
+        private_key, cert_pem, cert_der, cert_obj = xml_signer.load_from_certificate(
+            company.l10n_co_ne_certificate_id,
+        )
         signed_xml = xml_signer.sign_xml(
             xml_bytes=xml_bytes,
-            p12_bytes=base64.b64decode(company.l10n_co_ne_cert_file),
-            p12_password=company.l10n_co_ne_cert_password,
+            private_key=private_key,
+            cert_pem=cert_pem,
+            cert_der=cert_der,
+            cert_obj=cert_obj,
         )
 
         # Crear attachment (signed_xml ya es bytes)
@@ -357,9 +362,8 @@ class HrPayslip(models.Model):
         )
 
         # Cargar certificado para firmar el sobre SOAP
-        cert_data = base64.b64decode(company.l10n_co_ne_cert_file)
-        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_p12(
-            cert_data, company.l10n_co_ne_cert_password,
+        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_from_certificate(
+            company.l10n_co_ne_certificate_id,
         )
 
         # Determinar endpoint según ambiente
@@ -610,9 +614,8 @@ class HrPayslip(models.Model):
             raise UserError(_('No se encontraron XMLs firmados en las nóminas seleccionadas.'))
 
         # Load certificate
-        cert_data = base64.b64decode(company.l10n_co_ne_cert_file)
-        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_p12(
-            cert_data, company.l10n_co_ne_cert_password,
+        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_from_certificate(
+            company.l10n_co_ne_certificate_id,
         )
 
         # Send test set
@@ -655,9 +658,8 @@ class HrPayslip(models.Model):
             ))
 
         company = self.company_id
-        cert_data = base64.b64decode(company.l10n_co_ne_cert_file)
-        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_p12(
-            cert_data, company.l10n_co_ne_cert_password,
+        private_key, cert_pem, cert_der, _cert_obj = xml_signer.load_from_certificate(
+            company.l10n_co_ne_certificate_id,
         )
 
         endpoint = (
@@ -1454,16 +1456,24 @@ class HrPayslip(models.Model):
             missing.append(_('ID Software Nómina'))
         if not company.l10n_co_ne_software_pin:
             missing.append(_('PIN Software Nómina'))
-        if not company.l10n_co_ne_cert_file:
-            missing.append(_('Certificado Digital (.p12)'))
-        if not company.l10n_co_ne_cert_password:
-            missing.append(_('Contraseña Certificado'))
+        if not company.l10n_co_ne_certificate_id:
+            missing.append(_('Certificado Digital'))
         if missing:
             raise UserError(_(
                 'Faltan los siguientes datos de configuración de nómina '
                 'electrónica en la empresa %s:\n• %s',
                 company.name,
                 '\n• '.join(missing),
+            ))
+
+        certificate = company.l10n_co_ne_certificate_id
+        if certificate and certificate.date_end and certificate.date_end < fields.Datetime.now():
+            raise UserError(_(
+                'El certificado digital de la empresa %s está vencido '
+                '(venció el %s). Cargue o seleccione un certificado '
+                'vigente antes de continuar.',
+                company.name,
+                certificate.date_end,
             ))
 
     def _get_next_ne_consecutive(self):

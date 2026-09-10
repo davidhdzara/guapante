@@ -11,7 +11,7 @@ from . import hr_retefuente
 from . import hr_provision
 from . import hr_liquidacion
 from . import hr_leave_ne
-from . import hr_embargo
+from . import hr_salary_attachment
 from . import hr_payroll_account
 from . import hr_payslip_account
 from . import hr_contract_deductions

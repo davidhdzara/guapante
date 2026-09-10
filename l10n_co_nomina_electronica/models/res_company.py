@@ -5,8 +5,9 @@
 Extensión de res.company para Nómina Electrónica DIAN y reportes UGPP.
 
 Agrega campos de configuración del software de nómina electrónica ante la DIAN,
-certificado digital independiente del de facturación electrónica, y campos
-para la clasificación de empresa ante la UGPP.
+selección del certificate.certificate nativo (compartido con facturación
+electrónica) usado para firmar, y campos para la clasificación de empresa
+ante la UGPP.
 
 Todos los campos de nómina electrónica usan prefijo ``l10n_co_ne_`` y los
 de UGPP usan ``l10n_co_ugpp_`` para evitar colisiones con facturación
@@ -36,21 +37,18 @@ class ResCompany(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
-    # Certificado Digital (.p12) – Independiente de facturación
+    # Certificado Digital – reutiliza certificate.certificate nativo
     # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_cert_file = fields.Binary(
-        string='Certificado Digital (.p12)',
-        help='Archivo .p12 (PKCS#12) del certificado digital utilizado '
-             'para firmar los documentos de nómina electrónica. '
-             'Es independiente del certificado de facturación electrónica.',
-        attachment=True,
-    )
-    l10n_co_ne_cert_filename = fields.Char(
-        string='Nombre Archivo Certificado',
-    )
-    l10n_co_ne_cert_password = fields.Char(
-        string='Contraseña Certificado',
-        help='Contraseña del certificado digital .p12 de nómina electrónica.',
+    l10n_co_ne_certificate_id = fields.Many2one(
+        comodel_name='certificate.certificate',
+        string='Certificado Digital',
+        check_company=True,
+        domain="[('company_id', '=', id)]",
+        help='Certificado digital usado para firmar los documentos de '
+             'nómina electrónica (XAdES-BES). Reutiliza el mismo '
+             'certificate.certificate nativo que usa Odoo para '
+             'facturación electrónica -- no requiere cargar un .p12 '
+             'independiente para nómina.',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -95,12 +93,14 @@ class ResCompany(models.Model):
         comodel_name='ir.sequence',
         string='Secuencia Nómina Electrónica',
         default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_electronica', raise_if_not_found=False),
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
         help='Secuencia definitiva utilizada para generar los consecutivos de transmisión DIAN (ej: NE-00001).',
     )
     l10n_co_ne_pre_sequence_id = fields.Many2one(
         comodel_name='ir.sequence',
         string='Secuencia Nómina Temporal',
         default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_temporal', raise_if_not_found=False),
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
         help='Secuencia temporal utilizada para borradores y nóminas pendientes de validación (ej: PRE-NOM-00001).',
     )
 

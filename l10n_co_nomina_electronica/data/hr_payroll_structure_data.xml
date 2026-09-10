@@ -935,8 +935,11 @@ La depuracion incluye: aportes obligatorios, voluntarios, AFC, dependientes, ren
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Aplica si hay input manual o embargos activos registrados
-result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) or len(employee.l10n_co_embargo_ids.filtered(lambda e: e.state == 'active')) &gt; 0
+# Aplica si hay input manual o asignaciones salariales de embargo activas
+# (hr.salary.attachment, doc 16 -- reemplaza l10n.co.hr.embargo)
+_L10N_CO_EMBARGO_CODES = (
+    'L10N_CO_EMBARGO_ALIMENTOS', 'L10N_CO_EMBARGO_COOPERATIVA', 'L10N_CO_EMBARGO_CIVIL')
+result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) or len(employee.salary_attachment_ids.filtered(lambda a: a.state == 'open' and a.other_input_type_id.code in _L10N_CO_EMBARGO_CODES)) &gt; 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -974,12 +977,17 @@ result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) o
 # hasta este punto del pipeline, no el neto final del periodo completo.
 _smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 _salario_neto = categories['DEV'] + categories['DEDU']
-_PRIORIDAD_EMBARGO = {'alimentos': 0, 'cooperativa': 1, 'civil': 2}
-_embargos_activos = employee.l10n_co_embargo_ids.filtered(lambda e: e.state == 'active')
-_embargos_ordenados = _embargos_activos.sorted(key=lambda e: _PRIORIDAD_EMBARGO.get(e.tipo_embargo, 99))
+_PRIORIDAD_EMBARGO = {
+    'L10N_CO_EMBARGO_ALIMENTOS': 0,
+    'L10N_CO_EMBARGO_COOPERATIVA': 1,
+    'L10N_CO_EMBARGO_CIVIL': 2,
+}
+_embargos_activos = employee.salary_attachment_ids.filtered(
+    lambda a: a.state == 'open' and a.other_input_type_id.code in _PRIORIDAD_EMBARGO)
+_embargos_ordenados = _embargos_activos.sorted(key=lambda a: _PRIORIDAD_EMBARGO.get(a.other_input_type_id.code, 99))
 _total_embargo = 0.0
 for embargo in _embargos_ordenados:
-    _monto_individual = embargo.compute_embargo_amount(
+    _monto_individual = embargo._l10n_co_compute_embargo_amount(
         _salario_neto, _smmlv, payslip.date_from,
         factor_embargo_civil=payslip._rule_parameter('l10n_co_factor_embargo_civil', payslip.date_from),
         pct_tope_embargo_alimentos=payslip._rule_parameter('l10n_co_pct_tope_embargo_alimentos', payslip.date_from),

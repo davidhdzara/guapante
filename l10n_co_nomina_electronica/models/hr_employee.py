@@ -209,14 +209,6 @@ class HrEmployee(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
-    # Embargos Judiciales
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_embargo_ids = fields.One2many(
-        'l10n.co.hr.embargo', 'employee_id',
-        string='Embargos Judiciales',
-    )
-
-    # ──────────────────────────────────────────────────────────────────
     # Validaciones
     # ──────────────────────────────────────────────────────────────────
     @api.constrains('l10n_co_ne_worker_type', 'l10n_co_ne_worker_subtype')

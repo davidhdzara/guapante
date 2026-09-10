@@ -18,10 +18,10 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.serialization import pkcs12
 
 from lxml import etree
 
@@ -54,33 +54,41 @@ SIGNATURE_POLICY_DIGEST = 'dMoMvtcG5aIzgYo0tIsSQeVJBDnUnfSOfBpxXrmor0Y='
 
 
 # =====================================================================
-# Carga de certificado P12
+# Carga de certificado desde certificate.certificate nativo
 # =====================================================================
 
-def load_p12(
-    p12_bytes: bytes,
-    password: str | bytes,
-) -> tuple:
-    """Extrae private key y certificado PEM/DER de un archivo .p12.
+def load_from_certificate(certificate) -> tuple:
+    """Extrae private key y certificado PEM/DER de un certificate.certificate nativo.
+
+    A diferencia del antiguo esquema .p12, no hay contraseña PKCS12 que
+    desempaquetar -- pero ``pem_key`` y ``pem_certificate`` siguen siendo
+    campos Binary base64-encoded (confirmado en
+    ``certificate/models/key.py``/``certificate.py``), así que igual hace
+    falta ``base64.b64decode()`` sobre ambos. ``with_context(bin_size=False)``
+    replica el patrón que usa el propio módulo ``certificate`` para evitar
+    que el ORM devuelva el placeholder de tamaño en vez del contenido real.
 
     Args:
-        p12_bytes: Contenido binario del archivo .p12.
-        password: Contraseña del certificado (str o bytes).
+        certificate: recordset certificate.certificate (un solo registro).
 
     Returns:
         Tupla (private_key, cert_pem_bytes, cert_der_bytes, cert_object).
     """
-    if isinstance(password, str):
-        password = password.encode('utf-8')
+    certificate.ensure_one()
+    cert = certificate.with_context(bin_size=False)
+    key = cert.private_key_id.with_context(bin_size=False)
 
-    private_key, certificate, _ = pkcs12.load_key_and_certificates(
-        p12_bytes, password, default_backend(),
+    pem_key_bytes = base64.b64decode(key.pem_key)
+    pem_cert_bytes = base64.b64decode(cert.pem_certificate)
+
+    private_key = serialization.load_pem_private_key(
+        pem_key_bytes, password=None, backend=default_backend(),
     )
+    cert_obj = x509.load_pem_x509_certificate(pem_cert_bytes, default_backend())
+    cert_pem = cert_obj.public_bytes(serialization.Encoding.PEM)
+    cert_der = cert_obj.public_bytes(serialization.Encoding.DER)
 
-    cert_pem = certificate.public_bytes(serialization.Encoding.PEM)
-    cert_der = certificate.public_bytes(serialization.Encoding.DER)
-
-    return private_key, cert_pem, cert_der, certificate
+    return private_key, cert_pem, cert_der, cert_obj
 
 
 # =====================================================================
@@ -124,8 +132,10 @@ def _sign_data(private_key, data: bytes) -> str:
 
 def sign_xml(
     xml_bytes: bytes,
-    p12_bytes: bytes,
-    p12_password: str | bytes,
+    private_key,
+    cert_pem: bytes,
+    cert_der: bytes,
+    cert_obj,
 ) -> bytes:
     """Firma un XML de Nómina Electrónica con XAdES-BES.
 
@@ -143,10 +153,15 @@ def sign_xml(
        - Object > QualifyingProperties > SignedProperties (XAdES)
     4. Calcular digests y firmar
 
+    El material de firma ya debe estar cargado (ver ``load_from_certificate``)
+    -- esta función no sabe de dónde viene el certificado, solo firma.
+
     Args:
         xml_bytes: XML de nómina como bytes.
-        p12_bytes: Archivo .p12 como bytes.
-        p12_password: Contraseña del .p12.
+        private_key: Clave privada RSA ya cargada.
+        cert_pem: Certificado en formato PEM (bytes).
+        cert_der: Certificado en formato DER (bytes).
+        cert_obj: Objeto x509.Certificate ya cargado.
 
     Returns:
         XML firmado como bytes UTF-8 con declaración XML.
@@ -154,10 +169,6 @@ def sign_xml(
     Raises:
         ValueError: Si el XML no tiene UBLExtensions.
     """
-    private_key, cert_pem, cert_der, cert_obj = load_p12(
-        p12_bytes, p12_password,
-    )
-
     # Parsear XML
     root = etree.fromstring(xml_bytes)
 
