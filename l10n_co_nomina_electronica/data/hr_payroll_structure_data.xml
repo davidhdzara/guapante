@@ -72,6 +72,15 @@
             <field name="note">Aportes patronales: salud, pensión, ARL, parafiscales.</field>
         </record>
 
+        <record id="hr_salary_rule_category_provisiones" model="hr.salary.rule.category">
+            <field name="name">Provisiones Prestaciones Sociales</field>
+            <field name="code">PROV</field>
+            <field name="note">Acumulación contable mensual de prestaciones sociales -- no es un
+                pago al trabajador, no afecta el neto del período (Art. 249/306/186 CST, Ley
+                52/1975). Sin parent_id, igual que SS_CIA, para quedar fuera de
+                categories['DEV']/['DEDU'] que usa CO_NETO.</field>
+        </record>
+
         <!-- ============================================================ -->
         <!-- Tipo de Estructura: Empleados Colombia                        -->
         <!-- ============================================================ -->
@@ -1210,6 +1219,107 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
             </field>
             <field name="appears_on_payslip" eval="False"/>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--                                                                -->
+        <!--  PROVISIONES DE PRESTACIONES SOCIALES (acumulacion contable,  -->
+        <!--  no es un pago, no afecta el neto, no se reporta a DIAN ni    -->
+        <!--  UGPP. Ver correcciones_normativas_2026/18_diseno_provisiones -->
+        <!--  _reglas_invisibles.md. Reemplaza l10n.co.hr.provision.       -->
+        <!--                                                                -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_prov_prima" model="hr.salary.rule">
+            <field name="name">Provisión Prima de Servicios</field>
+            <field name="code">CO_PROV_PRIMA</field>
+            <field name="sequence">310</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de prima de servicios (Art. 306 CST) = base_prestacional / 12.
+# No es un pago -- acumulacion contable. Ver CO_PRIMA para el pago real (input-driven).
+smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+if contract.l10n_co_ne_integral_salary:
+    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+    base = contract.wage * factor
+else:
+    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    base = contract.wage + aux
+result = base / 12.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_cesantias" model="hr.salary.rule">
+            <field name="name">Provisión Cesantías</field>
+            <field name="code">CO_PROV_CESANTIAS</field>
+            <field name="sequence">311</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de cesantias (Art. 249 CST) = base_prestacional / 12.
+smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+if contract.l10n_co_ne_integral_salary:
+    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+    base = contract.wage * factor
+else:
+    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    base = contract.wage + aux
+result = base / 12.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_int_cesantias" model="hr.salary.rule">
+            <field name="name">Provisión Intereses sobre Cesantías</field>
+            <field name="code">CO_PROV_INT_CES</field>
+            <field name="sequence">312</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Intereses sobre cesantias (Ley 52/1975) = cesantias_provisionadas x pct anual / 100.
+# Referencia CO_PROV_CESANTIAS via result_rules[] (secuencia 311, ya
+# calculada) -- a diferencia de prima/cesantias (formula identica pero
+# independiente por articulo), aqui la dependencia es real: los intereses
+# SON un porcentaje de la cesantia, no una formula paralela -- misma logica
+# que hr_provision.py (intereses = cesantias x pct/100).
+#
+# rules['CODE'] es el REGISTRO hr.salary.rule (metadata de la regla, sin
+# .total) -- el resultado ya calculado de una regla anterior en la misma
+# corrida vive en result_rules['CODE']['total'] (dict), no como atributo.
+# Confirmado por Tech Lead leyendo hr_payslip.py real en el servidor
+# (_get_localdict/_get_payslip_lines) tras un AttributeError en la primera
+# corrida de test_provisiones.sh contra staging_produccion.
+pct = payslip._rule_parameter('l10n_co_pct_intereses_cesantias', payslip.date_from)
+result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_vacaciones" model="hr.salary.rule">
+            <field name="name">Provisión Vacaciones</field>
+            <field name="code">CO_PROV_VACACIONES</field>
+            <field name="sequence">313</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de vacaciones (Art. 186 CST) = salario_base / 24 -- 15
+# dias habiles/ano, NO incluye auxilio de transporte. Distinto del disfrute
+# real de vacaciones (integracion con hr.leave, tipo VACACIONES) -- esta
+# regla es la acumulacion del pasivo, no el pago cuando se toman.
+result = contract.wage / 24.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
         </record>
 
     </data>

@@ -1,6 +1,6 @@
 {
     'name': 'Nómina Electrónica Colombia - DIAN',
-    'version': '18.0.3.0.4',
+    'version': '18.0.3.0.5',
     'category': 'Human Resources/Payroll',
     'summary': 'Generación y envío de Nómina Electrónica a la DIAN (Resolución 000013 de 2021)',
     'description': """
@@ -19,7 +19,7 @@ Funcionalidades principales:
 - Cálculo de CUNE (Código Único de Nómina Electrónica)
 - Reportes UGPP (Unidad de Gestión Pensional y Parafiscales)
 - Cálculo automático de Retención en la Fuente (Procedimiento 1 y 2)
-- Provisiones automáticas (Prima, Cesantías, Intereses)
+- Provisiones automáticas (Prima, Cesantías, Intereses, Vacaciones) vía reglas invisibles
 - Liquidación de contrato (cálculo automático)
 - Integración con módulo de ausencias (hr.leave)
 - Representación gráfica (PDF) con QR
@@ -65,7 +65,6 @@ Funcionalidades principales:
         'views/hr_salary_rule_views.xml',
         'views/l10n_co_nomina_ugpp_views.xml',
         'views/hr_retefuente_views.xml',
-        'views/hr_provision_views.xml',
         'views/hr_liquidacion_views.xml',
         'views/hr_salary_attachment_views.xml',
         'views/hr_payroll_account_views.xml',
@@ -74,7 +73,6 @@ Funcionalidades principales:
         'report/hr_payslip_ne_report.xml',
         # Wizards
         'wizard/l10n_co_nomina_ugpp_wizard_views.xml',
-        'wizard/hr_provision_wizard_views.xml',
         'wizard/hr_liquidacion_wizard_views.xml',
         'wizard/hr_pila_wizard_views.xml',
         'wizard/hr_pila_wizard_v2_views.xml',
