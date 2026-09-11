@@ -35,4 +35,64 @@
         </field>
     </record>
 
+    <!-- ============================================================ -->
+    <!-- Configuracion Contable, doc 23 §2                             -->
+    <!--                                                                -->
+    <!-- Reemplaza el modelo propio l10n.co.payroll.account.config     -->
+    <!-- (eliminado, doc 23) por una lista editable dedicada de        -->
+    <!-- hr.salary.rule: los campos account_debit/account_credit/      -->
+    <!-- analytic_account_id son nativos de hr_payroll_account         -->
+    <!-- (company_dependent=True, sin necesidad de tabla propia).      -->
+    <!--                                                                -->
+    <!-- Vista standalone (NO hereda hr_payroll.hr_salary_rule_list ni -->
+    <!-- la de hr_payroll_account): esa lista nativa ya agrega          -->
+    <!-- account_debit/account_credit como columnas, pero              -->
+    <!-- optional="hidden" y sin editable="bottom"; heredarla de       -->
+    <!-- nuevo para agregar los mismos campos otra vez chocaria        -->
+    <!-- (mismo campo declarado 2 veces en el arch combinado). Una     -->
+    <!-- vista propia evita el choque y deja exactamente la UX de      -->
+    <!-- carga masiva que tenia el modelo viejo (1 fila por regla,     -->
+    <!-- todo editable en una sola pantalla).                          -->
+    <!-- ============================================================ -->
+    <record id="view_hr_salary_rule_account_ne_list" model="ir.ui.view">
+        <field name="name">hr.salary.rule.list.account.ne</field>
+        <field name="model">hr.salary.rule</field>
+        <field name="arch" type="xml">
+            <list string="Configuración Contable de Nómina" editable="bottom">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="category_id"/>
+                <field name="account_debit"/>
+                <field name="account_credit"/>
+                <field name="analytic_account_id" optional="show" groups="analytic.group_analytic_accounting"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_hr_salary_rule_account_ne" model="ir.actions.act_window">
+        <field name="name">Cuentas Contables</field>
+        <field name="res_model">hr.salary.rule</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_hr_salary_rule_account_ne_list"/>
+        <field name="domain">[('struct_id.country_id.code', '=', 'CO')]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configurar cuentas contables para la nómina
+            </p>
+            <p>
+                Defina las cuentas de débito y crédito para cada regla
+                salarial. Al confirmar una nómina, el motor contable nativo
+                de Odoo (hr_payroll_account) generará automáticamente un
+                asiento con las partidas correspondientes.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_l10n_co_payroll_account_config"
+              name="Cuentas Contables"
+              parent="menu_l10n_co_nomina_colombia_config"
+              action="action_hr_salary_rule_account_ne"
+              sequence="40"
+              groups="hr_payroll.group_hr_payroll_manager"/>
+
 </odoo>

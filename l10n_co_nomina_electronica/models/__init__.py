@@ -12,6 +12,4 @@ from . import l10n_co_nomina_ugpp
 from . import hr_retefuente
 from . import hr_leave_ne
 from . import hr_salary_attachment
-from . import hr_payroll_account
-from . import hr_payslip_account
 from . import hr_contract_deductions
