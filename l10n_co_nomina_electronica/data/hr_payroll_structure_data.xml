@@ -81,6 +81,20 @@
                 categories['DEV']/['DEDU'] que usa CO_NETO.</field>
         </record>
 
+        <record id="hr_salary_rule_category_totales_display" model="hr.salary.rule.category">
+            <field name="name">Totales (solo display)</field>
+            <field name="code">TOT_DISPLAY</field>
+            <field name="note">Categoría para reglas "subtotal" (ej. CO_BRUTO) que LEEN
+                categories['DEV']/['DEDU'] para mostrar un total en el recibo, pero cuyo propio
+                resultado NO debe volver a sumarse dentro de esas categorías -- si quedaran
+                etiquetadas con la misma categoría que resumen, cualquier regla posterior que
+                vuelva a leer esa categoría (ej. CO_NETO leyendo categories['DEV']) contaría el
+                subtotal dos veces. Bug real encontrado en CO_BRUTO (Nómina Colombia - General):
+                pagaba casi el doble del neto real, nunca detectado porque nunca se confirmó un
+                payslip real a 'done' en producción. Mismo criterio "sin parent_id" que SS_CIA/PROV
+                arriba, aplicado aquí por la misma razón.</field>
+        </record>
+
         <!-- ============================================================ -->
         <!-- Tipo de Estructura: Empleados Colombia                        -->
         <!-- ============================================================ -->
@@ -696,7 +710,15 @@ result = inputs['CO_INT_CES'].amount
             <field name="name">Total Devengados</field>
             <field name="code">CO_BRUTO</field>
             <field name="sequence">99</field>
-            <field name="category_id" ref="hr_salary_rule_category_devengados"/>
+            <!-- Bug critico corregido: categoria propia era DEV (la misma que
+                 lee en amount_python_compute), y CO_NETO (seq 200) volvia a
+                 leer categories['DEV'] DESPUES de que este subtotal ya se
+                 habia sumado a si mismo dentro de esa categoria, pagando
+                 casi el doble del neto real. Ahora usa TOT_DISPLAY (sin
+                 parent_id, mismo criterio que SS_CIA/PROV): sigue leyendo
+                 categories['DEV'] para mostrar el total correcto, pero su
+                 propio resultado ya no se re-inyecta en 'DEV'. -->
+            <field name="category_id" ref="hr_salary_rule_category_totales_display"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
