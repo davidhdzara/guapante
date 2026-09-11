@@ -11,11 +11,11 @@
                 <t invisible="company_country_code != 'CO'">
                     <block title="Nómina Electrónica DIAN" id="l10n_co_ne_settings_dian">
                         <setting string="Software DIAN" help="Credenciales del software de nómina electrónica asignadas por la DIAN en el portal de habilitación.">
-                            <field name="l10n_co_ne_software_id"/>
-                            <field name="l10n_co_ne_software_pin" password="True"/>
-                            <field name="l10n_co_ne_test_set_id"/>
+                            <field name="l10n_co_ne_software_id" string="ID Software"/>
+                            <field name="l10n_co_ne_software_pin" string="PIN Software" password="True"/>
+                            <field name="l10n_co_ne_test_set_id" string="TestSetID"/>
                         </setting>
-                        <setting string="Ambiente" help="Producción emite documentos con validez legal; Habilitación es el ambiente de pruebas ante la DIAN.">
+                        <setting string="Ambiente" help="Producción: documentos con validez legal ante la DIAN. Habilitación: ambiente de pruebas; con TestSetID configurado, use 'Enviar Set de Pruebas' desde el payslip para lograr el estado 'Habilitado' en el portal de la DIAN.">
                             <field name="l10n_co_ne_environment" widget="radio"/>
                         </setting>
                         <setting string="Consecutivos" help="Prefijos y secuencias usadas para los consecutivos de nómina y notas de ajuste.">
@@ -41,10 +41,10 @@
                         <setting help="Exoneración de aportes a SENA/ICBF para empleados con salario inferior a 10 SMMLV (Art. 114-1 ET, Ley 1607/2012).">
                             <field name="l10n_co_ne_exoneration_1607"/>
                         </setting>
-                        <setting string="Otros Parámetros">
-                            <div class="mt8" id="l10n_co_ne_annual_params_text">
+                        <setting>
+                            <div class="text-muted" id="l10n_co_ne_annual_params_text">
                                 Los valores de SMMLV, auxilio de transporte y UVT se configuran
-                                por año en Nómina › Configuración › Parámetros Anuales.
+                                por año en <a type="action" name="%(hr_payroll.hr_rule_parameter_action)d">Nómina › Configuración › Parámetros Anuales</a>.
                             </div>
                         </setting>
                     </block>

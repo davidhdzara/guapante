@@ -15,6 +15,15 @@ Electrónica (CO)), doc 19.
 Sin `help=` en ningún campo: el texto de ayuda visible viene del atributo
 `help=` de cada `<setting>` en la vista, no de que el campo lo herede del
 related (confirmado por Tech Lead contra el mismo ejemplo de l10n_co_dian).
+
+`domain=` SÍ hay que declararlo explícito en cada Many2one related que lo
+necesite (doc 21 §1.2/1.3) -- a diferencia de `help=`, un related NO
+hereda el `domain=` del campo destino en res.company. Sin esto, el
+picker del campo trae CUALQUIER registro del modelo (verificado: sin
+domain, `l10n_co_ne_sequence_id` mostraba secuencias de otros módulos
+como Batch Transfer o Blanket Order). El domain de
+`l10n_co_ne_certificate_id` cambia además de `id` (id de la compañía en
+res.company) a `company_id` (el campo real que existe en este wizard).
 """
 
 from odoo import fields, models
@@ -30,11 +39,23 @@ class ResConfigSettings(models.TransientModel):
     l10n_co_ne_environment = fields.Selection(related='company_id.l10n_co_ne_environment', readonly=False)
     l10n_co_ne_payroll_prefix = fields.Char(related='company_id.l10n_co_ne_payroll_prefix', readonly=False)
     l10n_co_ne_adjust_prefix = fields.Char(related='company_id.l10n_co_ne_adjust_prefix', readonly=False)
-    l10n_co_ne_sequence_id = fields.Many2one(related='company_id.l10n_co_ne_sequence_id', readonly=False)
-    l10n_co_ne_pre_sequence_id = fields.Many2one(related='company_id.l10n_co_ne_pre_sequence_id', readonly=False)
+    l10n_co_ne_sequence_id = fields.Many2one(
+        related='company_id.l10n_co_ne_sequence_id', readonly=False,
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
+    )
+    l10n_co_ne_pre_sequence_id = fields.Many2one(
+        related='company_id.l10n_co_ne_pre_sequence_id', readonly=False,
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
+    )
 
     # Certificado Digital
-    l10n_co_ne_certificate_id = fields.Many2one(related='company_id.l10n_co_ne_certificate_id', readonly=False)
+    l10n_co_ne_certificate_id = fields.Many2one(
+        related='company_id.l10n_co_ne_certificate_id', readonly=False,
+        # Domain original en res.company usa `id` (id de la propia
+        # compañía, porque el campo vive ahí) -- aquí `id` seria el id de
+        # este TransientModel, hay que usar `company_id` (doc 21 §1.3).
+        domain="[('company_id', '=', company_id)]",
+    )
 
     # UGPP
     l10n_co_ugpp_legal_nature = fields.Selection(related='company_id.l10n_co_ugpp_legal_nature', readonly=False)
