@@ -14,5 +14,4 @@ from . import cune
 from . import xml_signer
 from . import soap_client
 from . import nomina_xml_builder
-from . import pila_generator
 from . import pila_generator_v2

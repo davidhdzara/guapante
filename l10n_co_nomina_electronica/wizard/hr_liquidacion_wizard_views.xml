@@ -59,8 +59,8 @@
     <!-- Doc 20: ya no hay modelo/lista propia de liquidaciones (viven -->
     <!-- como hr.payslip normal, visibles en Recibos de nómina), así   -->
     <!-- que un único item de menú alcanza para el wizard, mismo       -->
-    <!-- patrón que PILA (menu_l10n_co_hr_pila_wizard en               -->
-    <!-- hr_pila_wizard_views.xml). -->
+    <!-- patrón que PILA (menu_l10n_co_hr_pila_wizard_v2 en             -->
+    <!-- hr_pila_wizard_v2_views.xml, doc 25 retiró el wizard v1).     -->
     <menuitem id="menu_l10n_co_liquidacion_wizard"
               name="Generar Liquidación"
               parent="hr_payroll.menu_hr_payroll_payslips"
