@@ -169,6 +169,27 @@ class HrPayslip(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
+    # Liquidación de Contrato (doc 20 §6)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_liquidacion_cause = fields.Selection(
+        selection=[
+            ('justa_causa', 'Despido con Justa Causa'),
+            ('sin_justa_causa', 'Despido sin Justa Causa'),
+            ('renuncia', 'Renuncia Voluntaria'),
+            ('mutuo_acuerdo', 'Mutuo Acuerdo'),
+            ('fin_obra', 'Terminación de Obra o Labor'),
+            ('muerte', 'Muerte del Trabajador'),
+        ],
+        string='Causa de Retiro',
+        copy=False,
+        help='Causa de terminación del contrato laboral, solo aplicable a '
+             'payslips de estructura Liquidación de Contrato. La lee '
+             'directamente CO_LIQ_INDEMNIZACION (condition_python: solo '
+             'aplica indemnización si es "sin_justa_causa") -- también se '
+             'guarda para trazabilidad y reportes.',
+    )
+
+    # ──────────────────────────────────────────────────────────────────
     # SQL Constraints
     # ──────────────────────────────────────────────────────────────────
     _sql_constraints = [

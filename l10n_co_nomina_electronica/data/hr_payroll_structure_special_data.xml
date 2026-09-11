@@ -229,10 +229,25 @@ result = categories['PREST'] + categories['DEDU']
         <!--  Base legal: Art. 64, 186, 249, 306, 307 CST.               -->
         <!--                                                                -->
         <!-- ============================================================ -->
+        <!--
+            Input manual para dias_restantes_contrato (Art. 64 CST, contrato
+            fijo/obra) que ya lee CO_LIQ_INDEMNIZACION
+            (inputs.get('CO_LIQ_INDEMNIZ')), sin el cual RRHH no tiene
+            forma de capturarlo desde la UI aunque la regla ya sepa
+            leerlo. Tercera instancia del mismo patron que CO_EMBARGO
+            (doc 16) y CO_BON_VALOR (doc 14 §6.1), ver doc 20 §4.4.
+        -->
+        <record id="input_co_liq_indemniz" model="hr.payslip.input.type">
+            <field name="name">Liquidación - Días Restantes de Contrato (Indemnización)</field>
+            <field name="code">CO_LIQ_INDEMNIZ</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
         <record id="hr_payroll_structure_co_liquidacion" model="hr.payroll.structure">
             <field name="name">Liquidacion de Contrato - Colombia</field>
             <field name="type_id" ref="hr_payroll_structure_type_co"/>
             <field name="country_id" ref="base.co"/>
+            <field name="input_line_type_ids" eval="[(4, ref('input_co_liq_indemniz'))]"/>
         </record>
 
         <!-- ==================== CO_LIQ_SALARIOS ==================== -->
@@ -445,8 +460,17 @@ El trabajador puede haber disfrutado vacaciones parcialmente; ajustar via input 
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Solo aplica si se activa el input de indemnizacion (despido sin justa causa)
-result = inputs.get('CO_LIQ_INDEMNIZ') and inputs.get('CO_LIQ_INDEMNIZ').amount &gt; 0
+# Solo aplica si la causa de retiro del payslip es despido sin justa
+# causa (Art. 64 CST). Antes dependia de que el input CO_LIQ_INDEMNIZ
+# tuviera amount &gt; 0 para CUALQUIER tipo de contrato -- para indefinido
+# la formula de abajo nunca lee ese valor (usa anos trabajados y
+# salario), asi que el disenio original exigia un valor dummy (ver nota)
+# solo para activar la regla. Corregido en doc 20 SS9: ahora lee
+# directamente la causa guardada en el payslip
+# (l10n_co_ne_liquidacion_cause), sin depender de ningun input para
+# indefinido. Para fijo/obra, el wizard sigue inyectando CO_LIQ_INDEMNIZ
+# con los dias restantes reales, que si se usa en amount_python_compute.
+result = payslip.l10n_co_ne_liquidacion_cause == 'sin_justa_causa'
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -462,17 +486,22 @@ _anos = _dias_totales / payslip._rule_parameter('l10n_co_dias_anio_comercial', p
 _anos_completos = int(_anos)
 _valor_dia = _salario / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 
-if _tipo_contrato == '1':
-    # ── Contrato a termino fijo ──
-    # Indemnizacion = salarios correspondientes al tiempo restante del contrato
-    # Se usa el input como numero de dias restantes
-    _dias_restantes = inputs['CO_LIQ_INDEMNIZ'].amount
-    result = _valor_dia * _dias_restantes
-
-elif _tipo_contrato == '3':
-    # ── Contrato por obra o labor ──
-    # Igual que termino fijo: tiempo restante estimado
-    _dias_restantes = inputs['CO_LIQ_INDEMNIZ'].amount
+if _tipo_contrato in ('1', '3'):
+    # ── Contrato a termino fijo (1) u obra/labor (3) ──
+    # Indemnizacion = salarios correspondientes al tiempo restante del
+    # contrato/obra. El condition_python de esta regla ya no exige el
+    # input CO_LIQ_INDEMNIZ (solo depende de la causa de retiro), asi
+    # que aqui si puede faltar -- se valida explicito en vez de dejar
+    # que reviente con KeyError.
+    _indemniz_input = inputs.get('CO_LIQ_INDEMNIZ')
+    if not _indemniz_input or not _indemniz_input.amount:
+        raise UserError(
+            'Falta el input "CO_LIQ_INDEMNIZ" (dias restantes de '
+            'contrato) para calcular la indemnizacion de un contrato '
+            'a termino fijo u obra/labor. Genere la liquidacion desde '
+            'el asistente e indique los dias restantes.'
+        )
+    _dias_restantes = _indemniz_input.amount
     result = _valor_dia * _dias_restantes
 
 else:
@@ -499,9 +528,9 @@ else:
             <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
             <field name="l10n_co_ugpp_non_salary_class">contrato</field>
             <field name="note">Indemnizacion por despido sin justa causa (Art. 64 CST).
-Para contrato fijo/obra: ingresar en el input CO_LIQ_INDEMNIZ el numero de dias restantes.
-Para contrato indefinido: ingresar el valor 1 en el input para activar el calculo automatico.
-El calculo diferencia entre salarios menores y mayores o iguales a 10 SMMLV.</field>
+Se activa cuando la causa de retiro del payslip (l10n_co_ne_liquidacion_cause) es "sin_justa_causa" -- la asigna el asistente de liquidacion.
+Para contrato fijo/obra: ademas requiere el input CO_LIQ_INDEMNIZ con el numero de dias restantes (el asistente lo inyecta si se indico).
+Para contrato indefinido: no requiere ningun input, el calculo diferencia entre salarios menores y mayores o iguales a 10 SMMLV.</field>
         </record>
 
         <!-- ==================== CO_LIQ_SALUD ==================== -->

@@ -9,6 +9,7 @@
         <field name="model">l10n.co.hr.liquidacion.wizard</field>
         <field name="arch" type="xml">
             <form string="Generar Liquidación de Contrato">
+                <field name="requires_dias_restantes" invisible="1"/>
                 <group>
                     <group>
                         <field name="employee_id"
@@ -23,6 +24,11 @@
                         <field name="date_end" string="Fecha de Retiro"/>
                         <field name="cause" string="Causa de Retiro"/>
                     </group>
+                </group>
+                <group invisible="cause != 'sin_justa_causa' or not requires_dias_restantes"
+                       string="Indemnización (Art. 64 CST)">
+                    <field name="dias_restantes_contrato"
+                           help="Días que faltaban para cumplir el plazo pactado del contrato u obra/labor al momento del retiro."/>
                 </group>
                 <footer>
                     <button name="action_create_liquidacion"
@@ -50,11 +56,16 @@
     <!-- ============================================================ -->
     <!-- Menu Item para el Wizard                                     -->
     <!-- ============================================================ -->
+    <!-- Doc 20: ya no hay modelo/lista propia de liquidaciones (viven -->
+    <!-- como hr.payslip normal, visibles en Recibos de nómina), así   -->
+    <!-- que un único item de menú alcanza para el wizard, mismo       -->
+    <!-- patrón que PILA (menu_l10n_co_hr_pila_wizard en               -->
+    <!-- hr_pila_wizard_views.xml). -->
     <menuitem id="menu_l10n_co_liquidacion_wizard"
               name="Generar Liquidación"
-              parent="menu_l10n_co_liquidaciones_root"
+              parent="hr_payroll.menu_hr_payroll_payslips"
               action="action_l10n_co_hr_liquidacion_wizard"
-              sequence="20"
+              sequence="65"
               groups="hr_payroll.group_hr_payroll_manager"/>
 
 </odoo>
