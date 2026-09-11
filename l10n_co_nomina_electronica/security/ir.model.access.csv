@@ -11,4 +11,6 @@ access_l10n_co_payroll_account_config_user,l10n_co_payroll.account.config user,m
 access_l10n_co_pila_wizard_v2_manager,l10n_co_pila.wizard.v2 manager,model_l10n_co_hr_pila_wizard_v2,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_payslip_send_manager,hr.payslip.send manager,model_hr_payslip_send,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_payslip_send_user,hr.payslip.send user,model_hr_payslip_send,hr_payroll.group_hr_payroll_user,1,1,1,1
+access_l10n_co_ne_operation_mode_manager,l10n.co.ne.operation_mode manager,model_l10n_co_ne_operation_mode,hr_payroll.group_hr_payroll_manager,1,1,1,1
+access_l10n_co_ne_operation_mode_user,l10n.co.ne.operation_mode user,model_l10n_co_ne_operation_mode,hr_payroll.group_hr_payroll_user,1,0,0,0
 

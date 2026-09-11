@@ -24,19 +24,26 @@ domain, `l10n_co_ne_sequence_id` mostraba secuencias de otros módulos
 como Batch Transfer o Blanket Order). El domain de
 `l10n_co_ne_certificate_id` cambia además de `id` (id de la compañía en
 res.company) a `company_id` (el campo real que existe en este wizard).
+
+Doc 22: "Software DIAN" (3 Char planos) y "Ambiente" (Selection) se
+reemplazaron por la tabla `l10n_co_ne_operation_mode_ids` y los 2
+checkboxes `l10n_co_ne_test_environment`/`_certification_process`, para
+replicar la estructura de Facturación Electrónica (CO). Se agregó
+también `l10n_co_ne_certificate_ids` (O2M, paridad literal con
+`l10n_co_dian_certificate_ids`) -- ver res_company.py para por qué NO
+reemplaza a `l10n_co_ne_certificate_id` como fuente de verdad funcional.
 """
 
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
-    # Software DIAN
-    l10n_co_ne_software_id = fields.Char(related='company_id.l10n_co_ne_software_id', readonly=False)
-    l10n_co_ne_software_pin = fields.Char(related='company_id.l10n_co_ne_software_pin', readonly=False)
-    l10n_co_ne_test_set_id = fields.Char(related='company_id.l10n_co_ne_test_set_id', readonly=False)
-    l10n_co_ne_environment = fields.Selection(related='company_id.l10n_co_ne_environment', readonly=False)
+    # Modos de Operación DIAN (doc 22 §1)
+    l10n_co_ne_operation_mode_ids = fields.One2many(
+        related='company_id.l10n_co_ne_operation_mode_ids', readonly=False,
+    )
     l10n_co_ne_payroll_prefix = fields.Char(related='company_id.l10n_co_ne_payroll_prefix', readonly=False)
     l10n_co_ne_adjust_prefix = fields.Char(related='company_id.l10n_co_ne_adjust_prefix', readonly=False)
     l10n_co_ne_sequence_id = fields.Many2one(
@@ -48,7 +55,11 @@ class ResConfigSettings(models.TransientModel):
         domain="[('code', 'like', 'l10n_co_nomina.')]",
     )
 
-    # Certificado Digital
+    # Ambiente (doc 22 §3)
+    l10n_co_ne_test_environment = fields.Boolean(related='company_id.l10n_co_ne_test_environment', readonly=False)
+    l10n_co_ne_certification_process = fields.Boolean(related='company_id.l10n_co_ne_certification_process', readonly=False)
+
+    # Certificado Digital (doc 22 §2, Opción B)
     l10n_co_ne_certificate_id = fields.Many2one(
         related='company_id.l10n_co_ne_certificate_id', readonly=False,
         # Domain original en res.company usa `id` (id de la propia
@@ -56,6 +67,20 @@ class ResConfigSettings(models.TransientModel):
         # este TransientModel, hay que usar `company_id` (doc 21 §1.3).
         domain="[('company_id', '=', company_id)]",
     )
+    l10n_co_ne_certificate_ids = fields.One2many(
+        related='company_id.l10n_co_ne_certificate_ids', readonly=False,
+    )
+
+    @api.onchange('l10n_co_ne_certificate_ids')
+    def _onchange_l10n_co_ne_certificate_ids(self):
+        """Autoselecciona el certificado si hay exactamente 1 en la lista.
+
+        Evita la ambigüedad de DIAN (que toma "el último de la lista" sin
+        ningún campo que marque el activo, doc 22 §2) sin obligar al
+        usuario a elegir manualmente cuando solo hay una opción real.
+        """
+        if not self.l10n_co_ne_certificate_id and len(self.l10n_co_ne_certificate_ids) == 1:
+            self.l10n_co_ne_certificate_id = self.l10n_co_ne_certificate_ids
 
     # UGPP
     l10n_co_ugpp_legal_nature = fields.Selection(related='company_id.l10n_co_ugpp_legal_nature', readonly=False)

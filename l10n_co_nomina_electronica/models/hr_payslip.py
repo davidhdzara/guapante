@@ -271,7 +271,7 @@ class HrPayslip(models.Model):
             nit_ne=dian_utils.clean_nit(company.vat),
             doc_trab=self.employee_id.identification_id or '',
             cl_ne='103' if self.l10n_co_ne_is_adjustment else '102',
-            software_pin=company.l10n_co_ne_software_pin or '',
+            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
             tipo_amb=company.l10n_co_ne_environment or '2',
         )
         self.l10n_co_ne_cune = cune_value
@@ -620,8 +620,14 @@ class HrPayslip(models.Model):
         company = records[0].company_id
         self._validate_company_ne_config(company)
 
-        if not company.l10n_co_ne_test_set_id:
-            raise UserError(_('Debe configurar el TestSetID en la compañía para enviar el set de pruebas.'))
+        if not company.l10n_co_ne_certification_process:
+            raise UserError(_(
+                'Debe activar "Proceso de Certificación" en Ajustes > '
+                'Nómina antes de enviar el set de pruebas a la DIAN.'
+            ))
+
+        if not company.l10n_co_ne_operation_mode_ids.test_set_id:
+            raise UserError(_('Debe configurar el ID de Pruebas en el Modo de Operación de la compañía para enviar el set de pruebas.'))
 
         # Collect all signed XMLs
         xml_files = {}
@@ -642,7 +648,7 @@ class HrPayslip(models.Model):
         # Send test set
         response = soap_client.send_test_set_async(
             xml_files=xml_files,
-            test_set_id=company.l10n_co_ne_test_set_id,
+            test_set_id=company.l10n_co_ne_operation_mode_ids.test_set_id,
             private_key=private_key,
             cert_pem=cert_pem,
             endpoint=soap_client.DIAN_ENDPOINT_HAB,
@@ -798,10 +804,10 @@ class HrPayslip(models.Model):
                 'RazonSocial': company.name or '',
                 'NIT': company_nit,
                 'DV': company_dv,
-                'SoftwareID': company.l10n_co_ne_software_id or '',
+                'SoftwareID': company.l10n_co_ne_operation_mode_ids.software_id or '',
                 'SoftwareSC': dian_utils.compute_software_security_code(
-                    company.l10n_co_ne_software_id,
-                    company.l10n_co_ne_software_pin,
+                    company.l10n_co_ne_operation_mode_ids.software_id,
+                    company.l10n_co_ne_operation_mode_ids.software_pin,
                     self.l10n_co_ne_consecutive,
                 ),
             },
@@ -1473,9 +1479,10 @@ class HrPayslip(models.Model):
     def _validate_company_ne_config(self, company):
         """Valida la configuración de nómina electrónica de la empresa."""
         missing = []
-        if not company.l10n_co_ne_software_id:
+        mode = company.l10n_co_ne_operation_mode_ids
+        if not mode or not mode.software_id:
             missing.append(_('ID Software Nómina'))
-        if not company.l10n_co_ne_software_pin:
+        if not mode or not mode.software_pin:
             missing.append(_('PIN Software Nómina'))
         if not company.l10n_co_ne_certificate_id:
             missing.append(_('Certificado Digital'))

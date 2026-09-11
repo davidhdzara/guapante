@@ -24,16 +24,17 @@ class ResCompany(models.Model):
     _inherit = 'res.company'
 
     # ──────────────────────────────────────────────────────────────────
-    # Campos de Software DIAN – Nómina Electrónica
+    # Modo de Operación DIAN – Nómina Electrónica (doc 22 §1)
     # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_software_id = fields.Char(
-        string='ID Software Nómina',
-        help='Identificador del software asignado por la DIAN para '
-             'nómina electrónica. Se obtiene en el portal de habilitación.',
-    )
-    l10n_co_ne_software_pin = fields.Char(
-        string='PIN Software Nómina',
-        help='PIN del software de nómina electrónica asignado por la DIAN.',
+    # Antes campos planos aqui mismo (l10n_co_ne_software_id/_pin/
+    # _test_set_id) -- migrados a l10n.co.ne.operation_mode para replicar
+    # visualmente la tabla "Modos de Operacion" de Facturacion Electronica
+    # (CO). A diferencia de DIAN, siempre hay a lo sumo 1 fila por
+    # compania (ver l10n_co_ne_operation_mode.py).
+    l10n_co_ne_operation_mode_ids = fields.One2many(
+        comodel_name='l10n.co.ne.operation_mode',
+        inverse_name='company_id',
+        string='Modos de Operación Nómina Electrónica',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -48,7 +49,23 @@ class ResCompany(models.Model):
              'nómina electrónica (XAdES-BES). Reutiliza el mismo '
              'certificate.certificate nativo que usa Odoo para '
              'facturación electrónica -- no requiere cargar un .p12 '
-             'independiente para nómina.',
+             'independiente para nómina. Si hay más de un certificado '
+             'en la lista, debe elegir explícitamente cuál usa nómina.',
+    )
+    # Doc 22 §2 (Opción B, paridad literal con Facturación Electrónica):
+    # mismo patron SIN filtro que l10n_co_dian_certificate_ids -- es la
+    # MISMA lista global de certificados de la compania (certificate.
+    # certificate no distingue "para que sirve" cada uno), no un pool
+    # separado para nomina. Util para crear/editar certificados sin salir
+    # de Ajustes > Nomina, pero l10n_co_ne_certificate_id de arriba sigue
+    # siendo el campo funcional real que usa xml_signer -- este O2M no
+    # reemplaza esa seleccion explicita (a diferencia de DIAN, que toma
+    # "el ultimo de la lista" sin ningun campo que marque el activo,
+    # ambiguedad que deliberadamente NO heredamos).
+    l10n_co_ne_certificate_ids = fields.One2many(
+        comodel_name='certificate.certificate',
+        inverse_name='company_id',
+        string='Certificados',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -67,11 +84,30 @@ class ResCompany(models.Model):
              '• Habilitación: ambiente de pruebas para el proceso de '
              'habilitación ante la DIAN.',
     )
-    l10n_co_ne_test_set_id = fields.Char(
-        string='TestSetID',
-        help='Identificador del set de pruebas asignado por la DIAN '
-             'durante el proceso de habilitación. Solo aplica en '
-             'ambiente de Habilitación (Pruebas).',
+    # Doc 22 §3: l10n_co_ne_environment (arriba) sigue siendo la UNICA
+    # fuente de verdad real (Selection, sin cambios) -- hr_payslip.py la
+    # sigue leyendo directo en sus 4 usos existentes. Este boolean es
+    # puramente una traduccion computada+inversa para exponerla en
+    # Ajustes > Nomina como 2 checkboxes (paridad con Facturacion
+    # Electronica) sin duplicar el dato ni requerir migracion.
+    l10n_co_ne_test_environment = fields.Boolean(
+        string='Ambiente de Pruebas',
+        compute='_compute_test_environment',
+        inverse='_inverse_test_environment',
+        help='Marque esta casilla si está probando flujos de nómina '
+             'electrónica o si necesita activar el entorno de proceso '
+             'de certificación.',
+    )
+    # Genuinamente nuevo, sin equivalente previo -- gatea
+    # action_send_test_set() (hr_payslip.py) para que no quede decorativo
+    # (doc 21 §3 senalaba justo ese riesgo si se copiaba el patron de
+    # DIAN sin darle logica real detras).
+    l10n_co_ne_certification_process = fields.Boolean(
+        string='Activar Proceso de Certificación',
+        default=False,
+        help='Envía documentos de prueba de nómina electrónica con su '
+             'certificado para lograr el estado "Habilitado" en el '
+             'portal de la DIAN.',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -221,19 +257,35 @@ class ResCompany(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
+    # Computes
+    # ──────────────────────────────────────────────────────────────────
+    @api.depends('l10n_co_ne_environment')
+    def _compute_test_environment(self):
+        for company in self:
+            company.l10n_co_ne_test_environment = company.l10n_co_ne_environment == '2'
+
+    def _inverse_test_environment(self):
+        for company in self:
+            company.l10n_co_ne_environment = (
+                '2' if company.l10n_co_ne_test_environment else '1'
+            )
+
+    # ──────────────────────────────────────────────────────────────────
     # Validaciones
     # ──────────────────────────────────────────────────────────────────
-    @api.constrains('l10n_co_ne_environment', 'l10n_co_ne_test_set_id')
+    @api.constrains('l10n_co_ne_environment', 'l10n_co_ne_operation_mode_ids')
     def _check_test_set_id(self):
         """Valida que TestSetID esté informado en ambiente de pruebas."""
         for company in self:
+            mode = company.l10n_co_ne_operation_mode_ids
             if (
                 company.l10n_co_ne_environment == '2'
-                and company.l10n_co_ne_software_id
-                and not company.l10n_co_ne_test_set_id
+                and mode
+                and not mode.test_set_id
             ):
                 raise ValidationError(_(
-                    'Debe configurar el TestSetID para el ambiente de '
-                    'Habilitación (Pruebas). Este valor se obtiene del '
-                    'portal de la DIAN.'
+                    'Debe configurar el ID de Pruebas en el Modo de '
+                    'Operación para el ambiente de Habilitación '
+                    '(Pruebas). Este valor se obtiene del portal de la '
+                    'DIAN.'
                 ))

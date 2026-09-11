@@ -10,13 +10,14 @@
                 <field name="company_country_code" invisible="1"/>
                 <t invisible="company_country_code != 'CO'">
                     <block title="Nómina Electrónica DIAN" id="l10n_co_ne_settings_dian">
-                        <setting string="Software DIAN" help="Credenciales del software de nómina electrónica asignadas por la DIAN en el portal de habilitación.">
-                            <field name="l10n_co_ne_software_id" string="ID Software"/>
-                            <field name="l10n_co_ne_software_pin" string="PIN Software" password="True"/>
-                            <field name="l10n_co_ne_test_set_id" string="TestSetID"/>
+                        <setting class="w-100" help="Configura el Software ID/PIN asignados por la DIAN para nómina electrónica en el portal de habilitación. Nómina Individual y Nota de Ajuste comparten siempre el mismo modo de operación.">
+                            <field name="l10n_co_ne_operation_mode_ids" class="w-100" string="Modos de Operación"/>
                         </setting>
-                        <setting string="Ambiente" help="Producción: documentos con validez legal ante la DIAN. Habilitación: ambiente de pruebas; con TestSetID configurado, use 'Enviar Set de Pruebas' desde el payslip para lograr el estado 'Habilitado' en el portal de la DIAN.">
-                            <field name="l10n_co_ne_environment" widget="radio"/>
+                        <setting class="col-lg-12" help="Marque esta casilla si está probando flujos de nómina electrónica o si necesita activar el entorno de proceso de certificación.">
+                            <field name="l10n_co_ne_test_environment"/>
+                        </setting>
+                        <setting class="col-lg-12" invisible="not l10n_co_ne_test_environment" help="Envía documentos de prueba de nómina electrónica con su certificado para lograr el estado 'Habilitado' en el portal de la DIAN.">
+                            <field name="l10n_co_ne_certification_process"/>
                         </setting>
                         <setting string="Consecutivos" help="Prefijos y secuencias usadas para los consecutivos de nómina y notas de ajuste.">
                             <field name="l10n_co_ne_payroll_prefix"/>
@@ -26,7 +27,10 @@
                         </setting>
                     </block>
                     <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">
-                        <setting help="Certificado usado para firmar los documentos de nómina electrónica (XAdES-BES). Reutiliza el certificado de facturación electrónica -- no requiere uno independiente.">
+                        <setting class="w-100" help="Agregue sus certificados para firmar los documentos de nómina electrónica (XAdES-BES). Es la misma lista de certificados que usa facturación electrónica -- no requiere uno independiente.">
+                            <field name="l10n_co_ne_certificate_ids" class="w-100" string="Certificados"/>
+                        </setting>
+                        <setting help="Certificado que usa nómina electrónica para firmar. Se autoselecciona si solo hay uno en la lista; si hay varios, elija explícitamente cuál.">
                             <field name="l10n_co_ne_certificate_id"/>
                         </setting>
                     </block>

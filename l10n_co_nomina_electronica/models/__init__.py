@@ -2,6 +2,7 @@
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 
 from . import res_company
+from . import l10n_co_ne_operation_mode
 from . import res_config_settings
 from . import hr_employee
 from . import hr_contract
