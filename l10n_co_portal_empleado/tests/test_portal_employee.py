@@ -10,18 +10,21 @@ def _employee_values(env, values):
     return values
 
 
-def _portal_template_user(env):
-    return env['res.users'].with_context(active_test=False).search([
-        ('login', '=', 'portaltemplate')], limit=1)
+def _portal_users_without_employee(env, count):
+    portal_group = env.ref('base.group_portal')
+    candidates = env['res.users'].with_context(active_test=False).search([
+        ('groups_id', 'in', [portal_group.id])], order='id')
+    user_ids_with_employee = set(env['hr.employee'].sudo().search([
+        ('active', '=', True), ('user_id', '!=', False)]).mapped('user_id').ids)
+    users = candidates.filtered(lambda user: user.id not in user_ids_with_employee)
+    if len(users) < count:
+        raise AssertionError('Se requieren usuarios Portal sin empleado activo para la prueba.')
+    return users[:count]
 
 
 def _prepare_portal_user(user, login, password=None, company=None):
-    """Reuse users with pre-existing valid partners; never create res.users here."""
-    values = {
-        'active': True,
-        'login': login,
-        'groups_id': [(6, 0, [user.env.ref('base.group_portal').id])],
-    }
+    """Reuse a pre-existing Portal user; never create users or change its type."""
+    values = {'active': True, 'login': login}
     if password:
         values['password'] = password
     if company:
@@ -37,7 +40,7 @@ class TestPortalEmployeeIdentity(TransactionCase):
     def setUp(self):
         super().setUp()
         self.user = _prepare_portal_user(
-            self.env.ref('base.default_user'), 'portal.a@test.invalid')
+            _portal_users_without_employee(self.env, 1), 'portal.a@test.invalid')
         self.employee = self.env['hr.employee'].create(
             _employee_values(self.env, {'name': 'A', 'user_id': self.user.id}))
 
@@ -61,13 +64,14 @@ class TestPortalEmployeeRoutes(HttpCase):
     def setUpClass(cls):
         super().setUpClass()
         group = cls.env.ref('base.group_portal')
+        portal_users = _portal_users_without_employee(cls.env, 3)
         cls.user_a = _prepare_portal_user(
-            cls.env.ref('base.default_user'), 'portal.route.a@test.invalid', 'portal-route-a')
+            portal_users[0], 'portal.route.a@test.invalid', 'portal-route-a')
         cls.user_without_link = _prepare_portal_user(
-            cls.env.ref('base.public_user'), 'portal.no.link@test.invalid', 'portal-no-link')
+            portal_users[1], 'portal.no.link@test.invalid', 'portal-no-link')
         cls.company_b = cls.env['res.company'].create({'name': 'Company B Portal'})
         cls.user_b = _prepare_portal_user(
-            _portal_template_user(cls.env), 'portal.route.b@test.invalid', 'portal-route-b', cls.company_b)
+            portal_users[2], 'portal.route.b@test.invalid', 'portal-route-b', cls.company_b)
         cls.employee_a = cls.env['hr.employee'].create(
             _employee_values(cls.env, {'name': 'Route A', 'user_id': cls.user_a.id}))
         cls.employee_b = cls.env['hr.employee'].create(_employee_values(cls.env, {
