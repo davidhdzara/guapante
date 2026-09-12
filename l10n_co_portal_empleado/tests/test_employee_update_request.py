@@ -26,6 +26,13 @@ def _prepare_hr_manager(user):
     return user
 
 
+def _other_company(env):
+    company = env['res.company'].search([('id', '!=', env.company.id)], limit=1)
+    if not company:
+        raise AssertionError('Se requiere una segunda compañía existente para la prueba multiempresa.')
+    return company
+
+
 class TestEmployeeUpdateRequest(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -53,7 +60,7 @@ class TestEmployeeUpdateRequest(TransactionCase):
             })
 
     def test_create_rejects_company_different_from_linked_employee(self):
-        other_company = self.env['res.company'].create({'name': 'Other company'})
+        other_company = _other_company(self.env)
         with self.assertRaises(AccessError):
             self.env['l10n_co.portal.employee.update.request'].with_user(self.portal_user).create({
                 'company_id': other_company.id,
@@ -74,7 +81,7 @@ class TestEmployeeUpdateRequest(TransactionCase):
         self.assertTrue(request.resolution_date)
 
     def test_employee_from_unauthorized_company_is_blocked(self):
-        other_company = self.env['res.company'].create({'name': 'Blocked company'})
+        other_company = _other_company(self.env)
         blocked_user = _portal_users_without_employee(self.env, 2)[1]
         blocked_employee = self.env['hr.employee'].create(_employee_values(self.env, {
             'name': 'Blocked employee', 'user_id': blocked_user.id, 'company_id': other_company.id,
