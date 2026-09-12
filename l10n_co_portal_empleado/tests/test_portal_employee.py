@@ -10,28 +10,34 @@ def _employee_values(env, values):
     return values
 
 
-def _create_user(env, values):
-    """Create the required parent partner before its user in Guapante tests."""
-    values = dict(values)
-    partner_model = env['res.partner']
-    field = partner_model._fields.get('l10n_co_edi_fiscal_regimen')
-    if field:
-        regime = field._description_selection(env)[0][0]
-        partner = partner_model.create({
-            'name': '%s Partner' % values['name'],
-            'l10n_co_edi_fiscal_regimen': regime,
+def _portal_template_user(env):
+    return env['res.users'].with_context(active_test=False).search([
+        ('login', '=', 'portaltemplate')], limit=1)
+
+
+def _prepare_portal_user(user, login, password=None, company=None):
+    """Reuse users with pre-existing valid partners; never create res.users here."""
+    values = {
+        'active': True,
+        'login': login,
+        'groups_id': [(6, 0, [user.env.ref('base.group_portal').id])],
+    }
+    if password:
+        values['password'] = password
+    if company:
+        values.update({
+            'company_id': company.id,
+            'company_ids': [(6, 0, [company.id])],
         })
-        values['partner_id'] = partner.id
-    return env['res.users'].with_context(no_reset_password=True).create(values)
+    user.with_context(no_reset_password=True).write(values)
+    return user
 
 
 class TestPortalEmployeeIdentity(TransactionCase):
     def setUp(self):
         super().setUp()
-        self.user = _create_user(self.env, {
-            'name': 'Portal A', 'login': 'portal.a@test.invalid',
-            'groups_id': [(6, 0, [self.env.ref('base.group_portal').id])],
-        })
+        self.user = _prepare_portal_user(
+            self.env.ref('base.default_user'), 'portal.a@test.invalid')
         self.employee = self.env['hr.employee'].create(
             _employee_values(self.env, {'name': 'A', 'user_id': self.user.id}))
 
@@ -55,20 +61,13 @@ class TestPortalEmployeeRoutes(HttpCase):
     def setUpClass(cls):
         super().setUpClass()
         group = cls.env.ref('base.group_portal')
-        cls.user_a = _create_user(cls.env, {
-            'name': 'Portal A', 'login': 'portal.route.a@test.invalid', 'password': 'portal-route-a',
-            'groups_id': [(6, 0, [group.id])],
-        })
-        cls.user_without_link = _create_user(cls.env, {
-            'name': 'No Link', 'login': 'portal.no.link@test.invalid', 'password': 'portal-no-link',
-            'groups_id': [(6, 0, [group.id])],
-        })
+        cls.user_a = _prepare_portal_user(
+            cls.env.ref('base.default_user'), 'portal.route.a@test.invalid', 'portal-route-a')
+        cls.user_without_link = _prepare_portal_user(
+            cls.env.ref('base.public_user'), 'portal.no.link@test.invalid', 'portal-no-link')
         cls.company_b = cls.env['res.company'].create({'name': 'Company B Portal'})
-        cls.user_b = _create_user(cls.env, {
-            'name': 'Portal B', 'login': 'portal.route.b@test.invalid', 'password': 'portal-route-b',
-            'company_id': cls.company_b.id, 'company_ids': [(6, 0, [cls.company_b.id])],
-            'groups_id': [(6, 0, [group.id])],
-        })
+        cls.user_b = _prepare_portal_user(
+            _portal_template_user(cls.env), 'portal.route.b@test.invalid', 'portal-route-b', cls.company_b)
         cls.employee_a = cls.env['hr.employee'].create(
             _employee_values(cls.env, {'name': 'Route A', 'user_id': cls.user_a.id}))
         cls.employee_b = cls.env['hr.employee'].create(_employee_values(cls.env, {
