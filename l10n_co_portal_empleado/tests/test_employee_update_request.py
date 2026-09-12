@@ -1,5 +1,6 @@
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests.common import TransactionCase
+from unittest import SkipTest
 
 
 def _employee_values(env, values):
@@ -29,7 +30,7 @@ def _prepare_hr_manager(user):
 def _other_company(env):
     company = env['res.company'].search([('id', '!=', env.company.id)], limit=1)
     if not company:
-        raise AssertionError('Se requiere una segunda compañía existente para la prueba multiempresa.')
+        raise SkipTest('La base de prueba no tiene una segunda compañía.')
     return company
 
 
