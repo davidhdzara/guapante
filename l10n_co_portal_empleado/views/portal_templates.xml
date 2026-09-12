@@ -1,0 +1,53 @@
+<odoo>
+    <template id="portal_employee_dashboard" name="Portal de empleado">
+        <t t-call="portal.frontend_layout">
+            <div class="o_portal_employee container py-4" t-attf-style="--portal-primary: #{brand['primary_color'] or '#0d6efd'}; --portal-secondary: #{brand['secondary_color'] or '#6c757d'};">
+                <style>.o_portal_employee .btn-primary {background-color:var(--portal-primary);border-color:var(--portal-primary)} .o_portal_employee a {color:var(--portal-primary)}</style>
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <img t-if="brand['logo']" t-att-src="image_data_uri(brand['logo'])" alt="Logo" class="img-fluid" style="max-height:56px;max-width:180px;"/>
+                    <div><h1 class="h3 mb-0">Mi portal</h1><span t-esc="brand['name']"/></div>
+                </div>
+                <div t-if="request.params.get('update') == 'sent'" class="alert alert-success">Su solicitud fue enviada para revisión.</div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/profile"><strong>Mi perfil</strong><span>Consulte sus datos registrados.</span></a></div>
+                    <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/update"><strong>Actualizar mis datos</strong><span>Envíe una solicitud para RR. HH.</span></a></div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_employee_profile" name="Perfil de empleado">
+        <t t-call="portal.frontend_layout">
+            <div class="o_portal_employee container py-4" t-attf-style="--portal-primary: #{brand['primary_color'] or '#0d6efd'}; --portal-secondary: #{brand['secondary_color'] or '#6c757d'};">
+                <style>.o_portal_employee a {color:var(--portal-primary)}</style>
+                <a href="/my/employee" class="btn btn-link px-0">← Mi portal</a>
+                <h1 class="h3">Mi perfil</h1><div class="card"><div class="card-body">
+                    <img t-if="profile['image']" t-att-src="image_data_uri(profile['image'])" class="rounded mb-3" style="width:96px;height:96px;object-fit:cover;" alt="Foto"/>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Nombre</dt><dd class="col-sm-8" t-esc="profile['name']"/><dt class="col-sm-4">Cargo</dt><dd class="col-sm-8" t-esc="profile['job']"/>
+                        <dt class="col-sm-4">Departamento</dt><dd class="col-sm-8" t-esc="profile['department']"/><dt class="col-sm-4">Compañía</dt><dd class="col-sm-8" t-esc="profile['company']"/>
+                        <dt class="col-sm-4">Correo laboral</dt><dd class="col-sm-8" t-esc="profile['work_email']"/><dt class="col-sm-4">Teléfonos</dt><dd class="col-sm-8"><span t-esc="profile['work_phone']"/> <span t-if="profile['mobile_phone']">· <t t-esc="profile['mobile_phone']"/></span></dd>
+                        <dt class="col-sm-4">Dirección</dt><dd class="col-sm-8" t-esc="profile['address']"/><dt class="col-sm-4">Emergencia</dt><dd class="col-sm-8"><span t-esc="profile['emergency_contact']"/> · <span t-esc="profile['emergency_phone']"/></dd>
+                    </dl>
+                </div></div>
+            </div>
+        </t>
+    </template>
+
+    <template id="portal_employee_update" name="Solicitud de actualización">
+        <t t-call="portal.frontend_layout">
+            <div class="o_portal_employee container py-4" t-attf-style="--portal-primary: #{brand['primary_color'] or '#0d6efd'}; --portal-secondary: #{brand['secondary_color'] or '#6c757d'};">
+                <style>.o_portal_employee .btn-primary {background-color:var(--portal-primary);border-color:var(--portal-primary)} .o_portal_employee a {color:var(--portal-primary)}</style>
+                <a href="/my/employee" class="btn btn-link px-0">← Mi portal</a><h1 class="h3">Solicitar actualización de datos</h1>
+                <div t-if="error" class="alert alert-danger" t-esc="error"/>
+                <form action="/my/employee/update" method="post" class="card card-body"><input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/><p class="text-muted">La actualización queda pendiente de aprobación por RR. HH.</p><div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">Correo personal</label><input name="private_email" type="email" class="form-control" t-att-value="profile['private_email'] or ''"/></div><div class="col-md-6"><label class="form-label">Teléfono personal</label><input name="private_phone" class="form-control" t-att-value="profile['private_phone'] or ''"/></div>
+                    <div class="col-md-6"><label class="form-label">Móvil</label><input name="mobile_phone" class="form-control" t-att-value="profile['mobile_phone'] or ''"/></div><div class="col-md-6"><label class="form-label">Contacto de emergencia</label><input name="emergency_contact" class="form-control" t-att-value="profile['emergency_contact'] or ''"/></div>
+                    <div class="col-md-6"><label class="form-label">Teléfono de emergencia</label><input name="emergency_phone" class="form-control" t-att-value="profile['emergency_phone'] or ''"/></div><div class="col-md-6"><label class="form-label">Parentesco</label><input name="portal_emergency_relationship" class="form-control" t-att-value="profile['emergency_relationship'] or ''"/></div>
+                    <div class="col-md-6"><label class="form-label">Dirección</label><input name="street" class="form-control" t-att-value="profile['street'] or ''"/></div><div class="col-md-6"><label class="form-label">Complemento</label><input name="street2" class="form-control" t-att-value="profile['street2'] or ''"/></div>
+                    <div class="col-md-4"><label class="form-label">Ciudad</label><input name="city" class="form-control" t-att-value="profile['city'] or ''"/></div><div class="col-md-4"><label class="form-label">Código postal</label><input name="zip" class="form-control" t-att-value="profile['zip'] or ''"/></div><div class="col-md-4"><label class="form-label">Barrio</label><input name="portal_neighborhood" class="form-control" t-att-value="profile['neighborhood'] or ''"/></div>
+                </div><button class="btn btn-primary mt-4 align-self-start" type="submit">Enviar para aprobación</button></form>
+            </div>
+        </t>
+    </template>
+</odoo>
