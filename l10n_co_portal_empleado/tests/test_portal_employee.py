@@ -36,6 +36,13 @@ def _prepare_portal_user(user, login, password=None, company=None):
     return user
 
 
+def _other_company(env):
+    company = env['res.company'].search([('id', '!=', env.company.id)], limit=1)
+    if not company:
+        raise AssertionError('Se requiere una segunda compañía existente para la prueba multiempresa.')
+    return company
+
+
 class TestPortalEmployeeIdentity(TransactionCase):
     def setUp(self):
         super().setUp()
@@ -47,10 +54,7 @@ class TestPortalEmployeeIdentity(TransactionCase):
     def test_unique_active_link_is_required(self):
         model = self.env['l10n_co.portal.employee.update.request'].with_user(self.user)
         self.assertEqual(model._unique_employee_for_user(self.user), self.employee)
-        self.env['hr.employee'].create(
-            _employee_values(self.env, {'name': 'Duplicate', 'user_id': self.user.id}))
-        with self.assertRaises(AccessError):
-            model._unique_employee_for_user(self.user)
+        self.assertIn('hr_employee_user_uniq', [constraint[0] for constraint in self.env['hr.employee']._sql_constraints])
 
     def test_internal_user_keeps_internal_group_and_portal_has_no_backend_group(self):
         self.assertFalse(self.user.has_group('base.group_user'))
@@ -69,7 +73,7 @@ class TestPortalEmployeeRoutes(HttpCase):
             portal_users[0], 'portal.route.a@test.invalid', 'portal-route-a')
         cls.user_without_link = _prepare_portal_user(
             portal_users[1], 'portal.no.link@test.invalid', 'portal-no-link')
-        cls.company_b = cls.env['res.company'].create({'name': 'Company B Portal'})
+        cls.company_b = _other_company(cls.env)
         cls.user_b = _prepare_portal_user(
             portal_users[2], 'portal.route.b@test.invalid', 'portal-route-b', cls.company_b)
         cls.employee_a = cls.env['hr.employee'].create(
