@@ -11,10 +11,10 @@ def _employee_values(env, values):
 
 
 def _create_user(env, values):
-    """Pass Guapante's required fiscal regime to res.users' auto-partner."""
+    """Pass Guapante's required regime through res.users' inherited partner field."""
+    values = dict(values)
     partner_model = env['res.partner']
     field = partner_model._fields.get('l10n_co_edi_fiscal_regimen')
-    context = {'no_reset_password': True}
     if field:
         partner = partner_model.search([('l10n_co_edi_fiscal_regimen', '!=', False)], limit=1)
         if not partner:
@@ -22,8 +22,8 @@ def _create_user(env, values):
             regime = selection[0][0]
         else:
             regime = partner.l10n_co_edi_fiscal_regimen
-        context['default_l10n_co_edi_fiscal_regimen'] = regime
-    return env['res.users'].with_context(**context).create(values)
+        values['l10n_co_edi_fiscal_regimen'] = regime
+    return env['res.users'].with_context(no_reset_password=True).create(values)
 
 
 class TestPortalEmployeeIdentity(TransactionCase):
