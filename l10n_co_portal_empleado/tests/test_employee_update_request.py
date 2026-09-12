@@ -10,18 +10,17 @@ def _employee_values(env, values):
 
 
 def _create_user(env, values):
-    """Pass Guapante's required regime through res.users' inherited partner field."""
+    """Create the required parent partner before its user in Guapante tests."""
     values = dict(values)
     partner_model = env['res.partner']
     field = partner_model._fields.get('l10n_co_edi_fiscal_regimen')
     if field:
-        partner = partner_model.search([('l10n_co_edi_fiscal_regimen', '!=', False)], limit=1)
-        if not partner:
-            selection = field._description_selection(env)
-            regime = selection[0][0]
-        else:
-            regime = partner.l10n_co_edi_fiscal_regimen
-        values['l10n_co_edi_fiscal_regimen'] = regime
+        regime = field._description_selection(env)[0][0]
+        partner = partner_model.create({
+            'name': '%s Partner' % values['name'],
+            'l10n_co_edi_fiscal_regimen': regime,
+        })
+        values['partner_id'] = partner.id
     return env['res.users'].with_context(no_reset_password=True).create(values)
 
 
