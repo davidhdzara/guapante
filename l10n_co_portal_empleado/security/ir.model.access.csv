@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_portal_employee_update_request_portal,portal.employee.update.request.portal,model_l10n_co_portal_employee_update_request,base.group_portal,1,0,0,0
+access_portal_employee_update_request_hr_user,portal.employee.update.request.hr.user,model_l10n_co_portal_employee_update_request,hr.group_hr_user,1,0,0,0
+access_portal_employee_update_request_hr_manager,portal.employee.update.request.hr.manager,model_l10n_co_portal_employee_update_request,hr.group_hr_manager,1,1,1,0

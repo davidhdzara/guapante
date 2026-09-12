@@ -1,0 +1,27 @@
+<odoo>
+    <record id="view_employee_form_portal_employee" model="ir.ui.view">
+        <field name="name">hr.employee.form.portal.employee</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="groups_id" eval="[(4, ref('hr.group_hr_user'))]"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Portal de empleados">
+                    <field name="user_id" readonly="1"/>
+                    <field name="portal_access_state" readonly="1"/>
+                    <field name="portal_neighborhood"/>
+                    <field name="portal_emergency_relationship"/>
+                    <button name="action_open_portal_update_requests" type="object" string="Solicitudes de actualización" class="oe_stat_button" icon="fa-list"/>
+                </group>
+                <group string="Invitación Portal" groups="hr.group_hr_manager">
+                    <div class="text-muted" colspan="2">
+                        Procedimiento seguro: cree o invite el usuario con el mecanismo nativo de Portal,
+                        confirme que pertenece únicamente al grupo Portal (nunca Usuarios internos), y después
+                        vincúlelo explícitamente en este empleado. Verifique que el estado Portal sea “Usuario portal”.
+                    </div>
+                    <field name="user_id"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

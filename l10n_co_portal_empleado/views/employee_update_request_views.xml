@@ -1,0 +1,53 @@
+<odoo>
+    <record id="action_portal_employee_update_request" model="ir.actions.act_window">
+        <field name="name">Solicitudes de actualización portal</field>
+        <field name="res_model">l10n_co.portal.employee.update.request</field>
+        <field name="view_mode">tree,form</field>
+        <field name="groups_id" eval="[(4, ref('hr.group_hr_user'))]"/>
+    </record>
+    <record id="view_portal_employee_update_request_tree" model="ir.ui.view">
+        <field name="name">l10n_co.portal.employee.update.request.tree</field>
+        <field name="model">l10n_co.portal.employee.update.request</field>
+        <field name="arch" type="xml">
+            <list create="0" delete="0">
+                <field name="request_date"/><field name="employee_id"/><field name="company_id"/><field name="state"/>
+                <field name="requesting_user_id"/><field name="approver_id"/><field name="resolution_date"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_portal_employee_update_request_form" model="ir.ui.view">
+        <field name="name">l10n_co.portal.employee.update.request.form</field>
+        <field name="model">l10n_co.portal.employee.update.request</field>
+        <field name="arch" type="xml">
+            <form create="0" delete="0">
+                <header>
+                    <button name="action_approve" type="object" string="Aprobar" class="btn-primary" invisible="state != 'submitted'" groups="hr.group_hr_manager"/>
+                    <button name="action_reject" type="object" string="Rechazar" invisible="state != 'submitted'" groups="hr.group_hr_manager"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,submitted,approved,rejected,cancelled"/>
+                </header>
+                <sheet>
+                    <group><group><field name="employee_id"/><field name="company_id"/><field name="requesting_user_id"/></group>
+                    <group><field name="request_date"/><field name="resolution_date"/><field name="approver_id"/><field name="rejection_reason" readonly="state != 'submitted'"/></group></group>
+                    <notebook>
+                        <page string="Datos personales"><group>
+                            <field name="old_private_email"/><field name="proposed_private_email"/>
+                            <field name="old_private_phone"/><field name="proposed_private_phone"/>
+                            <field name="old_mobile_phone"/><field name="proposed_mobile_phone"/>
+                        </group></page>
+                        <page string="Dirección"><group>
+                            <field name="old_street"/><field name="proposed_street"/><field name="old_street2"/><field name="proposed_street2"/>
+                            <field name="old_city"/><field name="proposed_city"/><field name="old_zip"/><field name="proposed_zip"/>
+                            <field name="old_state_id"/><field name="proposed_state_id"/><field name="old_country_id"/><field name="proposed_country_id"/>
+                            <field name="old_portal_neighborhood"/><field name="proposed_portal_neighborhood"/>
+                        </group></page>
+                        <page string="Emergencia"><group>
+                            <field name="old_emergency_contact"/><field name="proposed_emergency_contact"/>
+                            <field name="old_emergency_phone"/><field name="proposed_emergency_phone"/>
+                            <field name="old_portal_emergency_relationship"/><field name="proposed_portal_emergency_relationship"/>
+                        </group></page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>
