@@ -3,10 +3,9 @@
         <field name="name">hr.employee.form.portal.employee</field>
         <field name="model">hr.employee</field>
         <field name="inherit_id" ref="hr.view_employee_form"/>
-        <field name="groups_id" eval="[(4, ref('hr.group_hr_user'))]"/>
         <field name="arch" type="xml">
             <xpath expr="//sheet" position="inside">
-                <group string="Portal de empleados">
+                <group string="Portal de empleados" groups="hr.group_hr_user">
                     <field name="user_id" readonly="1"/>
                     <field name="portal_access_state" readonly="1"/>
                     <field name="portal_neighborhood"/>
