@@ -3,6 +3,13 @@ from odoo.tests import HttpCase, tagged
 from odoo.tests.common import TransactionCase
 
 
+def _employee_values(env, values):
+    """Keep F1 tests installable with or without the NE localization."""
+    if 'l10n_co_ne_payment_method' in env['hr.employee']._fields:
+        values['l10n_co_ne_payment_method'] = '10'
+    return values
+
+
 class TestPortalEmployeeIdentity(TransactionCase):
     def setUp(self):
         super().setUp()
@@ -10,12 +17,14 @@ class TestPortalEmployeeIdentity(TransactionCase):
             'name': 'Portal A', 'login': 'portal.a@test.invalid',
             'groups_id': [(6, 0, [self.env.ref('base.group_portal').id])],
         })
-        self.employee = self.env['hr.employee'].create({'name': 'A', 'user_id': self.user.id})
+        self.employee = self.env['hr.employee'].create(
+            _employee_values(self.env, {'name': 'A', 'user_id': self.user.id}))
 
     def test_unique_active_link_is_required(self):
         model = self.env['l10n_co.portal.employee.update.request'].with_user(self.user)
         self.assertEqual(model._unique_employee_for_user(self.user), self.employee)
-        self.env['hr.employee'].create({'name': 'Duplicate', 'user_id': self.user.id})
+        self.env['hr.employee'].create(
+            _employee_values(self.env, {'name': 'Duplicate', 'user_id': self.user.id}))
         with self.assertRaises(AccessError):
             model._unique_employee_for_user(self.user)
 
@@ -45,10 +54,11 @@ class TestPortalEmployeeRoutes(HttpCase):
             'company_id': cls.company_b.id, 'company_ids': [(6, 0, [cls.company_b.id])],
             'groups_id': [(6, 0, [group.id])],
         })
-        cls.employee_a = cls.env['hr.employee'].create({'name': 'Route A', 'user_id': cls.user_a.id})
-        cls.employee_b = cls.env['hr.employee'].create({
+        cls.employee_a = cls.env['hr.employee'].create(
+            _employee_values(cls.env, {'name': 'Route A', 'user_id': cls.user_a.id}))
+        cls.employee_b = cls.env['hr.employee'].create(_employee_values(cls.env, {
             'name': 'Route B', 'user_id': cls.user_b.id, 'company_id': cls.company_b.id,
-        })
+        }))
 
     def test_portal_a_cannot_discover_employee_b_by_url_id(self):
         self.authenticate('portal.route.a@test.invalid', 'portal-route-a')

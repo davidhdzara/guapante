@@ -2,6 +2,13 @@ from odoo.exceptions import AccessError, ValidationError
 from odoo.tests.common import TransactionCase
 
 
+def _employee_values(env, values):
+    """Keep F1 tests installable with or without the NE localization."""
+    if 'l10n_co_ne_payment_method' in env['hr.employee']._fields:
+        values['l10n_co_ne_payment_method'] = '10'
+    return values
+
+
 class TestEmployeeUpdateRequest(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -11,9 +18,9 @@ class TestEmployeeUpdateRequest(TransactionCase):
             'name': 'Portal Employee', 'login': 'portal.employee@test.invalid',
             'groups_id': [(6, 0, [cls.env.ref('base.group_portal').id])],
         })
-        cls.employee = cls.env['hr.employee'].create({
+        cls.employee = cls.env['hr.employee'].create(_employee_values(cls.env, {
             'name': 'Portal Employee', 'company_id': cls.company.id, 'user_id': cls.portal_user.id,
-        })
+        }))
         cls.hr_manager = cls.env['res.users'].with_context(no_reset_password=True).create({
             'name': 'HR Manager', 'login': 'hr.manager@test.invalid',
             'groups_id': [(6, 0, [cls.env.ref('hr.group_hr_manager').id])],
@@ -61,9 +68,9 @@ class TestEmployeeUpdateRequest(TransactionCase):
             'name': 'Blocked Portal', 'login': 'blocked.portal@test.invalid',
             'groups_id': [(6, 0, [self.env.ref('base.group_portal').id])],
         })
-        blocked_employee = self.env['hr.employee'].create({
+        blocked_employee = self.env['hr.employee'].create(_employee_values(self.env, {
             'name': 'Blocked employee', 'user_id': blocked_user.id, 'company_id': other_company.id,
-        })
+        }))
         model = self.env['l10n_co.portal.employee.update.request'].with_user(blocked_user)
         with self.assertRaises(AccessError):
             model._unique_employee_for_user(blocked_user)
