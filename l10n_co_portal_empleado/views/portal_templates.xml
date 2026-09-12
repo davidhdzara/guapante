@@ -11,6 +11,8 @@
                 <div class="row g-3">
                     <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/profile"><strong>Mi perfil</strong><span>Consulte sus datos registrados.</span></a></div>
                     <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/update"><strong>Actualizar mis datos</strong><span>Envíe una solicitud para RR. HH.</span></a></div>
+                    <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/payslips"><strong>Mis colillas</strong><span>Consulte y descargue sus colillas publicadas.</span></a></div>
+                    <div class="col-12 col-md-6"><a class="card card-body text-decoration-none h-100" href="/my/employee/certificates"><strong>Certificados laborales</strong><span>Emita y descargue sus certificados.</span></a></div>
                 </div>
             </div>
         </t>
@@ -49,5 +51,30 @@
                 </div><button class="btn btn-primary mt-4 align-self-start" type="submit">Enviar para aprobación</button></form>
             </div>
         </t>
+    </template>
+
+    <template id="portal_employee_payslips" name="Colillas de empleado">
+        <t t-call="portal.frontend_layout"><div class="o_portal_employee container py-4">
+            <a href="/my/employee" class="btn btn-link px-0">← Mi portal</a><h1 class="h3">Mis colillas</h1>
+            <table class="table"><thead><tr><th>Documento</th><th>Período</th><th>Estado</th><th>Importe</th><th/></tr></thead><tbody>
+                <tr t-foreach="payslips" t-as="p"><td t-esc="p['number']"/><td><span t-esc="p['date_from']"/> — <span t-esc="p['date_to']"/></td><td t-esc="p['state']"/><td t-esc="p['amount']"/><td><a t-att-href="'/my/employee/payslips/%s/download' % p['id']">PDF</a></td></tr>
+                <tr t-if="not payslips"><td colspan="5" class="text-muted">No hay colillas publicadas.</td></tr>
+            </tbody></table>
+        </div></t>
+    </template>
+
+    <template id="portal_employee_certificates" name="Certificados laborales">
+        <t t-call="portal.frontend_layout"><div class="o_portal_employee container py-4">
+            <a href="/my/employee" class="btn btn-link px-0">← Mi portal</a><h1 class="h3">Certificados laborales</h1>
+            <div t-if="request.params.get('issued')" class="alert alert-success">Certificado emitido.</div><div t-if="error" class="alert alert-danger" t-esc="error"/>
+            <div class="card card-body mb-4"><p class="mb-3">Cada emisión conserva una copia inmutable del certificado.</p>
+                <div class="d-flex gap-2"><form method="post" action="/my/employee/certificates/without-salary"><input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/><button type="submit" class="btn btn-outline-primary">Emitir sin salario</button></form>
+                <form method="post" action="/my/employee/certificates/with-salary"><input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/><button type="submit" class="btn btn-primary">Emitir con salario</button></form></div>
+            </div>
+            <table class="table"><thead><tr><th>Identificador</th><th>Tipo</th><th>Fecha</th><th/></tr></thead><tbody>
+                <tr t-foreach="issuances" t-as="issuance"><td t-esc="issuance['name']"/><td t-esc="issuance['type']"/><td t-esc="issuance['issued_at']"/><td><a t-att-href="'/my/employee/certificates/%s/download' % issuance['id']">PDF</a></td></tr>
+                <tr t-if="not issuances"><td colspan="4" class="text-muted">No hay certificados emitidos.</td></tr>
+            </tbody></table>
+        </div></t>
     </template>
 </odoo>
