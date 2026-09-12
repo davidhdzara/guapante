@@ -9,22 +9,39 @@ def _employee_values(env, values):
     return values
 
 
+def _user_values(env, values):
+    """Reuse a compliant partner where Guapante requires a fiscal regime."""
+    values = dict(values)
+    partner_model = env['res.partner']
+    field = partner_model._fields.get('l10n_co_edi_fiscal_regimen')
+    if field:
+        partner = partner_model.search([('l10n_co_edi_fiscal_regimen', '!=', False)], limit=1)
+        if not partner:
+            selection = field._description_selection(env)
+            partner = partner_model.create({
+                'name': '%s Partner' % values['name'],
+                'l10n_co_edi_fiscal_regimen': selection[0][0],
+            })
+        values['partner_id'] = partner.id
+    return values
+
+
 class TestEmployeeUpdateRequest(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.company = cls.env.company
-        cls.portal_user = cls.env['res.users'].with_context(no_reset_password=True).create({
+        cls.portal_user = cls.env['res.users'].with_context(no_reset_password=True).create(_user_values(cls.env, {
             'name': 'Portal Employee', 'login': 'portal.employee@test.invalid',
             'groups_id': [(6, 0, [cls.env.ref('base.group_portal').id])],
-        })
+        }))
         cls.employee = cls.env['hr.employee'].create(_employee_values(cls.env, {
             'name': 'Portal Employee', 'company_id': cls.company.id, 'user_id': cls.portal_user.id,
         }))
-        cls.hr_manager = cls.env['res.users'].with_context(no_reset_password=True).create({
+        cls.hr_manager = cls.env['res.users'].with_context(no_reset_password=True).create(_user_values(cls.env, {
             'name': 'HR Manager', 'login': 'hr.manager@test.invalid',
             'groups_id': [(6, 0, [cls.env.ref('hr.group_hr_manager').id])],
-        })
+        }))
 
     def test_allowlist_rejects_payroll_company_and_work_email(self):
         model = self.env['l10n_co.portal.employee.update.request']
@@ -64,10 +81,10 @@ class TestEmployeeUpdateRequest(TransactionCase):
 
     def test_employee_from_unauthorized_company_is_blocked(self):
         other_company = self.env['res.company'].create({'name': 'Blocked company'})
-        blocked_user = self.env['res.users'].with_context(no_reset_password=True).create({
+        blocked_user = self.env['res.users'].with_context(no_reset_password=True).create(_user_values(self.env, {
             'name': 'Blocked Portal', 'login': 'blocked.portal@test.invalid',
             'groups_id': [(6, 0, [self.env.ref('base.group_portal').id])],
-        })
+        }))
         blocked_employee = self.env['hr.employee'].create(_employee_values(self.env, {
             'name': 'Blocked employee', 'user_id': blocked_user.id, 'company_id': other_company.id,
         }))
