@@ -1,0 +1,25 @@
+<odoo>
+    <!-- No binding: PDFs are rendered internally and delivered only by the Portal controller. -->
+    <record id="action_report_employee_certificate" model="ir.actions.report">
+        <field name="name">Certificado laboral Portal</field>
+        <field name="model">l10n_co.portal.employee.certificate.issuance</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">l10n_co_portal_empleado.report_employee_certificate</field>
+        <field name="report_file">l10n_co_portal_empleado.report_employee_certificate</field>
+        <field name="groups_id" eval="[(4, ref('hr.group_hr_manager'))]"/>
+    </record>
+    <template id="report_employee_certificate">
+        <t t-call="web.html_container"><t t-foreach="docs" t-as="o"><t t-call="web.external_layout">
+            <div class="page">
+                <h2 class="text-center">Certificado laboral</h2>
+                <p>Se certifica que <strong t-esc="o.employee_name_snapshot"/> identificado(a) con <span t-esc="o.employee_document_snapshot"/> presta sus servicios en <strong t-esc="o.company_name_snapshot"/>.</p>
+                <p>Cargo: <span t-esc="o.job_title_snapshot"/>. Fecha de ingreso: <span t-esc="o.start_date_snapshot"/>.</p>
+                <t t-if="o.certificate_type == 'with_salary'"><p>Salario actual: <span t-esc="formatLang(o.wage_snapshot, currency_obj=o.currency_id)"/>.</p></t>
+                <p>Expedido el <span t-esc="o.issued_at"/>.</p>
+                <div class="mt-5"><img t-if="o.signatory_signature_snapshot" t-att-src="image_data_uri(o.signatory_signature_snapshot)" style="max-height:70px" alt="Firma"/>
+                    <p><strong t-esc="o.signatory_name_snapshot"/><br/><span t-esc="o.signatory_title_snapshot"/></p>
+                </div>
+            </div>
+        </t></t></t>
+    </template>
+</odoo>

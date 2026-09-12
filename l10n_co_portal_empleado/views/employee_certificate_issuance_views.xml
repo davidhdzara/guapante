@@ -1,0 +1,37 @@
+<odoo>
+    <record id="view_portal_employee_certificate_issuance_tree" model="ir.ui.view">
+        <field name="name">l10n.co.portal.employee.certificate.issuance.tree</field>
+        <field name="model">l10n_co.portal.employee.certificate.issuance</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="name"/><field name="issued_at"/><field name="employee_id"/>
+                <field name="certificate_type"/><field name="company_id"/><field name="checksum_sha256"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_portal_employee_certificate_issuance_form" model="ir.ui.view">
+        <field name="name">l10n.co.portal.employee.certificate.issuance.form</field>
+        <field name="model">l10n_co.portal.employee.certificate.issuance</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <sheet><group>
+                    <field name="name"/><field name="issued_at"/><field name="certificate_type"/>
+                    <field name="company_id"/><field name="employee_id"/><field name="requesting_user_id"/>
+                    <field name="employee_name_snapshot"/><field name="employee_document_snapshot"/>
+                    <field name="job_title_snapshot"/><field name="start_date_snapshot"/>
+                    <field name="company_name_snapshot"/><field name="signatory_name_snapshot"/>
+                    <field name="signatory_title_snapshot"/><field name="signatory_signature_snapshot" widget="image"/>
+                    <field name="wage_snapshot" invisible="certificate_type != 'with_salary'"/>
+                    <field name="currency_id" invisible="certificate_type != 'with_salary'"/>
+                    <field name="template_version"/><field name="checksum_sha256"/><field name="attachment_id"/>
+                </group></sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_portal_employee_certificate_issuance" model="ir.actions.act_window">
+        <field name="name">Emisiones de certificados Portal</field>
+        <field name="res_model">l10n_co.portal.employee.certificate.issuance</field>
+        <field name="view_mode">list,form</field>
+        <field name="groups_id" eval="[(4, ref('hr.group_hr_user'))]"/>
+    </record>
+</odoo>
