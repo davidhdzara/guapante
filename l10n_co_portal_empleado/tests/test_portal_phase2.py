@@ -115,9 +115,13 @@ class TestPortalPhase2(TransactionCase):
             issuance = model.create_from_portal(self.employee, 'with_salary', self.portal_user)
         self.assertEqual(issuance.wage_snapshot, contract.wage)
         self.assertEqual(issuance.currency_id, contract.currency_id)
-        contract.copy({'name': 'Contrato F2 duplicado', 'state': 'open'})
-        with self.assertRaises(AccessError):
-            model.create_from_portal(self.employee, 'with_salary', self.portal_user)
+        # Odoo estándar impide persistir dos contratos abiertos solapados. Para
+        # probar la defensa de nuestro método sin violar esa regla anterior,
+        # simulamos un resultado de dominio inconsistente con dos registros.
+        closed_contract = contract.copy({'name': 'Contrato F2 cerrado', 'state': 'close'})
+        with patch.object(type(self.env['hr.contract']), 'search', return_value=contract | closed_contract):
+            with self.assertRaises(AccessError):
+                model.create_from_portal(self.employee, 'with_salary', self.portal_user)
 
     def test_payslip_policy_acceptance_and_finalization(self):
         slip = self.env['hr.payslip'].new({'employee_id': self.employee.id, 'company_id': self.company.id})
