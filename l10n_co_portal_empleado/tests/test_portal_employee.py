@@ -10,30 +10,29 @@ def _employee_values(env, values):
     return values
 
 
-def _user_values(env, values):
-    """Reuse a compliant partner where Guapante requires a fiscal regime."""
-    values = dict(values)
+def _create_user(env, values):
+    """Pass Guapante's required fiscal regime to res.users' auto-partner."""
     partner_model = env['res.partner']
     field = partner_model._fields.get('l10n_co_edi_fiscal_regimen')
+    context = {'no_reset_password': True}
     if field:
         partner = partner_model.search([('l10n_co_edi_fiscal_regimen', '!=', False)], limit=1)
         if not partner:
             selection = field._description_selection(env)
-            partner = partner_model.create({
-                'name': '%s Partner' % values['name'],
-                'l10n_co_edi_fiscal_regimen': selection[0][0],
-            })
-        values['partner_id'] = partner.id
-    return values
+            regime = selection[0][0]
+        else:
+            regime = partner.l10n_co_edi_fiscal_regimen
+        context['default_l10n_co_edi_fiscal_regimen'] = regime
+    return env['res.users'].with_context(**context).create(values)
 
 
 class TestPortalEmployeeIdentity(TransactionCase):
     def setUp(self):
         super().setUp()
-        self.user = self.env['res.users'].with_context(no_reset_password=True).create(_user_values(self.env, {
+        self.user = _create_user(self.env, {
             'name': 'Portal A', 'login': 'portal.a@test.invalid',
             'groups_id': [(6, 0, [self.env.ref('base.group_portal').id])],
-        }))
+        })
         self.employee = self.env['hr.employee'].create(
             _employee_values(self.env, {'name': 'A', 'user_id': self.user.id}))
 
@@ -57,20 +56,20 @@ class TestPortalEmployeeRoutes(HttpCase):
     def setUpClass(cls):
         super().setUpClass()
         group = cls.env.ref('base.group_portal')
-        cls.user_a = cls.env['res.users'].with_context(no_reset_password=True).create(_user_values(cls.env, {
+        cls.user_a = _create_user(cls.env, {
             'name': 'Portal A', 'login': 'portal.route.a@test.invalid', 'password': 'portal-route-a',
             'groups_id': [(6, 0, [group.id])],
-        }))
-        cls.user_without_link = cls.env['res.users'].with_context(no_reset_password=True).create(_user_values(cls.env, {
+        })
+        cls.user_without_link = _create_user(cls.env, {
             'name': 'No Link', 'login': 'portal.no.link@test.invalid', 'password': 'portal-no-link',
             'groups_id': [(6, 0, [group.id])],
-        }))
+        })
         cls.company_b = cls.env['res.company'].create({'name': 'Company B Portal'})
-        cls.user_b = cls.env['res.users'].with_context(no_reset_password=True).create(_user_values(cls.env, {
+        cls.user_b = _create_user(cls.env, {
             'name': 'Portal B', 'login': 'portal.route.b@test.invalid', 'password': 'portal-route-b',
             'company_id': cls.company_b.id, 'company_ids': [(6, 0, [cls.company_b.id])],
             'groups_id': [(6, 0, [group.id])],
-        }))
+        })
         cls.employee_a = cls.env['hr.employee'].create(
             _employee_values(cls.env, {'name': 'Route A', 'user_id': cls.user_a.id}))
         cls.employee_b = cls.env['hr.employee'].create(_employee_values(cls.env, {
