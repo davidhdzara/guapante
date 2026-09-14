@@ -12,13 +12,16 @@
         <t t-call="web.html_container"><t t-foreach="docs" t-as="o"><t t-call="web.external_layout">
             <div class="page">
                 <h2 class="text-center">Certificado laboral</h2>
-                <p>Se certifica que <strong t-esc="o.employee_name_snapshot"/> identificado(a) con <span t-esc="o.employee_document_snapshot"/> presta sus servicios en <strong t-esc="o.company_name_snapshot"/>.</p>
-                <p>Cargo: <span t-esc="o.job_title_snapshot"/>. Fecha de ingreso: <span t-esc="o.start_date_snapshot"/>.</p>
-                <t t-if="o.certificate_type == 'with_salary'"><p>Salario actual: <span t-esc="formatLang(o.wage_snapshot, currency_obj=o.currency_id)"/>.</p></t>
-                <p>Expedido el <span t-esc="o.issued_at"/>.</p>
-                <div class="mt-5"><img t-if="o.signatory_signature_snapshot" t-att-src="image_data_uri(o.signatory_signature_snapshot)" style="max-height:70px" alt="Firma"/>
+                <p class="mt-4">Por medio de la presente se certifica que <strong t-esc="o.employee_name_snapshot"/><t t-if="o.employee_document_snapshot">, identificado(a) con <span t-esc="o.employee_document_snapshot"/></t>, presta sus servicios en <strong t-esc="o.company_name_snapshot"/>.</p>
+                <p>Actualmente desempeña el cargo de <strong t-esc="o.job_title_snapshot"/><t t-if="o.start_date_snapshot"> desde el <span t-field="o.start_date_snapshot" t-options='{"widget": "date"}'/></t> y mantiene vínculo laboral vigente a la fecha de expedición.</p>
+                <t t-if="o.certificate_type == 'with_salary'">
+                    <p>Su salario vigente a la fecha de emisión corresponde a <strong t-field="o.wage_snapshot" t-options='{"widget": "monetary", "display_currency": o.currency_id}'/> con periodicidad <span t-esc="o.wage_periodicity_snapshot"/>.</p>
+                </t>
+                <p>La presente certificación se expide a solicitud del empleado, el <span t-field="o.issued_at" t-options='{"widget": "datetime"}'/>.</p>
+                <div class="mt-5 pt-4"><img t-if="o.signatory_signature_snapshot" t-att-src="image_data_uri(o.signatory_signature_snapshot)" style="max-height:70px; max-width:220px" alt="Firma gráfica del responsable"/>
                     <p><strong t-esc="o.signatory_name_snapshot"/><br/><span t-esc="o.signatory_title_snapshot"/></p>
                 </div>
+                <p class="small text-muted mt-4">Referencia de emisión: <span t-esc="o.name"/>.</p>
             </div>
         </t></t></t>
     </template>

@@ -28,7 +28,9 @@ class EmployeeCertificateIssuance(models.Model):
     currency_id = fields.Many2one('res.currency', readonly=True)
     signatory_name_snapshot = fields.Char(required=True, readonly=True)
     signatory_title_snapshot = fields.Char(required=True, readonly=True)
-    signatory_signature_snapshot = fields.Binary(readonly=True, attachment=True)
+    # Keep the graphic snapshot in the issuance row, not as a generic attachment.
+    signatory_signature_snapshot = fields.Binary(readonly=True, attachment=False)
+    wage_periodicity_snapshot = fields.Char(readonly=True)
     template_version = fields.Char(required=True, readonly=True, default='18.0.2.0.0')
     checksum_sha256 = fields.Char(required=True, readonly=True, copy=False, index=True)
     attachment_id = fields.Many2one('ir.attachment', required=True, readonly=True, ondelete='restrict')
@@ -46,13 +48,11 @@ class EmployeeCertificateIssuance(models.Model):
 
     @api.model
     def _validate_signatory(self, company):
-        values = (
-            company.l10n_co_portal_certificate_signatory_name,
-            company.l10n_co_portal_certificate_signatory_title,
-            company.l10n_co_portal_certificate_signatory_signature,
-        )
-        if not all(values):
+        signatory = company.l10n_co_portal_certificate_signatory_employee_id.sudo()
+        if (not signatory or not signatory.active or signatory.company_id != company
+                or not company.l10n_co_portal_certificate_signatory_signature):
             raise UserError(_('La compañía no tiene firmante de certificados completo.'))
+        return signatory
 
     @api.model
     def _active_contract(self, employee):
@@ -65,32 +65,63 @@ class EmployeeCertificateIssuance(models.Model):
         return contracts
 
     @api.model
+    def _contract_pay_periodicity(self, contract):
+        field = contract._fields.get('schedule_pay')
+        if not field or not contract.schedule_pay:
+            raise AccessError(_('El contrato activo no tiene una periodicidad de pago válida.'))
+        selection = dict(field._description_selection(self.env))
+        periodicity = selection.get(contract.schedule_pay)
+        if not periodicity:
+            raise AccessError(_('El contrato activo no tiene una periodicidad de pago válida.'))
+        return periodicity
+
+    @api.model
+    def _render_certificate_pdf(self, issuance):
+        report = self.env['ir.actions.report'].sudo().with_company(issuance.company_id).with_context(
+            allowed_company_ids=[issuance.company_id.id],
+        )
+        return report._render_qweb_pdf(
+            self.env.ref('l10n_co_portal_empleado.action_report_employee_certificate').id,
+            [issuance.id],
+        )
+
+    @api.model
     def create_from_portal(self, employee, certificate_type, user=None):
         """Controller-only transactional boundary. The caller already established ownership."""
         user = user or self.env.user
-        allowed = user.company_ids & self.env.companies
+        active_company = self.env.company
         if (certificate_type not in ('without_salary', 'with_salary') or not employee.active
-                or employee.user_id != user or employee.company_id not in allowed):
+                or employee.user_id != user or employee.company_id != active_company
+                or active_company not in user.company_ids):
             raise AccessError(_('No fue posible emitir el certificado solicitado.'))
         company = employee.company_id.sudo()
-        self._validate_signatory(company)
+        signatory = self._validate_signatory(company)
+        sequence = self.env['ir.sequence'].sudo().with_company(company).next_by_code(
+            'l10n_co.portal.employee.certificate.issuance'
+        )
+        if not sequence:
+            raise UserError(_('No hay una secuencia configurada para emitir certificados laborales.'))
         vals = {
-            'name': self.env['ir.sequence'].sudo().next_by_code('l10n_co.portal.employee.certificate.issuance') or 'CERT-PORTAL',
+            'name': sequence,
             'company_id': company.id, 'employee_id': employee.id, 'requesting_user_id': user.id,
             'certificate_type': certificate_type, 'employee_name_snapshot': employee.name,
             'employee_document_snapshot': employee.identification_id,
             'job_title_snapshot': employee.job_id.name or employee.job_title,
             'start_date_snapshot': employee.first_contract_date,
             'company_name_snapshot': company.name,
-            'signatory_name_snapshot': company.l10n_co_portal_certificate_signatory_name,
-            'signatory_title_snapshot': company.l10n_co_portal_certificate_signatory_title,
+            'signatory_name_snapshot': signatory.name,
+            'signatory_title_snapshot': signatory.job_id.name or signatory.job_title or _('Responsable autorizado'),
             'signatory_signature_snapshot': company.l10n_co_portal_certificate_signatory_signature,
             'template_version': '18.0.2.0.0',
         }
         # The no-salary path intentionally does not query or populate a contract/currency/wage.
         if certificate_type == 'with_salary':
             contract = self._active_contract(employee)
-            vals.update({'wage_snapshot': contract.wage, 'currency_id': contract.currency_id.id})
+            vals.update({
+                'wage_snapshot': contract.wage,
+                'currency_id': contract.currency_id.id,
+                'wage_periodicity_snapshot': self._contract_pay_periodicity(contract),
+            })
         # A savepoint makes a rendering/attachment error leave no visible issuance.
         with self.env.cr.savepoint():
             placeholder = self.env['ir.attachment'].sudo().create({
@@ -99,8 +130,7 @@ class EmployeeCertificateIssuance(models.Model):
                 'res_model': self._name, 'res_id': 0,
             })
             issuance = self.sudo().create({**vals, 'checksum_sha256': 'pending', 'attachment_id': placeholder.id})
-            pdf, _ = self.env['ir.actions.report'].sudo()._render_qweb_pdf(
-                self.env.ref('l10n_co_portal_empleado.action_report_employee_certificate').id, [issuance.id])
+            pdf, _ = self._render_certificate_pdf(issuance)
             placeholder.sudo().write({
                 'datas': base64.b64encode(pdf), 'res_id': issuance.id,
             })

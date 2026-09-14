@@ -23,6 +23,7 @@
                     <field name="signatory_title_snapshot"/><field name="signatory_signature_snapshot" widget="image"/>
                     <field name="wage_snapshot" invisible="certificate_type != 'with_salary'"/>
                     <field name="currency_id" invisible="certificate_type != 'with_salary'"/>
+                    <field name="wage_periodicity_snapshot" invisible="certificate_type != 'with_salary'"/>
                     <field name="template_version"/><field name="checksum_sha256"/><field name="attachment_id"/>
                 </group></sheet>
             </form>

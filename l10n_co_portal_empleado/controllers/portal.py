@@ -9,10 +9,12 @@ class EmployeePortal(http.Controller):
     """Routes intentionally have no employee/company identifiers as authority."""
 
     def _employee_or_not_found(self):
-        allowed_companies = request.env.companies & request.env.user.company_ids
+        active_company = request.env.company
+        if active_company not in request.env.user.company_ids:
+            return None
         employees = request.env['hr.employee'].sudo().search([
             ('user_id', '=', request.env.user.id), ('active', '=', True),
-            ('company_id', 'in', allowed_companies.ids)], limit=2)
+            ('company_id', '=', active_company.id)], limit=2)
         if len(employees) != 1:
             return None
         return employees
@@ -51,15 +53,6 @@ class EmployeePortal(http.Controller):
                 'website_id': company.website_id.id,
             },
         }
-
-    def _owned_payslip_or_not_found(self, employee, payslip_id):
-        payslip = request.env['hr.payslip'].sudo().search([
-            ('id', '=', payslip_id), ('employee_id', '=', employee.id),
-            ('company_id', '=', employee.company_id.id),
-        ], limit=1)
-        if not payslip or not payslip._portal_is_published():
-            return None
-        return payslip
 
     def _owned_issuance_or_not_found(self, employee, issuance_id):
         issuance = request.env['l10n_co.portal.employee.certificate.issuance'].sudo().search([
@@ -103,34 +96,6 @@ class EmployeePortal(http.Controller):
             else:
                 return request.redirect('/my/employee?update=sent')
         return request.render('l10n_co_portal_empleado.portal_employee_update', values)
-
-    @http.route('/my/employee/payslips', type='http', auth='user', website=True)
-    def employee_payslips(self, **kwargs):
-        employee = self._employee_or_not_found()
-        if not employee:
-            return request.not_found()
-        payslips = request.env['hr.payslip'].sudo().search([
-            ('employee_id', '=', employee.id), ('company_id', '=', employee.company_id.id),
-            ('state', 'in', ('done', 'paid')),
-        ], order='date_to desc, id desc').filtered('_portal_is_published')
-        values = self._portal_values(employee)
-        values['payslips'] = [payslip._portal_dto() for payslip in payslips]
-        return request.render('l10n_co_portal_empleado.portal_employee_payslips', values)
-
-    @http.route('/my/employee/payslips/<int:payslip_id>/download', type='http', auth='user', website=True)
-    def employee_payslip_download(self, payslip_id, **kwargs):
-        employee = self._employee_or_not_found()
-        payslip = employee and self._owned_payslip_or_not_found(employee, payslip_id)
-        if not payslip:
-            return request.not_found()
-        try:
-            pdf = payslip._portal_pdf()
-        except (AccessError, ValidationError):
-            return request.not_found()
-        return request.make_response(pdf, headers=[
-            ('Content-Type', 'application/pdf'),
-            ('Content-Disposition', 'attachment; filename="payslip.pdf"'),
-        ])
 
     def _certificate_values(self, employee):
         issuances = request.env['l10n_co.portal.employee.certificate.issuance'].sudo().search([
