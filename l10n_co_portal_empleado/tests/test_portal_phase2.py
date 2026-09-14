@@ -127,8 +127,8 @@ class TestPortalPhase2(TransactionCase):
         # Odoo estándar impide persistir dos contratos abiertos solapados. Para
         # probar la defensa de nuestro método sin violar esa regla anterior,
         # simulamos un resultado de dominio inconsistente con dos registros.
-        cancelled_contract = contract.copy({'name': 'Contrato F2 cancelado', 'state': 'cancel'})
-        with patch.object(type(self.env['hr.contract']), 'search', return_value=contract | cancelled_contract):
+        closed_contract = contract.copy({'name': 'Contrato F2 cerrado', 'state': 'close'})
+        with patch.object(type(self.env['hr.contract']), 'search', return_value=contract | closed_contract):
             with self.assertRaises(AccessError):
                 model.create_from_portal(self.employee, 'with_salary', self.portal_user)
 
