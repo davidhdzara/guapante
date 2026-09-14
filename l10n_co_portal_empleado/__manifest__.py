@@ -4,8 +4,8 @@
     'category': 'Human Resources',
     'summary': 'Perfil y solicitudes auditables de actualización para empleados',
     'license': 'LGPL-3',
-    # hr_payroll is used for payslips/contracts and NE for the accepted state.
-    'depends': ['portal', 'website', 'hr', 'hr_payroll', 'l10n_co_nomina_electronica'],
+    # hr_payroll provides the native contract source for salary certificates.
+    'depends': ['portal', 'website', 'hr', 'hr_payroll'],
     'data': [
         'security/portal_employee_security.xml',
         'security/ir.model.access.csv',

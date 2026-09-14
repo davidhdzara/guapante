@@ -6,10 +6,9 @@
         <field name="arch" type="xml">
             <xpath expr="//sheet" position="inside">
                 <group string="Portal de empleados" groups="hr.group_hr_manager">
-                    <field name="l10n_co_portal_payslip_publication_policy"/>
                     <separator string="Firmante de certificados laborales" colspan="2"/>
-                    <field name="l10n_co_portal_certificate_signatory_name"/>
-                    <field name="l10n_co_portal_certificate_signatory_title"/>
+                    <field name="l10n_co_portal_certificate_signatory_employee_id"
+                           domain="[('company_id', '=', id), ('active', '=', True)]"/>
                     <field name="l10n_co_portal_certificate_signatory_signature" widget="image"/>
                 </group>
             </xpath>

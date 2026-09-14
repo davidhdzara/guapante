@@ -16,17 +16,17 @@ Las solicitudes de actualización referencian al empleado con `ondelete=restrict
 Para conservar el historial, RR. HH. debe archivar empleados con solicitudes en
 lugar de eliminarlos.
 
-## Fase 2 — colillas y certificados
+## Fase 2 — certificados laborales
 
-Antes de publicar colillas, RR. HH. configura en la compañía la política
-**Publicación de colillas en Portal**. El valor predeterminado y seguro es
-**Solo aceptadas por DIAN**; la alternativa **Finalizadas** solo publica estados
-`done` o `paid`.
+Antes de emitir certificados, RR. HH. configura en la compañía un empleado
+activo de esa misma compañía como responsable firmante y carga su firma gráfica.
+El nombre y cargo se obtienen del empleado: no se registran manualmente. La
+configuración incompleta bloquea la emisión y no deja una emisión ni adjunto
+parcial. La firma gráfica no sustituye una firma electrónica certificada ni se
+reutiliza el certificado DIAN.
 
-Para emitir certificados, RR. HH. configura, en la misma compañía del empleado,
-el nombre, cargo y firma del firmante. Esos tres datos no son obligatorios para
-instalar el módulo, pero su ausencia bloquea la emisión y no deja una emisión ni
-adjunto parcial. No se reutilizan certificados ni firma DIAN.
+La exposición de colillas permanece deshabilitada hasta que Nómina aporte un
+evento nativo comprobable de aceptación, pago/dispersión y publicación explícita.
 
 Las descargas se sirven únicamente desde las rutas propias del Portal, después
 de validar usuario, empleado y compañía. Esta fase está operativamente limitada
