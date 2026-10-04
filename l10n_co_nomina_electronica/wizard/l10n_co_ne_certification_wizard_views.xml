@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Wizard Habilitación DIAN (doc 34) - Form View                -->
+    <!--                                                                -->
+    <!-- 2026-09-12: rediseño a botón único "Iniciar Proceso de        -->
+    <!-- Habilitación" (pedido de David, mismo nombre que Facturación) -->
+    <!-- consciente del estado (habilitacion_stage), decide            -->
+    <!-- internamente si corre Fase 1 o Fase 2. Periodo/empleados ya   -->
+    <!-- no se piden en pantalla (auto-seleccionados, ver              -->
+    <!-- _auto_select_period/_auto_select_employees en el modelo). Los -->
+    <!-- controles por fase/paso quedan ocultos detrás de              -->
+    <!-- "show_advanced_steps" para diagnóstico/reintento puntual,     -->
+    <!-- mismo mecanismo ya verificado, sin cambios funcionales.       -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_ne_certification_wizard_form" model="ir.ui.view">
+        <field name="name">l10n.co.ne.certification.wizard.form</field>
+        <field name="model">l10n.co.ne.certification.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Habilitación DIAN - Nómina Electrónica">
+                <field name="habilitacion_stage" invisible="1"/>
+                <group>
+                    <field name="company_id" invisible="1"/>
+                    <group string="Metas de Certificación">
+                        <field name="num_nomina_certificar"/>
+                        <field name="num_ajuste_certificar"/>
+                    </group>
+                    <group string="Progreso">
+                        <field name="count_accepted_individual" string="Aceptadas — Nómina Individual"/>
+                        <field name="count_accepted_ajuste" string="Aceptadas — Notas de Ajuste"/>
+                    </group>
+                </group>
+
+                <div class="text-center mt16 mb16" invisible="habilitacion_stage == 'completo'">
+                    <button name="action_iniciar_habilitacion"
+                            string="Iniciar Proceso de Habilitación"
+                            type="object" class="btn-primary btn-lg"
+                            confirm="Esto ejecuta la fase que corresponda (preparar, enviar y consultar estado), consumiendo cupo real e irreversible del TestSetId de habilitación de la DIAN. ¿Continuar?"/>
+                </div>
+                <div class="alert alert-success mt16 mb16" role="alert" invisible="habilitacion_stage != 'completo'">
+                    <strong>Habilitación completa.</strong> Metas cumplidas: <field name="count_accepted_individual" readonly="1" class="oe_inline"/> Nómina Individual + <field name="count_accepted_ajuste" readonly="1" class="oe_inline"/> Notas de Ajuste Aceptadas por la DIAN.
+                </div>
+
+                <field name="show_advanced_steps"/>
+
+                <notebook invisible="not show_advanced_steps">
+                    <page string="Fase 1 — Nómina Individual">
+                        <group>
+                            <group>
+                                <field name="date_from" readonly="1"/>
+                                <field name="date_to" readonly="1"/>
+                            </group>
+                        </group>
+                        <field name="employee_ids" widget="many2many_tags" readonly="1"/>
+                        <div class="mt8">
+                            <button name="action_iniciar_habilitacion_individual"
+                                    string="Iniciar Habilitación — Fase 1"
+                                    type="object" class="btn-secondary"
+                                    confirm="Esto prepara (si hace falta) y envía la Nómina Individual a la DIAN, consumiendo cupo real e irreversible del TestSetId de habilitación. ¿Continuar?"/>
+                        </div>
+                        <p class="text-muted mt8">
+                            Pasos manuales por separado (diagnóstico/reintento puntual):
+                        </p>
+                        <div class="mt8">
+                            <button name="action_prepare_individual"
+                                    string="Preparar Nómina Individual"
+                                    type="object" class="btn-secondary"/>
+                            <button name="action_send_individual"
+                                    string="Enviar a la DIAN"
+                                    type="object" class="btn-secondary"
+                                    confirm="Este envío consume cupo real del TestSetId de habilitación de la DIAN. ¿Continuar?"/>
+                            <button name="action_check_individual_status"
+                                    string="Consultar Estado"
+                                    type="object" class="btn-secondary"/>
+                        </div>
+                        <field name="payslip_individual_ids" readonly="1">
+                            <list>
+                                <field name="employee_id"/>
+                                <field name="number"/>
+                                <field name="l10n_co_ne_state"/>
+                                <field name="l10n_co_ne_cune"/>
+                            </list>
+                        </field>
+                    </page>
+
+                    <page string="Fase 2 — Nota de Ajuste">
+                        <p class="text-muted">
+                            Solo disponible sobre nóminas individuales ya Aceptadas por la DIAN
+                            (restricción real de <code>action_create_adjustment()</code>).
+                        </p>
+                        <div class="mt8">
+                            <button name="action_iniciar_habilitacion_ajuste"
+                                    string="Iniciar Habilitación — Fase 2"
+                                    type="object" class="btn-secondary"
+                                    confirm="Esto prepara (si hace falta) y envía las Notas de Ajuste a la DIAN, consumiendo cupo real e irreversible del TestSetId de habilitación. ¿Continuar?"/>
+                        </div>
+                        <p class="text-muted mt8">
+                            Pasos manuales por separado (diagnóstico/reintento puntual):
+                        </p>
+                        <div class="mt8">
+                            <button name="action_prepare_ajuste"
+                                    string="Preparar Notas de Ajuste"
+                                    type="object" class="btn-secondary"/>
+                            <button name="action_send_ajuste"
+                                    string="Enviar a la DIAN"
+                                    type="object" class="btn-secondary"
+                                    confirm="Este envío consume cupo real del TestSetId de habilitación de la DIAN. ¿Continuar?"/>
+                            <button name="action_check_ajuste_status"
+                                    string="Consultar Estado"
+                                    type="object" class="btn-secondary"/>
+                        </div>
+                        <field name="payslip_ajuste_ids" readonly="1">
+                            <list>
+                                <field name="employee_id"/>
+                                <field name="number"/>
+                                <field name="l10n_co_ne_state"/>
+                                <field name="l10n_co_ne_cune"/>
+                                <field name="l10n_co_ne_adjustment_ref_cune"/>
+                            </list>
+                        </field>
+                    </page>
+                </notebook>
+
+                <footer>
+                    <button string="Cerrar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Wizard Habilitación DIAN - Action                            -->
+    <!-- ============================================================ -->
+    <record id="action_l10n_co_ne_certification_wizard" model="ir.actions.act_window">
+        <field name="name">Habilitación DIAN - Nómina Electrónica</field>
+        <field name="res_model">l10n.co.ne.certification.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

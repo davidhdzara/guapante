@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+            targetNamespace="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+            elementFormDefault="qualified"
+            attributeFormDefault="unqualified"
+            version="2.1">
+  <xsd:element name="UBLExtensions" type="UBLExtensionsType"/>
+  <xsd:complexType name="UBLExtensionsType">
+    <xsd:sequence>
+      <xsd:element ref="UBLExtension" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+  <xsd:element name="UBLExtension" type="UBLExtensionType"/>
+  <xsd:complexType name="UBLExtensionType">
+    <xsd:sequence>
+      <xsd:element ref="ExtensionContent" minOccurs="1" maxOccurs="1"/>
+    </xsd:sequence>
+  </xsd:complexType>
+  <xsd:element name="ExtensionContent" type="ExtensionContentType"/>
+  <xsd:complexType name="ExtensionContentType">
+    <xsd:sequence>
+      <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+</xsd:schema>

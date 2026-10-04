@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.l10n_co_nomina_electronica</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="hr_payroll.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <block id="hr_payroll_settings" position="after">
+                <field name="company_country_code" invisible="1"/>
+                <t invisible="company_country_code != 'CO'">
+                    <block title="Nómina Electrónica DIAN" id="l10n_co_ne_settings_dian">
+                        <setting class="w-100" help="Configura el Software ID/PIN asignados por la DIAN para nómina electrónica en el portal de habilitación. Nómina Individual y Nota de Ajuste comparten siempre el mismo modo de operación.">
+                            <field name="l10n_co_ne_operation_mode_ids" class="w-100" string="Modos de Operación"/>
+                        </setting>
+                        <setting class="col-lg-12" help="Marque esta casilla si está probando flujos de nómina electrónica o si necesita activar el entorno de proceso de certificación.">
+                            <field name="l10n_co_ne_test_environment"/>
+                        </setting>
+                        <setting class="col-lg-12" invisible="l10n_co_ne_test_environment" help="Active este modo para poder probar los flujos de nómina electrónica solo con validaciones internas, pero sin respuesta del entorno de la DIAN.">
+                            <field name="l10n_co_ne_demo_mode"/>
+                        </setting>
+                        <setting class="col-lg-12" invisible="not l10n_co_ne_test_environment" help="Envía documentos de prueba de nómina electrónica con su certificado para lograr el estado 'Habilitado' en el portal de la DIAN.">
+                            <field name="l10n_co_ne_certification_process"/>
+                        </setting>
+                        <setting string="Habilitación DIAN" invisible="not l10n_co_ne_certification_process" help="Metas de documentos que deben quedar Aceptados por la DIAN, y asistente para prepararlos y enviarlos usando el pipeline real de nómina.">
+                            <div class="content-group">
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_num_nomina_certificar" class="col-lg-5 o_light_label" string="Meta Nómina Individual"/>
+                                    <field name="l10n_co_ne_num_nomina_certificar"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_num_ajuste_certificar" class="col-lg-5 o_light_label" string="Meta Nota de Ajuste"/>
+                                    <field name="l10n_co_ne_num_ajuste_certificar"/>
+                                </div>
+                                <div class="row mt8">
+                                    <button type="object" name="action_iniciar_habilitacion_nomina" string="Iniciar Proceso de Habilitación" class="btn-link" confirm="Esto prepara (si hace falta), envía y consulta el estado en la DIAN de los documentos de habilitación pendientes -- consume cupo real y limitado del ID de Pruebas. ¿Continuar?"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting string="Consecutivos" help="Prefijos y secuencias usadas para los consecutivos de nómina y notas de ajuste.">
+                            <field name="l10n_co_ne_payroll_prefix"/>
+                            <field name="l10n_co_ne_adjust_prefix"/>
+                            <field name="l10n_co_ne_sequence_id"/>
+                            <field name="l10n_co_ne_pre_sequence_id"/>
+                        </setting>
+                    </block>
+                    <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">
+                        <setting class="w-100" help="Agregue sus certificados para firmar los documentos de nómina electrónica (XAdES-BES). Es la misma lista de certificados que usa facturación electrónica -- no requiere uno independiente. Nómina usa siempre el último certificado de la lista, igual que Facturación Electrónica.">
+                            <field name="l10n_co_ne_certificate_ids" class="w-100" string="Certificados"/>
+                        </setting>
+                    </block>
+                    <block title="Cuentas Predeterminadas" id="l10n_co_ne_settings_accounts">
+                        <setting string="Diarios Contables por Estructura Salarial" help="Diario donde el motor contable nativo de Odoo (hr_payroll_account) registra el asiento al confirmar cada tipo de nómina.">
+                            <div class="content-group">
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_journal_nomina_id" class="col-lg-5 o_light_label" string="Nómina General"/>
+                                    <field name="l10n_co_ne_journal_nomina_id"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_journal_prima_id" class="col-lg-5 o_light_label" string="Prima de Servicios"/>
+                                    <field name="l10n_co_ne_journal_prima_id"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_journal_liquidacion_id" class="col-lg-5 o_light_label" string="Liquidación de Contrato"/>
+                                    <field name="l10n_co_ne_journal_liquidacion_id"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="l10n_co_ne_journal_bonificacion_id" class="col-lg-5 o_light_label" string="Bonificaciones Extraordinarias"/>
+                                    <field name="l10n_co_ne_journal_bonificacion_id"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting string="Cuentas Contables por Regla Salarial" help="52+ reglas salariales, cada una con su cuenta de débito/crédito -- se administran en su propia pantalla, no caben como campos individuales aquí (mismo criterio que Contabilidad con su plan de cuentas completo).">
+                            <button type="action" name="%(l10n_co_nomina_electronica.action_hr_salary_rule_account_ne)d" string="Abrir Cuentas Contables" class="btn-link"/>
+                        </setting>
+                    </block>
+                    <block title="UGPP" id="l10n_co_ne_settings_ugpp">
+                        <setting help="Clasificación del aportante ante la UGPP.">
+                            <field name="l10n_co_ugpp_legal_nature"/>
+                            <field name="l10n_co_ugpp_contributor_type"/>
+                        </setting>
+                        <setting string="Autorretención Especial" help="Indica si la empresa tiene la calidad de autorretenedor especial ante la UGPP.">
+                            <field name="l10n_co_ugpp_special_autoretention"/>
+                        </setting>
+                    </block>
+                    <block title="Parámetros Nómina Colombia" id="l10n_co_ne_settings_params">
+                        <setting help="Exoneración de aportes a SENA/ICBF para empleados con salario inferior a 10 SMMLV (Art. 114-1 ET, Ley 1607/2012).">
+                            <field name="l10n_co_ne_exoneration_1607"/>
+                        </setting>
+                        <setting>
+                            <div class="text-muted" id="l10n_co_ne_annual_params_text">
+                                Los valores de SMMLV, auxilio de transporte y UVT se configuran
+                                por año en <a type="action" name="%(hr_payroll.hr_rule_parameter_action)d">Nómina › Configuración › Parámetros Anuales</a>.
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="PILA" id="l10n_co_ne_settings_pila">
+                        <setting string="Tipo Aportante PILA" help="Tipo de aportante según la tabla de la Planilla Integrada de Liquidación de Aportes (Empleador, Independiente, Entidad Promotora de Salud, etc.).">
+                            <field name="l10n_co_pila_tipo_aportante"/>
+                        </setting>
+                        <setting string="Código ARL" help="Código de la ARL a la que está afiliada la empresa, según la tabla de administradoras de riesgos laborales de PILA (ej: 14-11).">
+                            <field name="l10n_co_pila_arl_code"/>
+                        </setting>
+                        <setting string="Nombre ARL" help="Nombre comercial de la ARL (ej: &quot;Positiva ARL&quot;, &quot;Sura ARL&quot;) -- complementa el Código ARL con un nombre legible para pantallas de consulta.">
+                            <field name="l10n_co_pila_arl_name"/>
+                        </setting>
+                        <setting string="Forma Presentación PILA" help="Forma de presentación de la planilla ante el operador: Único (un solo pago consolidado) o Sucursal (aportante que declara por sucursales separadas).">
+                            <field name="l10n_co_pila_forma_presentacion"/>
+                        </setting>
+                        <setting string="Código Sucursal PILA" help="Código de la sucursal reportado en la planilla. Solo aplica si Forma Presentación PILA es 'Sucursal'.">
+                            <field name="l10n_co_pila_codigo_sucursal"/>
+                        </setting>
+                        <setting string="Nombre Sucursal PILA" help="Nombre de la sucursal reportado en la planilla. Solo aplica si Forma Presentación PILA es 'Sucursal'.">
+                            <field name="l10n_co_pila_nombre_sucursal"/>
+                        </setting>
+                        <setting string="Código Operador PILA" help="Código del operador de información ante el cual se presenta la planilla (ej: 89 para Enlace).">
+                            <field name="l10n_co_pila_operador_code"/>
+                        </setting>
+                    </block>
+                </t>
+            </block>
+        </field>
+    </record>
+
+</odoo>

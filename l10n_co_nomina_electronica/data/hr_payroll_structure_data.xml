@@ -1,0 +1,1568 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!-- ============================================================ -->
+        <!-- Categorías de Reglas Salariales Colombia                      -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_category_devengados" model="hr.salary.rule.category">
+            <field name="name">Devengados</field>
+            <field name="code">DEV</field>
+            <field name="note">Todos los conceptos que el trabajador devenga (salariales y no salariales).</field>
+        </record>
+
+        <record id="hr_salary_rule_category_devengados_salariales" model="hr.salary.rule.category">
+            <field name="name">Devengados Salariales</field>
+            <field name="code">DEV_SAL</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="note">Pagos que constituyen salario (Art. 127 CST).</field>
+        </record>
+
+        <record id="hr_salary_rule_category_devengados_no_salariales" model="hr.salary.rule.category">
+            <field name="name">Devengados No Salariales</field>
+            <field name="code">DEV_NOSAL</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="note">Pagos que NO constituyen salario (Art. 128 CST).</field>
+        </record>
+
+        <record id="hr_salary_rule_category_horas_extra" model="hr.salary.rule.category">
+            <field name="name">Horas Extra y Recargos</field>
+            <field name="code">HEX</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados_salariales"/>
+            <field name="note">Horas extra y recargos nocturnos/dominicales.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_prestaciones" model="hr.salary.rule.category">
+            <field name="name">Prestaciones Sociales</field>
+            <field name="code">PREST</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="note">Prima de servicios, cesantías, intereses a las cesantías.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_vacaciones" model="hr.salary.rule.category">
+            <field name="name">Vacaciones</field>
+            <field name="code">VAC</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="note">Vacaciones comunes y compensadas.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_incapacidades" model="hr.salary.rule.category">
+            <field name="name">Incapacidades y Licencias</field>
+            <field name="code">INC</field>
+            <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="note">Incapacidades EPS/ARL y licencias de maternidad/paternidad.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_deducciones" model="hr.salary.rule.category">
+            <field name="name">Deducciones</field>
+            <field name="code">DEDU</field>
+            <field name="note">Descuentos obligatorios y voluntarios del trabajador.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_seguridad_social_emp" model="hr.salary.rule.category">
+            <field name="name">Seguridad Social Empleado</field>
+            <field name="code">SS_EMP</field>
+            <field name="parent_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="note">Aportes del empleado a salud y pensión.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_seguridad_social_cia" model="hr.salary.rule.category">
+            <field name="name">Aportes Empresa</field>
+            <field name="code">SS_CIA</field>
+            <field name="note">Aportes patronales: salud, pensión, ARL, parafiscales.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_provisiones" model="hr.salary.rule.category">
+            <field name="name">Provisiones Prestaciones Sociales</field>
+            <field name="code">PROV</field>
+            <field name="note">Acumulación contable mensual de prestaciones sociales -- no es un
+                pago al trabajador, no afecta el neto del período (Art. 249/306/186 CST, Ley
+                52/1975). Sin parent_id, igual que SS_CIA, para quedar fuera de
+                categories['DEV']/['DEDU'] que usa CO_NETO.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_totales_display" model="hr.salary.rule.category">
+            <field name="name">Totales (solo display)</field>
+            <field name="code">TOT_DISPLAY</field>
+            <field name="note">Categoría para reglas "subtotal" (ej. CO_BRUTO) que LEEN
+                categories['DEV']/['DEDU'] para mostrar un total en el recibo, pero cuyo propio
+                resultado NO debe volver a sumarse dentro de esas categorías -- si quedaran
+                etiquetadas con la misma categoría que resumen, cualquier regla posterior que
+                vuelva a leer esa categoría (ej. CO_NETO leyendo categories['DEV']) contaría el
+                subtotal dos veces. Bug real encontrado en CO_BRUTO (Nómina Colombia - General):
+                pagaba casi el doble del neto real, nunca detectado porque nunca se confirmó un
+                payslip real a 'done' en producción. Mismo criterio "sin parent_id" que SS_CIA/PROV
+                arriba, aplicado aquí por la misma razón.</field>
+        </record>
+
+        <record id="hr_salary_rule_category_acumuladores_internos" model="hr.salary.rule.category">
+            <field name="name">Acumuladores Internos (invisible)</field>
+            <field name="code">ACUM_INT</field>
+            <field name="note">Categoria para reglas invisibles (appears_on_payslip=False) que
+                guardan un valor interno para que otra formula lo consulte mas adelante (ej.
+                CO_EXENTO_PENSION_AFC, AUD-05/doc 32 -- acumulador anual de exencion combinada de
+                pension voluntaria + AFC) -- no son prestaciones sociales (PROV) ni subtotales de
+                display (TOT_DISPLAY), es una categoria propia para no mezclar semanticas distintas
+                aunque compartan la propiedad tecnica "sin parent_id, fuera de DEV/DEDU/GROSS/NET".</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- Tipo de Estructura: Empleados Colombia                        -->
+        <!-- ============================================================ -->
+        <record id="hr_payroll_structure_type_co" model="hr.payroll.structure.type">
+            <field name="name">Empleado Colombia</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- Estructura Salarial: Nómina Colombia                          -->
+        <!-- ============================================================ -->
+        <record id="hr_payroll_structure_co_nomina" model="hr.payroll.structure">
+            <field name="name">Nómina Colombia - General</field>
+            <field name="type_id" ref="hr_payroll_structure_type_co"/>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--                                                                -->
+        <!--  REGLAS SALARIALES — DEVENGADOS                               -->
+        <!--                                                                -->
+        <!-- ============================================================ -->
+
+        <!-- ==================== BÁSICO ==================== -->
+        <record id="hr_salary_rule_co_basico" model="hr.salary.rule">
+            <field name="name">Sueldo Básico</field>
+            <field name="code">CO_BASICO</field>
+            <field name="sequence">10</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+_dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+
+def _dias_en_mes(year, month):
+    # sin 'import calendar': safe_eval prohibe la sentencia 'import' dentro de
+    # amount_python_compute (opcode IMPORT_NAME no esta en la whitelist).
+    if month == 2:
+        bisiesto = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        return 29 if bisiesto else 28
+    if month in (4, 6, 9, 11):
+        return 30
+    return 31
+
+def _dia_comercial(d):
+    # Convencion de "mes comercial" colombiana (doctrina CSJ, la misma que ya usa
+    # l10n_co_dias_anio_comercial para cesantias/prima): todo mes se cuenta como
+    # si tuviera _dias_mes (30) dias. El ultimo dia calendario REAL de cualquier
+    # mes (28/29-feb, 30 o 31) siempre equivale al dia comercial 30 -- no solo
+    # cuando el mes tiene exactamente 30 dias. Esta regla aplica igual para
+    # fechas de inicio y de fin de contrato (es la misma resta en ambos casos).
+    ultimo_dia_mes = _dias_en_mes(d.year, d.month)
+    if d.day == ultimo_dia_mes:
+        return _dias_mes
+    return min(d.day, _dias_mes)
+
+periodo_ini = payslip.date_from
+periodo_fin = payslip.date_to
+contrato_ini = contract.date_start
+contrato_fin = contract.date_end or periodo_fin
+
+activo_ini = max(periodo_ini, contrato_ini)
+activo_fin = min(periodo_fin, contrato_fin)
+
+if activo_ini > activo_fin:
+    dias_bajo_contrato = 0
+else:
+    dias_bajo_contrato = _dia_comercial(activo_fin) - _dia_comercial(activo_ini) + 1
+
+unpaid_types = payslip.env['hr.leave.type'].search([('unpaid', '=', True)])
+unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+dias_no_remunerados = sum(
+    line.number_of_days for code, line in worked_days.items() if code in unpaid_codes
+)
+dias_pagables = dias_bajo_contrato - dias_no_remunerados
+result = contract.wage / _dias_mes * dias_pagables
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Sueldo</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== AUXILIO TRANSPORTE ==================== -->
+        <record id="hr_salary_rule_co_aux_transporte" model="hr.salary.rule">
+            <field name="name">Auxilio de Transporte</field>
+            <field name="code">CO_AUX_TRANS</field>
+            <field name="sequence">15</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Aplica si salario &lt;= 2 SMMLV y no es salario integral
+result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * 2 and not contract.l10n_co_ne_integral_salary
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+_dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+
+def _dias_en_mes(year, month):
+    # sin 'import calendar': safe_eval prohibe la sentencia 'import' dentro de
+    # amount_python_compute (opcode IMPORT_NAME no esta en la whitelist).
+    if month == 2:
+        bisiesto = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        return 29 if bisiesto else 28
+    if month in (4, 6, 9, 11):
+        return 30
+    return 31
+
+def _dia_comercial(d):
+    # Convencion de "mes comercial" colombiana -- ver el mismo comentario en
+    # CO_BASICO (hr_salary_rule_co_basico), misma formula de dias pagables.
+    ultimo_dia_mes = _dias_en_mes(d.year, d.month)
+    if d.day == ultimo_dia_mes:
+        return _dias_mes
+    return min(d.day, _dias_mes)
+
+periodo_ini = payslip.date_from
+periodo_fin = payslip.date_to
+contrato_ini = contract.date_start
+contrato_fin = contract.date_end or periodo_fin
+
+activo_ini = max(periodo_ini, contrato_ini)
+activo_fin = min(periodo_fin, contrato_fin)
+
+if activo_ini > activo_fin:
+    dias_bajo_contrato = 0
+else:
+    dias_bajo_contrato = _dia_comercial(activo_fin) - _dia_comercial(activo_ini) + 1
+
+unpaid_types = payslip.env['hr.leave.type'].search([('unpaid', '=', True)])
+unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+dias_no_remunerados = sum(
+    line.number_of_days for code, line in worked_days.items() if code in unpaid_codes
+)
+dias_pagables = dias_bajo_contrato - dias_no_remunerados
+result = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from) / _dias_mes * dias_pagables
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Transporte</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ==================== HORAS EXTRA ==================== -->
+        <record id="hr_salary_rule_co_hed" model="hr.salary.rule">
+            <field name="name">Hora Extra Diurna (HED)</field>
+            <field name="code">CO_HED</field>
+            <field name="sequence">20</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HED') and inputs.get('CO_HED').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HED = valor hora * factor_hed (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hed', payslip.date_from) * inputs['CO_HED'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HED</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_hen" model="hr.salary.rule">
+            <field name="name">Hora Extra Nocturna (HEN)</field>
+            <field name="code">CO_HEN</field>
+            <field name="sequence">21</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HEN') and inputs.get('CO_HEN').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HEN = valor hora * factor_hen (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hen', payslip.date_from) * inputs['CO_HEN'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HEN</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_hrn" model="hr.salary.rule">
+            <field name="name">Recargo Nocturno (HRN)</field>
+            <field name="code">CO_HRN</field>
+            <field name="sequence">22</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HRN') and inputs.get('CO_HRN').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HRN = valor hora * factor_hrn (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrn', payslip.date_from) * inputs['CO_HRN'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HRN</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_heddf" model="hr.salary.rule">
+            <field name="name">Hora Extra Diurna Dom/Festivo (HEDDF)</field>
+            <field name="code">CO_HEDDF</field>
+            <field name="sequence">23</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HEDDF') and inputs.get('CO_HEDDF').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HEDDF = valor hora * factor_heddf (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_heddf', payslip.date_from) * inputs['CO_HEDDF'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HEDDF</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_hendf" model="hr.salary.rule">
+            <field name="name">Hora Extra Nocturna Dom/Festivo (HENDF)</field>
+            <field name="code">CO_HENDF</field>
+            <field name="sequence">24</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HENDF') and inputs.get('CO_HENDF').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HENDF = valor hora * factor_hendf (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hendf', payslip.date_from) * inputs['CO_HENDF'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HENDF</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_hrddf" model="hr.salary.rule">
+            <field name="name">Recargo Diurno Dom/Festivo (HRDDF)</field>
+            <field name="code">CO_HRDDF</field>
+            <field name="sequence">25</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HRDDF') and inputs.get('CO_HRDDF').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HRDDF = valor hora * factor_hrddf (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrddf', payslip.date_from) * inputs['CO_HRDDF'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HRDDF</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_hrndf" model="hr.salary.rule">
+            <field name="name">Recargo Nocturno Dom/Festivo (HRNDF)</field>
+            <field name="code">CO_HRNDF</field>
+            <field name="sequence">26</field>
+            <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_HRNDF') and inputs.get('CO_HRNDF').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# HRNDF = valor hora * factor_hrndf (jornada/recargos vigentes a la fecha)
+valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrndf', payslip.date_from) * inputs['CO_HRNDF'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">HRNDF</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== COMISIONES ==================== -->
+        <record id="hr_salary_rule_co_comisiones" model="hr.salary.rule">
+            <field name="name">Comisiones</field>
+            <field name="code">CO_COMISIONES</field>
+            <field name="sequence">30</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_COMISIONES') and inputs.get('CO_COMISIONES').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_COMISIONES'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Comision</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== BONIFICACIONES ==================== -->
+        <record id="hr_salary_rule_co_bonif_salarial" model="hr.salary.rule">
+            <field name="name">Bonificación Salarial</field>
+            <field name="code">CO_BONIF_SAL</field>
+            <field name="sequence">35</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_BONIF_SAL') and inputs.get('CO_BONIF_SAL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_BONIF_SAL'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">BonificacionS</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_bonif_no_salarial" model="hr.salary.rule">
+            <field name="name">Bonificación No Salarial</field>
+            <field name="code">CO_BONIF_NOSAL</field>
+            <field name="sequence">36</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_BONIF_NOSAL') and inputs.get('CO_BONIF_NOSAL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_BONIF_NOSAL'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">BonificacionNS</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">mera_liberalidad</field>
+        </record>
+
+        <!-- ==================== AUXILIOS ==================== -->
+        <record id="hr_salary_rule_co_aux_alimentacion" model="hr.salary.rule">
+            <field name="name">Auxilio de Alimentación</field>
+            <field name="code">CO_AUX_ALIM</field>
+            <field name="sequence">37</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_AUX_ALIM') and inputs.get('CO_AUX_ALIM').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_AUX_ALIM'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">BonoAlimNS</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ==================== VIÁTICOS ==================== -->
+        <record id="hr_salary_rule_co_viaticos_sal" model="hr.salary.rule">
+            <field name="name">Viáticos Salariales</field>
+            <field name="code">CO_VIATICOS_SAL</field>
+            <field name="sequence">38</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_VIATICOS_SAL') and inputs.get('CO_VIATICOS_SAL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_VIATICOS_SAL'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ViaticoS</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_viaticos_nosal" model="hr.salary.rule">
+            <field name="name">Viáticos No Salariales</field>
+            <field name="code">CO_VIATICOS_NOSAL</field>
+            <field name="sequence">39</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_VIATICOS_NOSAL') and inputs.get('CO_VIATICOS_NOSAL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_VIATICOS_NOSAL'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ViaticoNS</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ==================== DOTACIÓN ==================== -->
+        <record id="hr_salary_rule_co_dotacion" model="hr.salary.rule">
+            <field name="name">Dotación</field>
+            <field name="code">CO_DOTACION</field>
+            <field name="sequence">40</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_DOTACION') and inputs.get('CO_DOTACION').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_DOTACION'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Dotacion</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ==================== TELETRABAJO ==================== -->
+        <record id="hr_salary_rule_co_teletrabajo" model="hr.salary.rule">
+            <field name="name">Auxilio Conectividad / Teletrabajo</field>
+            <field name="code">CO_TELETRABAJO</field>
+            <field name="sequence">41</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_TELETRABAJO') and inputs.get('CO_TELETRABAJO').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_TELETRABAJO'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Teletrabajo</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--  INCAPACIDADES Y LICENCIAS                                    -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_incapacidad_comun" model="hr.salary.rule">
+            <field name="name">Incapacidad Enfermedad General</field>
+            <field name="code">CO_INC_COMUN</field>
+            <field name="sequence">50</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_INC_COMUN') and inputs.get('CO_INC_COMUN').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Primeros dias_incapacidad_empleador días: 100% a cargo del empleador
+# Días 3-90: pct_incapacidad_3_90 pagado por EPS
+# Días 91+: pct_incapacidad_91_mas pagado por EPS
+_dias_emp = payslip._rule_parameter('l10n_co_dias_incapacidad_empleador', payslip.date_from)
+_pct_3_90 = payslip._rule_parameter('l10n_co_pct_incapacidad_3_90', payslip.date_from) / 100
+_pct_91_mas = payslip._rule_parameter('l10n_co_pct_incapacidad_91_mas', payslip.date_from) / 100
+dias = inputs['CO_INC_COMUN'].amount
+valor_dia = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+if dias &lt;= _dias_emp:
+    result = valor_dia * dias
+elif dias &lt;= 90:
+    result = valor_dia * _dias_emp + (valor_dia * _pct_3_90 * (dias - _dias_emp))
+else:
+    result = (
+        valor_dia * _dias_emp
+        + (valor_dia * _pct_3_90 * (90 - _dias_emp))
+        + (valor_dia * _pct_91_mas * (dias - 90))
+    )
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Incapacidad</field>
+            <field name="l10n_co_ugpp_payment_type">tp_incapacidad</field>
+        </record>
+
+        <record id="hr_salary_rule_co_incapacidad_laboral" model="hr.salary.rule">
+            <field name="name">Incapacidad Accidente de Trabajo</field>
+            <field name="code">CO_INC_LABORAL</field>
+            <field name="sequence">51</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_INC_LABORAL') and inputs.get('CO_INC_LABORAL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# ARL paga 100% desde el primer día
+dias = inputs['CO_INC_LABORAL'].amount
+result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Incapacidad</field>
+            <field name="l10n_co_ugpp_payment_type">tp_incapacidad</field>
+        </record>
+
+        <record id="hr_salary_rule_co_licencia_maternidad" model="hr.salary.rule">
+            <field name="name">Licencia de Maternidad</field>
+            <field name="code">CO_LIC_MAT</field>
+            <field name="sequence">55</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_LIC_MAT') and inputs.get('CO_LIC_MAT').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# 18 semanas (126 días) al 100% del salario, pagado por EPS
+dias = inputs['CO_LIC_MAT'].amount
+result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
+            <field name="l10n_co_ugpp_payment_type">tp_licencia_mat_pat</field>
+        </record>
+
+        <record id="hr_salary_rule_co_licencia_paternidad" model="hr.salary.rule">
+            <field name="name">Licencia de Paternidad</field>
+            <field name="code">CO_LIC_PAT</field>
+            <field name="sequence">56</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_LIC_PAT') and inputs.get('CO_LIC_PAT').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# 2 semanas (14 días) al 100%, pagado por EPS
+dias = inputs['CO_LIC_PAT'].amount
+result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
+            <field name="l10n_co_ugpp_payment_type">tp_licencia_mat_pat</field>
+        </record>
+
+        <record id="hr_salary_rule_co_licencia_remunerada" model="hr.salary.rule">
+            <field name="name">Licencia Remunerada</field>
+            <field name="code">CO_LIC_REM</field>
+            <field name="sequence">57</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_LIC_REM') and inputs.get('CO_LIC_REM').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+dias = inputs['CO_LIC_REM'].amount
+result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">LicenciaR</field>
+            <field name="l10n_co_ugpp_payment_type">tp_licencia_remunerada</field>
+        </record>
+
+        <record id="hr_salary_rule_co_licencia_no_remunerada" model="hr.salary.rule">
+            <field name="name">Licencia No Remunerada</field>
+            <field name="code">CO_LIC_NR</field>
+            <field name="sequence">58</field>
+            <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_LIC_NR') and inputs.get('CO_LIC_NR').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = 0  # No genera pago</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">LicenciaNR</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_compensacion</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--  VACACIONES                                                   -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_vacaciones" model="hr.salary.rule">
+            <field name="name">Vacaciones Disfrutadas</field>
+            <field name="code">CO_VAC</field>
+            <field name="sequence">60</field>
+            <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_VAC') and inputs.get('CO_VAC').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# 15 días hábiles por año (Art. 186 CST)
+dias = inputs['CO_VAC'].amount
+result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">VacacionesComunes</field>
+            <field name="l10n_co_ugpp_payment_type">tp_vacaciones</field>
+        </record>
+
+        <record id="hr_salary_rule_co_vacaciones_compensadas" model="hr.salary.rule">
+            <field name="name">Vacaciones Compensadas en Dinero</field>
+            <field name="code">CO_VAC_COMP</field>
+            <field name="sequence">61</field>
+            <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_VAC_COMP') and inputs.get('CO_VAC_COMP').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_VAC_COMP'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">VacacionesCompensadas</field>
+            <field name="l10n_co_ugpp_payment_type">tp_vacaciones_terminacion</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--  PRESTACIONES SOCIALES                                        -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_prima_servicios" model="hr.salary.rule">
+            <field name="name">Prima de Servicios</field>
+            <field name="code">CO_PRIMA</field>
+            <field name="sequence">70</field>
+            <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_PRIMA') and inputs.get('CO_PRIMA').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Traslada al recibo el valor de prima ya calculado como input (la formula
+# real de la prima esta en hr_payroll_structure_special_data.xml:
+# CO_PRIMA_VALOR para el ciclo semestral, CO_LIQ_PRIMA para liquidacion).
+result = inputs['CO_PRIMA'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Primas</field>
+            <field name="l10n_co_ugpp_payment_type">tp_prestaciones</field>
+        </record>
+
+        <record id="hr_salary_rule_co_cesantias" model="hr.salary.rule">
+            <field name="name">Cesantías</field>
+            <field name="code">CO_CESANTIAS</field>
+            <field name="sequence">71</field>
+            <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_CESANTIAS') and inputs.get('CO_CESANTIAS').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Traslada al recibo el valor de cesantías ya calculado como input (para
+# consignación anual, o desde liquidación -- ver CO_LIQ_CESANTIAS en
+# hr_payroll_structure_special_data.xml, y la provisión mensual en
+# hr_provision.py -- esta regla no recalcula, solo refleja el input).
+result = inputs['CO_CESANTIAS'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Cesantias</field>
+            <field name="l10n_co_ugpp_payment_type">tp_prestaciones</field>
+        </record>
+
+        <record id="hr_salary_rule_co_int_cesantias" model="hr.salary.rule">
+            <field name="name">Intereses sobre Cesantías</field>
+            <field name="code">CO_INT_CES</field>
+            <field name="sequence">72</field>
+            <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_INT_CES') and inputs.get('CO_INT_CES').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Traslada al recibo el valor de intereses sobre cesantías ya calculado
+# como input -- ver CO_LIQ_INT_CES en hr_payroll_structure_special_data.xml
+# y la provisión mensual en hr_provision.py (esta regla no recalcula).
+result = inputs['CO_INT_CES'].amount
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">InteresesCesantias</field>
+            <field name="l10n_co_ugpp_payment_type">tp_prestaciones</field>
+        </record>
+
+        <!-- ==================== OTROS DEVENGADOS ==================== -->
+        <record id="hr_salary_rule_co_apoyo_sost" model="hr.salary.rule">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
+            <field name="code">CO_APOYO_SOST</field>
+            <field name="sequence">80</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_APOYO_SOST') and inputs.get('CO_APOYO_SOST').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_APOYO_SOST'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
+            <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
+        </record>
+
+        <record id="hr_salary_rule_co_bonif_retiro" model="hr.salary.rule">
+            <field name="name">Bonificación de Retiro</field>
+            <field name="code">CO_BONIF_RET</field>
+            <field name="sequence">85</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_BONIF_RET') and inputs.get('CO_BONIF_RET').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_BONIF_RET'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">BonifRetiro</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">mera_liberalidad</field>
+        </record>
+
+        <record id="hr_salary_rule_co_indemnizacion" model="hr.salary.rule">
+            <field name="name">Indemnización</field>
+            <field name="code">CO_INDEMNIZ</field>
+            <field name="sequence">86</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_INDEMNIZ') and inputs.get('CO_INDEMNIZ').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs['CO_INDEMNIZ'].amount</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Indemnizacion</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--  SUBTOTAL BRUTO (regla computada)                             -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_bruto" model="hr.salary.rule">
+            <field name="name">Total Devengados</field>
+            <field name="code">CO_BRUTO</field>
+            <field name="sequence">99</field>
+            <!-- Bug critico corregido: categoria propia era DEV (la misma que
+                 lee en amount_python_compute), y CO_NETO (seq 200) volvia a
+                 leer categories['DEV'] DESPUES de que este subtotal ya se
+                 habia sumado a si mismo dentro de esa categoria, pagando
+                 casi el doble del neto real. Ahora usa TOT_DISPLAY (sin
+                 parent_id, mismo criterio que SS_CIA/PROV): sigue leyendo
+                 categories['DEV'] para mostrar el total correcto, pero su
+                 propio resultado ya no se re-inyecta en 'DEV'. -->
+            <field name="category_id" ref="hr_salary_rule_category_totales_display"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = categories['DEV']</field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--                                                                -->
+        <!--  REGLAS SALARIALES — DEDUCCIONES                              -->
+        <!--                                                                -->
+        <!-- ============================================================ -->
+
+        <!-- ==================== SEGURIDAD SOCIAL EMPLEADO ==================== -->
+        <record id="hr_salary_rule_co_salud_emp" model="hr.salary.rule">
+            <field name="name">Aporte Salud Empleado (4%)</field>
+            <field name="code">CO_SALUD_EMP</field>
+            <field name="sequence">100</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# IBC para salud = total salarial (simplificado)
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = -abs(ibc * payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from) / 100)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Salud</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_pension_emp" model="hr.salary.rule">
+            <field name="name">Aporte Pensión Empleado (4%)</field>
+            <field name="code">CO_PENSION_EMP</field>
+            <field name="sequence">101</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# No aplica si es extranjero no obligado a pensión
+result = not employee.l10n_co_ne_foreigner_no_pension
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = -abs(ibc * payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from) / 100)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">FondoPension</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_fsp" model="hr.salary.rule">
+            <field name="name">Fondo de Solidaridad Pensional</field>
+            <field name="code">CO_FSP</field>
+            <field name="sequence">102</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Aplica desde fsp_umbral_base SMMLV (Art. 27 Ley 100/1993)
+SMMLV = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+_umbral_base = payslip._rule_parameter('l10n_co_fsp_umbral_base', payslip.date_from)
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc &gt;= SMMLV * _umbral_base
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Tabla FSP: Art. 27 Ley 100/1993 (mod. Ley 797/2003) + Decreto 4982/2007.
+# Tarifa base desde fsp_umbral_base SMMLV, escala adicional por tramos
+# desde fsp_umbral_tier1 SMMLV (tramos de subsistencia).
+SMMLV = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+
+_pct_base = payslip._rule_parameter('l10n_co_fsp_pct_base', payslip.date_from) / 100
+_umbral_t1 = payslip._rule_parameter('l10n_co_fsp_umbral_tier1', payslip.date_from)
+_umbral_t2 = payslip._rule_parameter('l10n_co_fsp_umbral_tier2', payslip.date_from)
+_umbral_t3 = payslip._rule_parameter('l10n_co_fsp_umbral_tier3', payslip.date_from)
+_umbral_t4 = payslip._rule_parameter('l10n_co_fsp_umbral_tier4', payslip.date_from)
+_umbral_t5 = payslip._rule_parameter('l10n_co_fsp_umbral_tier5', payslip.date_from)
+_pct_t1 = payslip._rule_parameter('l10n_co_fsp_pct_tier1', payslip.date_from) / 100
+_pct_t2 = payslip._rule_parameter('l10n_co_fsp_pct_tier2', payslip.date_from) / 100
+_pct_t3 = payslip._rule_parameter('l10n_co_fsp_pct_tier3', payslip.date_from) / 100
+_pct_t4 = payslip._rule_parameter('l10n_co_fsp_pct_tier4', payslip.date_from) / 100
+_pct_t5 = payslip._rule_parameter('l10n_co_fsp_pct_tier5', payslip.date_from) / 100
+
+pct = _pct_base
+if ibc >= SMMLV * _umbral_t5:
+    pct = _pct_t5
+elif ibc >= SMMLV * _umbral_t4:
+    pct = _pct_t4
+elif ibc >= SMMLV * _umbral_t3:
+    pct = _pct_t3
+elif ibc >= SMMLV * _umbral_t2:
+    pct = _pct_t2
+elif ibc >= SMMLV * _umbral_t1:
+    pct = _pct_t1
+result = -abs(ibc * pct)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">FondoSP</field>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== OTRAS DEDUCCIONES ==================== -->
+        <record id="hr_salary_rule_co_retefuente" model="hr.salary.rule">
+            <field name="name">Retención en la Fuente</field>
+            <field name="code">CO_RETEFUENTE</field>
+            <field name="sequence">110</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Calculo automatico de retencion en la fuente
+# Busca configuracion del ano; si no existe, no aplica
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+result = bool(_rete_cfg)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Calculo automatico: Procedimiento 1 o 2 segun configuracion
+# Usa el metodo compute_retefuente() del modelo l10n.co.retefuente.uvt
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+
+# Calcular IBC y bruto para la depuracion
+_gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
+_ibc_pension = categories.get('DEV_SAL', contract.wage)
+if contract.l10n_co_ne_integral_salary:
+    _ibc_pension = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+_ibc_salud = _ibc_pension
+
+# Ejecutar depuracion y tabla marginal Art. 383 ET
+_rete_result = _rete_cfg.compute_retefuente(
+    employee, _gross, _ibc_pension, _ibc_salud, employee.company_id,
+    contract=contract, payslip=payslip,
+)
+_valor = _rete_result.get('retencion_pesos', 0)
+result = -abs(_valor) if _valor > 0 else 0
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">RetencionFuente</field>
+            <field name="note">Calculo automatico basado en la tabla marginal del Art. 383 ET.
+Configurar en Nomina > Configuracion > Retencion en la Fuente.
+Soporta Procedimiento 1 (tabla marginal) y Procedimiento 2 (porcentaje fijo).
+La depuracion incluye: aportes obligatorios, voluntarios, AFC, dependientes, renta exenta 25%.</field>
+        </record>
+
+        <!-- ==================== EXENTO PENSION VOLUNTARIA + AFC (invisible, acumulador) ==================== -->
+        <record id="hr_salary_rule_co_exento_pension_afc" model="hr.salary.rule">
+            <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
+            <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="sequence">111</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+result = bool(_rete_cfg)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# AUD-05/doc 32: regla INVISIBLE (appears_on_payslip=False, no paga ni
+# descuenta nada -- solo GUARDA el monto exento combinado de este mes, ya
+# con el tope del 30% y el techo anual aplicados) para que meses futuros
+# puedan acumular via payslip._sum('CO_EXENTO_PENSION_AFC', ...). Mismo
+# patron que las reglas de provisiones (doc 18): un valor que se necesita
+# leer despues, no una deduccion real. Recalcula compute_retefuente() --
+# mismos inputs deterministicos que CO_RETEFUENTE, sin efectos secundarios.
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+
+_gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
+_ibc_pension = categories.get('DEV_SAL', contract.wage)
+if contract.l10n_co_ne_integral_salary:
+    _ibc_pension = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+_ibc_salud = _ibc_pension
+
+_rete_result = _rete_cfg.compute_retefuente(
+    employee, _gross, _ibc_pension, _ibc_salud, employee.company_id,
+    contract=contract, payslip=payslip,
+)
+result = _rete_result.get('exento_vol_pension_afc', 0)
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Acumulador interno para el techo anual de 3.800 UVT combinado de
+aportes voluntarios a pension + AFC (Art. 126-1/126-4 ET, AUD-05/doc 32). No aparece en el recibo
+de nomina ni afecta el neto -- CO_RETEFUENTE (arriba) ya aplico este mismo exento en la depuracion
+de la base gravable. Esta regla solo persiste el valor para que compute_retefuente() lo pueda sumar
+en meses futuros via payslip._sum().</field>
+        </record>
+
+        <!-- ==================== RETEFUENTE BASE GROSS (invisible, acumulador doc 08) ==================== -->
+        <record id="hr_salary_rule_co_retefuente_base_gross" model="hr.salary.rule">
+            <field name="name">Retención Fuente - Base Bruto (acumulador interno)</field>
+            <field name="code">CO_RETEFUENTE_BASE_GROSS</field>
+            <field name="sequence">112</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+result = bool(_rete_cfg)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Doc 08 (Procedimiento 2, Art. 384 ET): regla INVISIBLE que guarda el
+# ingreso bruto mensual -- mismo input que usa CO_RETEFUENTE, sin volver a
+# llamar compute_retefuente(). Permite a
+# hr.contract.action_calculate_retention_procedure2() promediar los
+# ultimos 12 meses REALES leyendo esta linea de payslips ya confirmados,
+# sin reconstruir el arbol de categorias.
+result = categories['GROSS'] if categories.get('GROSS') else contract.wage
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Acumulador interno (doc 08): guarda el ingreso bruto mensual para
+que action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el %
+fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto.</field>
+        </record>
+
+        <!-- ==================== RETEFUENTE BASE IBC (invisible, acumulador doc 08) ==================== -->
+        <record id="hr_salary_rule_co_retefuente_base_ibc" model="hr.salary.rule">
+            <field name="name">Retención Fuente - Base IBC (acumulador interno)</field>
+            <field name="code">CO_RETEFUENTE_BASE_IBC</field>
+            <field name="sequence">113</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
+_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+    ('year', '=', str(payslip.date_from.year)),
+    ('company_id', '=', employee.company_id.id),
+], limit=1)
+if not _rete_cfg:
+    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
+        ('year', '=', str(payslip.date_from.year)),
+    ], limit=1)
+result = bool(_rete_cfg)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Doc 08 (Procedimiento 2, Art. 384 ET): regla INVISIBLE que guarda el IBC
+# mensual (pension/salud) -- mismo input que usa CO_RETEFUENTE, sin volver
+# a llamar compute_retefuente(). Ver CO_RETEFUENTE_BASE_GROSS arriba para
+# el proposito completo.
+_ibc_pension = categories.get('DEV_SAL', contract.wage)
+if contract.l10n_co_ne_integral_salary:
+    _ibc_pension = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = _ibc_pension
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Acumulador interno (doc 08): guarda el IBC mensual para que
+action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el %
+fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_libranzas" model="hr.salary.rule">
+            <field name="name">Libranzas</field>
+            <field name="code">CO_LIBRANZAS</field>
+            <field name="sequence">120</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_LIBRANZAS') and inputs.get('CO_LIBRANZAS').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_LIBRANZAS'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Libranza</field>
+        </record>
+
+        <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">
+            <field name="name">Cuota Sindical</field>
+            <field name="code">CO_SINDICATO</field>
+            <field name="sequence">121</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_SINDICATO') and inputs.get('CO_SINDICATO').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_SINDICATO'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Sindicato</field>
+        </record>
+
+        <record id="hr_salary_rule_co_afc" model="hr.salary.rule">
+            <field name="name">AFC - Ahorro Fomento Construcción</field>
+            <field name="code">CO_AFC</field>
+            <field name="sequence">122</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_AFC') and inputs.get('CO_AFC').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_AFC'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">AFC</field>
+        </record>
+
+        <record id="hr_salary_rule_co_pension_vol" model="hr.salary.rule">
+            <field name="name">Pensión Voluntaria</field>
+            <field name="code">CO_PENSION_VOL</field>
+            <field name="sequence">123</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_PENSION_VOL') and inputs.get('CO_PENSION_VOL').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_PENSION_VOL'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">PensionVoluntaria</field>
+        </record>
+
+        <record id="hr_salary_rule_co_cooperativa" model="hr.salary.rule">
+            <field name="name">Cooperativa</field>
+            <field name="code">CO_COOPERATIVA</field>
+            <field name="sequence">124</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_COOPERATIVA') and inputs.get('CO_COOPERATIVA').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_COOPERATIVA'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Cooperativa</field>
+        </record>
+
+        <record id="hr_salary_rule_co_embargo" model="hr.salary.rule">
+            <field name="name">Embargo Fiscal</field>
+            <field name="code">CO_EMBARGO</field>
+            <field name="sequence">125</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Aplica si hay input manual o asignaciones salariales de embargo activas
+# (hr.salary.attachment, doc 16 -- reemplaza l10n.co.hr.embargo)
+_L10N_CO_EMBARGO_CODES = (
+    'L10N_CO_EMBARGO_ALIMENTOS', 'L10N_CO_EMBARGO_COOPERATIVA', 'L10N_CO_EMBARGO_CIVIL')
+result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) or len(employee.salary_attachment_ids.filtered(lambda a: a.state == 'open' and a.other_input_type_id.code in _L10N_CO_EMBARGO_CODES)) &gt; 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Embargo con topes legales Art. 155 CST (civil, 20% del excedente sobre
+# SMMLV) y Art. 156 CST (alimentos/cooperativa, 50% del salario). Ninguno
+# de los dos articulos fija un tope CONJUNTO cuando concurren varios
+# embargos -- cada uno opera de forma independiente por texto expreso del
+# CST (confirmado por David, normativa 2026-09-07).
+#
+# Pero existe un PISO jurisprudencial de minimo vital que si limita el
+# resultado agregado: Corte Constitucional T-864/14 (los descuentos
+# simultaneos -- embargos y libranzas -- no pueden dejar al trabajador
+# por debajo de lo necesario para su subsistencia) y Corte Suprema de
+# Justicia, Sala de Casacion Laboral, sentencia de febrero de 2026
+# ("ningun embargo puede dejar al trabajador sin el equivalente al
+# salario minimo para cubrir sus necesidades basicas, incluso cuando
+# existan deudas alimentarias que permitan llegar al 50%"). Esto aplica
+# incluso a UN SOLO embargo de alimentos en salarios bajos, no solo
+# cuando concurren varios tipos.
+#
+# Mecanismo (2026-09-07, confirmado por David): al concurrir varios
+# embargos, se aplican en orden de prelacion legal -- alimentos/
+# cooperativa (Art. 156) antes que civil/ordinario (Art. 155) -- y se
+# reduce el de menor prelacion hasta que el remanente (salario_neto -
+# total_embargado) no baje del SMMLV. El input manual CO_EMBARGO
+# (override de RRHH) tambien respeta este piso (2026-09-07, confirmado
+# via QA): la cita de la Corte Suprema no distingue el mecanismo del
+# descuento -- protege el remanente del trabajador sin importar si el
+# monto vino del calculo automatico o de un valor digitado a mano.
+#
+# Base = salario NETO (devengados - deducciones ya calculadas hasta aqui),
+# no el bruto -- mismo criterio que usa CO_NETO (categories['DEV'] + categories['DEDU']).
+# Limitacion conocida: CO_EMBARGO corre en sequence 125, antes de otras
+# deducciones (ej. CO_PLAN_COMP, sequence 126) -- este "neto" es el neto
+# hasta este punto del pipeline, no el neto final del periodo completo.
+_smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+_salario_neto = categories['DEV'] + categories['DEDU']
+_PRIORIDAD_EMBARGO = {
+    'L10N_CO_EMBARGO_ALIMENTOS': 0,
+    'L10N_CO_EMBARGO_COOPERATIVA': 1,
+    'L10N_CO_EMBARGO_CIVIL': 2,
+}
+_embargos_activos = employee.salary_attachment_ids.filtered(
+    lambda a: a.state == 'open' and a.other_input_type_id.code in _PRIORIDAD_EMBARGO)
+_embargos_ordenados = _embargos_activos.sorted(key=lambda a: _PRIORIDAD_EMBARGO.get(a.other_input_type_id.code, 99))
+_total_embargo = 0.0
+for embargo in _embargos_ordenados:
+    _monto_individual = embargo._l10n_co_compute_embargo_amount(
+        _salario_neto, _smmlv, payslip.date_from,
+        factor_embargo_civil=payslip._rule_parameter('l10n_co_factor_embargo_civil', payslip.date_from),
+        pct_tope_embargo_alimentos=payslip._rule_parameter('l10n_co_pct_tope_embargo_alimentos', payslip.date_from),
+    )
+    _espacio_antes_del_piso = max(0.0, (_salario_neto - _total_embargo) - _smmlv)
+    _total_embargo += min(_monto_individual, _espacio_antes_del_piso)
+if inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0:
+    _tope_minimo_vital = max(0.0, _salario_neto - _smmlv)
+    _monto_manual = min(inputs['CO_EMBARGO'].amount, _tope_minimo_vital)
+    _total_embargo = max(_total_embargo, _monto_manual)
+result = -abs(_total_embargo) if _total_embargo &gt; 0 else 0
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">EmbargoFiscal</field>
+        </record>
+
+        <record id="hr_salary_rule_co_plan_complementario" model="hr.salary.rule">
+            <field name="name">Plan Complementario de Salud</field>
+            <field name="code">CO_PLAN_COMP</field>
+            <field name="sequence">126</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_PLAN_COMP') and inputs.get('CO_PLAN_COMP').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_PLAN_COMP'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">PlanComplementarios</field>
+        </record>
+
+        <record id="hr_salary_rule_co_educacion" model="hr.salary.rule">
+            <field name="name">Educación</field>
+            <field name="code">CO_EDUCACION</field>
+            <field name="sequence">127</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_EDUCACION') and inputs.get('CO_EDUCACION').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_EDUCACION'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Educacion</field>
+        </record>
+
+        <record id="hr_salary_rule_co_otras_ded" model="hr.salary.rule">
+            <field name="name">Otras Deducciones</field>
+            <field name="code">CO_OTRAS_DED</field>
+            <field name="sequence">130</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = inputs.get('CO_OTRAS_DED') and inputs.get('CO_OTRAS_DED').amount > 0</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -abs(inputs['CO_OTRAS_DED'].amount)</field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">OtraDeduccion</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--  NETO A PAGAR                                                 -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_neto" model="hr.salary.rule">
+            <field name="name">Neto a Pagar</field>
+            <field name="code">CO_NETO</field>
+            <field name="sequence">200</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = categories['DEV'] + categories['DEDU']</field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--                                                                -->
+        <!--  APORTES PATRONALES (no descuento al trabajador)              -->
+        <!--  Se calculan pero no afectan neto. Solo para UGPP.            -->
+        <!--                                                                -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_salud_cia" model="hr.salary.rule">
+            <field name="name">Aporte Salud Empresa (8.5%)</field>
+            <field name="code">CO_SALUD_CIA</field>
+            <field name="sequence">300</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Exonerados si son beneficiarios de la Ley 1607/2012 (Art. 114-1 ET)
+# El aporte de salud del empleador (8.5%) se exonera para
+# empleados con salario &lt; 10 SMMLV en empresas que apliquen Art. 114-1
+# Criterio centralizado en res.company._is_exonerado_parafiscales --
+# unica fuente de verdad, compartida con CO_SENA_CIA/CO_ICBF_CIA y con
+# el wizard de PILA.
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_pension_cia" model="hr.salary.rule">
+            <field name="name">Aporte Pensión Empresa (12%)</field>
+            <field name="code">CO_PENSION_CIA</field>
+            <field name="sequence">301</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = not employee.l10n_co_ne_foreigner_no_pension</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_pension_empleador', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_arl_cia" model="hr.salary.rule">
+            <field name="name">Aporte ARL Empresa</field>
+            <field name="code">CO_ARL_CIA</field>
+            <field name="sequence">302</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# El % de ARL depende del nivel de riesgo (I: 0.522%, II: 1.044%, III: 2.436%, IV: 4.350%, V: 6.960%)
+# Se usa Nivel I (pct_arl_default) como default, el usuario puede ajustar
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_arl_default', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ccf_cia" model="hr.salary.rule">
+            <field name="name">Aporte CCF Empresa (4%)</field>
+            <field name="code">CO_CCF_CIA</field>
+            <field name="sequence">303</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_ccf', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_sena_cia" model="hr.salary.rule">
+            <field name="name">Aporte SENA Empresa (2%)</field>
+            <field name="code">CO_SENA_CIA</field>
+            <field name="sequence">304</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Exonerados si son beneficiarios de la Ley 1607/2012 (Art. 114-1 ET)
+# Empleados con salario &lt; 10 SMMLV están exonerados para ciertos empleadores
+# Criterio centralizado en res.company._is_exonerado_parafiscales --
+# unica fuente de verdad, compartida con CO_SALUD_CIA/CO_ICBF_CIA y con
+# el wizard de PILA.
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_sena', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <record id="hr_salary_rule_co_icbf_cia" model="hr.salary.rule">
+            <field name="name">Aporte ICBF Empresa (3%)</field>
+            <field name="code">CO_ICBF_CIA</field>
+            <field name="sequence">305</field>
+            <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Exonerados si son beneficiarios de la Ley 1607/2012 (Art. 114-1 ET)
+# Empleados con salario &lt; 10 SMMLV están exonerados para ciertos empleadores
+# Criterio centralizado en res.company._is_exonerado_parafiscales --
+# unica fuente de verdad, compartida con CO_SALUD_CIA/CO_SENA_CIA y con
+# el wizard de PILA.
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+ibc = categories['DEV_SAL']
+if contract.l10n_co_ne_integral_salary:
+    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!--                                                                -->
+        <!--  PROVISIONES DE PRESTACIONES SOCIALES (acumulacion contable,  -->
+        <!--  no es un pago, no afecta el neto, no se reporta a DIAN ni    -->
+        <!--  UGPP. Ver correcciones_normativas_2026/18_diseno_provisiones -->
+        <!--  _reglas_invisibles.md. Reemplaza l10n.co.hr.provision.       -->
+        <!--                                                                -->
+        <!-- ============================================================ -->
+        <record id="hr_salary_rule_co_prov_prima" model="hr.salary.rule">
+            <field name="name">Provisión Prima de Servicios</field>
+            <field name="code">CO_PROV_PRIMA</field>
+            <field name="sequence">310</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de prima de servicios (Art. 306 CST) = base_prestacional / 12.
+# No es un pago -- acumulacion contable. Ver CO_PRIMA para el pago real (input-driven).
+smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+if contract.l10n_co_ne_integral_salary:
+    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+    base = contract.wage * factor
+else:
+    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    base = contract.wage + aux
+result = base / 12.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_cesantias" model="hr.salary.rule">
+            <field name="name">Provisión Cesantías</field>
+            <field name="code">CO_PROV_CESANTIAS</field>
+            <field name="sequence">311</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de cesantias (Art. 249 CST) = base_prestacional / 12.
+smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+if contract.l10n_co_ne_integral_salary:
+    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+    base = contract.wage * factor
+else:
+    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    base = contract.wage + aux
+result = base / 12.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_int_cesantias" model="hr.salary.rule">
+            <field name="name">Provisión Intereses sobre Cesantías</field>
+            <field name="code">CO_PROV_INT_CES</field>
+            <field name="sequence">312</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Intereses sobre cesantias (Ley 52/1975) = cesantias_provisionadas x pct anual / 100.
+# Referencia CO_PROV_CESANTIAS via result_rules[] (secuencia 311, ya
+# calculada) -- a diferencia de prima/cesantias (formula identica pero
+# independiente por articulo), aqui la dependencia es real: los intereses
+# SON un porcentaje de la cesantia, no una formula paralela -- misma logica
+# que hr_provision.py (intereses = cesantias x pct/100).
+#
+# rules['CODE'] es el REGISTRO hr.salary.rule (metadata de la regla, sin
+# .total) -- el resultado ya calculado de una regla anterior en la misma
+# corrida vive en result_rules['CODE']['total'] (dict), no como atributo.
+# Confirmado por Tech Lead leyendo hr_payslip.py real en el servidor
+# (_get_localdict/_get_payslip_lines) tras un AttributeError en la primera
+# corrida de test_provisiones.sh contra staging_produccion.
+pct = payslip._rule_parameter('l10n_co_pct_intereses_cesantias', payslip.date_from)
+result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+        <record id="hr_salary_rule_co_prov_vacaciones" model="hr.salary.rule">
+            <field name="name">Provisión Vacaciones</field>
+            <field name="code">CO_PROV_VACACIONES</field>
+            <field name="sequence">313</field>
+            <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Provision mensual de vacaciones (Art. 186 CST) = salario_base / 24 -- 15
+# dias habiles/ano, NO incluye auxilio de transporte. Distinto del disfrute
+# real de vacaciones (integracion con hr.leave, tipo VACACIONES) -- esta
+# regla es la acumulacion del pasivo, no el pago cuando se toman.
+result = contract.wage / 24.0
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+        </record>
+
+    </data>
+</odoo>

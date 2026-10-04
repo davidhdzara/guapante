@@ -38,3 +38,5 @@
 # Always ignore compiled Python files
 __pycache__/
 *.pyc
+!l10n_co_nomina_electronica/
+!l10n_co_nomina_electronica/**

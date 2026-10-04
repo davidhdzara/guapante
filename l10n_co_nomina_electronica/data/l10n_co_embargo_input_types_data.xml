@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            Tipos de input para hr.salary.attachment nativo (Enterprise,
+            hr_payroll) usados por el embargo híbrido colombiano, ver
+            correcciones_normativas_2026/16_diseno_embargo_hibrido_salary_attachment.md.
+
+            Deliberadamente NO se reusan los 3 tipos genéricos que ya trae
+            hr_payroll_data.xml (CHILD_SUPPORT / ATTACH_SALARY / ASSIG_SALARY,
+            todos country_id=False): sus nombres en inglés no son el término
+            legal que reconoce un usuario de RRHH colombiano ni con el que se
+            valida contra la norma citada (Art. 155/156 CST). Se crean 3
+            propios, scoped a Colombia, mismo patrón que
+            data/l10n_co_rule_parameters_data.xml (doc 13).
+
+            default_no_end_date=True en los 3: un embargo colombiano corre
+            hasta que el juzgado lo levante o se cierre a mano, no tiene un
+            "monto total de deuda" conocido de antemano como sí lo tiene una
+            libranza/préstamo.
+        -->
+
+        <record id="input_l10n_co_embargo_alimentos" model="hr.payslip.input.type">
+            <field name="name">Embargo - Alimentos (Pensión Alimentaria)</field>
+            <field name="code">L10N_CO_EMBARGO_ALIMENTOS</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="available_in_attachments" eval="True"/>
+            <field name="default_no_end_date" eval="True"/>
+        </record>
+
+        <record id="input_l10n_co_embargo_civil" model="hr.payslip.input.type">
+            <field name="name">Embargo - Civil / Comercial</field>
+            <field name="code">L10N_CO_EMBARGO_CIVIL</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="available_in_attachments" eval="True"/>
+            <field name="default_no_end_date" eval="True"/>
+        </record>
+
+        <record id="input_l10n_co_embargo_cooperativa" model="hr.payslip.input.type">
+            <field name="name">Embargo - Cooperativa / Fondo</field>
+            <field name="code">L10N_CO_EMBARGO_COOPERATIVA</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="available_in_attachments" eval="True"/>
+            <field name="default_no_end_date" eval="True"/>
+        </record>
+
+        <!--
+            Input manual de ajuste puntual (override RRHH) que ya lee la
+            regla CO_EMBARGO (inputs.get('CO_EMBARGO')) desde el commit
+            inicial del módulo, confirmado por Tech Lead vía git log que
+            este hr.payslip.input.type nunca existió, así que RRHH nunca
+            pudo capturarlo desde la UI (funcionalidad muerta, preexistente,
+            no introducida por doc 16). available_in_attachments=False:
+            es un ajuste puntual de UN payslip, no una asignación salarial
+            recurrente (no debe poder elegirse en hr.salary.attachment).
+        -->
+        <record id="input_co_embargo_manual" model="hr.payslip.input.type">
+            <field name="name">Embargo - Ajuste Manual (Override RRHH)</field>
+            <field name="code">CO_EMBARGO</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+    </data>
+
+    <!--
+        Fuera del bloque noupdate="1" de arriba, deliberadamente: este
+        record no crea nada, sólo AGREGA (operador (4, ref)) los 4 tipos
+        de input de embargo a hr_payroll_structure_co_nomina.input_line_type_ids,
+        y ese campo controla el domain de input_type_id en el picker de
+        "Other Inputs" del payslip (hr_payslip_input.py: domain
+        [('id','in', struct_id.input_line_type_ids)]).
+
+        Hallazgo de Tech Lead corrido contra staging_produccion:
+        input_line_type_ids estaba vacío para esta estructura desde
+        siempre, no es un problema nuevo de doc 16, es un gap general del
+        módulo (el picker nunca mostró ningún tipo seleccionable, ni
+        siquiera ATTACH_SALARY o CHILD_SUPPORT preexistentes), pero
+        bloquea justo el override manual de CO_EMBARGO reactivado en
+        este ciclo, así que se corrige en el mismo commit. No se
+        poblaron otros tipos de input que el módulo pueda usar en otros
+        contextos, eso queda fuera de alcance aquí si aparece después.
+
+        Se usa (4, ref(...)) en vez de (6, 0, [...]) para no pisar otros
+        valores que el campo pueda tener en el futuro, y se deja fuera de
+        noupdate para que se re-aplique en cada `-u` (igual que el propio
+        record de hr_payroll_structure_co_nomina en
+        hr_payroll_structure_data.xml, que también vive con noupdate="0").
+
+        IMPORTANTE sobre orden de carga: este archivo debe cargarse
+        DESPUÉS de data/hr_payroll_structure_data.xml en el manifest
+        (donde se CREA hr_payroll_structure_co_nomina). Si cargara
+        antes, este record con el mismo xmlid intentaría crearlo aquí
+        primero, con solo input_line_type_ids seteado y sin los demás
+        campos requeridos (name, etc.), y fallaría.
+    -->
+    <record id="hr_payroll_structure_co_nomina" model="hr.payroll.structure">
+        <field name="input_line_type_ids" eval="[(4, ref('input_l10n_co_embargo_alimentos')),
+                                                  (4, ref('input_l10n_co_embargo_civil')),
+                                                  (4, ref('input_l10n_co_embargo_cooperativa')),
+                                                  (4, ref('input_co_embargo_manual'))]"/>
+    </record>
+</odoo>

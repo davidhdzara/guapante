@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!-- ============================================================ -->
+        <!--  DEDUCCIONES AUTOMATICAS DESDE CONTRATO                      -->
+        <!--                                                              -->
+        <!--  Reemplazan las reglas manuales originales.                   -->
+        <!--  Logica: si hay input manual en la nomina, tiene prioridad.  -->
+        <!--  Si no, se toma el valor configurado en el contrato.         -->
+        <!-- ============================================================ -->
+
+        <!-- ==================== LIBRANZAS ==================== -->
+        <record id="hr_salary_rule_co_libranzas" model="hr.salary.rule">
+            <field name="name">Libranzas</field>
+            <field name="code">CO_LIBRANZAS</field>
+            <field name="sequence">120</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_libranza or 0
+_from_input = inputs.get('CO_LIBRANZAS') and inputs['CO_LIBRANZAS'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_libranza or 0
+_from_input = inputs.get('CO_LIBRANZAS') and inputs['CO_LIBRANZAS'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Libranza</field>
+            <field name="note">Descuento por libranza. Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_LIBRANZAS en la nomina.</field>
+        </record>
+
+        <!-- ==================== CUOTA SINDICAL ==================== -->
+        <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">
+            <field name="name">Cuota Sindical</field>
+            <field name="code">CO_SINDICATO</field>
+            <field name="sequence">121</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_sindicato or 0
+_from_input = inputs.get('CO_SINDICATO') and inputs['CO_SINDICATO'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_sindicato or 0
+_from_input = inputs.get('CO_SINDICATO') and inputs['CO_SINDICATO'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Sindicato</field>
+            <field name="note">Cuota sindical mensual. Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_SINDICATO en la nomina.</field>
+        </record>
+
+        <!-- ==================== AFC ==================== -->
+        <record id="hr_salary_rule_co_afc" model="hr.salary.rule">
+            <field name="name">AFC - Ahorro Fomento Construccion</field>
+            <field name="code">CO_AFC</field>
+            <field name="sequence">122</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_afc or 0
+_from_input = inputs.get('CO_AFC') and inputs['CO_AFC'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_afc or 0
+_from_input = inputs.get('CO_AFC') and inputs['CO_AFC'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">AFC</field>
+            <field name="note">Ahorro para el Fomento de la Construccion (Art. 126-4 ET). Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_AFC en la nomina.</field>
+        </record>
+
+        <!-- ==================== PENSION VOLUNTARIA ==================== -->
+        <record id="hr_salary_rule_co_pension_vol" model="hr.salary.rule">
+            <field name="name">Pension Voluntaria</field>
+            <field name="code">CO_PENSION_VOL</field>
+            <field name="sequence">123</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_pension_voluntaria or 0
+_from_input = inputs.get('CO_PENSION_VOL') and inputs['CO_PENSION_VOL'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_pension_voluntaria or 0
+_from_input = inputs.get('CO_PENSION_VOL') and inputs['CO_PENSION_VOL'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">PensionVoluntaria</field>
+            <field name="note">Aporte voluntario a fondo de pensiones (Art. 126-1 ET). Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_PENSION_VOL en la nomina.</field>
+        </record>
+
+        <!-- ==================== COOPERATIVA ==================== -->
+        <record id="hr_salary_rule_co_cooperativa" model="hr.salary.rule">
+            <field name="name">Cooperativa</field>
+            <field name="code">CO_COOPERATIVA</field>
+            <field name="sequence">124</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_cooperativa or 0
+_from_input = inputs.get('CO_COOPERATIVA') and inputs['CO_COOPERATIVA'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_cooperativa or 0
+_from_input = inputs.get('CO_COOPERATIVA') and inputs['CO_COOPERATIVA'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Cooperativa</field>
+            <field name="note">Cuota mensual de cooperativa o fondo de empleados. Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_COOPERATIVA en la nomina.</field>
+        </record>
+
+        <!-- ==================== PLAN COMPLEMENTARIO SALUD ==================== -->
+        <record id="hr_salary_rule_co_plan_complementario" model="hr.salary.rule">
+            <field name="name">Plan Complementario de Salud</field>
+            <field name="code">CO_PLAN_COMP</field>
+            <field name="sequence">126</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_plan_complementario or 0
+_from_input = inputs.get('CO_PLAN_COMP') and inputs['CO_PLAN_COMP'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_plan_complementario or 0
+_from_input = inputs.get('CO_PLAN_COMP') and inputs['CO_PLAN_COMP'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">PlanComplementarios</field>
+            <field name="note">Plan complementario de salud (medicina prepagada). Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_PLAN_COMP en la nomina.</field>
+        </record>
+
+        <!-- ==================== EDUCACION ==================== -->
+        <record id="hr_salary_rule_co_educacion" model="hr.salary.rule">
+            <field name="name">Educacion</field>
+            <field name="code">CO_EDUCACION</field>
+            <field name="sequence">127</field>
+            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Automatico desde contrato, o manual desde input
+_from_contract = contract.l10n_co_ne_educacion or 0
+_from_input = inputs.get('CO_EDUCACION') and inputs['CO_EDUCACION'].amount or 0
+result = _from_contract > 0 or _from_input > 0
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
+_from_contract = contract.l10n_co_ne_educacion or 0
+_from_input = inputs.get('CO_EDUCACION') and inputs['CO_EDUCACION'].amount or 0
+result = -abs(_from_input if _from_input > 0 else _from_contract)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Educacion</field>
+            <field name="note">Descuento por credito educativo o convenio. Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_EDUCACION en la nomina.</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ===================================================================
+         Registro del reporte de Comprobante de Nómina Electrónica (PDF)
+         Resolución 000013 de 2021 - DIAN Colombia
+
+         El reporte hereda colores, fuentes y logo desde la configuración
+         de Diseño de Documentos de la empresa (Ajustes > General > Diseño).
+         =================================================================== -->
+    <record id="action_report_payslip_ne" model="ir.actions.report">
+        <field name="name">Comprobante Nomina Electronica</field>
+        <field name="model">hr.payslip</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">l10n_co_nomina_electronica.report_payslip_ne</field>
+        <field name="report_file">l10n_co_nomina_electronica.report_payslip_ne</field>
+        <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- ===================================================================
+         Plantilla QWeb del Comprobante de Nómina Electrónica
+
+         Diseño heredado del sistema de documentos de Odoo:
+         - Logo, header y footer: web.external_layout
+         - Colores: company.primary_color / company.secondary_color
+         - Fuente: company.font (Lato, Roboto, Open Sans, etc.)
+         - QR: /report/barcode/ (controlador nativo, patron l10n_co_dian)
+
+         Secciones:
+           1. Titulo y datos generales
+           2. Datos del empleado y período de nómina
+           3. Tabla de conceptos (devengados y deducciones)
+           4. Totales y neto a pagar
+           5. Información normativa + QR (Res. 000013/2021)
+           6. Espacio para firma del empleado
+         =================================================================== -->
+    <template id="report_payslip_ne">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <!-- Variables de color del diseño de documentos -->
+                    <t t-set="primary" t-value="o.company_id.primary_color or '#875A7B'"/>
+                    <t t-set="secondary" t-value="o.company_id.secondary_color or '#495057'"/>
+
+                    <div class="page">
+                        <!-- ============================================
+                             SECCION 1: TITULO Y DATOS GENERALES
+                             ============================================ -->
+                        <div class="row mb-3">
+                            <div class="col-8">
+                                <h3 t-att-style="'color: ' + primary + '; margin-bottom: 4px;'">
+                                    COMPROBANTE DE NOMINA
+                                </h3>
+                                <p style="margin: 0; font-size: 11px; color: #6c757d;">
+                                    Nomina Electronica - Resolucion 000013 de 2021
+                                </p>
+                            </div>
+                            <div class="col-4 text-end">
+                                <p style="margin: 0;">
+                                    <strong t-att-style="'color: ' + secondary">No.:</strong>
+                                    <span t-field="o.l10n_co_ne_consecutive"/>
+                                </p>
+                                <p style="margin: 0;">
+                                    <strong t-att-style="'color: ' + secondary">Fecha:</strong>
+                                    <span t-field="o.date_to" t-options='{"format": "dd/MM/yyyy"}'/>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Linea separadora con color primario -->
+                        <div t-att-style="'border-top: 3px solid ' + primary + '; margin-bottom: 15px;'"/>
+
+                        <!-- ============================================
+                             SECCION 2: DATOS DEL EMPLEADO
+                             ============================================ -->
+                        <div class="row"
+                             style="padding: 10px; margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 4px;">
+                            <div class="col-6">
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Empleado:</strong>
+                                    <span t-field="o.employee_id.name"/>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Documento:</strong>
+                                    <span t-field="o.employee_id.identification_id"/>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Cargo:</strong>
+                                    <span t-field="o.employee_id.job_title"/>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Departamento:</strong>
+                                    <span t-field="o.employee_id.department_id.name"/>
+                                </p>
+                            </div>
+                            <div class="col-6">
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Periodo:</strong>
+                                    <span t-field="o.date_from" t-options='{"format": "dd/MM/yyyy"}'/>
+                                    -
+                                    <span t-field="o.date_to" t-options='{"format": "dd/MM/yyyy"}'/>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Salario:</strong>
+                                    <span t-field="o.contract_id.wage"
+                                          t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Dias trabajados:</strong>
+                                    <t t-foreach="o.worked_days_line_ids" t-as="wd">
+                                        <t t-if="wd.code == 'WORK100'">
+                                            <span t-field="wd.number_of_days"/>
+                                        </t>
+                                    </t>
+                                </p>
+                                <p style="margin: 2px 0;">
+                                    <strong t-att-style="'color: ' + secondary">Tipo contrato:</strong>
+                                    <span t-field="o.contract_id.l10n_co_ne_contract_type"/>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- ============================================
+                             SECCION 3: TABLA DE CONCEPTOS
+                             Devengados y deducciones con formato monetario
+                             ============================================ -->
+                        <table class="table table-sm table-bordered" style="font-size: 11px;">
+                            <thead>
+                                <tr t-att-style="'background-color: ' + primary + '; color: white;'">
+                                    <th style="width: 15%;">Codigo</th>
+                                    <th style="width: 45%;">Concepto</th>
+                                    <th class="text-end" style="width: 20%;">Devengado</th>
+                                    <th class="text-end" style="width: 20%;">Deduccion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="o.line_ids" t-as="line">
+                                    <t t-if="line.appears_on_payslip">
+                                        <tr>
+                                            <td>
+                                                <span t-field="line.code"/>
+                                            </td>
+                                            <td>
+                                                <span t-field="line.name"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <t t-if="line.total &gt;= 0">
+                                                    <span t-esc="'$ {:,.0f}'.format(line.total)"/>
+                                                </t>
+                                            </td>
+                                            <td class="text-end">
+                                                <t t-if="line.total &lt; 0">
+                                                    <span t-esc="'$ {:,.0f}'.format(abs(line.total))"/>
+                                                </t>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </t>
+                            </tbody>
+                            <!-- ============================================
+                                 SECCION 4: TOTALES Y NETO A PAGAR
+                                 ============================================ -->
+                            <tfoot>
+                                <tr style="font-weight: bold; border-top: 2px solid #333;">
+                                    <td colspan="2">
+                                        <strong t-att-style="'color: ' + secondary">TOTALES</strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <span t-esc="'$ {:,.0f}'.format(sum(line.total for line in o.line_ids if line.total &gt;= 0 and line.appears_on_payslip))"/>
+                                    </td>
+                                    <td class="text-end">
+                                        <span t-esc="'$ {:,.0f}'.format(abs(sum(line.total for line in o.line_ids if line.total &lt; 0 and line.appears_on_payslip)))"/>
+                                    </td>
+                                </tr>
+                                <tr t-att-style="'background-color: ' + primary + '; color: white; font-size: 14px;'">
+                                    <td colspan="3">
+                                        <strong>NETO A PAGAR</strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>
+                                            <span t-esc="'$ {:,.0f}'.format(sum(line.total for line in o.line_ids if line.appears_on_payslip))"/>
+                                        </strong>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+
+                        <!-- ============================================
+                             SECCION 5: INFORMACION NORMATIVA + QR
+                             Patron heredado de l10n_co_dian (factura
+                             electronica colombiana nativa de Odoo)
+                             ============================================ -->
+                        <div class="row" style="margin-top: 15px;">
+                            <!-- QR Code -->
+                            <div class="col-3 text-center">
+                                <t t-if="o.l10n_co_ne_cune">
+                                    <img t-att-src="'/report/barcode/?type=%s&amp;value=%s&amp;width=%s&amp;height=%s&amp;humanreadable=1' % ('QR', 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (o.l10n_co_ne_cune or ''), 200, 200)"
+                                         style="width: 110px; height: 110px;"
+                                         alt="QR Validacion DIAN"/>
+                                </t>
+                            </div>
+                            <!-- Datos normativos -->
+                            <div class="col-9" style="font-size: 9px; color: #495057;">
+                                <p style="margin: 0 0 4px 0; font-weight: bold;"
+                                   t-att-style="'color: ' + primary + '; margin: 0 0 4px 0; font-weight: bold;'">
+                                    Informacion de Nomina Electronica
+                                </p>
+                                <ul style="list-style: none; padding-left: 0; margin: 0;">
+                                    <li>
+                                        Documento generado conforme a la
+                                        <strong>Resolucion 000013 de 2021 - DIAN</strong>
+                                    </li>
+                                    <li style="margin-top: 2px;">
+                                        <strong>CUNE:</strong>
+                                        <span t-field="o.l10n_co_ne_cune"
+                                              style="word-break: break-all;"/>
+                                    </li>
+                                    <li>
+                                        <strong>Estado NE:</strong>
+                                        <span t-field="o.l10n_co_ne_state"/>
+                                    </li>
+                                    <li>
+                                        <strong>Fecha de generacion:</strong>
+                                        <span t-field="o.date_to"
+                                              t-options='{"format": "dd MMMM yyyy"}'/>
+                                    </li>
+                                    <li>
+                                        <strong>Empresa:</strong>
+                                        <span t-field="o.company_id.name"/> -
+                                        NIT <span t-field="o.company_id.vat"/>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Linea separadora -->
+                        <div t-att-style="'border-top: 1px solid ' + primary + '; margin: 15px 0;'"/>
+
+                        <!-- ============================================
+                             SECCION 6: FIRMA DEL EMPLEADO
+                             ============================================ -->
+                        <div class="row" style="margin-top: 30px;">
+                            <div class="col-6">
+                                <!-- Espacio intencional -->
+                            </div>
+                            <div class="col-6 text-center">
+                                <div style="border-bottom: 1px solid #333; margin: 0 auto; width: 250px;"/>
+                                <p style="margin: 4px 0 0 0; font-size: 11px;">
+                                    <strong><span t-field="o.employee_id.name"/></strong>
+                                </p>
+                                <p style="margin: 0; font-size: 10px; color: #6c757d;">
+                                    C.C. <span t-field="o.employee_id.identification_id"/>
+                                </p>
+                                <p style="margin: 0; font-size: 9px; color: #6c757d;">
+                                    Firma del empleado
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

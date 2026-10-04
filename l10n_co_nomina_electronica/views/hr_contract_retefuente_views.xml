@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Doc 08: Retención en la Fuente - Procedimiento por contrato  -->
+    <!-- ============================================================ -->
+    <record id="view_contract_form_ne_retefuente" model="ir.ui.view">
+        <field name="name">hr.contract.form.ne.retefuente</field>
+        <field name="model">hr.contract</field>
+        <field name="inherit_id" ref="hr_payroll.hr_contract_form_inherit"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Retención en la Fuente" name="retefuente_procedimiento">
+                    <group string="Procedimiento" name="retefuente_procedure">
+                        <field name="l10n_co_ne_retention_procedure"/>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        Por ley (Art. 384 ET), el procedimiento solo puede cambiarse en junio o
+                        diciembre -- el cambio aplica de inmediato al guardar dentro de esa
+                        ventana, vigente para los payslips que se calculen desde ese momento.
+                    </div>
+
+                    <div class="mt8" invisible="l10n_co_ne_retention_procedure != '2'">
+                        <button name="action_calculate_retention_procedure2"
+                                string="Calcular Procedimiento 2 (Semestre Siguiente)"
+                                type="object" class="btn-primary"
+                                confirm="Esto calcula y guarda el porcentaje fijo del próximo semestre a partir del promedio de los últimos 12 payslips confirmados. Solo puede hacerse en junio o diciembre. ¿Continuar?"/>
+                    </div>
+
+                    <group string="Histórico Procedimiento 2" name="retefuente_history"
+                           invisible="l10n_co_ne_retention_procedure != '2'">
+                        <field name="l10n_co_ne_retention_procedure2_ids" nolabel="1" colspan="2" readonly="1">
+                            <list>
+                                <field name="semester_start"/>
+                                <field name="months_considered"/>
+                                <field name="average_gross"/>
+                                <field name="average_ibc"/>
+                                <field name="fixed_percentage"/>
+                                <field name="computation_date"/>
+                                <field name="computed_by"/>
+                            </list>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

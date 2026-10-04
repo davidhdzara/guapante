@@ -1,0 +1,175 @@
+# -*- coding: utf-8 -*-
+# Part of InSoTech. See LICENSE file for full copyright and licensing details.
+
+"""
+Extensión de res.config.settings para exponer la configuración de Nómina
+Electrónica DIAN dentro de Ajustes > Nómina, en vez de una pestaña en la
+ficha de la compañía (Ajustes Generales).
+
+El dato real sigue viviendo en res.company -- este modelo solo lo expone
+en otro lugar de la UI vía `related` + `readonly=False` (sin esto último,
+un related es de solo lectura por defecto en Odoo). Mismo patrón que
+l10n_co_dian/models/res_config_settings.py (Contabilidad > Facturación
+Electrónica (CO)), doc 19.
+
+Sin `help=` en ningún campo: el texto de ayuda visible viene del atributo
+`help=` de cada `<setting>` en la vista, no de que el campo lo herede del
+related (confirmado por Tech Lead contra el mismo ejemplo de l10n_co_dian).
+
+`domain=` SÍ hay que declararlo explícito en cada Many2one related que lo
+necesite (doc 21 §1.2/1.3) -- a diferencia de `help=`, un related NO
+hereda el `domain=` del campo destino en res.company. Sin esto, el
+picker del campo trae CUALQUIER registro del modelo (verificado: sin
+domain, `l10n_co_ne_sequence_id` mostraba secuencias de otros módulos
+como Batch Transfer o Blanket Order).
+
+Doc 22: "Software DIAN" (3 Char planos) y "Ambiente" (Selection) se
+reemplazaron por la tabla `l10n_co_ne_operation_mode_ids` y los 2
+checkboxes `l10n_co_ne_test_environment`/`_certification_process`, para
+replicar la estructura de Facturación Electrónica (CO). Se agregó
+también `l10n_co_ne_certificate_ids` (O2M, paridad literal con
+`l10n_co_dian_certificate_ids`).
+
+2026-09-12: retirado `l10n_co_ne_certificate_id` (Many2one de selección
+explícita) -- verificado que Facturación Electrónica no tiene equivalente,
+toma siempre el último certificado de la lista. `res.company._get_ne_certificate()`
+reemplaza su uso en el flujo de firma con el mismo criterio.
+
+2026-09-12 (doc 36 v2): "Cuentas Predeterminadas" -- 4 campos de diario
+contable, uno por estructura salarial colombiana (`journal_id` de
+`hr.payroll.structure`, company_dependent). NO son `related=`: `journal_id`
+vive en hr.payroll.structure, no hay cadena de relación simple desde
+company_id hasta ahí (a diferencia de todos los campos de arriba, que sí
+cuelgan de res.company). Se exponen con el mecanismo nativo de Odoo para
+este caso -- override de get_values()/set_values() -- mismo patron que usa
+`account` para varios de sus propios campos de "Default Accounts".
+"""
+
+from odoo import fields, models
+
+_NE_STRUCTURE_JOURNAL_FIELDS = {
+    'l10n_co_ne_journal_nomina_id': 'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina',
+    'l10n_co_ne_journal_prima_id': 'l10n_co_nomina_electronica.hr_payroll_structure_co_prima',
+    'l10n_co_ne_journal_liquidacion_id': 'l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion',
+    'l10n_co_ne_journal_bonificacion_id': 'l10n_co_nomina_electronica.hr_payroll_structure_co_bonificacion',
+}
+
+
+class ResConfigSettings(models.TransientModel):
+    _inherit = 'res.config.settings'
+
+    # Modos de Operación DIAN (doc 22 §1)
+    l10n_co_ne_operation_mode_ids = fields.One2many(
+        related='company_id.l10n_co_ne_operation_mode_ids', readonly=False,
+    )
+    l10n_co_ne_payroll_prefix = fields.Char(related='company_id.l10n_co_ne_payroll_prefix', readonly=False)
+    l10n_co_ne_adjust_prefix = fields.Char(related='company_id.l10n_co_ne_adjust_prefix', readonly=False)
+    l10n_co_ne_sequence_id = fields.Many2one(
+        related='company_id.l10n_co_ne_sequence_id', readonly=False,
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
+    )
+    l10n_co_ne_pre_sequence_id = fields.Many2one(
+        related='company_id.l10n_co_ne_pre_sequence_id', readonly=False,
+        domain="[('code', 'like', 'l10n_co_nomina.')]",
+    )
+
+    # Ambiente (doc 22 §3)
+    l10n_co_ne_test_environment = fields.Boolean(related='company_id.l10n_co_ne_test_environment', readonly=False)
+    l10n_co_ne_certification_process = fields.Boolean(related='company_id.l10n_co_ne_certification_process', readonly=False)
+    l10n_co_ne_demo_mode = fields.Boolean(related='company_id.l10n_co_ne_demo_mode', readonly=False)
+    l10n_co_ne_num_nomina_certificar = fields.Integer(related='company_id.l10n_co_ne_num_nomina_certificar', readonly=False)
+    l10n_co_ne_num_ajuste_certificar = fields.Integer(related='company_id.l10n_co_ne_num_ajuste_certificar', readonly=False)
+
+    # Certificado Digital -- retirado el Many2one de selección explícita
+    # 2026-09-12 (paridad real con Facturación Electrónica, que no tiene
+    # ninguno; ver res_company.py: _get_ne_certificate()). Queda solo la
+    # lista, gestionable desde esta pantalla.
+    l10n_co_ne_certificate_ids = fields.One2many(
+        related='company_id.l10n_co_ne_certificate_ids', readonly=False,
+    )
+
+    # UGPP
+    l10n_co_ugpp_legal_nature = fields.Selection(related='company_id.l10n_co_ugpp_legal_nature', readonly=False)
+    l10n_co_ugpp_contributor_type = fields.Selection(related='company_id.l10n_co_ugpp_contributor_type', readonly=False)
+    l10n_co_ugpp_special_autoretention = fields.Boolean(related='company_id.l10n_co_ugpp_special_autoretention', readonly=False)
+
+    # Parámetros Nómina Colombia
+    l10n_co_ne_exoneration_1607 = fields.Boolean(related='company_id.l10n_co_ne_exoneration_1607', readonly=False)
+
+    # PILA
+    l10n_co_pila_tipo_aportante = fields.Selection(related='company_id.l10n_co_pila_tipo_aportante', readonly=False)
+    l10n_co_pila_arl_code = fields.Char(related='company_id.l10n_co_pila_arl_code', readonly=False)
+    l10n_co_pila_arl_name = fields.Char(related='company_id.l10n_co_pila_arl_name', readonly=False)
+    l10n_co_pila_forma_presentacion = fields.Selection(related='company_id.l10n_co_pila_forma_presentacion', readonly=False)
+    l10n_co_pila_codigo_sucursal = fields.Char(related='company_id.l10n_co_pila_codigo_sucursal', readonly=False)
+    l10n_co_pila_nombre_sucursal = fields.Char(related='company_id.l10n_co_pila_nombre_sucursal', readonly=False)
+    l10n_co_pila_operador_code = fields.Char(related='company_id.l10n_co_pila_operador_code', readonly=False)
+
+    # Cuentas Predeterminadas -- Diarios por Estructura Salarial (doc 36 v2)
+    l10n_co_ne_journal_nomina_id = fields.Many2one('account.journal', string='Diario — Nómina General')
+    l10n_co_ne_journal_prima_id = fields.Many2one('account.journal', string='Diario — Prima de Servicios')
+    l10n_co_ne_journal_liquidacion_id = fields.Many2one('account.journal', string='Diario — Liquidación de Contrato')
+    l10n_co_ne_journal_bonificacion_id = fields.Many2one('account.journal', string='Diario — Bonificaciones Extraordinarias')
+
+    def get_values(self):
+        res = super().get_values()
+        for fname, xmlid in _NE_STRUCTURE_JOURNAL_FIELDS.items():
+            structure = self.env.ref(xmlid, raise_if_not_found=False)
+            res[fname] = structure.journal_id.id if structure else False
+        return res
+
+    def set_values(self):
+        super().set_values()
+        for fname, xmlid in _NE_STRUCTURE_JOURNAL_FIELDS.items():
+            structure = self.env.ref(xmlid, raise_if_not_found=False)
+            if structure:
+                structure.journal_id = self[fname]
+
+    def action_iniciar_habilitacion_nomina(self):
+        """Habilitación DIAN en 1 clic, sin el modal intermedio del wizard.
+
+        2026-09-14: David pidió (con captura) que el link "Abrir Asistente
+        de Habilitación" dispare el proceso directo, igual que el patrón de
+        1 solo clic de Facturación Electrónica (Odoo 19) que mostró como
+        referencia -- antes abría el wizard (`target=new`) y exigía un
+        segundo clic adentro en "Iniciar Proceso de Habilitación".
+
+        El wizard (`l10n.co.ne.certification.wizard`) sigue existiendo tal
+        cual, sin cambios -- este método solo crea una instancia nueva
+        (TransientModel) y llama a su `action_iniciar_habilitacion()`
+        directo, sin mostrar el formulario. Como el wizard es transient
+        (no sobrevive entre clics), este método rehidrata sus 2 campos de
+        seguimiento (`payslip_individual_ids`/`_ajuste_ids`) buscando
+        payslips de habilitación reales ya preparados en corridas
+        anteriores (mismo período/nombre determinístico que usa
+        `_auto_select_period()`) -- si no se hiciera esto, cada clic
+        volvería a preparar y generar XML para todos los empleados desde
+        cero, duplicando documentos y gastando cupo real de la DIAN
+        (`action_prepare_individual()`/`_ajuste()` solo se saltan la
+        preparación cuando el wizard YA trae `payslip_individual_ids`/
+        `_ajuste_ids` cargados).
+        """
+        self.ensure_one()
+        wizard = self.env['l10n.co.ne.certification.wizard'].create({
+            'company_id': self.company_id.id,
+        })
+        date_from, date_to = wizard._auto_select_period()
+        existing_individual = self.env['hr.payslip'].search([
+            ('company_id', '=', wizard.company_id.id),
+            ('date_from', '=', date_from),
+            ('date_to', '=', date_to),
+            ('l10n_co_ne_is_adjustment', '=', False),
+            ('name', 'like', 'Habilitación DIAN - %'),
+        ])
+        existing_ajuste = self.env['hr.payslip'].search([
+            ('company_id', '=', wizard.company_id.id),
+            ('l10n_co_ne_is_adjustment', '=', True),
+            ('name', 'like', 'Ajuste Habilitación DIAN - %'),
+        ])
+        wizard.write({
+            'date_from': date_from,
+            'date_to': date_to,
+            'payslip_individual_ids': [(6, 0, existing_individual.ids)],
+            'payslip_ajuste_ids': [(6, 0, existing_ajuste.ids)],
+        })
+        return wizard.action_iniciar_habilitacion()

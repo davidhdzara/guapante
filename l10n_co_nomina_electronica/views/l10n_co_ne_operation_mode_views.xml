@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Modo de Operación Nómina Electrónica - List/Form views       -->
+    <!--                                                                -->
+    <!-- Sin vista propia, l10n_co_ne_operation_mode_ids (embebido en  -->
+    <!-- Ajustes > Nómina) caía al fallback genérico de Odoo (columna  -->
+    <!-- "ID" nada más), paridad visual con Facturación Electrónica    -->
+    <!-- (l10n_co_dian.operation_mode.view.list), mismo criterio doc   -->
+    <!-- 22. Sin campo "Modo del Software" (Selection) porque este     -->
+    <!-- modelo, a diferencia de DIAN, siempre tiene 1 sola fila por   -->
+    <!-- compañía (UNIQUE(company_id)), ver docstring del modelo.      -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_ne_operation_mode_list" model="ir.ui.view">
+        <field name="name">l10n.co.ne.operation_mode.view.list</field>
+        <field name="model">l10n.co.ne.operation_mode</field>
+        <field name="arch" type="xml">
+            <list string="Modos de Operación">
+                <field name="software_id"/>
+                <field name="software_pin"/>
+                <field name="test_set_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_ne_operation_mode_form" model="ir.ui.view">
+        <field name="name">l10n.co.ne.operation_mode.view.form</field>
+        <field name="model">l10n.co.ne.operation_mode</field>
+        <field name="arch" type="xml">
+            <form string="Modo de Operación">
+                <sheet>
+                    <group>
+                        <field name="software_id"/>
+                        <field name="software_pin"/>
+                        <field name="test_set_id"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>

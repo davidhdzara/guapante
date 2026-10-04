@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Wizard Form View -->
+    <record id="hr_payslip_send_view_form" model="ir.ui.view">
+        <field name="name">hr.payslip.send.view.form</field>
+        <field name="model">hr.payslip.send</field>
+        <field name="arch" type="xml">
+            <form string="Enviar y Procesar Nómina Electrónica">
+                <sheet>
+                    <field name="mode" invisible="1"/>
+                    <field name="enable_send_mail" invisible="1"/>
+
+                    <!-- Alerta informativa para procesamiento masivo -->
+                    <div invisible="mode != 'multi'">
+                        <div class="alert alert-info text-center" role="alert">
+                            Ha seleccionado múltiples nóminas para su procesamiento masivo.
+                            El sistema generará los XMLs, los firmará y los enviará a la DIAN y por correo electrónico
+                            de manera secuencial y ordenada.
+                        </div>
+                    </div>
+
+                    <group>
+                        <group string="Canales de Transmisión">
+                            <field name="checkbox_send_dian"
+                                   string="Transmitir a la DIAN (CUNE + XML)"/>
+                            <field name="checkbox_send_mail"
+                                   string="Enviar por Correo al Trabajador"
+                                   invisible="not enable_send_mail"/>
+                        </group>
+                        <group string="Configuración de Correo" invisible="not checkbox_send_mail">
+                            <field name="mail_template_id"
+                                   string="Plantilla de Correo"
+                                   required="checkbox_send_mail"/>
+                        </group>
+                    </group>
+
+                    <!-- Detalle de nóminas en modo individual -->
+                    <notebook invisible="mode != 'single'">
+                        <page string="Detalle del Recibo" name="payslip_detail">
+                            <field name="payslip_ids" readonly="1" create="0" delete="0">
+                                <list string="Nóminas Seleccionadas" create="0" delete="0">
+                                    <field name="number" string="Número"/>
+                                    <field name="employee_id" string="Empleado"/>
+                                    <field name="date_from" string="Periodo Desde"/>
+                                    <field name="date_to" string="Periodo Hasta"/>
+                                    <field name="company_id" groups="base.group_multi_company" string="Compañía"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button string="Procesar y Enviar"
+                            name="action_send_and_print"
+                            type="object"
+                            class="btn-primary"
+                            data-hotkey="q"/>
+                    <button string="Descartar"
+                            class="btn-secondary"
+                            special="cancel"
+                            data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Acción de Ventana (act_window) -->
+    <record id="action_hr_payslip_send" model="ir.actions.act_window">
+        <field name="name">Enviar y Procesar</field>
+        <field name="res_model">hr.payslip.send</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
+        <field name="binding_view_types">form,list</field>
+    </record>
+
+</odoo>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            Tipos de input para las 7 reglas de Horas Extra y Recargos
+            (CO_HED/CO_HEN/CO_HRN/CO_HEDDF/CO_HENDF/CO_HRDDF/CO_HRNDF,
+            hr_payroll_structure_data.xml), cada una lee
+            inputs.get('CO_XXX').amount desde su propio
+            condition_python/amount_python_compute, pero ninguna tenia
+            hr.payslip.input.type registrado, asi que RRHH no tenia
+            forma de capturar las horas desde el picker de "Other
+            Inputs" del payslip. Mismo patron sistemico ya encontrado
+            y corregido 3 veces este ciclo (CO_EMBARGO doc 16,
+            CO_LIQ_INDEMNIZ doc 20, CO_BON_VALOR pendiente doc 14 SS6.1),
+            hallazgo de Tech Lead corriendo la matriz de QA (casos
+            JR-04/EMB-09), esta vez en la estructura principal de
+            nomina, bloqueando horas extra reales.
+        -->
+
+        <record id="input_co_hed" model="hr.payslip.input.type">
+            <field name="name">Hora Extra Diurna (HED)</field>
+            <field name="code">CO_HED</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_hen" model="hr.payslip.input.type">
+            <field name="name">Hora Extra Nocturna (HEN)</field>
+            <field name="code">CO_HEN</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_hrn" model="hr.payslip.input.type">
+            <field name="name">Recargo Nocturno (HRN)</field>
+            <field name="code">CO_HRN</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_heddf" model="hr.payslip.input.type">
+            <field name="name">Hora Extra Diurna Dom/Festivo (HEDDF)</field>
+            <field name="code">CO_HEDDF</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_hendf" model="hr.payslip.input.type">
+            <field name="name">Hora Extra Nocturna Dom/Festivo (HENDF)</field>
+            <field name="code">CO_HENDF</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_hrddf" model="hr.payslip.input.type">
+            <field name="name">Recargo Diurno Dom/Festivo (HRDDF)</field>
+            <field name="code">CO_HRDDF</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_hrndf" model="hr.payslip.input.type">
+            <field name="name">Recargo Nocturno Dom/Festivo (HRNDF)</field>
+            <field name="code">CO_HRNDF</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+    </data>
+
+    <!--
+        Fuera del bloque noupdate="1" de arriba, deliberadamente,
+        mismo criterio que l10n_co_embargo_input_types_data.xml: este
+        record no crea nada, solo AGREGA (operador (4, ref)) los 7
+        tipos nuevos a hr_payroll_structure_co_nomina.
+        input_line_type_ids, que controla el domain de input_type_id
+        en el picker de "Other Inputs" del payslip. Se deja fuera de
+        noupdate para que se re-aplique en cada -u.
+
+        IMPORTANTE sobre orden de carga: este archivo debe cargarse
+        DESPUES de data/hr_payroll_structure_data.xml en el manifest
+        (donde se CREA hr_payroll_structure_co_nomina), mismo motivo
+        documentado en l10n_co_embargo_input_types_data.xml.
+    -->
+    <record id="hr_payroll_structure_co_nomina" model="hr.payroll.structure">
+        <field name="input_line_type_ids" eval="[(4, ref('input_co_hed')),
+                                                  (4, ref('input_co_hen')),
+                                                  (4, ref('input_co_hrn')),
+                                                  (4, ref('input_co_heddf')),
+                                                  (4, ref('input_co_hendf')),
+                                                  (4, ref('input_co_hrddf')),
+                                                  (4, ref('input_co_hrndf'))]"/>
+    </record>
+</odoo>

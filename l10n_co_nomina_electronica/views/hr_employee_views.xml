@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_employee_form_ne" model="ir.ui.view">
+        <field name="name">hr.employee.form.ne</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Nómina Electrónica" name="nomina_electronica">
+
+                    <group string="Identificación DIAN" name="dian_identification">
+                        <group>
+                            <field name="l10n_co_ne_document_type"
+                                   string="Tipo Documento DIAN"/>
+                            <field name="l10n_co_ne_worker_type"
+                                   string="Tipo Trabajador"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_worker_subtype"
+                                   string="Subtipo Trabajador"/>
+                            <field name="l10n_co_ne_high_risk_pension"
+                                   string="Pensión Alto Riesgo"/>
+                        </group>
+                    </group>
+
+                    <group string="Ubicación Laboral" name="work_location">
+                        <group>
+                            <field name="l10n_co_ne_dane_city_id"
+                                   string="Municipio DANE (Lugar de Trabajo)"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_foreigner_no_pension"
+                                   string="Extranjero sin Pensión en Colombia"/>
+                            <field name="l10n_co_ne_colombian_abroad"
+                                   string="Colombiano en el Exterior"/>
+                        </group>
+                    </group>
+
+                    <group string="Datos de Pago" name="payment_data">
+                        <group>
+                            <field name="l10n_co_ne_payment_method"
+                                   string="Medio de Pago"/>
+                            <field name="l10n_co_ne_bank_name"
+                                   string="Nombre del Banco"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_ne_bank_account_type"
+                                   string="Tipo de Cuenta"/>
+                            <field name="l10n_co_ne_bank_account"
+                                   string="Número de Cuenta"/>
+                        </group>
+                    </group>
+
+                    <group string="PILA - Administradoras" name="pila_administradoras">
+                        <group>
+                            <field name="l10n_co_pila_eps_code"/>
+                            <field name="l10n_co_pila_afp_code"/>
+                            <field name="l10n_co_pila_ccf_code"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_pila_afp_traslado"/>
+                            <field name="l10n_co_pila_eps_traslado"/>
+                            <field name="l10n_co_pila_colombiano_exterior"/>
+                            <field name="l10n_co_pila_fecha_radicacion_ext"
+                                   invisible="not l10n_co_pila_colombiano_exterior"/>
+                        </group>
+                    </group>
+
+                </page>
+
+                <!-- ============================================================ -->
+                <!-- Doc 11: Ficha Consolidada de Contrato y Afiliaciones         -->
+                <!--                                                                -->
+                <!-- Agrupa visualmente datos que ya existen en otros modelos      -->
+                <!-- (contrato, compañía), no se mueve ningún campo de su modelo   -->
+                <!-- real, mismo criterio usado en "Cuentas Predeterminadas"       -->
+                <!-- (doc 36) y "Modos de Operación". El Historial Salarial        -->
+                <!-- reutiliza contract_ids nativo (hr_contract), cada versión de  -->
+                <!-- contrato ya trae su propio salario/fechas/estado.             -->
+                <!-- ============================================================ -->
+                <page string="Nómina Colombia" name="nomina_colombia_consolidada">
+
+                    <group string="Contrato y Cargo" name="nc_contrato_cargo">
+                        <group>
+                            <field name="job_id"/>
+                            <field name="department_id"/>
+                        </group>
+                        <group>
+                            <field name="contract_id" readonly="1"/>
+                            <field name="l10n_co_ne_contract_type_display"/>
+                        </group>
+                    </group>
+
+                    <group string="Centro de Costo y Afiliaciones" name="nc_centro_afiliaciones">
+                        <group>
+                            <field name="l10n_co_ne_analytic_account_id" groups="analytic.group_analytic_accounting"/>
+                            <field name="l10n_co_pila_clase_riesgo_display"/>
+                            <field name="l10n_co_pila_arl_name_display"/>
+                        </group>
+                        <group>
+                            <field name="l10n_co_pila_eps_code"/>
+                            <field name="l10n_co_pila_afp_code"/>
+                            <field name="l10n_co_pila_ccf_code"/>
+                        </group>
+                    </group>
+
+                    <group string="Pago" name="nc_pago">
+                        <group>
+                            <field name="l10n_co_ne_bank_name"/>
+                            <field name="l10n_co_ne_bank_account_type"/>
+                            <field name="l10n_co_ne_bank_account"/>
+                        </group>
+                    </group>
+
+                    <group string="Historial Salarial" name="nc_historial">
+                        <field name="contract_ids" nolabel="1" colspan="2" readonly="1">
+                            <list>
+                                <field name="name"/>
+                                <field name="date_start"/>
+                                <field name="date_end"/>
+                                <field name="l10n_co_ne_contract_type"/>
+                                <field name="wage"/>
+                                <field name="state"/>
+                            </list>
+                        </field>
+                    </group>
+
+                    <div class="mt8">
+                        <button type="action"
+                                name="%(hr_payroll.action_view_hr_payroll_structure_list_form)d"
+                                string="Ver Estructuras Salariales" class="btn-link"/>
+                        <button type="action"
+                                name="%(l10n_co_nomina_electronica.action_hr_salary_rule_account_ne)d"
+                                string="Ver Cuentas Contables por Regla" class="btn-link"/>
+                    </div>
+
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
