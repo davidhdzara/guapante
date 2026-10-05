@@ -179,3 +179,13 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
     def test_predecesor_inexistente_no_inventa_valores(self):
         ajuste = self._make_payslip('AjusteHuerfano', is_adjustment=True)
         self.assertEqual(ajuste._ne_predecessor_values(), ('', ''))
+
+    def test_version_de_nota_de_ajuste_usa_el_literal_niae022(self):
+        ajuste = self._make_payslip('AjusteVersion', is_adjustment=True)
+        individual = self._make_payslip('IndividualVersion', is_adjustment=False)
+        self.assertEqual(
+            ajuste._collect_payslip_data()['informacion_general']['Version'],
+            'V1.0: Nota de Ajuste de Documento Soporte de Pago de Nómina Electrónica')
+        self.assertEqual(
+            individual._collect_payslip_data()['informacion_general']['Version'],
+            'V1.0: Documento Soporte de Pago de Nómina Electrónica')

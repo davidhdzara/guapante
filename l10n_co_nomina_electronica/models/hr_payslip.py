@@ -1060,7 +1060,12 @@ class HrPayslip(models.Model):
                 # -- no el consecutivo del documento (ese ya va en CUNE/
                 # NumeroSecuenciaXML). El valor anterior ("V1.0: NumNom: ...")
                 # nunca fue el literal que pide el Anexo Tecnico.
-                'Version': 'V1.0: Documento Soporte de Pago de Nómina Electrónica',
+                # NIAE022 (nota de ajuste) exige el literal propio del ajuste.
+                'Version': (
+                    'V1.0: Nota de Ajuste de Documento Soporte de Pago de Nómina Electrónica'
+                    if self.l10n_co_ne_is_adjustment
+                    else 'V1.0: Documento Soporte de Pago de Nómina Electrónica'
+                ),
                 'Ambiente': company.l10n_co_ne_environment,
                 'TipoXML': '103' if self.l10n_co_ne_is_adjustment else '102',
                 'FechaGen': now.strftime('%Y-%m-%d'),
