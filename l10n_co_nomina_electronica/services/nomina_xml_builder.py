@@ -43,29 +43,41 @@ NS_XS = 'http://www.w3.org/2001/XMLSchema-instance'
 NS_XSD = 'http://www.w3.org/2001/XMLSchema-instance'
 
 # Mapa común de prefijos
-# 'xs' y 'xsi' apuntan a la MISMA URI (el Anexo exige declarar ambos). lxml serializa
-# {URI}schemaLocation con el PRIMER prefijo del mapa; la DIAN (.NET SignedXml) canoniza
-# el atributo como xsi:schemaLocation. Si sale 'xs:' el digest del documento difiere
-# del que firmamos y la DIAN responde ZE02. Por eso 'xsi' va ANTES de 'xs'.
 _NSMAP_NOMINA = {
     None: NS_NOMINA,
-    'xsi': NS_XSD,
     'xs': NS_XS,
     'ds': NS_DS,
     'ext': NS_EXT,
     'xades': NS_XADES,
     'xades141': NS_XADES141,
+    'xsi': NS_XSD,
 }
 
 _NSMAP_AJUSTE = {
     None: NS_NOMINA_AJUSTE,
-    'xsi': NS_XSD,
     'xs': NS_XS,
     'ds': NS_DS,
     'ext': NS_EXT,
     'xades': NS_XADES,
     'xades141': NS_XADES141,
+    'xsi': NS_XSD,
 }
+
+
+def _serialize(root: etree._Element) -> bytes:
+    """Serializa el documento forzando ``xsi:schemaLocation``.
+
+    ``xs`` y ``xsi`` apuntan a la MISMA URI (el Anexo DIAN exige declarar ambos, en ese
+    orden). lxml escribe ``{URI}schemaLocation`` con el PRIMER prefijo del mapa (``xs:``),
+    pero la DIAN (.NET SignedXml) canoniza el atributo con el ULTIMO prefijo declarado
+    (``xsi:``). Si el texto dice ``xs:`` el digest del documento que verifica la DIAN no
+    coincide con el firmado y responde ZE02. El documento aceptado por la DIAN lleva
+    ``xmlns:xs`` luego ``xmlns:xsi`` y ``xsi:schemaLocation``.
+    """
+    xml = etree.tostring(
+        root, xml_declaration=True, encoding='UTF-8', pretty_print=True,
+    )
+    return xml.replace(b' xs:schemaLocation=', b' xsi:schemaLocation=', 1)
 
 
 # =====================================================================
@@ -980,10 +992,7 @@ def build_nomina_individual(data: dict) -> bytes:
     _el(root, 'ComprobanteTotal',
         text=_fmt(data.get('comprobante_total', 0)))
 
-    return etree.tostring(
-        root, xml_declaration=True, encoding='UTF-8',
-        pretty_print=True,
-    )
+    return _serialize(root)
 
 
 # =====================================================================
@@ -1038,10 +1047,7 @@ def build_nota_ajuste(data: dict) -> bytes:
     if eliminar:
         _build_eliminar(root, eliminar)
 
-    return etree.tostring(
-        root, xml_declaration=True, encoding='UTF-8',
-        pretty_print=True,
-    )
+    return _serialize(root)
 
 
 def _build_reemplazar(
@@ -1867,7 +1873,7 @@ def build_nomina_individual_v2(data: dict) -> bytes:
     _el(root, 'DeduccionesTotal', text=_fmt(data.get('deducciones_total', 0)))
     _el(root, 'ComprobanteTotal', text=_fmt(data.get('comprobante_total', 0)))
 
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', pretty_print=True)
+    return _serialize(root)
 
 
 def _build_reemplazar_v2(parent: etree._Element, data: dict) -> None:
@@ -1973,4 +1979,4 @@ def build_nota_ajuste_v2(data: dict) -> bytes:
     if eliminar:
         _build_eliminar_v2(root, eliminar)
 
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', pretty_print=True)
+    return _serialize(root)
