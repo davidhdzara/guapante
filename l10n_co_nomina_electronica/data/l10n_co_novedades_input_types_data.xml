@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            Tipos de input de TODAS las novedades manuales de la estructura de nómina colombiana.
+
+            Cada regla salarial lee su novedad con inputs['CO_XXX'].amount, pero solo existían los
+            tipos de horas extra y embargos: sin hr.payslip.input.type el código no existe y RRHH
+            no puede registrar la novedad (ni por pantalla ni por ORM). Quedaban sin forma de
+            capturarse: vacaciones, prima, cesantías, intereses, incapacidades, licencias,
+            bonificaciones, comisiones, auxilios, viáticos y las deducciones manuales (libranza,
+            sindicato, cooperativa, AFC, pensión voluntaria, plan complementario, educación...).
+            Hallazgo de QA en la Ronda 1 DIAN (2026-10-05): bloqueaba cualquier nómina real con
+            esas novedades, no solo las pruebas. Mismo patrón que l10n_co_horas_extra_input_types_data.xml.
+
+            Unidad de cada entrada (la que lee su regla): "(días)" = cantidad de días, el resto = valor en pesos.
+        -->
+
+        <record id="input_co_afc" model="hr.payslip.input.type">
+            <field name="name">AFC - Ahorro Fomento Construcción</field>
+            <field name="code">CO_AFC</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_apoyo_sost" model="hr.payslip.input.type">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
+            <field name="code">CO_APOYO_SOST</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_aux_alim" model="hr.payslip.input.type">
+            <field name="name">Auxilio de Alimentación</field>
+            <field name="code">CO_AUX_ALIM</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_bonif_nosal" model="hr.payslip.input.type">
+            <field name="name">Bonificación No Salarial</field>
+            <field name="code">CO_BONIF_NOSAL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_bonif_ret" model="hr.payslip.input.type">
+            <field name="name">Bonificación de Retiro</field>
+            <field name="code">CO_BONIF_RET</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_bonif_sal" model="hr.payslip.input.type">
+            <field name="name">Bonificación Salarial</field>
+            <field name="code">CO_BONIF_SAL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_bon_valor" model="hr.payslip.input.type">
+            <field name="name">Valor de la Bonificacion</field>
+            <field name="code">CO_BON_VALOR</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_cesantias" model="hr.payslip.input.type">
+            <field name="name">Cesantías</field>
+            <field name="code">CO_CESANTIAS</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_comisiones" model="hr.payslip.input.type">
+            <field name="name">Comisiones</field>
+            <field name="code">CO_COMISIONES</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_cooperativa" model="hr.payslip.input.type">
+            <field name="name">Cooperativa</field>
+            <field name="code">CO_COOPERATIVA</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_dotacion" model="hr.payslip.input.type">
+            <field name="name">Dotación</field>
+            <field name="code">CO_DOTACION</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_educacion" model="hr.payslip.input.type">
+            <field name="name">Educación</field>
+            <field name="code">CO_EDUCACION</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_inc_comun" model="hr.payslip.input.type">
+            <field name="name">Incapacidad Enfermedad General (días)</field>
+            <field name="code">CO_INC_COMUN</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_inc_laboral" model="hr.payslip.input.type">
+            <field name="name">Incapacidad Accidente de Trabajo (días)</field>
+            <field name="code">CO_INC_LABORAL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_indemniz" model="hr.payslip.input.type">
+            <field name="name">Indemnización</field>
+            <field name="code">CO_INDEMNIZ</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_int_ces" model="hr.payslip.input.type">
+            <field name="name">Intereses sobre Cesantías</field>
+            <field name="code">CO_INT_CES</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_libranzas" model="hr.payslip.input.type">
+            <field name="name">Libranzas</field>
+            <field name="code">CO_LIBRANZAS</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_lic_mat" model="hr.payslip.input.type">
+            <field name="name">Licencia de Maternidad (días)</field>
+            <field name="code">CO_LIC_MAT</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_lic_pat" model="hr.payslip.input.type">
+            <field name="name">Licencia de Paternidad (días)</field>
+            <field name="code">CO_LIC_PAT</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_lic_rem" model="hr.payslip.input.type">
+            <field name="name">Licencia Remunerada (días)</field>
+            <field name="code">CO_LIC_REM</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_otras_ded" model="hr.payslip.input.type">
+            <field name="name">Otras Deducciones</field>
+            <field name="code">CO_OTRAS_DED</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_pension_vol" model="hr.payslip.input.type">
+            <field name="name">Pensión Voluntaria</field>
+            <field name="code">CO_PENSION_VOL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_plan_comp" model="hr.payslip.input.type">
+            <field name="name">Plan Complementario de Salud</field>
+            <field name="code">CO_PLAN_COMP</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_prima" model="hr.payslip.input.type">
+            <field name="name">Prima de Servicios</field>
+            <field name="code">CO_PRIMA</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_sindicato" model="hr.payslip.input.type">
+            <field name="name">Cuota Sindical</field>
+            <field name="code">CO_SINDICATO</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_teletrabajo" model="hr.payslip.input.type">
+            <field name="name">Auxilio Conectividad / Teletrabajo</field>
+            <field name="code">CO_TELETRABAJO</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_vac" model="hr.payslip.input.type">
+            <field name="name">Vacaciones Disfrutadas (días)</field>
+            <field name="code">CO_VAC</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_vac_comp" model="hr.payslip.input.type">
+            <field name="name">Vacaciones Compensadas en Dinero</field>
+            <field name="code">CO_VAC_COMP</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_viaticos_nosal" model="hr.payslip.input.type">
+            <field name="name">Viáticos No Salariales</field>
+            <field name="code">CO_VIATICOS_NOSAL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_viaticos_sal" model="hr.payslip.input.type">
+            <field name="name">Viáticos Salariales</field>
+            <field name="code">CO_VIATICOS_SAL</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+        <record id="input_co_lic_nr" model="hr.payslip.input.type">
+            <field name="name">Licencia No Remunerada (días)</field>
+            <field name="code">CO_LIC_NR</field>
+            <field name="country_id" ref="base.co"/>
+        </record>
+
+    </data>
+</odoo>

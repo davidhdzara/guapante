@@ -6,3 +6,4 @@ from . import test_ne_consecutive
 
 from . import test_ne_xml_namespaces
 from . import test_habilitacion_engine
+from . import test_input_types
