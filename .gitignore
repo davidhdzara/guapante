@@ -40,3 +40,6 @@ __pycache__/
 *.pyc
 !l10n_co_nomina_electronica/
 !l10n_co_nomina_electronica/**
+
+# Las guias y resoluciones en PDF viven solo en local, nunca en el repositorio
+*.pdf
