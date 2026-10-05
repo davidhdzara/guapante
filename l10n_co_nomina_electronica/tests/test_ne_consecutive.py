@@ -11,7 +11,10 @@ PRE-NOM. Estas pruebas cubren la defensa en profundidad agregada en
 prefijo que no corresponde al tipo de documento nunca se reutiliza.
 """
 
+import base64
 from datetime import date
+
+from lxml import etree
 
 from odoo.tests.common import TransactionCase
 
@@ -132,3 +135,47 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
             and payslip.l10n_co_ne_consecutive.startswith(expected_prefix)
         )
         self.assertFalse(consecutive_is_valid)
+
+    # --- Regresion NIAE024 (Nota de Ajuste: CUNE vacio y predecesor mal armado) ---
+    _AJUSTE_XML = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<NominaIndividualDeAjuste xmlns="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste">'
+        b'<ext:UBLExtensions xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"/>'
+        b'<Reemplazar><InformacionGeneral CUNE="" EncripCUNE=""/><CodigoQR/></Reemplazar>'
+        b'</NominaIndividualDeAjuste>'
+    )
+
+    def test_cune_y_qr_se_escriben_dentro_de_reemplazar(self):
+        payslip = self._make_payslip('AjusteCune', is_adjustment=True)
+        xml = payslip._ne_insert_cune_and_qr(self._AJUSTE_XML, 'abc123')
+        root = etree.fromstring(xml)
+        info = root.find('.//{*}InformacionGeneral')
+        self.assertEqual(info.get('CUNE'), 'abc123')
+        self.assertEqual(info.get('EncripCUNE'), 'CUNE-SHA384')
+        self.assertIn('documentkey=abc123', root.find('.//{*}CodigoQR').text)
+
+    def test_cune_y_qr_se_crean_si_codigoqr_no_existe(self):
+        payslip = self._make_payslip('AjusteQr', is_adjustment=True)
+        xml_sin_qr = self._AJUSTE_XML.replace(b'<CodigoQR/>', b'')
+        root = etree.fromstring(payslip._ne_insert_cune_and_qr(xml_sin_qr, 'abc123'))
+        self.assertEqual(root.find('.//{*}Reemplazar/{*}CodigoQR').getprevious().tag.split('}')[-1],
+                         'InformacionGeneral')
+
+    def test_predecesor_usa_numero_y_fecha_de_emision_del_documento_original(self):
+        original = self._make_payslip('Original', is_adjustment=False)
+        original.write({'l10n_co_ne_cune': 'cune-del-original', 'l10n_co_ne_consecutive': 'NE0000000047'})
+        original.l10n_co_ne_xml_attachment_id = self.env['ir.attachment'].create({
+            'name': 'original.xml',
+            'datas': base64.b64encode(
+                b'<NominaIndividual xmlns="x"><InformacionGeneral FechaGen="2026-10-04"/></NominaIndividual>'),
+        })
+        ajuste = self._make_payslip('AjustePred', is_adjustment=True)
+        ajuste.l10n_co_ne_adjustment_ref_cune = 'cune-del-original'
+        numero, fecha = ajuste._ne_predecessor_values()
+        self.assertEqual(numero, 'NE0000000047')
+        self.assertEqual(fecha, '2026-10-04')
+        self.assertNotEqual(fecha, str(ajuste.date_to))
+
+    def test_predecesor_inexistente_no_inventa_valores(self):
+        ajuste = self._make_payslip('AjusteHuerfano', is_adjustment=True)
+        self.assertEqual(ajuste._ne_predecessor_values(), ('', ''))

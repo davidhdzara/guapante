@@ -432,39 +432,7 @@ class HrPayslip(models.Model):
         self.l10n_co_ne_cune = cune_value
 
         # Insertar CUNE y CodigoQR en el XML
-        tree = _etree.fromstring(xml_bytes)
-        ns = tree.nsmap.get(None, '')
-        info_gen = tree.find('{%s}InformacionGeneral' % ns)
-        if info_gen is not None:
-            info_gen.set('CUNE', cune_value)
-            info_gen.set('EncripCUNE', 'CUNE-SHA384')
-        # Agregar CodigoQR
-        # AUD-DIAN-34 (2026-09-14): el host cambia segun el ambiente
-        # (Anexo Tecnico, seccion QRCode) -- Habilitacion usa
-        # catalogo-vpfe-hab, Produccion usa catalogo-vpfe (sin '-hab').
-        # Antes estaba hardcodeado al host de PRODUCCION sin importar el
-        # ambiente real, lo que explica el rechazo NIE021 en TODAS las
-        # pruebas de habilitacion de hoy pese a que el formato de la URL
-        # se veia correcto.
-        qr_host = (
-            'catalogo-vpfe.dian.gov.co'
-            if company.l10n_co_ne_environment == '1'
-            else 'catalogo-vpfe-hab.dian.gov.co'
-        )
-        qr_url = (
-            'https://%s/document/searchqr?documentkey=%s'
-            % (qr_host, cune_value)
-        )
-        qr_el = tree.find('{%s}CodigoQR' % ns)
-        if qr_el is None and info_gen is not None:
-            idx = list(tree).index(info_gen) + 1
-            qr_el = _etree.Element('{%s}CodigoQR' % ns)
-            tree.insert(idx, qr_el)
-        if qr_el is not None:
-            qr_el.text = qr_url
-        xml_bytes = _etree.tostring(
-            tree, xml_declaration=True, encoding='UTF-8',
-        )
+        xml_bytes = self._ne_insert_cune_and_qr(xml_bytes, cune_value)
 
         # Firmar XML con XAdES-BES
         private_key, cert_pem, cert_der, cert_obj, cert_chain = (
@@ -1235,13 +1203,71 @@ class HrPayslip(models.Model):
             'CodigoTrabajador': str(employee.id),
         }
 
+    def _ne_insert_cune_and_qr(self, xml_bytes, cune_value):
+        """Escribe CUNE/EncripCUNE en ``InformacionGeneral`` y la URL en ``CodigoQR``.
+
+        En las Notas de Ajuste ambos elementos viven dentro de ``<Reemplazar>`` (o
+        ``<Eliminar>``), no como hijos directos de la raiz: se buscan en todo el arbol. Si
+        no se encuentran el XML sale con ``CUNE=""`` y la DIAN rechaza con NIAE024.
+        """
+        company = self.company_id
+        tree = _etree.fromstring(xml_bytes)
+        ns = tree.nsmap.get(None, '')
+        info_gen = tree.find('.//{%s}InformacionGeneral' % ns)
+        if info_gen is not None:
+            info_gen.set('CUNE', cune_value)
+            info_gen.set('EncripCUNE', 'CUNE-SHA384')
+        # AUD-DIAN-34 (2026-09-14): el host del QR cambia segun el ambiente (Anexo Tecnico,
+        # seccion QRCode) -- Habilitacion usa catalogo-vpfe-hab, Produccion catalogo-vpfe.
+        qr_host = (
+            'catalogo-vpfe.dian.gov.co'
+            if company.l10n_co_ne_environment == '1'
+            else 'catalogo-vpfe-hab.dian.gov.co'
+        )
+        qr_url = 'https://%s/document/searchqr?documentkey=%s' % (qr_host, cune_value)
+        qr_el = tree.find('.//{%s}CodigoQR' % ns)
+        if qr_el is None and info_gen is not None:
+            parent = info_gen.getparent()
+            qr_el = _etree.Element('{%s}CodigoQR' % ns)
+            parent.insert(list(parent).index(info_gen) + 1, qr_el)
+        if qr_el is not None:
+            qr_el.text = qr_url
+        return _etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
+
+    def _ne_predecessor_values(self):
+        """(NumeroPred, FechaGenPred) del documento que reemplaza esta nota de ajuste.
+
+        Anexo DIAN NIAE190/NIAE192: ``NumeroPred`` es el NUMERO del documento a reemplazar
+        (prefijo + consecutivo, no un trozo del CUNE) y ``FechaGenPred`` la fecha de emision
+        de ese documento (su ``InformacionGeneral/@FechaGen``), no el fin del periodo.
+        """
+        self.ensure_one()
+        ref = self.l10n_co_ne_adjustment_ref_cune
+        if not ref:
+            return '', ''
+        pred = self.search([
+            ('l10n_co_ne_cune', '=', ref),
+            ('l10n_co_ne_is_adjustment', '=', False),
+            ('company_id', '=', self.company_id.id),
+        ], limit=1)
+        if not pred:
+            return '', ''
+        fecha = ''
+        if pred.l10n_co_ne_xml_attachment_id:
+            root = _etree.fromstring(base64.b64decode(pred.l10n_co_ne_xml_attachment_id.datas))
+            info = root.find('.//{*}InformacionGeneral')
+            if info is not None:
+                fecha = info.get('FechaGen', '')
+        return pred.l10n_co_ne_consecutive or '', fecha
+
     def _ne_reemplazar(self, data):
         """Sección <Reemplazar> de la nota de ajuste, reutilizando ``data``."""
+        numero_pred, fecha_gen_pred = self._ne_predecessor_values()
         return {
             'predecesor': {
-                'NumeroPred': self.l10n_co_ne_adjustment_ref_cune[:20] if self.l10n_co_ne_adjustment_ref_cune else '',
+                'NumeroPred': numero_pred,
                 'CUNEPred': self.l10n_co_ne_adjustment_ref_cune or '',
-                'FechaGenPred': str(self.date_to),
+                'FechaGenPred': fecha_gen_pred,
             },
             # Include all the same sections
             'periodo': data['periodo'],
