@@ -23,7 +23,7 @@ la tabla siempre tiene como máximo 1 fila por compañía
 sería una opción que nunca tendría un segundo valor real.
 """
 
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class L10nCoNeOperationMode(models.Model):
@@ -67,3 +67,31 @@ class L10nCoNeOperationMode(models.Model):
     def _compute_display_name(self):
         for record in self:
             record.display_name = 'Modo de Operación Nómina Electrónica'
+
+    # Los datos del set (SoftwareID/TestSetID) definen una habilitación: si cambian, el resultado
+    # anterior ("completa", "error") ya no le corresponde a este set y no debe seguir mostrándose.
+    _SET_FIELDS = ('software_id', 'test_set_id')
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = super().create(vals_list)
+        records._reset_habilitacion_result()
+        return records
+
+    def write(self, vals):
+        changed = self.browse()
+        if any(f in vals for f in self._SET_FIELDS):
+            changed = self.filtered(lambda r: any(f in vals and vals[f] != r[f] for f in self._SET_FIELDS))
+        result = super().write(vals)
+        changed._reset_habilitacion_result()
+        return result
+
+    def _reset_habilitacion_result(self):
+        """Vuelve la habilitación a 'idle' (sin resultado previo), salvo que esté corriendo."""
+        for company in self.mapped('company_id').sudo():
+            if company.l10n_co_ne_hab_state in ('done', 'error'):
+                company.write({
+                    'l10n_co_ne_hab_state': 'idle',
+                    'l10n_co_ne_hab_message': False,
+                    'l10n_co_ne_hab_started': False,
+                })
