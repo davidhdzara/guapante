@@ -45,7 +45,7 @@ este caso -- override de get_values()/set_values() -- mismo patron que usa
 `account` para varios de sus propios campos de "Default Accounts".
 """
 
-from odoo import fields, models
+from odoo import _, api, fields, models
 
 _NE_STRUCTURE_JOURNAL_FIELDS = {
     'l10n_co_ne_journal_nomina_id': 'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina',
@@ -125,51 +125,33 @@ class ResConfigSettings(models.TransientModel):
             if structure:
                 structure.journal_id = self[fname]
 
+    # Habilitación DIAN automática (ver l10n_co_ne_habilitacion.py): estado y avance en pantalla.
+    l10n_co_ne_hab_state = fields.Selection(related='company_id.l10n_co_ne_hab_state')
+    l10n_co_ne_hab_message = fields.Char(related='company_id.l10n_co_ne_hab_message')
+    l10n_co_ne_hab_progress = fields.Float(compute='_compute_l10n_co_ne_hab_progress')
+    l10n_co_ne_hab_summary = fields.Char(compute='_compute_l10n_co_ne_hab_progress')
+
+    @api.depends('company_id', 'company_id.l10n_co_ne_hab_state')
+    def _compute_l10n_co_ne_hab_progress(self):
+        engine = self.env['l10n.co.ne.habilitacion']
+        for settings in self:
+            progress = engine.progress(settings.company_id)
+            (acc_i, rej_i, tgt_i), (acc_a, rej_a, tgt_a) = progress['ind'], progress['aj']
+            summary = _('Nómina %(ai)d/%(ti)d · Nota de ajuste %(aa)d/%(ta)d aceptadas',
+                        ai=acc_i, ti=tgt_i, aa=acc_a, ta=tgt_a)
+            if rej_i + rej_a:
+                summary += _(' · %d rechazada(s)', rej_i + rej_a)
+            settings.l10n_co_ne_hab_progress = progress['percent']
+            settings.l10n_co_ne_hab_summary = summary
+
     def action_iniciar_habilitacion_nomina(self):
-        """Habilitación DIAN en 1 clic, sin el modal intermedio del wizard.
+        """Habilitación DIAN en 1 clic: prepara, envía y consulta sola (un cron la va avanzando).
 
-        2026-09-14: David pidió (con captura) que el link "Abrir Asistente
-        de Habilitación" dispare el proceso directo, igual que el patrón de
-        1 solo clic de Facturación Electrónica (Odoo 19) que mostró como
-        referencia -- antes abría el wizard (`target=new`) y exigía un
-        segundo clic adentro en "Iniciar Proceso de Habilitación".
-
-        El wizard (`l10n.co.ne.certification.wizard`) sigue existiendo tal
-        cual, sin cambios -- este método solo crea una instancia nueva
-        (TransientModel) y llama a su `action_iniciar_habilitacion()`
-        directo, sin mostrar el formulario. Como el wizard es transient
-        (no sobrevive entre clics), este método rehidrata sus 2 campos de
-        seguimiento (`payslip_individual_ids`/`_ajuste_ids`) buscando
-        payslips de habilitación reales ya preparados en corridas
-        anteriores (mismo período/nombre determinístico que usa
-        `_auto_select_period()`) -- si no se hiciera esto, cada clic
-        volvería a preparar y generar XML para todos los empleados desde
-        cero, duplicando documentos y gastando cupo real de la DIAN
-        (`action_prepare_individual()`/`_ajuste()` solo se saltan la
-        preparación cuando el wizard YA trae `payslip_individual_ids`/
-        `_ajuste_ids` cargados).
+        Reemplaza el flujo del asistente (que enviaba todo en un solo ZIP y dependía de que el
+        usuario regenerara a mano); el asistente sigue existiendo y el motor lo reutiliza.
         """
         self.ensure_one()
-        wizard = self.env['l10n.co.ne.certification.wizard'].create({
-            'company_id': self.company_id.id,
-        })
-        date_from, date_to = wizard._auto_select_period()
-        existing_individual = self.env['hr.payslip'].search([
-            ('company_id', '=', wizard.company_id.id),
-            ('date_from', '=', date_from),
-            ('date_to', '=', date_to),
-            ('l10n_co_ne_is_adjustment', '=', False),
-            ('name', 'like', 'Habilitación DIAN - %'),
-        ])
-        existing_ajuste = self.env['hr.payslip'].search([
-            ('company_id', '=', wizard.company_id.id),
-            ('l10n_co_ne_is_adjustment', '=', True),
-            ('name', 'like', 'Ajuste Habilitación DIAN - %'),
-        ])
-        wizard.write({
-            'date_from': date_from,
-            'date_to': date_to,
-            'payslip_individual_ids': [(6, 0, existing_individual.ids)],
-            'payslip_ajuste_ids': [(6, 0, existing_ajuste.ids)],
-        })
-        return wizard.action_iniciar_habilitacion()
+        return self.env['l10n.co.ne.habilitacion'].start(self.company_id)
+
+    def action_refresh_habilitacion(self):
+        return {'type': 'ir.actions.client', 'tag': 'reload'}

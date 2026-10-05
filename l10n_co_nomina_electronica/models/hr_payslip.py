@@ -293,6 +293,13 @@ class HrPayslip(models.Model):
              'o eliminación) de una nómina electrónica previamente '
              'aceptada por la DIAN.',
     )
+    l10n_co_ne_hab_set_id = fields.Char(
+        string='Set de Habilitación DIAN',
+        copy=False,
+        index=True,
+        help='TestSetId con el que se preparó este documento durante la habilitación '
+             'automática. Permite que un set nuevo ignore los documentos de sets anteriores.',
+    )
     l10n_co_ne_adjustment_ref_cune = fields.Char(
         string='CUNE Nómina Original',
         copy=False,
@@ -783,6 +790,24 @@ class HrPayslip(models.Model):
                 'para enviar como set de pruebas.'
             ))
 
+        # La DIAN solo procesa UN documento por ZIP (Anexo 9.2; verificado 2026-10-04: de un
+        # ZIP con 4 XML solo evaluó el primero y los otros nunca quedaron registrados).
+        # Cada documento viaja en su propio ZIP y queda con su propio ZipKey.
+        if len(records) > 1:
+            results = [record.action_send_test_set() for record in records]
+            sent = records.filtered(lambda p: p.l10n_co_ne_state == 'sent')
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Set de Pruebas Enviado'),
+                    'message': _('Se enviaron %(sent)d de %(total)d documentos (un ZIP por documento).',
+                                 sent=len(sent), total=len(records)),
+                    'type': 'success' if len(sent) == len(records) else 'warning',
+                    'sticky': True,
+                },
+            }
+
         company = records[0].company_id
         self._validate_company_ne_config(company)
 
@@ -893,6 +918,28 @@ class HrPayslip(models.Model):
                 'sticky': True,
             },
         }
+
+    def action_regenerate_ne_xml(self):
+        """Regenera el XML con consecutivo y CUNE nuevos (no para documentos enviados/aceptados).
+
+        Un documento rechazado o con el SoftwareID/TestSetId desactualizado no se puede reenviar
+        tal cual: la DIAN devolvería el mismo veredicto viejo (regla 90, "procesado anteriormente").
+        """
+        for slip in self:
+            if slip.l10n_co_ne_state in ('sent', 'accepted'):
+                raise UserError(_(
+                    'No se puede regenerar el XML de %s: ya fue enviado o aceptado por la DIAN.',
+                    slip.name,
+                ))
+            slip.write({
+                'l10n_co_ne_state': 'draft',
+                'l10n_co_ne_consecutive': False,
+                'l10n_co_ne_cune': False,
+                'l10n_co_ne_zip_key': False,
+                'l10n_co_ne_xml_attachment_id': False,
+            })
+            slip.action_generate_ne_xml()
+        return True
 
     def action_check_dian_status(self):
         """Consulta una vez por ZipKey y distribuye solo resultados inequívocos."""

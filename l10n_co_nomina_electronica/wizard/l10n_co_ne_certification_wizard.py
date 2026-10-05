@@ -204,6 +204,11 @@ class L10nCoNeCertificationWizard(models.TransientModel):
     # pantalla, se resuelven con una regla determinística interna).
     # ──────────────────────────────────────────────────────────────────
 
+    def _current_test_set_id(self):
+        """TestSetId vigente de la compañía: marca los documentos que se preparan para este set."""
+        self.ensure_one()
+        return self.company_id.l10n_co_ne_operation_mode_ids.test_set_id or False
+
     def _auto_select_period(self):
         """Resuelve el periodo de Fase 1 sin pedirlo en pantalla.
 
@@ -348,6 +353,7 @@ class L10nCoNeCertificationWizard(models.TransientModel):
                     'struct_id': struct.id,
                     'date_from': self.date_from,
                     'date_to': self.date_to,
+                    'l10n_co_ne_hab_set_id': self._current_test_set_id(),
                 })
                 payslip.compute_sheet()
                 payslip.action_payslip_done()
@@ -440,6 +446,7 @@ class L10nCoNeCertificationWizard(models.TransientModel):
                     'date_to': original.date_to,
                     'l10n_co_ne_is_adjustment': True,
                     'l10n_co_ne_adjustment_ref_cune': original.l10n_co_ne_cune,
+                    'l10n_co_ne_hab_set_id': self._current_test_set_id(),
                 })
                 adjustment.compute_sheet()
                 adjustment.action_payslip_done()

@@ -25,6 +25,11 @@
                         class="btn-primary"
                         invisible="l10n_co_ne_state != 'draft' or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_regenerate_ne_xml"
+                        string="Regenerar XML"
+                        type="object"
+                        invisible="l10n_co_ne_state not in ('generated', 'rejected', 'uncertain') or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_send_ne_dian"
                         string="Enviar a DIAN"
                         type="object"

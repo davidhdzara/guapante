@@ -44,6 +44,30 @@ TEST_EMPLOYEES = [
         'name': 'EMPLEADO PRUEBA CUATRO',
         'identification_id': '1000000004',
     },
+    {
+        'name': 'EMPLEADO PRUEBA CINCO',
+        'identification_id': '1000000005',
+    },
+    {
+        'name': 'EMPLEADO PRUEBA SEIS',
+        'identification_id': '1000000006',
+    },
+    {
+        'name': 'EMPLEADO PRUEBA SIETE',
+        'identification_id': '1000000007',
+    },
+    {
+        'name': 'EMPLEADO PRUEBA OCHO',
+        'identification_id': '1000000008',
+    },
+    {
+        'name': 'EMPLEADO PRUEBA NUEVE',
+        'identification_id': '1000000009',
+    },
+    {
+        'name': 'EMPLEADO PRUEBA DIEZ',
+        'identification_id': '1000000010',
+    },
 ]
 
 # Campos compartidos por los 4 empleados de prueba -- ningún dato bancario

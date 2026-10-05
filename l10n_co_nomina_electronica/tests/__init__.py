@@ -5,3 +5,4 @@ from . import test_dian_matching
 from . import test_ne_consecutive
 
 from . import test_ne_xml_namespaces
+from . import test_habilitacion_engine

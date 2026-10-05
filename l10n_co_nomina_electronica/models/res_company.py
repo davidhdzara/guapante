@@ -146,6 +146,26 @@ class ResCompany(models.Model):
              'habilitación de la DIAN para esta empresa.',
     )
 
+    # Estado del proceso automático de habilitación DIAN (ver
+    # models/l10n_co_ne_habilitacion.py). El avance por documento no se guarda
+    # aquí: se calcula contando las nóminas del set (l10n_co_ne_hab_set_id).
+    l10n_co_ne_hab_state = fields.Selection(
+        selection=[
+            ('idle', 'Sin iniciar'),
+            ('running', 'En proceso'),
+            ('done', 'Completada'),
+            ('error', 'Detenida'),
+        ],
+        string='Estado de la habilitación DIAN',
+        default='idle',
+        copy=False,
+    )
+    l10n_co_ne_hab_message = fields.Char(string='Último mensaje de habilitación', copy=False)
+    l10n_co_ne_hab_user_id = fields.Many2one(
+        'res.users', string='Usuario que inició la habilitación', copy=False,
+    )
+    l10n_co_ne_hab_started = fields.Datetime(string='Inicio de la habilitación', copy=False)
+
     # ──────────────────────────────────────────────────────────────────
     # Prefijos de consecutivo para Nómina y Notas de Ajuste
     # ──────────────────────────────────────────────────────────────────

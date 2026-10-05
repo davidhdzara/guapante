@@ -33,7 +33,20 @@
                                     <field name="l10n_co_ne_num_ajuste_certificar"/>
                                 </div>
                                 <div class="row mt8">
-                                    <button type="object" name="action_iniciar_habilitacion_nomina" string="Iniciar Proceso de Habilitación" class="btn-link" confirm="Esto prepara (si hace falta), envía y consulta el estado en la DIAN de los documentos de habilitación pendientes -- consume cupo real y limitado del ID de Pruebas. ¿Continuar?"/>
+                                    <button type="object" name="action_iniciar_habilitacion_nomina" string="Iniciar Proceso de Habilitación" class="btn-link" confirm="Se prepararán, enviarán y consultarán en la DIAN los documentos de habilitación, de forma automática. Consume cupo real del ID de Pruebas. ¿Continuar?"/>
+                                </div>
+                                <div class="row mt8" invisible="l10n_co_ne_hab_state == 'idle'">
+                                    <field name="l10n_co_ne_hab_progress" widget="progressbar" nolabel="1" class="col-lg-5"/>
+                                    <button type="object" name="action_refresh_habilitacion" string="Actualizar" class="btn-link col-lg-2"/>
+                                </div>
+                                <div class="row mt8" invisible="l10n_co_ne_hab_state == 'idle'">
+                                    <field name="l10n_co_ne_hab_summary" nolabel="1" readonly="1" class="text-muted"/>
+                                </div>
+                                <div class="row mt8" invisible="not l10n_co_ne_hab_message">
+                                    <field name="l10n_co_ne_hab_state" invisible="1"/>
+                                    <field name="l10n_co_ne_hab_message" nolabel="1" readonly="1"
+                                           decoration-danger="l10n_co_ne_hab_state == 'error'"
+                                           decoration-success="l10n_co_ne_hab_state == 'done'"/>
                                 </div>
                             </div>
                         </setting>
