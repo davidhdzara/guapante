@@ -13,4 +13,5 @@ access_l10n_co_ne_operation_mode_user,l10n.co.ne.operation_mode user,model_l10n_
 access_l10n_co_ne_certification_wizard_manager,l10n.co.ne.certification.wizard manager,model_l10n_co_ne_certification_wizard,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_retefuente_procedure2_manager,l10n_co_retefuente.procedure2 manager,model_l10n_co_retefuente_procedure2,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_retefuente_procedure2_user,l10n_co_retefuente.procedure2 user,model_l10n_co_retefuente_procedure2,hr_payroll.group_hr_payroll_user,1,0,0,0
-
+access_l10n_co_ne_exchange_manager,l10n.co.ne.exchange manager,model_l10n_co_ne_exchange,hr_payroll.group_hr_payroll_manager,1,0,0,0
+access_l10n_co_ne_exchange_document_manager,l10n.co.ne.exchange.document manager,model_l10n_co_ne_exchange_document,hr_payroll.group_hr_payroll_manager,1,0,0,0

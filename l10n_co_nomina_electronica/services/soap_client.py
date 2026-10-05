@@ -348,50 +348,97 @@ def _parse_response(text: str | bytes) -> dict:
     Returns:
         Diccionario con los campos extraídos de la respuesta.
     """
+    raw = text.encode('utf-8') if isinstance(text, str) else text
     try:
-        raw = text.encode('utf-8') if isinstance(text, str) else text
-        root = etree.fromstring(raw)
+        # Las respuestas son datos no confiables del proveedor.  No permitir
+        # DTD, entidades externas ni acceso a red al inspeccionarlas.
+        parser = etree.XMLParser(
+            resolve_entities=False, no_network=True, load_dtd=False,
+            dtd_validation=False, huge_tree=False,
+        )
+        root = etree.fromstring(raw, parser=parser)
     except Exception as e:
         return {
             'StatusCode': 'PARSE_ERROR',
             'ErrorMessage': str(e),
-            'RawResponse': str(text)[:3000],
+            'RawResponse': raw,
+            'DianResponses': [],
         }
 
-    result = {}
+    result = {'DianResponses': []}
     targets = {
         'StatusCode', 'StatusDescription', 'StatusMessage',
         'ZipKey', 'IsValid', 'ErrorMessage',
         'ErrorMessageList', 'XmlDocumentComment',
-        'XmlBase64Bytes', 'XmlFileName',
+        'XmlBase64Bytes', 'XmlFileName', 'XmlDocumentKey',
     }
 
-    for elem in root.iter():
-        tag = etree.QName(elem.tag).localname
-        if tag in targets:
-            if tag == 'ErrorMessageList':
-                msgs = [s.text for s in elem.iter()
-                        if s.text and s.text.strip()]
-                result['ErrorMessages'] = msgs
-            elif tag == 'XmlDocumentComment':
-                # Application Response con detalles
-                result['XmlDocumentComment'] = elem.text or ''
-            elif tag == 'XmlBase64Bytes':
-                # XML de respuesta codificado en base64
-                try:
-                    if elem.text:
-                        decoded = base64.b64decode(
-                            elem.text).decode(
-                                'utf-8', errors='replace')
-                        result['ApplicationResponse'] = (
-                            decoded[:5000])
-                except Exception:
-                    result['ApplicationResponse'] = (
-                        str(elem.text or '')[:500])
-            else:
-                result[tag] = elem.text or ''
+    def local_name(elem):
+        return etree.QName(elem.tag).localname if isinstance(elem.tag, str) else ''
 
-    if not result:
+    def response_values(node):
+        """Obtiene un DianResponse completo sin mezclar sus hermanos."""
+        values = {'ErrorMessages': []}
+        for elem in node.iter():
+            tag = local_name(elem)
+            if tag not in targets:
+                continue
+            if tag in ('ErrorMessageList', 'ErrorMessage'):
+                direct = (elem.text or '').strip()
+                if direct:
+                    values['ErrorMessages'].append(direct)
+                values['ErrorMessages'].extend(
+                    value.text.strip() for value in elem.iter()
+                    if value is not elem and value.text and value.text.strip()
+                )
+            elif tag == 'XmlBase64Bytes':
+                encoded = elem.text or ''
+                try:
+                    values['ApplicationResponse'] = base64.b64decode(
+                        encoded, validate=True
+                    ).decode('utf-8', errors='replace')
+                except Exception:
+                    # Conservar el contenido íntegro, incluso si DIAN lo
+                    # entrega mal codificado; el historial lo necesita.
+                    values['ApplicationResponse'] = encoded
+            else:
+                values[tag] = elem.text or ''
+        return values
+
+    # GetStatusZip puede devolver varios DianResponse. Cada uno debe seguir
+    # siendo una unidad independiente: el último IsValid no representa al lote.
+    faults = [elem for elem in root.iter() if local_name(elem) == 'Fault']
+    if faults:
+        result['SOAPFault'] = True
+        result['FaultDetails'] = [
+            elem.text.strip() for fault in faults for elem in fault.iter()
+            if elem.text and elem.text.strip()
+        ]
+        result['RawResponse'] = raw
+        return result
+    nodes = [elem for elem in root.iter() if local_name(elem) == 'DianResponse']
+    if nodes:
+        result['DianResponses'] = [response_values(node) for node in nodes]
+    else:
+        result['DianResponses'] = [response_values(root)]
+
+    # Metadatos del sobre/lote: se extraen sin convertir el último resultado
+    # individual en un resultado global. Mantiene compatibilidad de respuestas
+    # síncronas de un solo documento.
+    for elem in root.iter():
+        tag = local_name(elem)
+        if tag in ('ZipKey', 'StatusCode', 'StatusDescription', 'StatusMessage',
+                   'ErrorMessage', 'XmlFileName', 'XmlDocumentKey') and elem.text:
+            result.setdefault(tag, elem.text)
+    if len(result['DianResponses']) == 1:
+        only = result['DianResponses'][0]
+        for key, value in only.items():
+            if key != 'ErrorMessages':
+                result.setdefault(key, value)
+        if only.get('ErrorMessages'):
+            result['ErrorMessages'] = only['ErrorMessages']
+
+    if not nodes and not any(result['DianResponses'][0].values()):
         for elem in root.iter():
             tag = etree.QName(elem.tag).localname
             if tag in ('Text', 'Reason', 'faultstring',
@@ -401,10 +448,77 @@ def _parse_response(text: str | bytes) -> dict:
                     result.setdefault('FaultDetails', []).append(
                         t.strip())
 
-    # SIEMPRE incluir la respuesta raw para debug
-    result['RawResponse'] = str(text)[:5000]
+    # SIEMPRE conservar el payload íntegro. La UI puede mostrar un resumen,
+    # pero la evidencia persistente nunca se trunca.
+    result['RawResponse'] = raw
 
     return result
+
+
+_UBL_CAC_CBC_NS = {
+    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+}
+
+
+def _parse_application_response_safely(application_response: str | bytes):
+    if not application_response:
+        return None
+    raw = (application_response.encode('utf-8')
+           if isinstance(application_response, str) else application_response)
+    try:
+        return etree.fromstring(raw, etree.XMLParser(
+            resolve_entities=False, no_network=True, load_dtd=False,
+            dtd_validation=False,
+        ))
+    except (ValueError, etree.XMLSyntaxError):
+        return None
+
+
+def extract_document_cunes(application_response: str | bytes) -> set[str]:
+    """Extrae el CUNE/CUFE real del documento original referenciado.
+
+    AUD-DIAN-34 (2026-10-04): evidencia real (respuesta GetStatusZip
+    AUTORIZADA de la DIAN, StatusCode 00, nómina "SME-10") confirma que el
+    identificador real del documento original es
+    ``cac:DocumentResponse/cac:DocumentReference/cbc:UUID`` (visto con
+    ``schemeName="CUFE-SHA384"``; el equivalente de nómina sería
+    "CUNE-SHA384") -- NO ``cbc:ID``, que es el NÚMERO de negocio del
+    documento (ver ``extract_document_numbers``). Antes esta función leía
+    ``cbc:ID`` creyendo que era el CUNE, por lo que nunca emparejaba nada.
+    El ``UUID``/``ID`` de nivel raíz del propio ApplicationResponse
+    (identidad de la respuesta de DIAN, no del documento referenciado)
+    sigue excluido por diseño -- solo cuenta la ruta UBL completa.
+    """
+    root = _parse_application_response_safely(application_response)
+    if root is None:
+        return set()
+    return {
+        element.text.strip() for element in root.xpath(
+            './/cac:DocumentResponse/cac:DocumentReference/cbc:UUID',
+            namespaces=_UBL_CAC_CBC_NS,
+        ) if element.text and element.text.strip()
+    }
+
+
+def extract_document_numbers(application_response: str | bytes) -> set[str]:
+    """Extrae el NÚMERO de negocio del documento original (NO es el CUNE).
+
+    ``cac:DocumentResponse/cac:DocumentReference/cbc:ID`` -- ej.
+    "NE0000000009", o "SME10" en el ejemplo real visto. Solo sirve para
+    emparejar contra ``hr.payslip.l10n_co_ne_consecutive`` cuando DIAN no
+    entrega CUNE (ver ``extract_document_cunes``) y el resultado es
+    inequívoco dentro del manifiesto del ZipKey.
+    """
+    root = _parse_application_response_safely(application_response)
+    if root is None:
+        return set()
+    return {
+        element.text.strip() for element in root.xpath(
+            './/cac:DocumentResponse/cac:DocumentReference/cbc:ID',
+            namespaces=_UBL_CAC_CBC_NS,
+        ) if element.text and element.text.strip()
+    }
 
 
 # =====================================================================
@@ -433,13 +547,8 @@ def _send(
     envelope = _build_envelope(
         action, endpoint, body_xml, cert_der, private_key,
     )
-    # AUD-DIAN-34 (2026-10-04): se guarda lo que REALMENTE se envió,
-    # no solo lo que la DIAN respondió -- sin esto, diagnosticar un
-    # rechazo real obliga a reconstruir a ciegas qué se mandó a partir
-    # del error (incidente real: el bug del TestSetId incorrecto solo
-    # se detectó indirectamente por la respuesta, nunca viendo el
-    # request). Mismo truncado que RawResponse.
-    raw_request = envelope.decode('utf-8', errors='replace')[:5000]
+    # La evidencia debe ser el sobre completo realmente transmitido.
+    raw_request = envelope
 
     headers = {
         'Content-Type': (
@@ -456,12 +565,12 @@ def _send(
             timeout=SOAP_TIMEOUT, verify=True,
         )
 
-        _logger.info("DIAN HTTP %d (%d bytes)",
-                      resp.status_code, len(resp.text))
+        _logger.info("DIAN HTTP %d (%d bytes)", resp.status_code, len(resp.content))
 
         if resp.status_code >= 400:
-            _logger.error("DIAN error: %s", resp.text[:2000])
-            result = _parse_response(resp.text)
+            _logger.error("DIAN HTTP error %d", resp.status_code)
+            result = _parse_response(resp.content)
+            result['HttpStatus'] = resp.status_code
             if not result.get('StatusCode'):
                 result['StatusCode'] = str(resp.status_code)
             faults = result.get('FaultDetails', [])
@@ -470,7 +579,7 @@ def _send(
             elif not result.get('ErrorMessage'):
                 result['ErrorMessage'] = (
                     'HTTP %d: %s' % (resp.status_code,
-                                     resp.text[:300])
+                                     'respuesta no SOAP')
                 )
             result['RawRequest'] = raw_request
             return result
@@ -480,10 +589,12 @@ def _send(
         return {
             'StatusCode': 'CONNECTION_ERROR',
             'ErrorMessage': str(e),
+            'TransportError': str(e),
             'RawRequest': raw_request,
         }
 
-    result = _parse_response(resp.text)
+    result = _parse_response(resp.content)
+    result['HttpStatus'] = resp.status_code
     result['RawRequest'] = raw_request
     return result
 

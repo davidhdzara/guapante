@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="rule_l10n_co_ne_exchange_company" model="ir.rule">
+        <field name="name">Intercambios DIAN por compañía autorizada</field>
+        <field name="model_id" ref="model_l10n_co_ne_exchange"/>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_ne_exchange_document_company" model="ir.rule">
+        <field name="name">Manifiestos DIAN por compañía autorizada</field>
+        <field name="model_id" ref="model_l10n_co_ne_exchange_document"/>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

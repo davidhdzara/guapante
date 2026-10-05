@@ -40,8 +40,16 @@
                         <setting string="Consecutivos" help="Prefijos y secuencias usadas para los consecutivos de nómina y notas de ajuste.">
                             <field name="l10n_co_ne_payroll_prefix"/>
                             <field name="l10n_co_ne_adjust_prefix"/>
-                            <field name="l10n_co_ne_sequence_id"/>
-                            <field name="l10n_co_ne_pre_sequence_id"/>
+                            <!-- AUD-DIAN-34 (2026-10-04): incidente real en Guapante,
+                                 estas 2 secuencias quedaron intercambiadas con la de
+                                 Notas de Ajuste (NA) por selección manual equivocada en
+                                 la UI. El dominio ya restringe cada selector a su código
+                                 exacto, pero se deja explícito en la etiqueta cuál
+                                 secuencia es cuál para que no se repita. -->
+                            <field name="l10n_co_ne_sequence_id"
+                                   string="Secuencia Nómina Electrónica (NE, definitiva)"/>
+                            <field name="l10n_co_ne_pre_sequence_id"
+                                   string="Secuencia Temporal (PRE-NOM -- NO es la de Notas de Ajuste)"/>
                         </setting>
                     </block>
                     <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">

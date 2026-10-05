@@ -17,7 +17,7 @@
                         string="Enviar y Procesar"
                         type="action"
                         class="oe_highlight"
-                        invisible="l10n_co_ne_state not in ('draft', 'generated', 'rejected') or state != 'done'"
+                        invisible="l10n_co_ne_state not in ('draft', 'generated', 'uncertain', 'rejected') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_generate_ne_xml"
                         string="Generar XML"
@@ -51,7 +51,7 @@
                 <div class="oe_title" name="ne_statusbar">
                     <field name="l10n_co_ne_state"
                            widget="statusbar"
-                           statusbar_visible="draft,generated,sent,accepted"
+                           statusbar_visible="draft,generated,sent,uncertain,accepted"
                            readonly="1"/>
                 </div>
 
@@ -62,6 +62,15 @@
                     <strong><i class="fa fa-clock-o"/> Pendiente de validación DIAN</strong>
                     <br/>
                     La nómina electrónica ha sido transmitida y está en espera de la validación del webservice.
+                </div>
+
+                <!-- Banner de Envío Incierto -->
+                <div class="alert alert-warning text-center mb-0"
+                     role="alert"
+                     invisible="l10n_co_ne_state != 'uncertain'">
+                    <strong><i class="fa fa-exclamation-circle"/> Envío Incierto -- requiere conciliación</strong>
+                    <br/>
+                    La DIAN no confirmó un acuse válido (ZipKey) para este envío. Revise el historial de intercambios en la pestaña "Nómina Electrónica" y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para reintentar.
                 </div>
 
                 <!-- Banner de Rechazo de la DIAN -->
@@ -94,7 +103,7 @@
                                    readonly="1"
                                    widget="badge"
                                    decoration-info="l10n_co_ne_state == 'draft'"
-                                   decoration-warning="l10n_co_ne_state in ('generated','sent')"
+                                   decoration-warning="l10n_co_ne_state in ('generated','sent','uncertain')"
                                    decoration-success="l10n_co_ne_state == 'accepted'"
                                    decoration-danger="l10n_co_ne_state == 'rejected'"/>
                             <field name="l10n_co_ne_xml_attachment_id"
@@ -141,6 +150,17 @@
                                nolabel="1"
                                colspan="4"/>
                     </group>
+                    <group string="Historial DIAN" groups="hr_payroll.group_hr_payroll_manager">
+                        <field name="l10n_co_ne_exchange_ids" readonly="1" nolabel="1">
+                            <list create="0" delete="0">
+                                <field name="create_date"/>
+                                <field name="operation"/>
+                                <field name="zip_key"/>
+                                <field name="unidentified_count"/>
+                                <field name="transport_error"/>
+                            </list>
+                        </field>
+                    </group>
                 </page>
             </xpath>
 
@@ -162,7 +182,7 @@
                        optional="show"
                        widget="badge"
                        decoration-info="l10n_co_ne_state == 'draft'"
-                       decoration-warning="l10n_co_ne_state in ('generated','sent')"
+                       decoration-warning="l10n_co_ne_state in ('generated','sent','uncertain')"
                        decoration-success="l10n_co_ne_state == 'accepted'"
                        decoration-danger="l10n_co_ne_state == 'rejected'"/>
                 <field name="l10n_co_ne_cune"
@@ -188,6 +208,7 @@
                 <filter string="NE Borrador" name="ne_draft" domain="[('l10n_co_ne_state', '=', 'draft')]"/>
                 <filter string="NE Generado" name="ne_generated" domain="[('l10n_co_ne_state', '=', 'generated')]"/>
                 <filter string="NE Transmitido" name="ne_sent" domain="[('l10n_co_ne_state', '=', 'sent')]"/>
+                <filter string="NE Incierto" name="ne_uncertain" domain="[('l10n_co_ne_state', '=', 'uncertain')]"/>
                 <filter string="NE Aceptado" name="ne_accepted" domain="[('l10n_co_ne_state', '=', 'accepted')]"/>
                 <filter string="NE Rechazado" name="ne_rejected" domain="[('l10n_co_ne_state', '=', 'rejected')]"/>
                 <separator/>

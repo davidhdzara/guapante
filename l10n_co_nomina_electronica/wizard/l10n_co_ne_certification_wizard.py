@@ -369,12 +369,12 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         """Envía a la DIAN las individuales listas -- consume cupo real."""
         self.ensure_one()
         records = self.payslip_individual_ids.filtered(
-            lambda p: p.l10n_co_ne_state == 'generated'
+            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
         )
         if not records:
             raise UserError(_(
-                'No hay nóminas individuales en estado "XML Generado" '
-                'para enviar.'
+                'No hay nóminas individuales en estado "XML Generado" o '
+                '"Envío Incierto" para enviar.'
             ))
         return records.action_send_test_set()
 
@@ -382,10 +382,11 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         """Consulta el estado DIAN de cada nómina individual enviada."""
         self.ensure_one()
         records = self.payslip_individual_ids.filtered(
-            lambda p: p.l10n_co_ne_state in ('sent', 'generated')
+            lambda p: p.l10n_co_ne_state == 'sent'
         )
-        for payslip in records:
-            payslip.action_check_dian_status()
+        # Un solo GetStatusZip por ZipKey; el modelo distribuye los
+        # DianResponse individuales contra el manifiesto persistido.
+        records.action_check_dian_status()
         return True
 
     # ──────────────────────────────────────────────────────────────────
@@ -460,12 +461,12 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         """Envía a la DIAN las notas de ajuste listas -- consume cupo real."""
         self.ensure_one()
         records = self.payslip_ajuste_ids.filtered(
-            lambda p: p.l10n_co_ne_state == 'generated'
+            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
         )
         if not records:
             raise UserError(_(
-                'No hay notas de ajuste en estado "XML Generado" para '
-                'enviar.'
+                'No hay notas de ajuste en estado "XML Generado" o '
+                '"Envío Incierto" para enviar.'
             ))
         return records.action_send_test_set()
 
@@ -473,10 +474,9 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         """Consulta el estado DIAN de cada nota de ajuste enviada."""
         self.ensure_one()
         records = self.payslip_ajuste_ids.filtered(
-            lambda p: p.l10n_co_ne_state in ('sent', 'generated')
+            lambda p: p.l10n_co_ne_state == 'sent'
         )
-        for payslip in records:
-            payslip.action_check_dian_status()
+        records.action_check_dian_status()
         return True
 
     # ──────────────────────────────────────────────────────────────────
@@ -496,14 +496,13 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         """
         for attempt in range(_POLL_ATTEMPTS):
             checking = get_records().filtered(
-                lambda p: p.l10n_co_ne_state in ('sent', 'generated')
+                lambda p: p.l10n_co_ne_state == 'sent'
             )
             if not checking:
                 return
-            for payslip in checking:
-                payslip.action_check_dian_status()
+            checking.action_check_dian_status()
             if not get_records().filtered(
-                lambda p: p.l10n_co_ne_state in ('sent', 'generated')
+                lambda p: p.l10n_co_ne_state == 'sent'
             ) or attempt == _POLL_ATTEMPTS - 1:
                 return
             time.sleep(_POLL_DELAY_SECONDS)
@@ -519,7 +518,7 @@ class L10nCoNeCertificationWizard(models.TransientModel):
             self.action_prepare_individual()
 
         pending_send = self.payslip_individual_ids.filtered(
-            lambda p: p.l10n_co_ne_state == 'generated'
+            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
         )
         if pending_send:
             pending_send.action_send_test_set()
@@ -529,6 +528,9 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         accepted = len(self.payslip_individual_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'accepted'
         ))
+        uncertain = len(self.payslip_individual_ids.filtered(
+            lambda p: p.l10n_co_ne_state == 'uncertain'
+        ))
         total = len(self.payslip_individual_ids)
         return {
             'type': 'ir.actions.client',
@@ -537,8 +539,9 @@ class L10nCoNeCertificationWizard(models.TransientModel):
                 'title': _('Habilitación DIAN — Fase 1 (Nómina Individual)'),
                 'message': _(
                     '%(accepted)d de %(total)d Nóminas Individuales '
-                    'Aceptadas por la DIAN.',
-                    accepted=accepted, total=total,
+                    'Aceptadas por la DIAN. %(uncertain)d con envío '
+                    'incierto (requieren conciliación/reintento).',
+                    accepted=accepted, total=total, uncertain=uncertain,
                 ),
                 'type': 'success' if total and accepted == total else 'warning',
                 'sticky': True,
@@ -572,7 +575,7 @@ class L10nCoNeCertificationWizard(models.TransientModel):
             self.action_prepare_ajuste()
 
         pending_send = self.payslip_ajuste_ids.filtered(
-            lambda p: p.l10n_co_ne_state == 'generated'
+            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
         )
         if pending_send:
             pending_send.action_send_test_set()
@@ -582,6 +585,9 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         accepted = len(self.payslip_ajuste_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'accepted'
         ))
+        uncertain = len(self.payslip_ajuste_ids.filtered(
+            lambda p: p.l10n_co_ne_state == 'uncertain'
+        ))
         total = len(self.payslip_ajuste_ids)
         return {
             'type': 'ir.actions.client',
@@ -590,8 +596,9 @@ class L10nCoNeCertificationWizard(models.TransientModel):
                 'title': _('Habilitación DIAN — Fase 2 (Notas de Ajuste)'),
                 'message': _(
                     '%(accepted)d de %(total)d Notas de Ajuste Aceptadas '
-                    'por la DIAN.',
-                    accepted=accepted, total=total,
+                    'por la DIAN. %(uncertain)d con envío incierto '
+                    '(requieren conciliación/reintento).',
+                    accepted=accepted, total=total, uncertain=uncertain,
                 ),
                 'type': 'success' if total and accepted == total else 'warning',
                 'sticky': True,

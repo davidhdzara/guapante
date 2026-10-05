@@ -43,24 +43,28 @@ NS_XS = 'http://www.w3.org/2001/XMLSchema-instance'
 NS_XSD = 'http://www.w3.org/2001/XMLSchema-instance'
 
 # Mapa común de prefijos
+# 'xs' y 'xsi' apuntan a la MISMA URI (el Anexo exige declarar ambos). lxml serializa
+# {URI}schemaLocation con el PRIMER prefijo del mapa; la DIAN (.NET SignedXml) canoniza
+# el atributo como xsi:schemaLocation. Si sale 'xs:' el digest del documento difiere
+# del que firmamos y la DIAN responde ZE02. Por eso 'xsi' va ANTES de 'xs'.
 _NSMAP_NOMINA = {
     None: NS_NOMINA,
+    'xsi': NS_XSD,
     'xs': NS_XS,
     'ds': NS_DS,
     'ext': NS_EXT,
     'xades': NS_XADES,
     'xades141': NS_XADES141,
-    'xsi': NS_XSD,
 }
 
 _NSMAP_AJUSTE = {
     None: NS_NOMINA_AJUSTE,
+    'xsi': NS_XSD,
     'xs': NS_XS,
     'ds': NS_DS,
     'ext': NS_EXT,
     'xades': NS_XADES,
     'xades141': NS_XADES141,
-    'xsi': NS_XSD,
 }
 
 

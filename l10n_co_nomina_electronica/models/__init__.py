@@ -8,6 +8,7 @@ from . import hr_employee
 from . import hr_contract
 from . import hr_salary_rule
 from . import hr_payslip
+from . import l10n_co_ne_exchange
 from . import l10n_co_nomina_ugpp
 from . import hr_retefuente
 from . import hr_leave_ne

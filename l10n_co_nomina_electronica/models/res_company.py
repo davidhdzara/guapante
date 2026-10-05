@@ -165,14 +165,24 @@ class ResCompany(models.Model):
         comodel_name='ir.sequence',
         string='Secuencia Nómina Electrónica',
         default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_electronica', raise_if_not_found=False),
-        domain="[('code', 'like', 'l10n_co_nomina.')]",
+        # AUD-DIAN-34 (2026-10-04): dominio restringido al código EXACTO
+        # tras un bug real en producción (Guapante) -- el dominio amplio
+        # "like 'l10n_co_nomina.'" permitía elegir por error la secuencia
+        # de Notas de Ajuste (l10n_co_nomina.ajuste, prefijo NA) como si
+        # fuera esta, generando nóminas individuales con consecutivo
+        # NA-prefijado que la DIAN rechazó (NIE011/NIE012).
+        domain="[('code', '=', 'l10n_co_nomina.electronica')]",
         help='Secuencia definitiva utilizada para generar los consecutivos de transmisión DIAN (ej: NE-00001).',
     )
     l10n_co_ne_pre_sequence_id = fields.Many2one(
         comodel_name='ir.sequence',
         string='Secuencia Nómina Temporal',
         default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_temporal', raise_if_not_found=False),
-        domain="[('code', 'like', 'l10n_co_nomina.')]",
+        # AUD-DIAN-34 (2026-10-04): ver nota en l10n_co_ne_sequence_id --
+        # mismo incidente real: esta quedó apuntando a la secuencia de
+        # Notas de Ajuste (NA) en vez de la Temporal (PRE-NOM) en
+        # producción y en staging.
+        domain="[('code', '=', 'l10n_co_nomina.temporal')]",
         help='Secuencia temporal utilizada para borradores y nóminas pendientes de validación (ej: PRE-NOM-00001).',
     )
 
