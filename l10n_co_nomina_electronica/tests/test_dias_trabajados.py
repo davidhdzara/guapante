@@ -139,9 +139,12 @@ class TestNeDiasPagables(TestDiasTrabajadosCommon):
             'unpaid': True,
         })
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
-        self.env['hr.payslip.worked.days'].create({
+        # AUD-DIAN-34 (2026-10-05): modelo real 'hr.payslip.worked_days' (guion bajo), no
+        # 'hr.payslip.worked.days' -- confirmado contra enterprise/hr_payroll/models/
+        # hr_payslip_worked_days.py en el servidor (Tech Lead). contract_id ahí es un
+        # related de payslip_id.contract_id, no se escribe en el create().
+        self.env['hr.payslip.worked_days'].create({
             'payslip_id': payslip.id,
-            'contract_id': contract.id,
             'work_entry_type_id': work_entry_type.id,
             'number_of_days': 5.0,
         })
