@@ -8,6 +8,7 @@ o calcula con un valor equivocado. Mismo hallazgo que motivó tests/test_input_t
 de 90 días de incapacidad común, que antes vivían como literales sueltos en las fórmulas."""
 
 import re
+from datetime import date
 
 from odoo.tests.common import TransactionCase
 
@@ -57,10 +58,12 @@ class TestRuleParametersExist(TransactionCase):
             [('code', '=', 'l10n_co_dias_incapacidad_limite_3_90')], limit=1)
         self.assertTrue(param)
         self.assertEqual(param.country_id.code, 'CO')
-        value = self.env['hr.rule.parameter.value'].search(
-            [('rule_parameter_id', '=', param.id)], limit=1)
-        self.assertTrue(value)
-        self.assertEqual(value.parameter_value, 90)
+        # hr.rule.parameter.value.parameter_value es Text (guarda el literal Python como
+        # string, no el valor evaluado) -- se compara con la API nativa de lookup, igual
+        # que payslip._rule_parameter(), no con el campo crudo.
+        valor = self.env['hr.rule.parameter']._get_parameter_from_code(
+            'l10n_co_dias_incapacidad_limite_3_90', date(2026, 1, 1))
+        self.assertEqual(valor, 90)
 
     def test_indemnizacion_no_reutiliza_parametros_de_otro_concepto_legal(self):
         """El umbral de 10 SMMLV del Art. 64 (indemnización) y el de exoneración de
