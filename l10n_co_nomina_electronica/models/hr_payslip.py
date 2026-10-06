@@ -1178,7 +1178,7 @@ class HrPayslip(models.Model):
                 'PeriodoNomina': dian_utils.get_periodo_nomina(
                     self.date_from, self.date_to
                 ),
-                'TipoMoneda': 'COP',
+                'TipoMoneda': nomina_xml_builder.NE_TIPO_MONEDA,
                 'TRM': '0',
             },
             'numero_secuencia': {
@@ -1188,12 +1188,12 @@ class HrPayslip(models.Model):
                 'CodigoTrabajador': str(employee.id),
             },
             'lugar_generacion': {
-                'Pais': 'CO',
+                'Pais': company.partner_id.country_id.code,
                 'DepartamentoEstado': dian_utils.get_department_code(
                     company.partner_id.state_id
                 ),
                 'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
-                'Idioma': 'es',
+                'Idioma': nomina_xml_builder.NE_IDIOMA,
             },
             'proveedor_xml': {
                 'RazonSocial': company.name or '',
@@ -1210,7 +1210,7 @@ class HrPayslip(models.Model):
                 'RazonSocial': company.name or '',
                 'NIT': company_nit,
                 'DV': company_dv,
-                'Pais': 'CO',
+                'Pais': company.partner_id.country_id.code,
                 'DepartamentoEstado': dian_utils.get_department_code(
                     company.partner_id.state_id
                 ),
@@ -1292,7 +1292,15 @@ class HrPayslip(models.Model):
             'SegundoApellido': _name_parts.get('segundo_apellido', ''),
             'PrimerNombre': _name_parts.get('primer_nombre', ''),
             'OtrosNombres': _name_parts.get('otros_nombres', ''),
-            'LugarTrabajoPais': 'CO',
+            # AUD-DIAN-34 (2026-10-05): a diferencia de Idioma/TipoMoneda, el Anexo Técnico
+            # NO fija LugarTrabajoPais a Colombia (NIE050: admite cualquier código alfa-2,
+            # "país actual donde se encontraba ubicado el trabajador") -- mismo criterio de
+            # LugarTrabajoDireccion/MunicipioCiudad: dato real del trabajador si lo hay
+            # (work_contact_id), si no la ubicación de la compañía.
+            'LugarTrabajoPais': (
+                employee.work_contact_id.country_id.code
+                or company.partner_id.country_id.code
+            ),
             'LugarTrabajoDepartamentoEstado': dian_utils.get_department_code(
                 employee.l10n_co_ne_dane_city_id.state_id
                 if employee.l10n_co_ne_dane_city_id
@@ -2010,6 +2018,21 @@ class HrPayslip(models.Model):
                 'vigente antes de continuar.',
                 company.name,
                 certificate.date_end,
+            ))
+
+        # AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030) es explícito -- "Para Colombia
+        # se debe colocar 'COP'" en TipoMoneda, sin excepción. No se parametriza: es una
+        # constante del Anexo (nomina_xml_builder.NE_TIPO_MONEDA), así que una compañía en
+        # otra moneda debe fallar aquí, antes de generar un XML inválido, en vez de enviar
+        # "COP" por encima de montos que en realidad están en otra moneda.
+        if company.currency_id.name != nomina_xml_builder.NE_TIPO_MONEDA:
+            raise UserError(_(
+                'La compañía %(company)s tiene moneda "%(currency)s" configurada, pero la '
+                'Nómina Electrónica DIAN exige TipoMoneda="%(cop)s" (Anexo Técnico, NIE030: '
+                '"Para Colombia se debe colocar \'%(cop)s\'"). Configure la compañía en '
+                'pesos colombianos antes de generar nómina electrónica.',
+                company=company.name, currency=company.currency_id.name,
+                cop=nomina_xml_builder.NE_TIPO_MONEDA,
             ))
 
     def _ne_expected_prefix(self):
