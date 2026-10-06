@@ -40,7 +40,7 @@
                         string="Consultar Estado"
                         type="object"
                         class="btn-secondary"
-                        invisible="l10n_co_ne_state not in ('sent', 'generated', 'rejected') or state != 'done'"
+                        invisible="l10n_co_ne_state not in ('sent', 'generated', 'rejected', 'uncertain') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_create_adjustment"
                         string="Nota de Ajuste"
@@ -75,7 +75,11 @@
                      invisible="l10n_co_ne_state != 'uncertain'">
                     <strong><i class="fa fa-exclamation-circle"/> Envío Incierto -- requiere conciliación</strong>
                     <br/>
-                    La DIAN no confirmó un acuse válido (ZipKey) para este envío. Revise el historial de intercambios en la pestaña "Nómina Electrónica" y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para reintentar.
+                    <!-- H-012 (2026-10-06): 'uncertain' cubre 2 causas distintas (sin
+                    ZipKey confirmado, o con ZipKey pero sin veredicto de la DIAN dentro
+                    del plazo de reconsulta automática); el texto ya no asume cuál, el
+                    motivo exacto queda en el registro de actividad (chatter) debajo. -->
+                    Revise el motivo exacto en el registro de actividad (chatter) y el historial de intercambios en la pestaña "Nómina Electrónica". Si no hay ZipKey confirmado, use <b>"Enviar y Procesar"</b> para reintentar; si ya hay ZipKey pero sin veredicto, use <b>"Consultar Estado"</b>.
                 </div>
 
                 <!-- Banner de Rechazo de la DIAN -->

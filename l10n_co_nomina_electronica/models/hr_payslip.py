@@ -25,7 +25,7 @@ import base64
 import hashlib
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
@@ -76,6 +76,14 @@ DEDUCTION_SIMPLE_CONCEPTS = {
 # pendiente de una sola vez (ver data/ir_cron_dian_status_recheck.xml, cuyo
 # intervalo SÍ es un dato editable en Ajustes, no una constante de código).
 _CRON_RECHECK_BATCH_LIMIT = 200
+
+# H-012 (2026-10-06): plazo máximo (horas) que un documento 'sent' se reconsulta
+# automáticamente antes de marcarse 'uncertain' y salir del cron -- valor por defecto,
+# overridable vía ir.config_parameter (ver data/ir_config_parameter_dian_data.xml). Evidencia
+# real (NA0000000049, payslip 944, ZipKey 98e2fdc3): un documento puede quedar "sent" para
+# siempre si la DIAN nunca vuelve a dar un veredicto del documento -- sin este límite el cron
+# lo reconsulta cada 10 minutos sin fin.
+_CRON_RECHECK_MAX_HOURS_DEFAULT = 72
 
 
 class HrPayslip(models.Model):
@@ -172,16 +180,32 @@ class HrPayslip(models.Model):
     def _ne_store_exchange(self, operation, endpoint, response, manifest=None,
                            queried_zip_key=None, parent_exchange=None,
                            unidentified_count=0):
-        """Guarda evidencia completa y actualiza solo el resumen visible."""
+        """Guarda evidencia completa (siempre, un registro histórico por intento) y
+        actualiza el resumen visible del documento SOLO si de verdad cambió.
+
+        H-012 (2026-10-06): un documento 'sent' sin resolver que el cron reconsulta cada 10
+        minutos escribía aquí sin condición -- aunque la respuesta de la DIAN fuera
+        exactamente la misma de la reconsulta anterior, write_date se actualizaba igual.
+        Eso hacía parecer que el documento se "tocaba" constantemente sin ningún cambio
+        real, y ensuciaba el orden por write_date que usa _cron_recheck_sent_status() para
+        priorizar el lote.
+        """
         exchange = self.env['l10n.co.ne.exchange'].create_exchange(
             self.company_id, operation, endpoint, response, self, manifest,
             queried_zip_key=queried_zip_key, parent_exchange=parent_exchange,
             unidentified_count=unidentified_count,
         )
-        self.write({
-            'l10n_co_ne_dian_request': self._ne_response_text(response.get('RawRequest')),
-            'l10n_co_ne_dian_response': self._ne_response_text(response.get('RawResponse')),
-        })
+        new_request = self._ne_response_text(response.get('RawRequest'))
+        new_response = self._ne_response_text(response.get('RawResponse'))
+        changed = self.filtered(
+            lambda slip: slip.l10n_co_ne_dian_request != new_request
+            or slip.l10n_co_ne_dian_response != new_response
+        )
+        if changed:
+            changed.write({
+                'l10n_co_ne_dian_request': new_request,
+                'l10n_co_ne_dian_response': new_response,
+            })
         return exchange
 
     @staticmethod
@@ -215,6 +239,26 @@ class HrPayslip(models.Model):
         if not application:
             return set()
         return soap_client.extract_document_numbers(application)
+
+    @staticmethod
+    def _ne_is_set_level_status(response):
+        """True si la respuesta de GetStatusZip es sobre el SET de pruebas completo, no
+        sobre el documento individual consultado.
+
+        H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
+        GetStatusZip respondió StatusCode="2", IsValid="false",
+        StatusDescription="Set de prueba con identificador e07c1748... se encuentra
+        Aceptado.", sin XmlDocumentKey ni ApplicationResponse (ningún dato que identifique
+        el documento). Esa combinación (StatusCode 2 + IsValid false + cero datos de
+        documento) es la FORMA de una respuesta de nivel set, no una hipótesis sobre por
+        qué la DIAN respondió así -- no se asume la causa (Tech Lead: "mi hipótesis no está
+        confirmada, el fix no debe depender de ella").
+        """
+        if str(response.get('StatusCode', '')).strip() != '2':
+            return False
+        if str(response.get('IsValid', '')).lower() == 'true':
+            return False
+        return not response.get('XmlDocumentKey') and not response.get('ApplicationResponse')
 
     def _ne_match_dian_results(self, results, manifest):
         """Asocia resultados solo cuando la evidencia identifica un documento.
@@ -986,6 +1030,16 @@ class HrPayslip(models.Model):
             # historial, no solo en la notificación de la sesión actual.
             matches, ambiguous, unidentified = records._ne_match_dian_results(
                 response.get('DianResponses', []), manifest)
+            # H-012 (2026-10-06): una respuesta de nivel SET (ver
+            # _ne_is_set_level_status) nunca resuelve un documento, aunque
+            # _ne_match_dian_results la haya emparejado por la regla "manifiesto de 1
+            # documento, sin identificador" (pensada para un resultado genuino del
+            # documento sin CUNE, no para un mensaje que ni siquiera es sobre el
+            # documento) -- se descarta el match explícitamente, nunca se infiere
+            # accepted/rejected de ella.
+            set_level = self._ne_is_set_level_status(response)
+            if set_level:
+                matches = {}
             records._ne_store_exchange('get_status_zip', endpoint, response,
                 queried_zip_key=track_id, parent_exchange=sent,
                 unidentified_count=unidentified)
@@ -1015,7 +1069,30 @@ class HrPayslip(models.Model):
                 elif not valid and is_rejection and slip.l10n_co_ne_state != 'accepted':
                     slip.l10n_co_ne_state = 'rejected'
             summary = response.get('StatusDescription') or response.get('StatusMessage') or _('Sin respuesta')
-            if unidentified:
+            if set_level:
+                # H-012 (2026-10-06, confirmado con el portal DIAN por David): esta
+                # respuesta no es un estado transitorio que una reconsulta futura vaya a
+                # resolver -- el set de pruebas ya quedó "Habilitado" y la DIAN no procesa
+                # más documentos de él. Se marca 'uncertain' de inmediato (nunca se espera
+                # al plazo de _CRON_RECHECK_MAX_HOURS_DEFAULT para un motivo ya conocido);
+                # un 'accepted' ya confirmado antes nunca se degrada.
+                to_mark = records.filtered(lambda slip: slip.l10n_co_ne_state == 'sent')
+                for slip in to_mark:
+                    slip.message_post(body=_(
+                        'La DIAN respondió sobre el SET de pruebas, no sobre este '
+                        'documento: "%(desc)s". El set ya está "Habilitado" y no procesa '
+                        'más documentos de prueba -- este documento no se va a resolver '
+                        'en este set. Revise el estado de habilitación de la compañía '
+                        '(Ajustes > Nómina) antes de seguir reintentando.',
+                        desc=summary,
+                    ))
+                to_mark.write({'l10n_co_ne_state': 'uncertain'})
+                summary = _(
+                    '%(summary)s (respuesta del SET de pruebas: ya está "Habilitado" y '
+                    'no va a resolver este documento -- marcado "Envío incierto")',
+                    summary=summary,
+                )
+            elif unidentified:
                 summary = _(
                     '%(summary)s (%(n)d resultado(s) sin identificar -- '
                     'requieren conciliación manual, ver Historial DIAN)',
@@ -1044,7 +1121,19 @@ class HrPayslip(models.Model):
         ZipKey para no repetir una misma consulta por cada nómina del mismo envío. Aislamiento:
         por compañía (ya lo exige action_check_dian_status), por lote acotado
         (_CRON_RECHECK_BATCH_LIMIT), y un ZipKey con error se registra y no frena a los demás.
+
+        H-012 (2026-10-06): un documento que la DIAN nunca resuelve (evidencia real:
+        NA0000000049) se reconsultaba cada 10 minutos para siempre. Dos ajustes:
+        (1) pasado _CRON_RECHECK_MAX_HOURS_DEFAULT (u override), el documento sale del cron
+        y queda 'uncertain' -- el botón "Consultar Estado" sigue disponible para revisarlo a
+        mano en cualquier momento (ver su invisible en hr_payslip_views.xml).
+        (2) el lote se procesa en orden de write_date ascendente -- el más tiempo esperando
+        entra primero, tanto al tope del lote como al orden de los grupos por ZipKey. Con
+        _ne_store_exchange() ya no reescribiendo el documento cuando la respuesta no cambia
+        (ver ahí), write_date de un 'sent' sin novedades se queda quieto desde el último
+        cambio real -- es una medida confiable de "desde cuándo espera".
         """
+        now = fields.Datetime.now()
         companies = self.env['res.company'].sudo().search([
             ('l10n_co_ne_hab_state', '!=', 'running'),
         ])
@@ -1056,10 +1145,36 @@ class HrPayslip(models.Model):
                 ('company_id', '=', company.id),
                 ('l10n_co_ne_state', '=', 'sent'),
                 ('l10n_co_ne_zip_key', '!=', False),
-            ], limit=_CRON_RECHECK_BATCH_LIMIT)
+            ], order='write_date asc', limit=_CRON_RECHECK_BATCH_LIMIT)
             if not pending:
                 continue
-            for zip_key in sorted(set(pending.mapped('l10n_co_ne_zip_key'))):
+
+            max_hours = company._ne_config_int_param(
+                'l10n_co_nomina_electronica.recheck_max_hours',
+                _CRON_RECHECK_MAX_HOURS_DEFAULT,
+            )
+            expired = pending.filtered(
+                lambda slip: now - slip.write_date >= timedelta(hours=max_hours))
+            if expired:
+                for slip in expired:
+                    slip.message_post(body=_(
+                        'Reconsulta automática DIAN suspendida: pasaron más de '
+                        '%(h)d horas sin que la DIAN diera un veredicto de este '
+                        'documento. Queda marcado "Envío incierto -- requiere '
+                        'conciliación" y ya no entra a la reconsulta automática -- '
+                        'use "Consultar Estado" para revisarlo a mano cuando quiera.',
+                        h=max_hours,
+                    ))
+                expired.write({'l10n_co_ne_state': 'uncertain'})
+                self._cron_recheck_commit()
+            pending = pending - expired
+            if not pending:
+                continue
+
+            # dict.fromkeys en vez de sorted(set(...)) -- conserva el orden de llegada de
+            # `pending` (ya viene en write_date ascendente de la búsqueda de arriba) en vez
+            # de reordenar alfabéticamente por ZipKey.
+            for zip_key in dict.fromkeys(pending.mapped('l10n_co_ne_zip_key')):
                 group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
                 try:
                     group.action_check_dian_status()

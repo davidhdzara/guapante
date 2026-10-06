@@ -40,5 +40,14 @@
             <field name="key">l10n_co_nomina_electronica.habilitacion_timeout_minutes</field>
             <field name="value">45</field>
         </record>
+        <!-- H-012 (2026-10-06): horas máximas que _cron_recheck_sent_status() reconsulta
+             automáticamente un documento 'sent' antes de marcarlo 'uncertain' y sacarlo del
+             cron (evidencia real: NA0000000049 quedó 'sent' sin que la DIAN diera nunca un
+             veredicto del documento). Leído por HrPayslip._cron_recheck_sent_status() vía
+             ResCompany._ne_config_int_param(). -->
+        <record id="config_parameter_recheck_max_hours" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.recheck_max_hours</field>
+            <field name="value">72</field>
+        </record>
     </data>
 </odoo>

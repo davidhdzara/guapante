@@ -12,7 +12,7 @@ una COPIA de la BD real, nunca sobre self.env.company).
 
 import base64
 import hashlib
-from datetime import date
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from odoo.tests.common import TransactionCase
@@ -254,3 +254,189 @@ class TestDianStatusRecheckCron(TransactionCase):
 
         self.assertEqual(broken.l10n_co_ne_state, 'sent')
         self.assertEqual(healthy.l10n_co_ne_state, 'accepted')
+
+    def _backdate_write_date(self, record, hours):
+        """Retrocede write_date por SQL directo -- write() siempre lo pone en "ahora", no
+        hay otra forma de simular "este documento lleva N horas esperando" en una prueba."""
+        self.env.cr.execute(
+            'UPDATE hr_payslip SET write_date = %s WHERE id = %s',
+            (datetime.now() - timedelta(hours=hours), record.id),
+        )
+        record.invalidate_recordset(['write_date'])
+
+    def test_recheck_expired_document_leaves_the_cron_and_is_marked_uncertain(self):
+        """(c) H-012 (2026-10-06): pasado el plazo configurado (ir.config_parameter
+        l10n_co_nomina_electronica.recheck_max_hours), el documento deja de entrar al cron
+        y queda 'uncertain' -- nunca se reconsulta para siempre."""
+        stuck = self._make_sent_payslip('Atascada', 'ZIPKEY-STUCK', 'CUNE-STUCK')
+        self.env['ir.config_parameter'].sudo().set_param(
+            'l10n_co_nomina_electronica.recheck_max_hours', '1')
+        self._backdate_write_date(stuck, hours=2)
+
+        with self._patch_get_status_zip({}) as mocked:
+            self.env['hr.payslip']._cron_recheck_sent_status()
+
+        self.assertNotIn('ZIPKEY-STUCK', self._called_zip_keys(mocked))
+        self.assertEqual(stuck.l10n_co_ne_state, 'uncertain')
+
+    def test_recheck_document_within_limit_still_enters_the_cron(self):
+        """Control: dentro del plazo configurado, el documento se sigue reconsultando
+        como siempre -- sin este control, el límite rompería el caso normal."""
+        fresh = self._make_sent_payslip('Fresca', 'ZIPKEY-FRESH', 'CUNE-FRESH')
+        self.env['ir.config_parameter'].sudo().set_param(
+            'l10n_co_nomina_electronica.recheck_max_hours', '1')
+
+        with self._patch_get_status_zip({}) as mocked:
+            self.env['hr.payslip']._cron_recheck_sent_status()
+
+        self.assertIn('ZIPKEY-FRESH', self._called_zip_keys(mocked))
+        self.assertEqual(fresh.l10n_co_ne_state, 'sent')
+
+    def test_recheck_batch_queries_zip_keys_in_write_date_ascending_order(self):
+        """(e) El lote se consulta en orden de write_date ascendente -- el que más
+        tiempo lleva esperando entra primero."""
+        older = self._make_sent_payslip('MasAntigua', 'ZIPKEY-OLD', 'CUNE-OLD')
+        newer = self._make_sent_payslip('MasReciente', 'ZIPKEY-NEW', 'CUNE-NEW')
+        self._backdate_write_date(older, hours=5)
+
+        call_order = []
+
+        def fake_get_status_zip(track_id=None, **kwargs):
+            call_order.append(track_id)
+            return self._NEUTRAL_RESPONSE
+
+        with patch(
+            'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.'
+            'soap_client.get_status_zip',
+            side_effect=fake_get_status_zip,
+        ):
+            self.env['hr.payslip']._cron_recheck_sent_status()
+
+        self.assertEqual(call_order, ['ZIPKEY-OLD', 'ZIPKEY-NEW'])
+        self.assertEqual(older.l10n_co_ne_state, 'sent')
+        self.assertEqual(newer.l10n_co_ne_state, 'sent')
+
+    def test_identical_response_does_not_rewrite_the_document(self):
+        """(d) H-012 (2026-10-06): si la respuesta de la DIAN es exactamente la misma que
+        la última vez, no se reescribe el documento (write_date no se mueve) -- antes cada
+        pasada del cron reescribía aunque nada hubiera cambiado."""
+        payslip = self._make_sent_payslip('SinCambios', 'ZIPKEY-NOCHANGE', 'CUNE-NOCHANGE')
+        with self._patch_get_status_zip({}):
+            payslip.action_check_dian_status()
+        write_date_after_first = payslip.write_date
+
+        with self._patch_get_status_zip({}):
+            payslip.action_check_dian_status()
+
+        self.assertEqual(payslip.write_date, write_date_after_first)
+
+    def test_different_response_does_rewrite_the_document(self):
+        """Control: si la respuesta SÍ cambia, el resumen visible (y write_date) se
+        actualiza -- confirma que (d) no rompe el caso normal."""
+        payslip = self._make_sent_payslip('ConCambios', 'ZIPKEY-CHANGE', 'CUNE-CHANGE')
+        with self._patch_get_status_zip({}):
+            payslip.action_check_dian_status()
+        write_date_after_first = payslip.write_date
+
+        response = {
+            'StatusCode': '00',
+            'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-CHANGE'}],
+            'RawResponse': b'<otra-respuesta-distinta/>',
+        }
+        with self._patch_get_status_zip({'ZIPKEY-CHANGE': response}):
+            payslip.action_check_dian_status()
+
+        self.assertNotEqual(payslip.write_date, write_date_after_first)
+        self.assertEqual(payslip.l10n_co_ne_state, 'accepted')
+
+
+class TestSetLevelStatusResponse(TestDianStatusRecheckCron):
+    """H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
+    GetStatusZip respondió StatusCode=2, IsValid=false, StatusDescription hablando del "set
+    de prueba", sin XmlDocumentKey ni ApplicationResponse. David confirmó con el portal DIAN:
+    ese software/set de pruebas ya está "Habilitado" y no procesa más documentos -- no es un
+    estado transitorio que una reconsulta futura vaya a resolver, el documento nunca se va a
+    resolver bajo ese set."""
+
+    _SET_LEVEL_RESPONSE = {
+        'StatusCode': '2',
+        'IsValid': 'false',
+        'StatusDescription': (
+            'Set de prueba con identificador e07c1748-0000-0000-0000-000000000000 '
+            'se encuentra Aceptado.'
+        ),
+        'DianResponses': [{
+            'IsValid': 'false', 'StatusCode': '2',
+            'StatusDescription': (
+                'Set de prueba con identificador e07c1748-0000-0000-0000-000000000000 '
+                'se encuentra Aceptado.'
+            ),
+            'ErrorMessages': [],
+        }],
+    }
+
+    def test_set_level_response_is_detected(self):
+        self.assertTrue(
+            self.env['hr.payslip']._ne_is_set_level_status(self._SET_LEVEL_RESPONSE))
+
+    def test_normal_accepted_document_response_is_not_set_level(self):
+        normal = {'StatusCode': '00', 'IsValid': 'true', 'XmlDocumentKey': 'CUNE-X'}
+        self.assertFalse(self.env['hr.payslip']._ne_is_set_level_status(normal))
+
+    def test_rejection_response_is_not_set_level(self):
+        rejection = {'StatusCode': '99', 'IsValid': 'false', 'ErrorMessages': ['x']}
+        self.assertFalse(self.env['hr.payslip']._ne_is_set_level_status(rejection))
+
+    def test_set_level_response_marks_uncertain_not_accepted_or_rejected(self):
+        """(b) nunca accepted/rejected con esta respuesta -- y, confirmada la causa real,
+        se marca 'uncertain' de inmediato en vez de reconsultar para siempre."""
+        payslip = self._make_sent_payslip('SetLevel', 'ZIPKEY-SET', 'CUNE-SET')
+        with self._patch_get_status_zip({'ZIPKEY-SET': self._SET_LEVEL_RESPONSE}):
+            payslip.action_check_dian_status()
+        self.assertEqual(payslip.l10n_co_ne_state, 'uncertain')
+
+    def test_set_level_response_message_distinguishes_set_from_document(self):
+        """(a) el mensaje al usuario debe decir que la respuesta es del SET, no del
+        documento, y que ya no se va a resolver."""
+        payslip = self._make_sent_payslip('SetLevelMsg', 'ZIPKEY-SETMSG', 'CUNE-SETMSG')
+        with self._patch_get_status_zip({'ZIPKEY-SETMSG': self._SET_LEVEL_RESPONSE}):
+            notification = payslip.action_check_dian_status()
+        message = notification['params']['message']
+        self.assertIn('SET', message)
+        self.assertIn('Habilitado', message)
+
+    def test_set_level_response_never_degrades_an_already_accepted_document(self):
+        """Un documento ya 'accepted' nunca se toca, aunque llegue una respuesta de set
+        para el mismo ZipKey -- se preserva el invariante existente de nunca degradar."""
+        payslip = self._make_sent_payslip('YaAceptadaSet', 'ZIPKEY-SETACC', 'CUNE-SETACC')
+        payslip.l10n_co_ne_state = 'accepted'
+        with self._patch_get_status_zip({'ZIPKEY-SETACC': self._SET_LEVEL_RESPONSE}):
+            payslip.action_check_dian_status()
+        self.assertEqual(payslip.l10n_co_ne_state, 'accepted')
+
+    def test_normal_accepted_and_rejected_responses_are_unaffected(self):
+        """Regresión: un documento normal aceptado o rechazado sigue igual -- esta
+        corrección solo distingue la respuesta de SET, no toca esas ramas."""
+        accepted = self._make_sent_payslip(
+            'AceptadaNormal', 'ZIPKEY-OKNORMAL', 'CUNE-OKNORMAL')
+        rejected = self._make_sent_payslip(
+            'RechazadaNormal', 'ZIPKEY-RECHNORMAL', 'CUNE-RECHNORMAL')
+        accepted_response = {
+            'StatusCode': '00',
+            'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-OKNORMAL'}],
+        }
+        rejected_response = {
+            'StatusCode': '99',
+            'DianResponses': [{
+                'IsValid': 'false', 'StatusCode': '99',
+                'XmlDocumentKey': 'CUNE-RECHNORMAL', 'ErrorMessages': ['error x'],
+            }],
+        }
+        with self._patch_get_status_zip({
+            'ZIPKEY-OKNORMAL': accepted_response,
+            'ZIPKEY-RECHNORMAL': rejected_response,
+        }):
+            accepted.action_check_dian_status()
+            rejected.action_check_dian_status()
+        self.assertEqual(accepted.l10n_co_ne_state, 'accepted')
+        self.assertEqual(rejected.l10n_co_ne_state, 'rejected')
