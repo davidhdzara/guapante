@@ -2,14 +2,38 @@
 
 import base64
 import importlib.util
+import sys
+import types
 from pathlib import Path
 import unittest
 
 
-_SERVICE = Path(__file__).parents[1] / 'services' / 'soap_client.py'
-_SPEC = importlib.util.spec_from_file_location('ne_soap_client', _SERVICE)
-soap_client = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(soap_client)
+# AUD-DIAN-34 (2026-10-05): soap_client.py ahora hace ``from . import dian_utils`` (un solo
+# punto para las URL de la DIAN) -- cargarlo suelto como antes (spec_from_file_location sin
+# paquete padre) rompe ese import relativo con "attempted relative import with no known
+# parent package". Se registra un paquete sintético 'services' con __path__ apuntando al
+# directorio real (sin ejecutar su __init__.py, que sí depende de Odoo vía otros
+# submódulos) y se cargan sus dependencias en orden (cune -> dian_utils -> soap_client) para
+# que los imports relativos resuelvan contra módulos ya en sys.modules. No se toca el import
+# relativo de producción: esto solo resuelve cómo esta prueba suelta lo carga.
+_SERVICES_DIR = Path(__file__).parents[1] / 'services'
+_services_pkg = types.ModuleType('services')
+_services_pkg.__path__ = [str(_SERVICES_DIR)]
+sys.modules.setdefault('services', _services_pkg)
+
+
+def _load_service_module(name):
+    spec = importlib.util.spec_from_file_location(
+        'services.%s' % name, _SERVICES_DIR / ('%s.py' % name))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules['services.%s' % name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_service_module('cune')
+_load_service_module('dian_utils')
+soap_client = _load_service_module('soap_client')
 
 
 class TestDianResponseParser(unittest.TestCase):
