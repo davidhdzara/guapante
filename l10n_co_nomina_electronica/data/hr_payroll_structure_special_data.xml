@@ -269,14 +269,13 @@ result = categories['PREST'] + categories['DEDU']
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Salarios pendientes: dias del ultimo periodo trabajado
-# Se calcula con base en la fecha de terminacion (date_to del payslip)
-_fecha_fin = payslip.date_to
-_dia_fin = _fecha_fin.day
-
-# Dias trabajados en el ultimo mes (base dias_mes_comercial dias)
-# Si el mes tiene mas dias, se cuenta como dias_mes_comercial
-_dias = min(_dia_fin, payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from))
+# H-009 (2026-10-06): salarios pendientes del tramo del ultimo mes, misma unica fuente que
+# CO_BASICO/CO_AUX_TRANS (HrPayslip._ne_dias_pagables()) -- antes esta regla recalculaba sus
+# propios dias con una formula distinta (min(dia_fin, dias_mes), sin el caso especial de
+# ultimo-dia-de-mes ni la interseccion con la fecha de inicio del contrato), produciendo un
+# DiasTrabajados en el XML sin relacion con el SueldoTrabajado real en liquidaciones que
+# abarcan varios meses/anos (contrato desde hace tiempo, retiro reciente).
+_dias = payslip._ne_dias_pagables()
 
 result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from) * _dias
             </field>

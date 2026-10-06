@@ -159,6 +159,92 @@ class TestNeDiasPagables(TestDiasTrabajadosCommon):
         self.assertEqual(payslip._ne_dias_pagables(), 25)
 
 
+class TestNeDiasPagablesLiquidacion(TestDiasTrabajadosCommon):
+    """H-009 (2026-10-06, QA Bloque 2): hallazgo real en staging (NE0000000077, contrato desde
+    2024-10-05, retiro 2026-11-15) -- el XML mostraba <Basico DiasTrabajados="11"
+    SueldoTrabajado="900000.00">, un sueldo de 15 días (15 x 60.000) con un DiasTrabajados de
+    11 sin relación con ese sueldo.
+
+    Causa: en Liquidación, date_from es contract.date_start (wizard/hr_liquidacion_wizard.py:
+    'date_from': contract.date_start) y el período puede abarcar meses o años -- intersectarlo
+    completo contra el contrato (como hacía _ne_dias_pagables() antes) devuelve el total de
+    días de TODO el contrato, no el tramo pendiente del último mes que realmente paga
+    CO_LIQ_SALARIOS (los meses anteriores ya se pagaron en nóminas mensuales regulares).
+    Ahora _ne_dias_pagables() recorta el período al mes calendario de date_to cuando date_from
+    y date_to caen en meses distintos; CO_LIQ_SALARIOS (data/hr_payroll_structure_special_
+    data.xml) llama a esta misma función en vez de su propio cálculo duplicado (que además
+    tenía su propio bug: no aplicaba el caso especial "último día calendario = día comercial
+    30" para meses de 28/29 días, dando min(28, 30)=28 en vez de 30 para un retiro en
+    febrero)."""
+
+    def test_incidente_real_h009_contrato_2024_retiro_2026_11_15(self):
+        """(a) Caso exacto reportado: contrato desde 2024-10-05, retiro 2026-11-15 -> 15 días."""
+        employee, contract = self._make_contract(
+            'LiqH009', date_start=date(2024, 10, 5), date_end=date(2026, 11, 15),
+            wage=1800000.0)
+        payslip = self._make_payslip(
+            employee, contract, contract.date_start, date(2026, 11, 15))
+        self.assertEqual(payslip._ne_dias_pagables(), 15)
+
+    def test_liquidacion_sueldo_coherente_con_dias_via_regla_real(self):
+        """(a) extendido: corre CO_LIQ_SALARIOS real (compute_sheet() sobre la estructura de
+        Liquidación) -- el sueldo debe salir de EXACTAMENTE los mismos días que
+        _ne_dias_pagables(), no de un cálculo propio duplicado. 1.800.000 / 30 x 15 = 900.000,
+        el mismo sueldo del incidente real."""
+        liquidacion_struct = self.env.ref(
+            'l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
+        employee, contract = self._make_contract(
+            'LiqSueldoCoherente', date_start=date(2024, 10, 5), date_end=date(2026, 11, 15),
+            wage=1800000.0)
+        payslip = self.env['hr.payslip'].create({
+            'name': 'Liquidación %s' % employee.name,
+            'employee_id': employee.id,
+            'contract_id': contract.id,
+            'company_id': self.company.id,
+            'struct_id': liquidacion_struct.id,
+            'date_from': contract.date_start,
+            'date_to': date(2026, 11, 15),
+        })
+        payslip.compute_sheet()
+        line = payslip.line_ids.filtered(lambda l: l.code == 'CO_LIQ_SALARIOS')
+        self.assertTrue(line, 'CO_LIQ_SALARIOS no generó línea.')
+        self.assertEqual(payslip._ne_dias_pagables(), 15)
+        self.assertEqual(round(line.total, 2), 900000.0)
+
+    def test_retiro_dia_31_cuenta_como_mes_comercial_completo(self):
+        """(b) Retiro el día 31 (mes real de 31 días) -- el último día calendario de
+        cualquier mes siempre equivale al día comercial 30, no 31-1+1=31."""
+        employee, contract = self._make_contract(
+            'LiqRetiro31', date_start=date(2024, 1, 1), date_end=date(2026, 1, 31))
+        payslip = self._make_payslip(employee, contract, contract.date_start, date(2026, 1, 31))
+        self.assertEqual(payslip._ne_dias_pagables(), 30)
+
+    def test_retiro_dia_30_cuenta_como_mes_comercial_completo(self):
+        """(b) Retiro el día 30 (mes real de 30 días) -- caso simple, día 30 = día comercial 30."""
+        employee, contract = self._make_contract(
+            'LiqRetiro30', date_start=date(2024, 1, 1), date_end=date(2026, 4, 30))
+        payslip = self._make_payslip(employee, contract, contract.date_start, date(2026, 4, 30))
+        self.assertEqual(payslip._ne_dias_pagables(), 30)
+
+    def test_retiro_en_febrero_cuenta_como_mes_comercial_completo(self):
+        """(b) Retiro el último día de febrero (28, 2026 no es bisiesto) -- antes del arreglo,
+        CO_LIQ_SALARIOS calculaba min(28, 30)=28, 2 días comerciales de menos frente a la
+        convención real (último día calendario = día comercial 30, igual que CO_BASICO)."""
+        employee, contract = self._make_contract(
+            'LiqRetiroFeb', date_start=date(2024, 1, 1), date_end=date(2026, 2, 28))
+        payslip = self._make_payslip(employee, contract, contract.date_start, date(2026, 2, 28))
+        self.assertEqual(payslip._ne_dias_pagables(), 30)
+
+    def test_liquidacion_con_contrato_de_menos_de_un_mes(self):
+        """(c) Contrato nace y termina dentro del mismo mes calendario -- date_from y date_to
+        ya caen en el mismo mes, así que no aplica el recorte de período multi-mes; el tramo
+        pagable es la intersección normal de siempre (día 10 a día 22 = 13 días)."""
+        employee, contract = self._make_contract(
+            'LiqCorto', date_start=date(2026, 9, 10), date_end=date(2026, 9, 22))
+        payslip = self._make_payslip(employee, contract, contract.date_start, date(2026, 9, 22))
+        self.assertEqual(payslip._ne_dias_pagables(), 13)
+
+
 class TestDevBasicoYTransporteGuard(TestDiasTrabajadosCommon):
     """(d) del criterio de aceptación: sin dato válido, UserError -- nunca un 30 inventado."""
 

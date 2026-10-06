@@ -1442,14 +1442,25 @@ class HrPayslip(models.Model):
     def _ne_dias_pagables(self):
         """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
         usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
-        data.xml) para calcular el sueldo. Única fuente para el sueldo Y para DiasTrabajados.
+        data.xml) y CO_AUX_TRANS para calcular el sueldo/auxilio. Única fuente para el sueldo
+        Y para DiasTrabajados, sin importar si la estructura es mensual o de liquidación.
 
         AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): hallazgo real -- un básico de mes completo
         generaba DiasTrabajados="19" (conteo de líneas WORK100, calendario lun-vie) junto a
         SueldoTrabajado del mes completo (30 días comerciales): dos fuentes de días distintas
         para el mismo devengado. El Anexo Técnico (NIE069/NIE070) define SueldoTrabajado como
         "el Sueldo Trabajado por los días laborados" -- ambos deben contar exactamente lo
-        mismo. Esta función es esa única fuente; CO_BASICO la llama en vez de recalcular.
+        mismo. Esta función es esa única fuente; CO_BASICO/CO_AUX_TRANS la llaman en vez de
+        recalcular.
+
+        H-009 (2026-10-06, QA Bloque 2): en Liquidación, date_from es contract.date_start y
+        date_to la fecha de retiro -- un período que puede abarcar meses o años. Intersectar
+        ese período completo contra el contrato (como hacía esta función antes) devuelve el
+        total de días del contrato, sin relación con CO_LIQ_SALARIOS (que solo paga el tramo
+        pendiente del ÚLTIMO mes -- los meses anteriores ya se pagaron en nóminas regulares).
+        Cuando el período cruza más de un mes calendario, el tramo pagable se restringe al
+        mes calendario de date_to; dentro de un mismo mes (el caso normal mensual, incluyendo
+        ingreso/retiro a mitad de mes) el resultado no cambia.
         """
         self.ensure_one()
         contract = self.contract_id
@@ -1475,6 +1486,9 @@ class HrPayslip(models.Model):
         periodo_fin = self.date_to
         contrato_ini = contract.date_start
         contrato_fin = contract.date_end or periodo_fin
+
+        if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
+            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
 
         activo_ini = max(periodo_ini, contrato_ini)
         activo_fin = min(periodo_fin, contrato_fin)
