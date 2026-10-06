@@ -152,9 +152,10 @@
                                                     </t>
                                                 </div>
                                             </div>
+                                            <t t-set="line_disp" t-value="uom_display.get(line.id, {})"/>
                                             <div class="text-end ms-2">
                                                 <span class="badge bg-light text-dark border small">
-                                                    x<t t-esc="int(line.product_uom_qty)"/> <t t-esc="line.product_uom.name"/>
+                                                    x<t t-esc="line_disp.get('qty', '')"/> <t t-esc="line_disp.get('label', '')"/>
                                                 </span>
                                             </div>
                                         </div>
