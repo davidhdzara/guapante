@@ -139,6 +139,14 @@ class TestNeDiasPagables(TestDiasTrabajadosCommon):
             'unpaid': True,
         })
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        # AUD-DIAN-34 (2026-10-05): worked_days_line_ids es un compute stored (readonly=False)
+        # -- queda pendiente al crear el payslip. Si se crea la línea manual ANTES de que ese
+        # cálculo corra, al leer worked_days_line_ids (_ne_dias_pagables) Odoo ejecuta el
+        # cálculo pendiente y SOBRESCRIBE la línea manual con las calculadas (confirmado en el
+        # servidor por Tech Lead, con rollback: creando la línea sin forzar antes el cálculo,
+        # la línea LNR desaparecía). Se fuerza el cálculo leyendo el campo ANTES de crear la
+        # línea manual, para que esta se agregue sobre lo ya calculado y no sea pisada.
+        payslip.worked_days_line_ids
         # AUD-DIAN-34 (2026-10-05): modelo real 'hr.payslip.worked_days' (guion bajo), no
         # 'hr.payslip.worked.days' -- confirmado contra enterprise/hr_payroll/models/
         # hr_payslip_worked_days.py en el servidor (Tech Lead). contract_id ahí es un
