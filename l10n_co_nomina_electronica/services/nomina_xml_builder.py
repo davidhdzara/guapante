@@ -163,6 +163,25 @@ def _fmt(value: Union[int, float, str, None], decimals: int = 2) -> str:
     return ('%%.%df' % decimals) % truncated
 
 
+def _dias_trabajados_requerido(basico: dict) -> str:
+    """DiasTrabajados de Devengados/Basico -- obligatorio, nunca inventado.
+
+    AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): antes un '30' por defecto aquí disfrazaba la
+    ausencia del dato (producía un XML "válido" con DiasTrabajados incoherente con
+    SueldoTrabajado, que el Anexo Técnico, NIE069/NIE070, define como la misma cantidad de
+    días). Quien llama a este builder (HrPayslip._dev_basico_y_transporte /
+    _ne_dias_pagables()) debe calcularlo siempre; si no llega, es un error real, no un caso
+    a disimular con un valor fijo.
+    """
+    value = basico.get('DiasTrabajados')
+    if value is None:
+        raise ValueError(
+            "Falta 'DiasTrabajados' en Devengados.Basico -- no se asume 30 días. "
+            "Quien construye 'data' debe calcularlo (ver HrPayslip._ne_dias_pagables())."
+        )
+    return str(value)
+
+
 def _get(data: dict, *keys, default=None):
     """Acceso seguro a diccionarios anidados.
 
@@ -478,7 +497,7 @@ def _add_devengados(parent: etree._Element, data: dict) -> None:
     basico = data.get('Basico', {})
     _attr(
         dev, 'Basico',
-        DiasTrabajados=str(basico.get('DiasTrabajados', '30')),
+        DiasTrabajados=_dias_trabajados_requerido(basico),
         SueldoTrabajado=_fmt(basico.get('SueldoTrabajado', 0)),
     )
 
@@ -1601,7 +1620,7 @@ def _get_devengados_node(data: dict) -> dict:
     basico = data.get('Basico', {})
     node = {
         'Basico': {
-            'DiasTrabajados': str(basico.get('DiasTrabajados', '30')),
+            'DiasTrabajados': _dias_trabajados_requerido(basico),
             'SueldoTrabajado': _fmt(basico.get('SueldoTrabajado', 0)),
         },
         'Transporte': _get_transporte_items(data.get('Transporte')),

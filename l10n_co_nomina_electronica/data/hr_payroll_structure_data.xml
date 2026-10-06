@@ -139,49 +139,12 @@
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
+# AUD-DIAN-34 (2026-10-05): dias_pagables sale de HrPayslip._ne_dias_pagables() -- unica
+# fuente, para que SueldoTrabajado y el DiasTrabajados del XML (NIE069/NIE070) cuenten
+# exactamente lo mismo. Antes este calculo estaba duplicado aqui Y en el XML builder con
+# un conteo distinto (WORK100), produciendo un DiasTrabajados incoherente con el sueldo.
 _dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
-
-def _dias_en_mes(year, month):
-    # sin 'import calendar': safe_eval prohibe la sentencia 'import' dentro de
-    # amount_python_compute (opcode IMPORT_NAME no esta en la whitelist).
-    if month == 2:
-        bisiesto = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
-        return 29 if bisiesto else 28
-    if month in (4, 6, 9, 11):
-        return 30
-    return 31
-
-def _dia_comercial(d):
-    # Convencion de "mes comercial" colombiana (doctrina CSJ, la misma que ya usa
-    # l10n_co_dias_anio_comercial para cesantias/prima): todo mes se cuenta como
-    # si tuviera _dias_mes (30) dias. El ultimo dia calendario REAL de cualquier
-    # mes (28/29-feb, 30 o 31) siempre equivale al dia comercial 30 -- no solo
-    # cuando el mes tiene exactamente 30 dias. Esta regla aplica igual para
-    # fechas de inicio y de fin de contrato (es la misma resta en ambos casos).
-    ultimo_dia_mes = _dias_en_mes(d.year, d.month)
-    if d.day == ultimo_dia_mes:
-        return _dias_mes
-    return min(d.day, _dias_mes)
-
-periodo_ini = payslip.date_from
-periodo_fin = payslip.date_to
-contrato_ini = contract.date_start
-contrato_fin = contract.date_end or periodo_fin
-
-activo_ini = max(periodo_ini, contrato_ini)
-activo_fin = min(periodo_fin, contrato_fin)
-
-if activo_ini > activo_fin:
-    dias_bajo_contrato = 0
-else:
-    dias_bajo_contrato = _dia_comercial(activo_fin) - _dia_comercial(activo_ini) + 1
-
-unpaid_types = payslip.env['hr.leave.type'].search([('unpaid', '=', True)])
-unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
-dias_no_remunerados = sum(
-    line.number_of_days for code, line in worked_days.items() if code in unpaid_codes
-)
-dias_pagables = dias_bajo_contrato - dias_no_remunerados
+dias_pagables = payslip._ne_dias_pagables()
 result = contract.wage / _dias_mes * dias_pagables
             </field>
             <field name="appears_on_payslip" eval="True"/>

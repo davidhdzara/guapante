@@ -1434,18 +1434,76 @@ class HrPayslip(models.Model):
         self._dev_bonos_y_pagos(concept_lines, devengados)
         return devengados
 
+    def _ne_dias_pagables(self):
+        """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
+        usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
+        data.xml) para calcular el sueldo. Única fuente para el sueldo Y para DiasTrabajados.
+
+        AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): hallazgo real -- un básico de mes completo
+        generaba DiasTrabajados="19" (conteo de líneas WORK100, calendario lun-vie) junto a
+        SueldoTrabajado del mes completo (30 días comerciales): dos fuentes de días distintas
+        para el mismo devengado. El Anexo Técnico (NIE069/NIE070) define SueldoTrabajado como
+        "el Sueldo Trabajado por los días laborados" -- ambos deben contar exactamente lo
+        mismo. Esta función es esa única fuente; CO_BASICO la llama en vez de recalcular.
+        """
+        self.ensure_one()
+        contract = self.contract_id
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+
+        def _dias_en_mes(year, month):
+            if month == 2:
+                bisiesto = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+                return 29 if bisiesto else 28
+            if month in (4, 6, 9, 11):
+                return 30
+            return 31
+
+        def _dia_comercial(d):
+            # El último día calendario REAL de cualquier mes (28/29-feb, 30 o 31) siempre
+            # equivale al día comercial 30 -- no solo cuando el mes tiene exactamente 30 días.
+            ultimo_dia_mes = _dias_en_mes(d.year, d.month)
+            if d.day == ultimo_dia_mes:
+                return dias_mes
+            return min(d.day, dias_mes)
+
+        periodo_ini = self.date_from
+        periodo_fin = self.date_to
+        contrato_ini = contract.date_start
+        contrato_fin = contract.date_end or periodo_fin
+
+        activo_ini = max(periodo_ini, contrato_ini)
+        activo_fin = min(periodo_fin, contrato_fin)
+
+        if activo_ini > activo_fin:
+            dias_bajo_contrato = 0
+        else:
+            dias_bajo_contrato = _dia_comercial(activo_fin) - _dia_comercial(activo_ini) + 1
+
+        unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
+        unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+        dias_no_remunerados = sum(
+            wd.number_of_days
+            for wd in self.worked_days_line_ids
+            if wd.work_entry_type_id.code in unpaid_codes
+        )
+        return dias_bajo_contrato - dias_no_remunerados
+
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
         # Sueldo básico
         if 'Sueldo' in concept_lines:
             sueldo_lines = concept_lines['Sueldo']
-            worked_days = sum(
-                wd.number_of_days
-                for wd in self.worked_days_line_ids
-                if wd.work_entry_type_id.code == 'WORK100'
-            ) or 30
+            dias_pagables = self._ne_dias_pagables()
+            if dias_pagables <= 0:
+                raise UserError(_(
+                    'No se pudo determinar DiasTrabajados de %(employee)s para el período '
+                    '%(ini)s a %(fin)s (contrato no activo en el período, o los días no '
+                    'remunerados cubren todo el período). Revise las fechas del contrato y '
+                    'las novedades antes de generar el XML.',
+                    employee=self.employee_id.name, ini=self.date_from, fin=self.date_to,
+                ))
             devengados['Basico'] = {
-                'DiasTrabajados': str(int(worked_days)),
+                'DiasTrabajados': str(int(dias_pagables)),
                 'SueldoTrabajado': '%.2f' % sum(l.total for l in sueldo_lines),
             }
 

@@ -8,3 +8,4 @@ from . import test_ne_xml_namespaces
 from . import test_habilitacion_engine
 from . import test_input_types
 from . import test_dian_status_recheck
+from . import test_dias_trabajados
