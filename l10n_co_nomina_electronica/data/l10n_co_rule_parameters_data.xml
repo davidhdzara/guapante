@@ -411,6 +411,24 @@ Valor vigente: <strong>50.0</strong>.</p></field>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+    <record id="rule_parameter_dias_incapacidad_limite_3_90" model="hr.rule.parameter">
+        <field name="name">Colombia: Incapacidad Común, Límite Tramo EPS (Días)</field>
+        <field name="code">l10n_co_dias_incapacidad_limite_3_90</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Último día del tramo "3 a 90" de incapacidad por enfermedad general
+pagado por la EPS a l10n_co_pct_incapacidad_3_90% -- a partir del día siguiente aplica
+l10n_co_pct_incapacidad_91_mas% (Decreto 1406/1999, Art. 3). AUD-DIAN-34 (2026-10-05):
+antes el "90" estaba escrito dos veces en la fórmula de CO_INC_COMUN; es un umbral legal
+propio, no debe confundirse con ningún otro parámetro de días.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>90</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_incapacidad_limite_3_90_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">90</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_incapacidad_limite_3_90"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_pct_tope_embargo_alimentos" model="hr.rule.parameter">
         <field name="name">Colombia: % Tope Embargo Alimentos/Cooperativa</field>
         <field name="code">l10n_co_pct_tope_embargo_alimentos</field>
@@ -993,6 +1011,122 @@ hora si aplica (ej. 19.5 = 7:30pm). Valor vigente (desde 2025-12-25): <strong>19
         <field name="parameter_value">19.0</field>
         <field name="rule_parameter_id" ref="rule_parameter_hora_inicio_franja_nocturna"/>
         <field name="date_from" eval="datetime(2025, 12, 25).date()"/>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Indemnización por Despido Sin Justa Causa (Art. 64 CST) —
+         AUD-DIAN-34 (2026-10-05): antes CO_LIQ_INDEMNIZACION (data/
+         hr_payroll_structure_special_data.xml) reutilizaba
+         l10n_co_dias_mes_comercial (30 días del mes comercial, un
+         concepto de prorrateo salarial) como si fuera el "30 días del
+         primer año" de la indemnización: coinciden en valor hoy, pero
+         son conceptos legales distintos; si uno cambia por decreto no
+         debe arrastrar al otro. El umbral de 10 SMMLV tampoco reutiliza
+         l10n_co_tope_exoneracion_smmlv (ese es el de la exoneración de
+         parafiscales, Art. 114-1 ET): es el mismo NÚMERO hoy, no el
+         mismo concepto legal. David confirmó estos 6 valores (2026-10-05).
+         ════════════════════════════════════════════════════════════════ -->
+
+    <record id="rule_parameter_dias_indemniz_primer_anio_menor10" model="hr.rule.parameter">
+        <field name="name">Colombia: Indemnización Días Primer Año (menos de 10 SMMLV)</field>
+        <field name="code">l10n_co_dias_indemniz_primer_anio_menor10</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días de salario por el primer año (o fracción) de servicio, indemnización
+por despido sin justa causa, contrato a término indefinido, trabajador con salario
+menor a l10n_co_tope_indemniz_smmlv SMMLV (Art. 64 CST, num. 1, lit. a).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>30</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_indemniz_primer_anio_menor10_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">30</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_indemniz_primer_anio_menor10"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_indemniz_anio_adicional_menor10" model="hr.rule.parameter">
+        <field name="name">Colombia: Indemnización Días Año Adicional (menos de 10 SMMLV)</field>
+        <field name="code">l10n_co_dias_indemniz_anio_adicional_menor10</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días de salario por cada año adicional (o proporción) de servicio después
+del primero, indemnización por despido sin justa causa, contrato a término
+indefinido, trabajador con salario menor a l10n_co_tope_indemniz_smmlv SMMLV
+(Art. 64 CST, num. 1, lit. a).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>20</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_indemniz_anio_adicional_menor10_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">20</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_indemniz_anio_adicional_menor10"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_indemniz_primer_anio_mayor10" model="hr.rule.parameter">
+        <field name="name">Colombia: Indemnización Días Primer Año (10 SMMLV o más)</field>
+        <field name="code">l10n_co_dias_indemniz_primer_anio_mayor10</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días de salario por el primer año (o fracción) de servicio, indemnización
+por despido sin justa causa, contrato a término indefinido, trabajador con salario
+igual o mayor a l10n_co_tope_indemniz_smmlv SMMLV (Art. 64 CST, num. 1, lit. b).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>20</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_indemniz_primer_anio_mayor10_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">20</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_indemniz_primer_anio_mayor10"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_indemniz_anio_adicional_mayor10" model="hr.rule.parameter">
+        <field name="name">Colombia: Indemnización Días Año Adicional (10 SMMLV o más)</field>
+        <field name="code">l10n_co_dias_indemniz_anio_adicional_mayor10</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días de salario por cada año adicional (o proporción) de servicio después
+del primero, indemnización por despido sin justa causa, contrato a término
+indefinido, trabajador con salario igual o mayor a l10n_co_tope_indemniz_smmlv SMMLV
+(Art. 64 CST, num. 1, lit. b).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>15</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_indemniz_anio_adicional_mayor10_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">15</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_indemniz_anio_adicional_mayor10"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_tope_indemniz_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Indemnización (SMMLV)</field>
+        <field name="code">l10n_co_tope_indemniz_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV que separa los 2 tramos de indemnización por despido
+sin justa causa en contrato a término indefinido (Art. 64 CST, num. 1). Parámetro
+propio -- NO es el mismo concepto que l10n_co_tope_exoneracion_smmlv (ese es el
+umbral de exoneración de parafiscales, Art. 114-1 ET); ambos valen 10 hoy por
+coincidencia, no por ser el mismo umbral legal.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de veces el SMMLV, <strong>NO</strong> un valor en pesos:
+escriba <strong>10</strong> para representar "10 SMMLV". Valor vigente: <strong>10</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_tope_indemniz_smmlv_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">10</field>
+        <field name="rule_parameter_id" ref="rule_parameter_tope_indemniz_smmlv"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_dias_piso_indemniz_obra_labor" model="hr.rule.parameter">
+        <field name="name">Colombia: Piso Indemnización Obra o Labor (Días)</field>
+        <field name="code">l10n_co_dias_piso_indemniz_obra_labor</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Mínimo de días de salario que debe pagarse como indemnización en un
+contrato de obra o labor terminado sin justa causa antes de que concluya la obra,
+aunque el tiempo restante calculado sea menor (Art. 64 CST, num. 3). NO aplica a
+término fijo, que no tiene este piso.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>15</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_piso_indemniz_obra_labor_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">15</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_piso_indemniz_obra_labor"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
 </odoo>

@@ -10,3 +10,5 @@ from . import test_input_types
 from . import test_dian_status_recheck
 from . import test_dias_trabajados
 from . import test_dian_config
+from . import test_rule_parameters_exist
+from . import test_liquidacion_indemnizacion

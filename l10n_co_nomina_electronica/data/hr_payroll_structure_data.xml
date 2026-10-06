@@ -494,20 +494,24 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrndf', payslip.da
 # Primeros dias_incapacidad_empleador días: 100% a cargo del empleador
 # Días 3-90: pct_incapacidad_3_90 pagado por EPS
 # Días 91+: pct_incapacidad_91_mas pagado por EPS
+# AUD-DIAN-34 (2026-10-05): el "90" (limite del tramo EPS) era un literal
+# repetido 2 veces aqui -- parametro propio, ver l10n_co_dias_incapacidad_
+# limite_3_90 en data/l10n_co_rule_parameters_data.xml.
 _dias_emp = payslip._rule_parameter('l10n_co_dias_incapacidad_empleador', payslip.date_from)
 _pct_3_90 = payslip._rule_parameter('l10n_co_pct_incapacidad_3_90', payslip.date_from) / 100
 _pct_91_mas = payslip._rule_parameter('l10n_co_pct_incapacidad_91_mas', payslip.date_from) / 100
+_limite_3_90 = payslip._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', payslip.date_from)
 dias = inputs['CO_INC_COMUN'].amount
 valor_dia = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 if dias &lt;= _dias_emp:
     result = valor_dia * dias
-elif dias &lt;= 90:
+elif dias &lt;= _limite_3_90:
     result = valor_dia * _dias_emp + (valor_dia * _pct_3_90 * (dias - _dias_emp))
 else:
     result = (
         valor_dia * _dias_emp
-        + (valor_dia * _pct_3_90 * (90 - _dias_emp))
-        + (valor_dia * _pct_91_mas * (dias - 90))
+        + (valor_dia * _pct_3_90 * (_limite_3_90 - _dias_emp))
+        + (valor_dia * _pct_91_mas * (dias - _limite_3_90))
     )
             </field>
             <field name="appears_on_payslip" eval="True"/>

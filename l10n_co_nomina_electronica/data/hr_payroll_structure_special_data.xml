@@ -95,12 +95,16 @@ _dias = (_fin_efectivo - _inicio_efectivo).days + 1
 if _dias &lt; 0:
     _dias = 0
 
-# Tope maximo: 180 dias (un semestre completo)
-_dias = min(_dias, 180)
+# Tope maximo: un semestre completo = mitad del anio comercial (AUD-DIAN-34,
+# 2026-10-05: 180 no es un umbral legal propio, es la mitad de los 360 dias
+# del anio comercial que la linea de abajo ya usa para prorratear -- se
+# deriva de la MISMA fuente en vez de mantener "180" aparte).
+_dias_anio = payslip._rule_parameter('l10n_co_dias_anio_comercial', payslip.date_from)
+_dias = min(_dias, _dias_anio / 2)
 
-# Prima = base * dias / dias_anio_comercial (equivale a 30 dias de salario por semestre de 180 dias)
+# Prima = base * dias / dias_anio_comercial (equivale a 30 dias de salario por semestre completo)
 _base = result_rules['CO_PRIMA_BASE']['total']
-result = _base * _dias / payslip._rule_parameter('l10n_co_dias_anio_comercial', payslip.date_from)
+result = _base * _dias / _dias_anio
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Primas</field>
@@ -324,10 +328,14 @@ _inicio_efectivo = max(contract.date_start, _inicio_sem)
 _dias = (_fecha_fin - _inicio_efectivo).days + 1
 if _dias &lt; 0:
     _dias = 0
-_dias = min(_dias, 180)
+# Tope maximo: un semestre completo = mitad del anio comercial (AUD-DIAN-34,
+# 2026-10-05: misma derivacion que CO_PRIMA, ver su comentario -- 180 no es
+# un umbral legal propio).
+_dias_anio = payslip._rule_parameter('l10n_co_dias_anio_comercial', payslip.date_from)
+_dias = min(_dias, _dias_anio / 2)
 
 # Prima proporcional
-result = _base * _dias / payslip._rule_parameter('l10n_co_dias_anio_comercial', payslip.date_from)
+result = _base * _dias / _dias_anio
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Primas</field>
@@ -480,6 +488,18 @@ result = payslip.l10n_co_ne_liquidacion_cause == 'sin_justa_causa'
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Indemnizacion segun tipo de contrato (Art. 64 CST)
+# AUD-DIAN-34 (2026-10-05, David confirmo los 6 valores): los dias de
+# indemnizacion (30/20/20/15), el umbral de 10 SMMLV y el piso de obra/
+# labor son parametros propios -- antes "30" reutilizaba
+# l10n_co_dias_mes_comercial (prorrateo salarial, otro concepto legal) y
+# "10" nunca fue parametro. Ver data/l10n_co_rule_parameters_data.xml.
+#
+# LIMITACION DOCUMENTADA (confirmada por David, 2026-10-05): el regimen
+# transitorio del Art. 64 CST (trabajadores con 10+ anios de servicio al
+# 27-dic-2002, Ley 789/2002 art. 28 paragrafo transitorio) NO esta
+# implementado -- Guapante no tiene empleados en ese supuesto. Si algun
+# dia aplica, esta formula daria un valor distinto al legal para ese
+# caso puntual.
 _salario = contract.wage
 _tipo_contrato = contract.l10n_co_ne_contract_type
 _fecha_inicio = contract.date_start
@@ -510,39 +530,40 @@ if _tipo_contrato in ('1', '3'):
     _indemnizacion_base = _valor_dia * _dias_restantes
 
     if _tipo_contrato == '3':
-        # Piso de 15 dias, SOLO obra/labor (Art. 64 CST, doc 20 SS10,
-        # texto legal aportado por David) -- termino fijo NO tiene este
-        # piso. Las otras 3 condiciones del pseudocodigo de David ya
-        # estan cubiertas sin dato nuevo: causal 'sin_justa_causa' (ya
-        # exigido por el condition_python de esta regla) implica obra NO
+        # Piso de dias, SOLO obra/labor (Art. 64 CST, doc 20 SS10, texto
+        # legal aportado por David) -- termino fijo NO tiene este piso.
+        # Las otras 3 condiciones del pseudocodigo de David ya estan
+        # cubiertas sin dato nuevo: causal 'sin_justa_causa' (ya exigido
+        # por el condition_python de esta regla) implica obra NO
         # finalizada (si hubiera finalizado, la causal real seria
         # 'fin_obra', que ya existe y es mutuamente excluyente en
         # l10n_co_ne_liquidacion_cause) -- no hace falta modelar un
         # campo aparte de "obra finalizada".
-        _indemnizacion_minima = _valor_dia * 15
+        _piso_dias = payslip._rule_parameter('l10n_co_dias_piso_indemniz_obra_labor', payslip.date_from)
+        _indemnizacion_minima = _valor_dia * _piso_dias
         result = max(_indemnizacion_base, _indemnizacion_minima)
     else:
         # Termino fijo (1): sin piso, formula original sin cambios.
         result = _indemnizacion_base
 
 else:
-    # ── Contrato a termino indefinido (Art. 64 CST) ──
-    if _salario &lt; payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * 10:
-        # Menos de 10 SMMLV:
-        # 30 dias por el primer ano + 20 dias por cada ano adicional o proporcion
-        _indem = _valor_dia * payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)  # Primer ano
-        if _anos &gt; 1:
-            _anos_adicionales = _anos - 1
-            _indem += _valor_dia * 20 * _anos_adicionales
-        result = _indem
+    # ── Contrato a termino indefinido (Art. 64 CST, num. 1) ──
+    _tope_smmlv = payslip._rule_parameter('l10n_co_tope_indemniz_smmlv', payslip.date_from)
+    if _salario &lt; payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * _tope_smmlv:
+        # Menos de 10 SMMLV: dias_primer_anio + dias_anio_adicional por cada anio
+        # adicional o proporcion (lit. a)
+        _dias_primer_anio = payslip._rule_parameter('l10n_co_dias_indemniz_primer_anio_menor10', payslip.date_from)
+        _dias_anio_adicional = payslip._rule_parameter('l10n_co_dias_indemniz_anio_adicional_menor10', payslip.date_from)
     else:
-        # 10 SMMLV o mas:
-        # 20 dias por el primer ano + 15 dias por cada ano adicional o proporcion
-        _indem = _valor_dia * 20  # Primer ano
-        if _anos &gt; 1:
-            _anos_adicionales = _anos - 1
-            _indem += _valor_dia * 15 * _anos_adicionales
-        result = _indem
+        # 10 SMMLV o mas: dias_primer_anio + dias_anio_adicional por cada anio
+        # adicional o proporcion (lit. b)
+        _dias_primer_anio = payslip._rule_parameter('l10n_co_dias_indemniz_primer_anio_mayor10', payslip.date_from)
+        _dias_anio_adicional = payslip._rule_parameter('l10n_co_dias_indemniz_anio_adicional_mayor10', payslip.date_from)
+    _indem = _valor_dia * _dias_primer_anio
+    if _anos &gt; 1:
+        _anos_adicionales = _anos - 1
+        _indem += _valor_dia * _dias_anio_adicional * _anos_adicionales
+    result = _indem
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Indemnizacion</field>
