@@ -71,6 +71,12 @@ DEDUCTION_SIMPLE_CONCEPTS = {
     'Deuda': 'Deuda',
 }
 
+# Tope de documentos 'sent' que _cron_recheck_sent_status() reconsulta por
+# compañía en cada ejecución -- un lote acotado, no todo el histórico
+# pendiente de una sola vez (ver data/ir_cron_dian_status_recheck.xml, cuyo
+# intervalo SÍ es un dato editable en Ajustes, no una constante de código).
+_CRON_RECHECK_BATCH_LIMIT = 200
+
 
 class HrPayslip(models.Model):
     """Nómina electrónica – modelo central con ciclo DIAN completo."""
@@ -1026,6 +1032,58 @@ class HrPayslip(models.Model):
                 'sticky': True,
             },
         }
+
+    @api.model
+    def _cron_recheck_sent_status(self):
+        """Reconsulta documentos 'sent' que nadie volvió a consultar a mano (Ronda 1 DIAN,
+        2026-10-05): 5 nóminas aceptadas en segundos quedaron en 'sent' durante 15 min porque
+        nadie hizo clic en "Consultar Estado". El motor de habilitación sí reconsulta lo suyo
+        (su propio cron en l10n_co_ne_habilitacion.py); el envío normal no tenía nada equivalente.
+
+        No duplica la lógica SOAP: reutiliza action_check_dian_status() tal cual, agrupado por
+        ZipKey para no repetir una misma consulta por cada nómina del mismo envío. Aislamiento:
+        por compañía (ya lo exige action_check_dian_status), por lote acotado
+        (_CRON_RECHECK_BATCH_LIMIT), y un ZipKey con error se registra y no frena a los demás.
+        """
+        companies = self.env['res.company'].sudo().search([
+            ('l10n_co_ne_hab_state', '!=', 'running'),
+        ])
+        for company in companies:
+            # El motor de habilitación ya reconsulta sus propios 'sent' en su propio cron
+            # (l10n_co_ne_habilitacion.py, paso 2 de _step()) -- consultarlos aquí también
+            # duplicaría la consulta sobre el mismo ZipKey al mismo tiempo.
+            pending = self.sudo().search([
+                ('company_id', '=', company.id),
+                ('l10n_co_ne_state', '=', 'sent'),
+                ('l10n_co_ne_zip_key', '!=', False),
+            ], limit=_CRON_RECHECK_BATCH_LIMIT)
+            if not pending:
+                continue
+            for zip_key in sorted(set(pending.mapped('l10n_co_ne_zip_key'))):
+                group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
+                try:
+                    group.action_check_dian_status()
+                except Exception:  # noqa: BLE001 -- un ZipKey con error nunca debe frenar a los demás
+                    _logger.exception(
+                        'Reconsulta automática DIAN: error consultando ZipKey %s (compañía %s)',
+                        zip_key, company.display_name,
+                    )
+                    self._cron_recheck_rollback()
+                    continue
+                self._cron_recheck_commit()
+
+    def _cron_recheck_commit(self):
+        """Confirma lo consultado hasta aquí (un ZipKey ya resuelto no puede perderse por un
+        fallo posterior). Aislado para que las pruebas lo reemplacen -- mismo motivo y mismo
+        patrón que l10n_co_ne_habilitacion._commit(): Odoo prohíbe cr.commit() en un test."""
+        self.env.cr.commit()
+
+    def _cron_recheck_rollback(self):
+        """Deshace lo que haya quedado a medias tras un error en un ZipKey. Aislado por el mismo
+        motivo que _cron_recheck_commit(): permite a las pruebas ejercer esta rama sin tocar la
+        transacción real de la prueba."""
+        self.env.cr.rollback()
+        self.env.invalidate_all()
 
     # ══════════════════════════════════════════════════════════════════
     # MÉTODOS DE RECOPILACIÓN DE DATOS
