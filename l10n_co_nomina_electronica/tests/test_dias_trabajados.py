@@ -17,7 +17,7 @@ _dev_basico_y_transporte()/_collect_payslip_data() que ahora falla con UserError
 inventar 30 cuando el dato no se puede determinar.
 """
 
-from datetime import date, datetime
+from datetime import date
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase
@@ -117,35 +117,34 @@ class TestNeDiasPagables(TestDiasTrabajadosCommon):
     def test_con_ausencia_no_remunerada_dentro_del_periodo(self):
         """(c): una licencia NO remunerada de 5 días dentro del período resta de los días
         pagables (30 - 5 = 25) -- el mismo mecanismo que ya usaba CO_BASICO antes de este
-        refactor (unpaid_types / work_entry_type_id.code), ahora en _ne_dias_pagables()."""
+        refactor (unpaid_types / work_entry_type_id.code), ahora en _ne_dias_pagables().
+
+        AUD-DIAN-34 (2026-10-05): la línea de worked_days_line_ids se construye a mano en
+        vez de pasar por hr.leave + compute_sheet() -- la corrida real en staging mostró
+        que compute_sheet() por sí solo no genera la línea desde la ausencia validada (hace
+        falta además generar los work entries del contrato para el período, algo fuera del
+        alcance de esta prueba). _ne_dias_pagables() solo lee worked_days_line_ids filtrando
+        por work_entry_type_id.code -- construirla directamente prueba esa lógica igual,
+        sin depender del pipeline completo de hr_work_entry_holidays."""
         employee, contract = self._make_contract('ConAusencia')
         work_entry_type = self.env['hr.work.entry.type'].create({
             'name': 'Licencia No Remunerada Prueba',
             'code': 'LNR_PRUEBA_DIAS_TRAB',
             'is_leave': True,
         })
-        leave_type = self.env['hr.leave.type'].create({
+        self.env['hr.leave.type'].create({
             'name': 'Licencia No Remunerada Prueba',
             'work_entry_type_id': work_entry_type.id,
             'requires_allocation': 'no',
             'unpaid': True,
         })
-        leave = self.env['hr.leave'].create({
-            'employee_id': employee.id,
-            'holiday_status_id': leave_type.id,
-            'request_date_from': date(2026, 9, 5),
-            'request_date_to': date(2026, 9, 9),
-            'date_from': datetime(2026, 9, 5, 8, 0, 0),
-            'date_to': datetime(2026, 9, 9, 17, 0, 0),
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self.env['hr.payslip.worked.days'].create({
+            'payslip_id': payslip.id,
+            'contract_id': contract.id,
+            'work_entry_type_id': work_entry_type.id,
             'number_of_days': 5.0,
         })
-        leave.action_validate()
-        self.assertEqual(leave.state, 'validate')
-
-        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
-        # compute_sheet() (base hr_payroll) genera worked_days_line_ids a partir de las
-        # ausencias validadas del período -- no se construye la línea a mano.
-        payslip.compute_sheet()
         self.assertEqual(payslip._ne_dias_pagables(), 25)
 
 
@@ -197,7 +196,10 @@ class TestDevBasicoYTransporteGuard(TestDiasTrabajadosCommon):
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
         self._make_sueldo_line(payslip, employee, contract, 900000.0)
 
-        devengados, _deducciones = payslip._collect_payslip_data()
+        # _map_salary_rules_to_xml() (no _collect_payslip_data(), que devuelve un único dict
+        # combinado con todas las secciones del XML, no un par devengados/deducciones) es
+        # lo que realmente construye el dict que llega a _dev_basico_y_transporte().
+        devengados, _deducciones = payslip._map_salary_rules_to_xml()
 
         self.assertEqual(payslip._ne_dias_pagables(), 15)
         self.assertEqual(devengados['Basico']['DiasTrabajados'], '15')

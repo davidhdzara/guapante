@@ -152,13 +152,34 @@ class TestDianStatusRecheckCron(TransactionCase):
         })
         return payslip
 
-    def _patch_get_status_zip(self, response=None, side_effect=None):
-        kwargs = {'side_effect': side_effect} if side_effect else {'return_value': response}
+    _NEUTRAL_RESPONSE = {'StatusCode': '', 'DianResponses': []}
+
+    def _patch_get_status_zip(self, responses=None):
+        """responses: {zip_key: respuesta}. Cualquier OTRA ZipKey recibe una respuesta neutra
+        (sin resultado identificable, no cambia nada) en vez de una fija para todos.
+
+        AUD-DIAN-34 (2026-10-05): la corrida real en staging mostró que este mock devolvía
+        el MISMO resultado a toda ZipKey, incluidas las de documentos reales de OTRAS
+        compañías que ya existen en esa base (copia de producción) -- `assert_not_called()`
+        fallaba porque esas otras compañías sí se consultan (correctamente: el cron no las
+        conoce ni debe ignorarlas). Ahora solo se responde con un resultado real a las
+        ZipKeys de ESTA prueba; todo lo demás es neutro, y las aserciones verifican que las
+        ZipKeys de la prueba no se llamaron, no que nadie se llamó.
+        """
+        responses = responses or {}
+
+        def fake_get_status_zip(track_id=None, **kwargs):
+            return responses.get(track_id, self._NEUTRAL_RESPONSE)
+
         return patch(
             'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.'
             'soap_client.get_status_zip',
-            **kwargs,
+            side_effect=fake_get_status_zip,
         )
+
+    @staticmethod
+    def _called_zip_keys(mocked):
+        return {call.kwargs.get('track_id') for call in mocked.call_args_list}
 
     def test_recheck_accepts_a_sent_document_the_dian_already_resolved(self):
         """Caso NE58-62: la DIAN ya aceptó, el cron debe pasar el documento a 'accepted' solo."""
@@ -167,15 +188,14 @@ class TestDianStatusRecheckCron(TransactionCase):
             'StatusCode': '00',
             'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-OK'}],
         }
-        with self._patch_get_status_zip(response):
+        with self._patch_get_status_zip({'ZIPKEY-OK': response}):
             self.env['hr.payslip']._cron_recheck_sent_status()
         self.assertEqual(payslip.l10n_co_ne_state, 'accepted')
 
     def test_recheck_leaves_still_pending_document_as_sent(self):
         """Si la DIAN sigue 'en proceso' (sin resultado identificable) el documento queda 'sent'."""
         payslip = self._make_sent_payslip('Pendiente', 'ZIPKEY-PEND', 'CUNE-PEND')
-        response = {'StatusCode': '', 'DianResponses': []}
-        with self._patch_get_status_zip(response):
+        with self._patch_get_status_zip({}):
             self.env['hr.payslip']._cron_recheck_sent_status()
         self.assertEqual(payslip.l10n_co_ne_state, 'sent')
 
@@ -187,10 +207,12 @@ class TestDianStatusRecheckCron(TransactionCase):
         rejected = self._make_sent_payslip('Rechazada', 'ZIPKEY-R', 'CUNE-R')
         rejected.l10n_co_ne_state = 'rejected'
 
-        with self._patch_get_status_zip({'StatusCode': '99'}) as mocked:
+        with self._patch_get_status_zip({}) as mocked:
             self.env['hr.payslip']._cron_recheck_sent_status()
 
-        mocked.assert_not_called()
+        called = self._called_zip_keys(mocked)
+        self.assertNotIn('ZIPKEY-A', called)
+        self.assertNotIn('ZIPKEY-R', called)
         self.assertEqual(accepted.l10n_co_ne_state, 'accepted')
         self.assertEqual(generated.l10n_co_ne_state, 'generated')
         self.assertEqual(rejected.l10n_co_ne_state, 'rejected')
@@ -204,25 +226,30 @@ class TestDianStatusRecheckCron(TransactionCase):
             'StatusCode': '00',
             'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-HAB'}],
         }
-        with self._patch_get_status_zip(response) as mocked:
+        with self._patch_get_status_zip({'ZIPKEY-HAB': response}) as mocked:
             self.env['hr.payslip']._cron_recheck_sent_status()
-        mocked.assert_not_called()
+        self.assertNotIn('ZIPKEY-HAB', self._called_zip_keys(mocked))
         self.assertEqual(payslip.l10n_co_ne_state, 'sent')
 
     def test_error_in_one_zip_key_group_does_not_block_the_next(self):
         """Un ZipKey que falla al consultarse no debe impedir que se procese el siguiente."""
         broken = self._make_sent_payslip('ConError', 'ZIPKEY-ERR', 'CUNE-ERR')
         healthy = self._make_sent_payslip('Sana', 'ZIPKEY-SANA', 'CUNE-SANA')
+        healthy_response = {
+            'StatusCode': '00',
+            'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-SANA'}],
+        }
 
         def fake_get_status_zip(track_id=None, **kwargs):
             if track_id == 'ZIPKEY-ERR':
                 raise RuntimeError('fallo simulado consultando esta ZipKey')
-            return {
-                'StatusCode': '00',
-                'DianResponses': [{'IsValid': 'true', 'XmlDocumentKey': 'CUNE-SANA'}],
-            }
+            return {'ZIPKEY-SANA': healthy_response}.get(track_id, self._NEUTRAL_RESPONSE)
 
-        with self._patch_get_status_zip(side_effect=fake_get_status_zip):
+        with patch(
+            'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.'
+            'soap_client.get_status_zip',
+            side_effect=fake_get_status_zip,
+        ):
             self.env['hr.payslip']._cron_recheck_sent_status()
 
         self.assertEqual(broken.l10n_co_ne_state, 'sent')
