@@ -321,6 +321,7 @@ class GuapanteWebsiteSale(WebsiteSale):
             'order': Order,
             'warehouse_lat': '4.6486',
             'warehouse_lng': '-74.1003',
+            'uom_display': self._build_uom_display(Order),
         })
 
     def _build_uom_display(self, order):
