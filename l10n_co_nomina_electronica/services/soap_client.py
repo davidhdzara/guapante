@@ -36,21 +36,26 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography import x509
 from lxml import etree
 
+from . import dian_utils
+
 _logger = logging.getLogger(__name__)
 
 # =====================================================================
 # Constantes — definidas inline (sin dependencia de test_data)
 # =====================================================================
 
+# AUD-DIAN-34 (2026-10-05): valor por defecto de SOAP_TIMEOUT; el timeout real usado en
+# cada envío puede venir de ir.config_parameter -- ver el parámetro ``timeout`` de _send()
+# y sus llamadores públicos (send_nomina_sync/send_test_set_async/get_status_zip). Quien
+# resuelve ese parámetro es el llamador con acceso a Odoo (models/hr_payslip.py vía
+# ResCompany._ne_config_int_param()); este módulo sigue sin depender del ORM.
 SOAP_TIMEOUT = 45
 
-# Endpoints DIAN
-DIAN_ENDPOINT_HAB = (
-    'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc'
-)
-DIAN_ENDPOINT_PROD = (
-    'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc'
-)
+# Endpoints DIAN -- único punto real en dian_utils.DIAN_URLS (AUD-DIAN-34, 2026-10-05);
+# estas 2 constantes quedan solo como atajo/compatibilidad para quien no necesita
+# sobrescritura por ir.config_parameter (mismos valores de siempre).
+DIAN_ENDPOINT_HAB = dian_utils.get_soap_endpoint('2')
+DIAN_ENDPOINT_PROD = dian_utils.get_soap_endpoint('1')
 
 # SOAP Actions para nómina electrónica
 SOAP_ACTION_SEND_NOMINA = (
@@ -531,6 +536,7 @@ def _send(
     body_xml: str,
     cert_der: bytes,
     private_key,
+    timeout: Optional[int] = None,
 ) -> dict:
     """Envía un sobre SOAP firmado a la DIAN.
 
@@ -540,6 +546,8 @@ def _send(
         body_xml: Cuerpo XML como string.
         cert_der: Certificado en formato DER.
         private_key: Clave privada RSA.
+        timeout: Timeout en segundos. Si None, usa SOAP_TIMEOUT (el llamador con acceso a
+            Odoo puede resolverlo desde ir.config_parameter y pasarlo aquí).
 
     Returns:
         Diccionario con la respuesta parseada.
@@ -562,7 +570,7 @@ def _send(
     try:
         resp = requests.post(
             endpoint, data=envelope, headers=headers,
-            timeout=SOAP_TIMEOUT, verify=True,
+            timeout=timeout or SOAP_TIMEOUT, verify=True,
         )
 
         _logger.info("DIAN HTTP %d (%d bytes)", resp.status_code, len(resp.content))
@@ -610,6 +618,7 @@ def send_nomina_sync(
     cert_pem: Optional[bytes] = None,
     cert_der_b64: Optional[str] = None,
     endpoint: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> dict:
     """Envía un documento de nómina individual de forma síncrona.
 
@@ -623,6 +632,7 @@ def send_nomina_sync(
         cert_pem: Certificado PEM como bytes (alternativa a cert_der_b64).
         cert_der_b64: Certificado DER en base64 (alternativa a cert_pem).
         endpoint: URL del endpoint DIAN. Si None, usa habilitación.
+        timeout: Timeout en segundos. Si None, usa SOAP_TIMEOUT.
 
     Returns:
         Diccionario con la respuesta de la DIAN.
@@ -659,7 +669,7 @@ def send_nomina_sync(
 
     return _send(
         SOAP_ACTION_SEND_NOMINA, endpoint,
-        body_xml, cert_der, private_key,
+        body_xml, cert_der, private_key, timeout=timeout,
     )
 
 
@@ -670,6 +680,7 @@ def send_test_set_async(
     cert_pem: Optional[bytes] = None,
     cert_der_b64: Optional[str] = None,
     endpoint: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> dict:
     """Envía el set de pruebas de nómina electrónica a la DIAN.
 
@@ -680,6 +691,7 @@ def send_test_set_async(
         cert_pem: Certificado PEM como bytes (alternativa a cert_der_b64).
         cert_der_b64: Certificado DER en base64 (alternativa a cert_pem).
         endpoint: URL del endpoint DIAN. Si None, usa habilitación.
+        timeout: Timeout en segundos. Si None, usa SOAP_TIMEOUT.
 
     Returns:
         Diccionario con la respuesta de la DIAN.
@@ -714,7 +726,7 @@ def send_test_set_async(
 
     return _send(
         SOAP_ACTION_SEND_TEST_SET, endpoint,
-        body_xml, cert_der, private_key,
+        body_xml, cert_der, private_key, timeout=timeout,
     )
 
 
@@ -724,6 +736,7 @@ def get_status_zip(
     cert_pem: Optional[bytes] = None,
     cert_der_b64: Optional[str] = None,
     endpoint: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> dict:
     """Consulta el estado de un envío por su track ID.
 
@@ -733,6 +746,7 @@ def get_status_zip(
         cert_pem: Certificado PEM como bytes.
         cert_der_b64: Certificado DER en base64.
         endpoint: URL del endpoint DIAN. Si None, usa habilitación.
+        timeout: Timeout en segundos. Si None, usa SOAP_TIMEOUT.
 
     Returns:
         Diccionario con el estado del envío.
@@ -757,5 +771,5 @@ def get_status_zip(
 
     return _send(
         SOAP_ACTION_GET_STATUS, endpoint,
-        body_xml, cert_der, private_key,
+        body_xml, cert_der, private_key, timeout=timeout,
     )

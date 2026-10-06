@@ -557,12 +557,8 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        # Determinar endpoint según ambiente
-        endpoint = (
-            soap_client.DIAN_ENDPOINT_PROD
-            if company.l10n_co_ne_environment == '1'
-            else soap_client.DIAN_ENDPOINT_HAB
-        )
+        # Determinar endpoint según ambiente -- único punto, ver ResCompany._ne_dian_endpoint()
+        endpoint = company._ne_dian_endpoint()
 
         # Enviar a DIAN vía SendNominaSync
         filename = self._get_ne_xml_filename()
@@ -572,6 +568,8 @@ class HrPayslip(models.Model):
             private_key=private_key,
             cert_pem=cert_pem,
             endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
         )
 
         # Procesar respuesta DIAN y preservar el payload exacto del intento.
@@ -871,13 +869,17 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        # Send test set
+        # Send test set -- SIEMPRE habilitación (el set de pruebas es un concepto propio de
+        # ese ambiente), sin importar l10n_co_ne_environment de la compañía.
+        endpoint = company._ne_dian_endpoint(environment='2')
         response = soap_client.send_test_set_async(
             xml_files=xml_files,
             test_set_id=company.l10n_co_ne_operation_mode_ids.test_set_id,
             private_key=private_key,
             cert_pem=cert_pem,
-            endpoint=soap_client.DIAN_ENDPOINT_HAB,
+            endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
         )
 
         zip_key = response.get('ZipKey', '')
@@ -886,7 +888,7 @@ class HrPayslip(models.Model):
             and response.get('StatusCode') not in ('CONNECTION_ERROR', 'PARSE_ERROR', 'ERROR', '99') \
             and not response.get('TransportError')
         records._ne_store_exchange(
-            'send_test_set', soap_client.DIAN_ENDPOINT_HAB, response, manifest,
+            'send_test_set', endpoint, response, manifest,
         )
         # Un timeout o acuse sin ZipKey es incierto: queda evidencia, pero no
         # se simula un envío exitoso ni se programa reintento automático.
@@ -962,18 +964,16 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        endpoint = (
-            soap_client.DIAN_ENDPOINT_PROD
-            if company.l10n_co_ne_environment == '1'
-            else soap_client.DIAN_ENDPOINT_HAB
-        )
+        endpoint = company._ne_dian_endpoint()
+        timeout = company._ne_config_int_param(
+            'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
 
         summaries = []
         for track_id in set(self.mapped('l10n_co_ne_zip_key')):
             records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
             response = soap_client.get_status_zip(
                 track_id=track_id, private_key=private_key, cert_pem=cert_pem,
-                endpoint=endpoint,
+                endpoint=endpoint, timeout=timeout,
             )
             # Consultas usan el manifiesto del último envío del mismo ZipKey;
             # nunca se reconstruye desde el XML actual de la nómina.
@@ -1327,13 +1327,10 @@ class HrPayslip(models.Model):
         if info_gen is not None:
             info_gen.set('CUNE', cune_value)
             info_gen.set('EncripCUNE', 'CUNE-SHA384')
-        # AUD-DIAN-34 (2026-09-14): el host del QR cambia segun el ambiente (Anexo Tecnico,
-        # seccion QRCode) -- Habilitacion usa catalogo-vpfe-hab, Produccion catalogo-vpfe.
-        qr_host = (
-            'catalogo-vpfe.dian.gov.co'
-            if company.l10n_co_ne_environment == '1'
-            else 'catalogo-vpfe-hab.dian.gov.co'
-        )
+        # AUD-DIAN-34 (2026-09-14, consolidado 2026-10-05): el host del QR cambia segun el
+        # ambiente (Anexo Tecnico, seccion QRCode) -- unico punto, ver ResCompany.
+        # _ne_dian_qr_host() / dian_utils.get_qr_catalog_host().
+        qr_host = company._ne_dian_qr_host()
         qr_url = 'https://%s/document/searchqr?documentkey=%s' % (qr_host, cune_value)
         qr_el = tree.find('.//{%s}CodigoQR' % ns)
         if qr_el is None and info_gen is not None:

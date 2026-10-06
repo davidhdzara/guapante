@@ -8,12 +8,15 @@ Adaptado de insotech_core/utils/dian.py eliminando funciones que
 dependen de modelos Odoo (partner_to_dian_dict, get_partner_doc_type).
 """
 
+import logging
 import math
 import re
 from datetime import date as _date_type
-from typing import Union
+from typing import Optional, Union
 
 from . import cune as _cune_module
+
+_logger = logging.getLogger(__name__)
 
 
 # =====================================================================
@@ -134,31 +137,114 @@ def format_amount(value: Union[int, float, str]) -> str:
 
 
 # =====================================================================
-# URL WSDL de Nómina Electrónica
+# URLs de la DIAN por ambiente — único punto (AUD-DIAN-34, 2026-10-05)
 # =====================================================================
+# Antes repetidas en 3 sitios (aquí mismo, sin usar -- get_nomina_wsdl_url()
+# nunca tuvo caller; services/soap_client.py con sus propias constantes
+# DIAN_ENDPOINT_HAB/PROD; models/hr_payslip.py con el host del QR escrito
+# aparte). Los valores son los que ya estaban hardcodeados -- esta
+# consolidación no cambia ninguno. soap_client.py y hr_payslip.py ahora
+# llaman a get_soap_endpoint()/get_qr_catalog_host() en vez de mantener su
+# propia copia. El parámetro ``override`` (opcional) es para quien sí tiene
+# acceso a Odoo (dian_utils es puro, sin ORM): lee el ir.config_parameter
+# correspondiente y lo pasa aquí -- ver ResCompany._ne_dian_endpoint()/
+# _ne_dian_qr_host() en models/res_company.py.
 
-def get_nomina_wsdl_url(environment: str) -> str:
-    """Retorna la URL del servicio WSDL de la DIAN según el ambiente.
+DIAN_URLS = {
+    '1': {  # Producción
+        'soap': 'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc',
+        'qr_host': 'catalogo-vpfe.dian.gov.co',
+    },
+    '2': {  # Habilitación / Pruebas
+        'soap': 'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc',
+        'qr_host': 'catalogo-vpfe-hab.dian.gov.co',
+    },
+}
+
+
+def get_soap_endpoint(environment: str, override: Optional[str] = None) -> str:
+    """Retorna la URL del servicio SOAP de la DIAN según el ambiente.
 
     Args:
-        environment: Código de ambiente DIAN:
-                     '1' → Producción,
-                     '2' → Habilitación / Pruebas.
+        environment: Código de ambiente DIAN: '1' → Producción, '2' → Habilitación/Pruebas.
+        override: Valor ya leído de ir.config_parameter, si lo hay (gana sobre el default).
 
     Returns:
-        URL completa del WSDL.
+        URL completa del servicio SOAP.
 
     Examples:
-        >>> get_nomina_wsdl_url('1')
+        >>> get_soap_endpoint('1')
         'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc'
-        >>> get_nomina_wsdl_url('2')
+        >>> get_soap_endpoint('2')
         'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc'
     """
-    urls = {
-        '1': 'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc',
-        '2': 'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc',
-    }
-    return urls.get(str(environment), urls['2'])
+    if override:
+        return override
+    return DIAN_URLS.get(str(environment), DIAN_URLS['2'])['soap']
+
+
+def get_qr_catalog_host(environment: str, override: Optional[str] = None) -> str:
+    """Retorna el host del catálogo DIAN usado para construir la URL del CodigoQR.
+
+    Args:
+        environment: Código de ambiente DIAN: '1' → Producción, '2' → Habilitación/Pruebas.
+        override: Valor ya leído de ir.config_parameter, si lo hay (gana sobre el default).
+
+    Returns:
+        Host (sin esquema) del catálogo DIAN.
+
+    Examples:
+        >>> get_qr_catalog_host('1')
+        'catalogo-vpfe.dian.gov.co'
+        >>> get_qr_catalog_host('2')
+        'catalogo-vpfe-hab.dian.gov.co'
+    """
+    if override:
+        return override
+    return DIAN_URLS.get(str(environment), DIAN_URLS['2'])['qr_host']
+
+
+# =====================================================================
+# Validación de parámetros enteros configurables (timeouts)
+# =====================================================================
+
+def parse_positive_int(raw_value, default: int, param_name: str = '') -> int:
+    """Valida un valor leído de ir.config_parameter como entero positivo.
+
+    Usado para los timeouts configurables del módulo (SOAP_TIMEOUT, tick/timeout del
+    motor de habilitación): una configuración mal escrita nunca debe reventar un envío
+    a la DIAN -- se usa el valor por defecto y se deja un ``_logger.warning``.
+
+    Args:
+        raw_value: Valor crudo (string, o lo que devuelva ir.config_parameter.get_param()).
+        default: Valor a usar si raw_value es None/vacío/no es un entero positivo.
+        param_name: Nombre del parámetro, solo para el mensaje de warning.
+
+    Returns:
+        El entero validado, o ``default``.
+
+    Examples:
+        >>> parse_positive_int('30', 45, 'x')
+        30
+        >>> parse_positive_int('abc', 45, 'x')
+        45
+        >>> parse_positive_int(None, 45, 'x')
+        45
+        >>> parse_positive_int('-5', 45, 'x')
+        45
+    """
+    if raw_value is not None and str(raw_value).strip():
+        try:
+            value = int(str(raw_value).strip())
+        except ValueError:
+            value = None
+        if value is not None and value > 0:
+            return value
+        _logger.warning(
+            "Parámetro '%s'='%s' inválido (se esperaba un entero positivo); "
+            "usando el valor por defecto %s.", param_name, raw_value, default,
+        )
+    return default
 
 
 # =====================================================================

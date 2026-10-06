@@ -32,6 +32,9 @@ from ..services import habilitacion_test_data, soap_client
 _logger = logging.getLogger(__name__)
 
 _CRON_XMLID = 'l10n_co_nomina_electronica.ir_cron_ne_habilitacion'
+# AUD-DIAN-34 (2026-10-05): valores por defecto -- el valor real usado puede venir de
+# ir.config_parameter (ResCompany._ne_config_int_param(), ver models/res_company.py);
+# estas 2 constantes quedan solo como el default de ese parámetro, no se usan directo.
 _TICK_SECONDS = 20
 _TIMEOUT_MINUTES = 45
 
@@ -112,16 +115,20 @@ class L10nCoNeHabilitacion(models.AbstractModel):
                       str(exc)[:300]))
             self._commit()
             if not finished:
-                self._schedule(_TICK_SECONDS)
+                tick_seconds = company._ne_config_int_param(
+                    'l10n_co_nomina_electronica.habilitacion_tick_seconds', _TICK_SECONDS)
+                self._schedule(tick_seconds)
 
     def _step(self, company):
         """Ejecuta UNA etapa. Devuelve True cuando el proceso terminó (completo o detenido)."""
         mode = company.l10n_co_ne_operation_mode_ids
         started = company.l10n_co_ne_hab_started
-        if started and started < fields.Datetime.now() - timedelta(minutes=_TIMEOUT_MINUTES):
+        timeout_minutes = company._ne_config_int_param(
+            'l10n_co_nomina_electronica.habilitacion_timeout_minutes', _TIMEOUT_MINUTES)
+        if started and started < fields.Datetime.now() - timedelta(minutes=timeout_minutes):
             return self._finish(company, 'error', _(
                 'La DIAN no resolvió los documentos en %d minutos. '
-                'Presione "Iniciar Proceso de Habilitación" para continuar.', _TIMEOUT_MINUTES))
+                'Presione "Iniciar Proceso de Habilitación" para continuar.', timeout_minutes))
 
         slips = self._set_slips(company)
         ind = slips.filtered(lambda s: not s.l10n_co_ne_is_adjustment)

@@ -18,6 +18,8 @@ from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 from odoo.tools.misc import str2bool
 
+from ..services import dian_utils
+
 
 class ResCompany(models.Model):
     """Configuración de la empresa para Nómina Electrónica DIAN."""
@@ -64,6 +66,42 @@ class ResCompany(models.Model):
         """
         self.ensure_one()
         return self.l10n_co_ne_certificate_ids[-1:]
+
+    # ──────────────────────────────────────────────────────────────────
+    # DIAN — URLs y tiempos configurables (AUD-DIAN-34, 2026-10-05)
+    # ──────────────────────────────────────────────────────────────────
+    # Único punto para que services/soap_client.py, services/dian_utils.py y este modelo
+    # no mantengan cada uno su propia copia de las URL de la DIAN (antes repetidas en 3
+    # sitios) ni de los tiempos fijos (SOAP_TIMEOUT, tick/timeout del motor de
+    # habilitación). Los valores por defecto son los que ya estaban hardcodeados -- ningún
+    # comportamiento cambia al instalar esto. Sobrescribibles vía ir.config_parameter
+    # (Ajustes > Técnico > Parámetros del Sistema, valor inicial en data/ir_config_
+    # parameter_dian_data.xml, noupdate=1) sin tocar código ni re-desplegar.
+
+    def _ne_dian_endpoint(self, environment=None):
+        """URL del servicio SOAP de la DIAN. ``environment`` por defecto es el de la
+        compañía; se puede forzar (ej. envíos de set de pruebas, siempre habilitación)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_soap_endpoint_%s' % env)
+        return dian_utils.get_soap_endpoint(env, override=override)
+
+    def _ne_dian_qr_host(self, environment=None):
+        """Host del catálogo DIAN para la URL del CodigoQR (Anexo Técnico, sección QRCode)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_qr_host_%s' % env)
+        return dian_utils.get_qr_catalog_host(env, override=override)
+
+    def _ne_config_int_param(self, key, default):
+        """Lee un parámetro entero positivo de ir.config_parameter bajo ``key`` -- usado
+        para los timeouts configurables (SOAP_TIMEOUT, tick/timeout de habilitación). Valor
+        ausente o inválido -> ``default`` con un _logger.warning (ver dian_utils.
+        parse_positive_int): una configuración mal escrita nunca debe reventar un envío."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(key)
+        return dian_utils.parse_positive_int(raw, default, key)
 
     # ──────────────────────────────────────────────────────────────────
     # Ambiente y configuración de habilitación
