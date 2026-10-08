@@ -13,7 +13,14 @@
              _NOVEDAD_AUSENCIA_WORK_ENTRY_CODES y _ne_dias_novedad en models/hr_payslip.py).
              Verificado en staging 39248541: solo existían los 4 leave types por defecto de
              Odoo (Paid Time Off, Sick Time Off, Unpaid, Compensatory) y 0 hr.leave; se
-             agregan estos 7 sin tocar los existentes, sin migración pendiente. -->
+             agregan estos 7 sin tocar los existentes, sin migración pendiente.
+
+             company_id=False a propósito: hr.leave.type.company_id tiene
+             default=lambda self: self.env.company (ver addons/hr_holidays/models/
+             hr_leave_type.py); sin fijarlo explícito, quedaría atado a la compañía activa
+             al momento de instalar/actualizar el módulo, en vez de disponible para
+             cualquier compañía (igual que Odoo deja sus propios 4 leave types por defecto,
+             que tienen el mismo riesgo por no fijarlo en su XML). -->
 
         <record id="hr_work_entry_type_co_vac" model="hr.work.entry.type">
             <field name="name">Vacaciones Disfrutadas</field>
@@ -25,6 +32,7 @@
             <field name="name">Vacaciones Disfrutadas</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_vac"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
 
         <record id="hr_work_entry_type_co_lic_rem" model="hr.work.entry.type">
@@ -37,6 +45,7 @@
             <field name="name">Licencia Remunerada</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_rem"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
 
         <!-- Licencia No Remunerada: unpaid=True porque además de pagarse aparte (0 pesos,
@@ -54,6 +63,7 @@
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_nr"/>
             <field name="requires_allocation">no</field>
             <field name="unpaid" eval="True"/>
+            <field name="company_id" eval="False"/>
         </record>
 
         <record id="hr_work_entry_type_co_inc_comun" model="hr.work.entry.type">
@@ -66,6 +76,7 @@
             <field name="name">Incapacidad Enfermedad General</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_comun"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
 
         <record id="hr_work_entry_type_co_inc_laboral" model="hr.work.entry.type">
@@ -78,6 +89,7 @@
             <field name="name">Incapacidad Accidente de Trabajo</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_laboral"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
 
         <record id="hr_work_entry_type_co_lic_mat" model="hr.work.entry.type">
@@ -90,6 +102,7 @@
             <field name="name">Licencia de Maternidad</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_mat"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
 
         <record id="hr_work_entry_type_co_lic_pat" model="hr.work.entry.type">
@@ -102,6 +115,7 @@
             <field name="name">Licencia de Paternidad</field>
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_pat"/>
             <field name="requires_allocation">no</field>
+            <field name="company_id" eval="False"/>
         </record>
     </data>
 </odoo>

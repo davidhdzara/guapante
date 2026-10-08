@@ -29,6 +29,17 @@ CST, Guapante usa un calendario martes a domingo -- la resuelve David, no se inv
 propia aquí, ver ajuste 5). En su lugar lee los días que el mecanismo nativo realmente
 produjo (worked_days_line_ids) y verifica la invariante real del bug: básico + novedad debe
 dar exactamente el sueldo del período, nunca más (doble pago) ni menos (pago perdido).
+
+Diagnóstico real en servidor (Tech Lead, staging 39248541): la conversión nativa de
+hr.leave a hr.work.entry filtra el resource.calendar.leaves generado por la compañía del
+CONTRATO -- si el entorno de la prueba se queda en env.company (la compañía 1 por defecto)
+mientras el empleado/contrato son de esta compañía dedicada, el calendar leave se crea con
+la compañía equivocada y nunca se ve al generar los work entries. Confirmado que no es un
+defecto del diseño ni de los datos de este módulo: el tipo nativo "Unpaid" de Odoo TAMPOCO
+convierte bajo el mismo desajuste de compañía, y sí convierte (igual que CO_VAC) cuando
+entorno y datos comparten compañía -- exactamente el caso real de producción (una sola
+compañía). Por eso setUpClass fija cls.env con with_company(cls.company) antes de crear
+ningún dato.
 """
 
 from datetime import date
@@ -46,6 +57,17 @@ class TestAusenciasNomina(TransactionCase):
         cls.company = cls.env['res.company'].create({
             'name': 'Compañía de Prueba Ausencias',
         })
+        # H-013 (2026-10-08, hallazgo de Tech Lead en servidor real): la conversión nativa
+        # de hr.leave a hr.work.entry filtra el resource.calendar.leaves por la compañía
+        # del CONTRATO -- si el entorno de la prueba sigue en env.company (compañía 1) y
+        # el empleado/contrato son de esta compañía dedicada, el calendar leave se crea con
+        # company_id=1 y nunca se ve al generar los work entries del contrato. No es un
+        # defecto del diseño (confirmado con el tipo nativo "Unpaid": tampoco convierte en
+        # ese mismo desajuste) -- es que el entorno de la prueba y los datos deben compartir
+        # compañía, igual que en producción (una sola compañía). with_company() hace que
+        # TODO lo creado desde cls.env/self.env en este archivo (empleado, contrato,
+        # ausencia, nómina) quede en la misma compañía.
+        cls.env = cls.company.with_company(cls.company).env
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
         if not co_country:
             co_country = cls.env.ref('base.co')
