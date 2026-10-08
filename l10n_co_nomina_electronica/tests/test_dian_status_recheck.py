@@ -319,24 +319,37 @@ class TestDianStatusRecheckCron(TransactionCase):
     def test_identical_response_does_not_rewrite_the_document(self):
         """(d) H-012 (2026-10-06): si la respuesta de la DIAN es exactamente la misma que
         la última vez, no se reescribe el documento (write_date no se mueve) -- antes cada
-        pasada del cron reescribía aunque nada hubiera cambiado."""
+        pasada del cron reescribía aunque nada hubiera cambiado.
+
+        Corrección tras la corrida real en staging (.71): comparar write_date contra el
+        valor leído INMEDIATAMENTE después de la primera llamada no prueba nada -- en Odoo
+        write_date toma el timestamp de la transacción (cr.now()), así que dos escrituras
+        en la misma prueba (misma transacción) caen en el mismo valor aunque SÍ se
+        reescriba. Se usa la misma técnica que la prueba de orden del lote: retroceder
+        write_date por SQL a un valor que NO puede coincidir con "ahora", y comprobar que
+        se mantiene así -- si el código reescribiera de verdad, write_date saltaría a la
+        hora real de la prueba, distinta de la retrocedida."""
         payslip = self._make_sent_payslip('SinCambios', 'ZIPKEY-NOCHANGE', 'CUNE-NOCHANGE')
         with self._patch_get_status_zip({}):
             payslip.action_check_dian_status()
-        write_date_after_first = payslip.write_date
+        self._backdate_write_date(payslip, hours=1)
+        backdated_write_date = payslip.write_date
 
         with self._patch_get_status_zip({}):
             payslip.action_check_dian_status()
 
-        self.assertEqual(payslip.write_date, write_date_after_first)
+        self.assertEqual(payslip.write_date, backdated_write_date)
 
     def test_different_response_does_rewrite_the_document(self):
         """Control: si la respuesta SÍ cambia, el resumen visible (y write_date) se
-        actualiza -- confirma que (d) no rompe el caso normal."""
+        actualiza -- confirma que (d) no rompe el caso normal. Misma técnica de
+        retroceder write_date por SQL que la prueba hermana, por el mismo motivo
+        (dos escrituras en la misma transacción comparten timestamp)."""
         payslip = self._make_sent_payslip('ConCambios', 'ZIPKEY-CHANGE', 'CUNE-CHANGE')
         with self._patch_get_status_zip({}):
             payslip.action_check_dian_status()
-        write_date_after_first = payslip.write_date
+        self._backdate_write_date(payslip, hours=1)
+        backdated_write_date = payslip.write_date
 
         response = {
             'StatusCode': '00',
@@ -346,7 +359,7 @@ class TestDianStatusRecheckCron(TransactionCase):
         with self._patch_get_status_zip({'ZIPKEY-CHANGE': response}):
             payslip.action_check_dian_status()
 
-        self.assertNotEqual(payslip.write_date, write_date_after_first)
+        self.assertNotEqual(payslip.write_date, backdated_write_date)
         self.assertEqual(payslip.l10n_co_ne_state, 'accepted')
 
 
