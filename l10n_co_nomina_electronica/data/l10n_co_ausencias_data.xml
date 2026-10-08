@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- H-013 (2026-10-08): tipos de ausencia colombianos ligados a su work_entry_type,
+             mismo patrón nativo que ya usa Odoo para sus propios leave types por defecto
+             (addons/hr_work_entry_holidays/data/hr_payroll_holidays_data.xml). Validar una
+             ausencia de estos tipos genera su hr.work.entry automáticamente (mecanismo
+             nativo hr_work_entry_holidays, ya instalado); HrPayslip._ne_dias_pagables()
+             descuenta esos días del básico (CO_BASICO/CO_AUX_TRANS) y las reglas CO_VAC/
+             CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/CO_LIC_MAT/CO_LIC_PAT
+             (data/hr_payroll_structure_data.xml) pagan el concepto leyendo esos mismos días
+             desde worked_days; una sola fuente para ambos lados (ver
+             _NOVEDAD_AUSENCIA_WORK_ENTRY_CODES y _ne_dias_novedad en models/hr_payslip.py).
+             Verificado en staging 39248541: solo existían los 4 leave types por defecto de
+             Odoo (Paid Time Off, Sick Time Off, Unpaid, Compensatory) y 0 hr.leave; se
+             agregan estos 7 sin tocar los existentes, sin migración pendiente. -->
+
+        <record id="hr_work_entry_type_co_vac" model="hr.work.entry.type">
+            <field name="name">Vacaciones Disfrutadas</field>
+            <field name="code">CO_VAC</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_vac" model="hr.leave.type">
+            <field name="name">Vacaciones Disfrutadas</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_vac"/>
+            <field name="requires_allocation">no</field>
+        </record>
+
+        <record id="hr_work_entry_type_co_lic_rem" model="hr.work.entry.type">
+            <field name="name">Licencia Remunerada</field>
+            <field name="code">CO_LIC_REM</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_lic_rem" model="hr.leave.type">
+            <field name="name">Licencia Remunerada</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_rem"/>
+            <field name="requires_allocation">no</field>
+        </record>
+
+        <!-- Licencia No Remunerada: unpaid=True porque además de pagarse aparte (0 pesos,
+             CO_LIC_NR amount_python_compute = 0), tampoco tiene continuidad de pago del
+             empleador; coincide con el sentido nativo de "unpaid" en hr.leave.type, a
+             diferencia de las otras 6 (sí se pagan, solo que por un concepto distinto). -->
+        <record id="hr_work_entry_type_co_lic_nr" model="hr.work.entry.type">
+            <field name="name">Licencia No Remunerada</field>
+            <field name="code">CO_LIC_NR</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_lic_nr" model="hr.leave.type">
+            <field name="name">Licencia No Remunerada</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_nr"/>
+            <field name="requires_allocation">no</field>
+            <field name="unpaid" eval="True"/>
+        </record>
+
+        <record id="hr_work_entry_type_co_inc_comun" model="hr.work.entry.type">
+            <field name="name">Incapacidad Enfermedad General</field>
+            <field name="code">CO_INC_COMUN</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_inc_comun" model="hr.leave.type">
+            <field name="name">Incapacidad Enfermedad General</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_comun"/>
+            <field name="requires_allocation">no</field>
+        </record>
+
+        <record id="hr_work_entry_type_co_inc_laboral" model="hr.work.entry.type">
+            <field name="name">Incapacidad Accidente de Trabajo</field>
+            <field name="code">CO_INC_LABORAL</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_inc_laboral" model="hr.leave.type">
+            <field name="name">Incapacidad Accidente de Trabajo</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_laboral"/>
+            <field name="requires_allocation">no</field>
+        </record>
+
+        <record id="hr_work_entry_type_co_lic_mat" model="hr.work.entry.type">
+            <field name="name">Licencia de Maternidad</field>
+            <field name="code">CO_LIC_MAT</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_lic_mat" model="hr.leave.type">
+            <field name="name">Licencia de Maternidad</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_mat"/>
+            <field name="requires_allocation">no</field>
+        </record>
+
+        <record id="hr_work_entry_type_co_lic_pat" model="hr.work.entry.type">
+            <field name="name">Licencia de Paternidad</field>
+            <field name="code">CO_LIC_PAT</field>
+            <field name="is_leave" eval="True"/>
+            <field name="color">5</field>
+        </record>
+        <record id="hr_leave_type_co_lic_pat" model="hr.leave.type">
+            <field name="name">Licencia de Paternidad</field>
+            <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_pat"/>
+            <field name="requires_allocation">no</field>
+        </record>
+    </data>
+</odoo>

@@ -89,6 +89,20 @@ class TestDianStatusRecheckCron(TransactionCase):
         self.rollback_patcher.start()
         self.addCleanup(self.rollback_patcher.stop)
 
+        # H-012 (2026-10-07, hallazgo de Tech Lead en servidor real): la build de Odoo.sh
+        # corre estas pruebas sobre una COPIA de la BD real, que trae documentos 'sent'
+        # reales de OTRAS compañías (ej. payslips 7/8 en staging). _cron_recheck_sent_
+        # status() recorre TODAS las compañías no-'running' -- sin aislar esto, el cron
+        # también los reconsulta/vence a ellos dentro de la misma prueba, contaminando
+        # aserciones de orden y de plazo con ZipKeys/documentos ajenos. Se aíslan con el
+        # MISMO mecanismo nativo que el cron ya usa para omitir una compañía (ver
+        # l10n_co_ne_hab_state != 'running' en _cron_recheck_sent_status), no tocando
+        # ningún payslip/exchange real -- solo queda fuera del bucle de compañías, dentro
+        # de la transacción de la prueba (se revierte al terminar, como todo lo demás).
+        self.env['res.company'].sudo().search([
+            ('id', '!=', self.company.id),
+        ]).write({'l10n_co_ne_hab_state': 'running'})
+
     def _make_payslip(self, name, state='sent', zip_key='ZIPKEY-1'):
         employee = self.env['hr.employee'].create({
             'name': name,
@@ -264,14 +278,30 @@ class TestDianStatusRecheckCron(TransactionCase):
         )
         record.invalidate_recordset(['write_date'])
 
+    def _backdate_sent_exchange(self, zip_key, hours):
+        """Retrocede create_date del l10n.co.ne.exchange de envío ('send_test_set') que
+        produjo este ZipKey -- esa es la fecha que _cron_recheck_sent_status() usa ahora
+        para medir "desde cuándo espera" (H-012, 2026-10-07: write_date no es confiable,
+        lo toca cualquier escritura ajena a la DIAN). create_date es un campo mágico de
+        solo lectura en el ORM, no hay otra forma de simular "este envío fue hace N horas"
+        en una prueba."""
+        self.env.cr.execute(
+            "UPDATE l10n_co_ne_exchange SET create_date = %s "
+            "WHERE zip_key = %s AND operation IN ('send_sync', 'send_test_set')",
+            (datetime.now() - timedelta(hours=hours), zip_key),
+        )
+        self.env.invalidate_all()
+
     def test_recheck_expired_document_leaves_the_cron_and_is_marked_uncertain(self):
         """(c) H-012 (2026-10-06): pasado el plazo configurado (ir.config_parameter
         l10n_co_nomina_electronica.recheck_max_hours), el documento deja de entrar al cron
-        y queda 'uncertain' -- nunca se reconsulta para siempre."""
+        y queda 'uncertain' -- nunca se reconsulta para siempre. El plazo se mide desde el
+        envío real (create_date del exchange), no desde write_date (2026-10-07: write_date
+        no es confiable -- ver _backdate_sent_exchange)."""
         stuck = self._make_sent_payslip('Atascada', 'ZIPKEY-STUCK', 'CUNE-STUCK')
         self.env['ir.config_parameter'].sudo().set_param(
             'l10n_co_nomina_electronica.recheck_max_hours', '1')
-        self._backdate_write_date(stuck, hours=2)
+        self._backdate_sent_exchange('ZIPKEY-STUCK', hours=2)
 
         with self._patch_get_status_zip({}) as mocked:
             self.env['hr.payslip']._cron_recheck_sent_status()
@@ -292,12 +322,14 @@ class TestDianStatusRecheckCron(TransactionCase):
         self.assertIn('ZIPKEY-FRESH', self._called_zip_keys(mocked))
         self.assertEqual(fresh.l10n_co_ne_state, 'sent')
 
-    def test_recheck_batch_queries_zip_keys_in_write_date_ascending_order(self):
-        """(e) El lote se consulta en orden de write_date ascendente -- el que más
-        tiempo lleva esperando entra primero."""
+    def test_recheck_batch_queries_zip_keys_in_sent_date_ascending_order(self):
+        """(e) El lote se consulta en orden de fecha de envío ascendente -- el que más
+        tiempo lleva esperando entra primero. Antes se probaba con write_date; 2026-10-07:
+        write_date no es confiable (ver _backdate_sent_exchange), ahora se retroceden los
+        exchange de envío mismos."""
         older = self._make_sent_payslip('MasAntigua', 'ZIPKEY-OLD', 'CUNE-OLD')
         newer = self._make_sent_payslip('MasReciente', 'ZIPKEY-NEW', 'CUNE-NEW')
-        self._backdate_write_date(older, hours=5)
+        self._backdate_sent_exchange('ZIPKEY-OLD', hours=5)
 
         call_order = []
 

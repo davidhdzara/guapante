@@ -59,6 +59,18 @@ DEVENGADO_SIMPLE_CONCEPTS = {
 
 HORA_EXTRA_CONCEPTS = {'HED', 'HEN', 'HRN', 'HEDDF', 'HRDDF', 'HENDF', 'HRNDF'}
 
+# H-013 (2026-10-08, QA Bloque 4, decisión de David): códigos de hr.work.entry.type de las
+# 7 ausencias colombianas que este módulo paga con su propia regla salarial (data/
+# l10n_co_ausencias_data.xml) -- CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/
+# CO_LIC_MAT/CO_LIC_PAT. _ne_dias_pagables() las excluye SIEMPRE del básico (nunca dependen
+# de hr.leave.type.unpaid, que es un eje distinto -- ver el comentario en esa función) y
+# cada regla (CO_VAC, etc.) lee los mismos días vía _ne_dias_novedad() -- una sola fuente
+# para ambos lados, nunca doble pago.
+_NOVEDAD_AUSENCIA_WORK_ENTRY_CODES = {
+    'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR', 'CO_INC_COMUN', 'CO_INC_LABORAL',
+    'CO_LIC_MAT', 'CO_LIC_PAT',
+}
+
 DEDUCTION_SIMPLE_CONCEPTS = {
     'PensionVoluntaria': 'PensionVoluntaria',
     'RetencionFuente': 'RetencionFuente',
@@ -1127,11 +1139,18 @@ class HrPayslip(models.Model):
         (1) pasado _CRON_RECHECK_MAX_HOURS_DEFAULT (u override), el documento sale del cron
         y queda 'uncertain' -- el botón "Consultar Estado" sigue disponible para revisarlo a
         mano en cualquier momento (ver su invisible en hr_payslip_views.xml).
-        (2) el lote se procesa en orden de write_date ascendente -- el más tiempo esperando
-        entra primero, tanto al tope del lote como al orden de los grupos por ZipKey. Con
-        _ne_store_exchange() ya no reescribiendo el documento cuando la respuesta no cambia
-        (ver ahí), write_date de un 'sent' sin novedades se queda quieto desde el último
-        cambio real -- es una medida confiable de "desde cuándo espera".
+        (2) el lote se procesa en orden de envío ascendente -- el que más tiempo lleva
+        esperando entra primero, tanto al tope del lote como al orden de los grupos por
+        ZipKey.
+
+        H-012 (2026-10-07, hallazgo de Tech Lead corriendo esto en servidor real): "desde
+        cuándo espera" NO se puede medir con write_date -- ese campo lo toca CUALQUIER
+        escritura sobre el payslip, no solo esta integración DIAN (evidencia real: documentos
+        de una copia de BD llevaban 'sent' desde hace tiempo, pero su write_date marcaba
+        "hoy" por motivos ajenos a la DIAN -- con ese campo, el plazo nunca vencería). La
+        fecha estable es la del envío real: create_date del l10n.co.ne.exchange
+        ('send_sync'/'send_test_set') que produjo el ZipKey actual -- un registro histórico
+        que ya existe y nunca se reescribe después de creado.
         """
         now = fields.Datetime.now()
         companies = self.env['res.company'].sudo().search([
@@ -1145,16 +1164,33 @@ class HrPayslip(models.Model):
                 ('company_id', '=', company.id),
                 ('l10n_co_ne_state', '=', 'sent'),
                 ('l10n_co_ne_zip_key', '!=', False),
-            ], order='write_date asc', limit=_CRON_RECHECK_BATCH_LIMIT)
+            ])
             if not pending:
                 continue
+
+            zip_keys = list(set(pending.mapped('l10n_co_ne_zip_key')))
+            sends = self.env['l10n.co.ne.exchange'].sudo().search([
+                ('company_id', '=', company.id),
+                ('operation', 'in', ('send_sync', 'send_test_set')),
+                ('zip_key', 'in', zip_keys),
+            ], order='create_date desc')
+            sent_since = {}
+            for send in sends:
+                sent_since.setdefault(send.zip_key, send.create_date)
+
+            def _waiting_since(slip, _sent_since=sent_since):
+                # Respaldo defensivo si no hay exchange (no debería pasar: zip_key solo se
+                # asigna junto con el exchange que lo produjo) -- nunca por write_date.
+                return _sent_since.get(slip.l10n_co_ne_zip_key) or slip.create_date
+
+            pending = pending.sorted(key=_waiting_since)[:_CRON_RECHECK_BATCH_LIMIT]
 
             max_hours = company._ne_config_int_param(
                 'l10n_co_nomina_electronica.recheck_max_hours',
                 _CRON_RECHECK_MAX_HOURS_DEFAULT,
             )
             expired = pending.filtered(
-                lambda slip: now - slip.write_date >= timedelta(hours=max_hours))
+                lambda slip: now - _waiting_since(slip) >= timedelta(hours=max_hours))
             if expired:
                 for slip in expired:
                     slip.message_post(body=_(
@@ -1172,7 +1208,7 @@ class HrPayslip(models.Model):
                 continue
 
             # dict.fromkeys en vez de sorted(set(...)) -- conserva el orden de llegada de
-            # `pending` (ya viene en write_date ascendente de la búsqueda de arriba) en vez
+            # `pending` (ya viene ordenado por fecha de envío ascendente de arriba) en vez
             # de reordenar alfabéticamente por ZipKey.
             for zip_key in dict.fromkeys(pending.mapped('l10n_co_ne_zip_key')):
                 group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
@@ -1615,12 +1651,63 @@ class HrPayslip(models.Model):
 
         unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
         unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
-        dias_no_remunerados = sum(
+        # H-013 (2026-10-08, QA Bloque 4): vacaciones/licencias/incapacidades entraban como
+        # novedades manuales (inputs CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL)
+        # y el básico no descontaba esos días -- doble pago real (vacaciones 15 días: básico
+        # de 30 días completo + vacaciones aparte). "unpaid" en Odoo no sirve para detectar
+        # esto: significa "sin continuidad de pago del empleador", mientras que vacaciones/
+        # incapacidad/licencia remunerada SÍ se pagan en Colombia, solo que por un concepto
+        # distinto al básico (Art. 186 CST, Ley 100/1993, etc.). Por eso se excluyen SIEMPRE
+        # estos 7 códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
+        dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORK_ENTRY_CODES
+        dias_excluidos = sum(
             wd.number_of_days
             for wd in self.worked_days_line_ids
-            if wd.work_entry_type_id.code in unpaid_codes
+            if wd.work_entry_type_id.code in dias_excluidos_codes
         )
-        return dias_bajo_contrato - dias_no_remunerados
+        return dias_bajo_contrato - dias_excluidos
+
+    def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
+        """(días desde Ausencias, días desde el input manual) para un concepto de novedad
+        (CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/CO_LIC_MAT/CO_LIC_PAT).
+
+        No decide ni falla -- eso lo hace el llamador: condition_python solo necesita saber
+        si hay algo (cualquiera de los dos > 0); amount_python_compute (vía
+        _ne_dias_novedad()) necesita el valor final y el chequeo de conflicto. H-013
+        (2026-10-08)."""
+        worked_days_line = worked_days.get(work_entry_code)
+        dias_ausencia = worked_days_line.number_of_days if worked_days_line else 0
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
+        return dias_ausencia, dias_input
+
+    def _ne_dias_novedad(self, work_entry_code, input_code, inputs, worked_days):
+        """Única fuente de días para las reglas de ausencias pagadas (CO_VAC/CO_LIC_REM/
+        CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/CO_LIC_MAT/CO_LIC_PAT) -- los mismos días que
+        _ne_dias_pagables() excluye del básico (_NOVEDAD_AUSENCIA_WORK_ENTRY_CODES).
+
+        H-013 (2026-10-08, decisión de David): prioriza el módulo de Ausencias (hr.leave
+        validada -> hr.work.entry -> worked_days, mecanismo nativo de Odoo -- ver
+        data/l10n_co_ausencias_data.xml). El input manual CO_XXX sigue existiendo como
+        respaldo para lo que Ausencias no haya capturado, pero NUNCA junto con una ausencia
+        real del mismo concepto en la misma nómina: sumar los dos sería doble conteo, y
+        elegir uno en silencio escondería un error de captura real. Nunca un default
+        silencioso -- mismo principio que _dias_trabajados_requerido()/_pais_requerido()
+        en services/nomina_xml_builder.py.
+        """
+        dias_ausencia, dias_input = self._ne_dias_novedad_ausencia_e_input(
+            work_entry_code, input_code, inputs, worked_days)
+        if dias_ausencia > 0 and dias_input > 0:
+            raise UserError(_(
+                'Hay %(dias_ausencia)s día(s) de "%(code)s" ya registrados en Ausencias '
+                'y además un input manual "%(input_code)s" con %(dias_input)s día(s) en '
+                'la misma nómina de %(employee)s. Use solo una fuente: borre el input '
+                'manual si la ausencia ya está en el sistema, o elimine la ausencia si el '
+                'dato manual es el correcto.',
+                dias_ausencia=dias_ausencia, code=work_entry_code, input_code=input_code,
+                dias_input=dias_input, employee=self.employee_id.name,
+            ))
+        return dias_ausencia or dias_input
 
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""

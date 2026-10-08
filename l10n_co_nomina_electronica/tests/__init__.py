@@ -14,3 +14,4 @@ from . import test_rule_parameters_exist
 from . import test_liquidacion_indemnizacion
 from . import test_dian_pais_moneda
 from . import test_liquidacion_wizard_departure
+from . import test_ausencias_nomina
