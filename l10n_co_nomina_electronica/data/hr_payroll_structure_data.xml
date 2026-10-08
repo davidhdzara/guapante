@@ -455,7 +455,7 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrndf', payslip.da
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-_dias_aus, _dias_inp = payslip._ne_dias_novedad_ausencia_e_input('CO_INC_COMUN', 'CO_INC_COMUN', inputs, worked_days)
+_dias_aus, _dias_inp = payslip._ne_ausencia_calendario_dias_e_input('CO_INC_COMUN', 'CO_INC_COMUN', inputs)
 result = _dias_aus > 0 or _dias_inp > 0
             </field>
             <field name="amount_select">code</field>
@@ -466,14 +466,15 @@ result = _dias_aus > 0 or _dias_inp > 0
 # AUD-DIAN-34 (2026-10-05): el "90" (limite del tramo EPS) era un literal
 # repetido 2 veces aqui -- parametro propio, ver l10n_co_dias_incapacidad_
 # limite_3_90 en data/l10n_co_rule_parameters_data.xml.
-# H-013 (2026-10-08): dias viene de Ausencias (hr.leave -> worked_days) o, de respaldo,
-# del input manual -- nunca de los dos a la vez (_ne_dias_novedad falla explicito si
-# coinciden). Unica fuente que tambien usa _ne_dias_pagables() para descontar el basico.
+# H-014 (2026-10-08, CST Art. 227/236 mod. Ley 2114/2021): dias CALENDARIO corridos desde
+# Ausencias (hr.leave, _ne_ausencia_calendario) o, de respaldo, del input manual -- nunca
+# de los dos a la vez (_ne_dias_novedad_calendario falla explicito si coinciden). Unica
+# fuente que tambien usa _ne_dias_pagables() para descontar el basico.
 _dias_emp = payslip._rule_parameter('l10n_co_dias_incapacidad_empleador', payslip.date_from)
 _pct_3_90 = payslip._rule_parameter('l10n_co_pct_incapacidad_3_90', payslip.date_from) / 100
 _pct_91_mas = payslip._rule_parameter('l10n_co_pct_incapacidad_91_mas', payslip.date_from) / 100
 _limite_3_90 = payslip._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', payslip.date_from)
-dias = payslip._ne_dias_novedad('CO_INC_COMUN', 'CO_INC_COMUN', inputs, worked_days)
+dias = payslip._ne_dias_novedad_calendario('CO_INC_COMUN', 'CO_INC_COMUN', inputs)
 valor_dia = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 if dias &lt;= _dias_emp:
     result = valor_dia * dias
@@ -499,14 +500,14 @@ else:
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-_dias_aus, _dias_inp = payslip._ne_dias_novedad_ausencia_e_input('CO_INC_LABORAL', 'CO_INC_LABORAL', inputs, worked_days)
+_dias_aus, _dias_inp = payslip._ne_ausencia_calendario_dias_e_input('CO_INC_LABORAL', 'CO_INC_LABORAL', inputs)
 result = _dias_aus > 0 or _dias_inp > 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# ARL paga 100% desde el primer día. H-013 (2026-10-08): dias desde Ausencias o input
-# manual de respaldo, nunca los dos -- ver _ne_dias_novedad().
-dias = payslip._ne_dias_novedad('CO_INC_LABORAL', 'CO_INC_LABORAL', inputs, worked_days)
+# ARL paga 100% desde el primer día. H-014 (2026-10-08): dias CALENDARIO corridos desde
+# Ausencias o input manual de respaldo, nunca los dos -- ver _ne_dias_novedad_calendario().
+dias = payslip._ne_dias_novedad_calendario('CO_INC_LABORAL', 'CO_INC_LABORAL', inputs)
 result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -522,14 +523,15 @@ result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', 
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-_dias_aus, _dias_inp = payslip._ne_dias_novedad_ausencia_e_input('CO_LIC_MAT', 'CO_LIC_MAT', inputs, worked_days)
+_dias_aus, _dias_inp = payslip._ne_ausencia_calendario_dias_e_input('CO_LIC_MAT', 'CO_LIC_MAT', inputs)
 result = _dias_aus > 0 or _dias_inp > 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 18 semanas (126 días) al 100% del salario, pagado por EPS. H-013 (2026-10-08): dias
-# desde Ausencias o input manual de respaldo, nunca los dos -- ver _ne_dias_novedad().
-dias = payslip._ne_dias_novedad('CO_LIC_MAT', 'CO_LIC_MAT', inputs, worked_days)
+# 18 semanas (126 días) al 100% del salario, pagado por EPS. H-014 (2026-10-08, CST Art.
+# 236 mod. Ley 2114/2021): dias CALENDARIO corridos desde Ausencias o input manual de
+# respaldo, nunca los dos -- ver _ne_dias_novedad_calendario().
+dias = payslip._ne_dias_novedad_calendario('CO_LIC_MAT', 'CO_LIC_MAT', inputs)
 result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -545,14 +547,15 @@ result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', 
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-_dias_aus, _dias_inp = payslip._ne_dias_novedad_ausencia_e_input('CO_LIC_PAT', 'CO_LIC_PAT', inputs, worked_days)
+_dias_aus, _dias_inp = payslip._ne_ausencia_calendario_dias_e_input('CO_LIC_PAT', 'CO_LIC_PAT', inputs)
 result = _dias_aus > 0 or _dias_inp > 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# 2 semanas (14 días) al 100%, pagado por EPS. H-013 (2026-10-08): dias desde Ausencias
-# o input manual de respaldo, nunca los dos -- ver _ne_dias_novedad().
-dias = payslip._ne_dias_novedad('CO_LIC_PAT', 'CO_LIC_PAT', inputs, worked_days)
+# 2 semanas (14 días) al 100%, pagado por EPS. H-014 (2026-10-08, CST Art. 236 mod. Ley
+# 2114/2021): dias CALENDARIO corridos desde Ausencias o input manual de respaldo, nunca
+# los dos -- ver _ne_dias_novedad_calendario().
+dias = payslip._ne_dias_novedad_calendario('CO_LIC_PAT', 'CO_LIC_PAT', inputs)
 result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
             </field>
             <field name="appears_on_payslip" eval="True"/>

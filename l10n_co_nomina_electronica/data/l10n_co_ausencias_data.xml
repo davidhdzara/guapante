@@ -77,6 +77,12 @@
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_comun"/>
             <field name="requires_allocation">no</field>
             <field name="company_id" eval="False"/>
+            <!-- H-014 (2026-10-08): el conteo de días pagables lo hace _ne_ausencia_calendario()
+                 directamente sobre las fechas de la hr.leave (días calendario corridos, CST
+                 Art. 227 mod. Ley 2114/2021); este campo nativo solo afecta la duración que
+                 Odoo muestra en la propia hr.leave (_get_durations), no el pago. Se deja en True
+                 para que esa duración mostrada no contradiga visualmente el pago real. -->
+            <field name="include_public_holidays_in_duration" eval="True"/>
         </record>
 
         <record id="hr_work_entry_type_co_inc_laboral" model="hr.work.entry.type">
@@ -90,6 +96,8 @@
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_inc_laboral"/>
             <field name="requires_allocation">no</field>
             <field name="company_id" eval="False"/>
+            <!-- H-014: ver comentario en hr_leave_type_co_inc_comun, misma razón. -->
+            <field name="include_public_holidays_in_duration" eval="True"/>
         </record>
 
         <record id="hr_work_entry_type_co_lic_mat" model="hr.work.entry.type">
@@ -103,6 +111,8 @@
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_mat"/>
             <field name="requires_allocation">no</field>
             <field name="company_id" eval="False"/>
+            <!-- H-014: ver comentario en hr_leave_type_co_inc_comun, misma razón. -->
+            <field name="include_public_holidays_in_duration" eval="True"/>
         </record>
 
         <record id="hr_work_entry_type_co_lic_pat" model="hr.work.entry.type">
@@ -116,6 +126,8 @@
             <field name="work_entry_type_id" ref="hr_work_entry_type_co_lic_pat"/>
             <field name="requires_allocation">no</field>
             <field name="company_id" eval="False"/>
+            <!-- H-014: ver comentario en hr_leave_type_co_inc_comun, misma razón. -->
+            <field name="include_public_holidays_in_duration" eval="True"/>
         </record>
     </data>
 </odoo>

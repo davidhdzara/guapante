@@ -42,7 +42,7 @@ compañía). Por eso setUpClass fija cls.env con with_company(cls.company) antes
 ningún dato.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase
@@ -94,7 +94,7 @@ class TestAusenciasNomina(TransactionCase):
         cls.leave_type_lic_pat = cls.env.ref(
             'l10n_co_nomina_electronica.hr_leave_type_co_lic_pat')
 
-    def _make_contract(self, name, wage=1800000.0, date_start=date(2024, 1, 1)):
+    def _make_contract(self, name, wage=1800000.0, date_start=date(2024, 1, 1), calendar=None):
         employee = self.env['hr.employee'].create({
             'name': name,
             'identification_id': '80' + str(self.env['hr.employee'].search_count([])),
@@ -103,7 +103,7 @@ class TestAusenciasNomina(TransactionCase):
             # l10n_co_ne_bank_account -- sin interés aquí, 'Efectivo' evita datos bancarios falsos.
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract_vals = {
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -111,8 +111,30 @@ class TestAusenciasNomina(TransactionCase):
             'wage': wage,
             'date_start': date_start,
             'state': 'open',
-        })
+        }
+        if calendar is not None:
+            contract_vals['resource_calendar_id'] = calendar.id
+        contract = self.env['hr.contract'].create(contract_vals)
         return employee, contract
+
+    def _make_calendar_martes_a_domingo(self):
+        """Calendario Martes a Domingo (H-014, condición 7 de Tech Lead): el mismo patrón
+        semanal real de Guapante ('Mar a Dom 42h') -- usado para confirmar que el conteo de
+        días CALENDARIO corridos (CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL) no
+        depende del patrón semanal del calendario del contrato, a diferencia de CO_VAC/
+        CO_LIC_REM/CO_LIC_NR (días hábiles vía worked_days, sí dependientes del calendario)."""
+        return self.env['resource.calendar'].create({
+            'name': 'Martes a Domingo (prueba)',
+            'company_id': self.company.id,
+            'attendance_ids': [
+                (0, 0, {'name': dia, 'dayofweek': dow, 'hour_from': 8, 'hour_to': 16,
+                        'day_period': 'morning'})
+                for dow, dia in (
+                    ('1', 'Martes'), ('2', 'Miércoles'), ('3', 'Jueves'),
+                    ('4', 'Viernes'), ('5', 'Sábado'), ('6', 'Domingo'),
+                )
+            ],
+        })
 
     def _make_payslip(self, employee, contract, date_from, date_to):
         return self.env['hr.payslip'].create({
@@ -296,3 +318,170 @@ class TestAusenciasNomina(TransactionCase):
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
         payslip.compute_sheet()
         self._assert_sin_doble_pago(payslip, 'CO_VAC', wage, dias_max=5)
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-014 (2026-10-08, QA Bloque 5): CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
+    # cuentan días CALENDARIO corridos (_ne_ausencia_calendario), no worked_days -- por eso
+    # estos tests llaman directo a _ne_ausencia_calendario() en vez de _dias_worked() (que
+    # mide work entries, un eje distinto que ya no determina el pago de estos 4 conceptos).
+    # ──────────────────────────────────────────────────────────────────
+
+    def test_paternidad_14_dias_calendario_lv(self):
+        """Paternidad corrida 1-14/12/2026 = 14 días calendario exactos bajo el calendario
+        L-V por defecto de la compañía de prueba -- confirma que el conteo cruza los 2 fines
+        de semana del rango sin descontarlos (a diferencia de CO_VAC/CO_LIC_REM/CO_LIC_NR)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('PatLV', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_pat, date(2026, 12, 1), date(2026, 12, 14))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias, _detalle = payslip._ne_ausencia_calendario('CO_LIC_PAT')
+        self.assertEqual(dias, 14)
+        basico = self._sueldo_basico(payslip)
+        novedad = self._novedad(payslip, 'CO_LIC_PAT')
+        self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    def test_paternidad_14_dias_calendario_martes_a_domingo(self):
+        """Mismo rango 1-14/12/2026 bajo un calendario Martes a Domingo (patrón real de
+        Guapante) -- debe dar el MISMO resultado (14/14) que bajo L-V: el conteo de días
+        calendario corridos es independiente del patrón semanal del calendario del contrato,
+        justo lo que motivó no usar worked_days para estos 4 conceptos (H-014)."""
+        wage = 1800000.0
+        calendar = self._make_calendar_martes_a_domingo()
+        employee, contract = self._make_contract('PatMarDom', wage=wage, calendar=calendar)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_pat, date(2026, 12, 1), date(2026, 12, 14))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias, _detalle = payslip._ne_ausencia_calendario('CO_LIC_PAT')
+        self.assertEqual(dias, 14)
+        basico = self._sueldo_basico(payslip)
+        novedad = self._novedad(payslip, 'CO_LIC_PAT')
+        self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    def _make_calendar_nocturno_bogota(self):
+        """Calendario de 7 días (L-D) con jornada hasta las 9pm hora de Bogotá (UTC-5) --
+        aísla el bug de huso horario (Tech Lead, revisión .77) del patrón semanal (ya
+        cubierto por test_paternidad_14_dias_calendario_martes_a_domingo): todos los días
+        de la semana tienen asistencia, así que el único efecto bajo prueba es la
+        conversión a UTC del fin de jornada nocturno."""
+        return self.env['resource.calendar'].create({
+            'name': 'Nocturno Bogotá (prueba)',
+            'company_id': self.company.id,
+            'tz': 'America/Bogota',
+            'attendance_ids': [
+                (0, 0, {'name': dia, 'dayofweek': dow, 'hour_from': 13, 'hour_to': 21,
+                        'day_period': 'afternoon'})
+                for dow, dia in (
+                    ('0', 'Lunes'), ('1', 'Martes'), ('2', 'Miércoles'), ('3', 'Jueves'),
+                    ('4', 'Viernes'), ('5', 'Sábado'), ('6', 'Domingo'),
+                )
+            ],
+        })
+
+    def test_paternidad_14_dias_sin_bug_de_huso_horario_nocturno(self):
+        """Tech Lead (2026-10-08, revisión .77): hr.leave.date_from/date_to son datetimes
+        en UTC -- una ausencia que termina de noche en Colombia (UTC-5, ej. jornada hasta
+        las 9pm) cae en la madrugada del día siguiente en UTC, y el fix anterior a este
+        (.date() sobre date_from/date_to) contaba 15 días en vez de 14 para 1-14/12/2026.
+        _ne_ausencia_calendario() ahora usa request_date_from/request_date_to (fechas
+        puras, sin conversión de huso horario) tanto en el dominio del search como en el
+        recorte -- esta prueba falla si alguien vuelve a tocar date_from/date_to."""
+        wage = 1800000.0
+        calendar_nocturno = self._make_calendar_nocturno_bogota()
+        employee, contract = self._make_contract(
+            'PatNocturno', wage=wage, calendar=calendar_nocturno)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_pat, date(2026, 12, 1), date(2026, 12, 14))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias, _detalle = payslip._ne_ausencia_calendario('CO_LIC_PAT')
+        self.assertEqual(dias, 14)
+        basico = self._sueldo_basico(payslip)
+        novedad = self._novedad(payslip, 'CO_LIC_PAT')
+        self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    def test_maternidad_festivo_no_reduce_dias(self):
+        """Un festivo (8 dic, Inmaculada Concepción) dentro del rango de licencia de
+        maternidad no debe reducir el conteo de días calendario corridos -- estos 4
+        conceptos cuentan TODOS los días calendario, festivos incluidos (CST Art. 236 mod.
+        Ley 2114/2021), a diferencia de CO_VAC/CO_LIC_REM/CO_LIC_NR (días hábiles vía
+        worked_days, que si descuentan festivos del calendario)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('MatFestivo', wage=wage)
+        self.env['resource.calendar.leaves'].create({
+            'name': 'Inmaculada Concepción (prueba)',
+            'company_id': self.company.id,
+            'calendar_id': False,
+            'resource_id': False,
+            'date_from': datetime(2026, 12, 8, 0, 0, 0),
+            'date_to': datetime(2026, 12, 8, 23, 59, 59),
+        })
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_mat, date(2026, 12, 1), date(2026, 12, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias, _detalle = payslip._ne_ausencia_calendario('CO_LIC_MAT')
+        self.assertEqual(dias, 10)
+        basico = self._sueldo_basico(payslip)
+        novedad = self._novedad(payslip, 'CO_LIC_MAT')
+        self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    def test_maternidad_cruza_mes_dos_nominas(self):
+        """Maternidad del 25 de agosto al 5 de septiembre de 2026 -- cada nómina (agosto y
+        septiembre) recibe SOLO su tramo bajo la convención de mes comercial de 30 días
+        (_ne_dia_comercial, la MISMA que usa _ne_dias_pagables() para el básico): el 31 de
+        agosto, último día real del mes, mapea al día comercial 30. Básico + novedad debe
+        dar el sueldo completo en AMBAS nóminas, no solo en una (ningún tramo se paga dos
+        veces ni se pierde en el corte de mes)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract(
+            'MatCruzaMes', wage=wage, date_start=date(2024, 1, 1))
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_mat, date(2026, 8, 25), date(2026, 9, 5),
+            work_entries_from=date(2026, 8, 1), work_entries_to=date(2026, 9, 30),
+        )
+        payslip_ago = self._make_payslip(employee, contract, date(2026, 8, 1), date(2026, 8, 31))
+        payslip_ago.compute_sheet()
+        payslip_sep = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip_sep.compute_sheet()
+
+        dias_ago, _detalle_ago = payslip_ago._ne_ausencia_calendario('CO_LIC_MAT')
+        dias_sep, _detalle_sep = payslip_sep._ne_ausencia_calendario('CO_LIC_MAT')
+        self.assertEqual(dias_ago, 6)  # 25..31 ago -> comercial 25..30 = 6 días
+        self.assertEqual(dias_sep, 5)  # 1..5 sep = 5 días
+
+        for payslip in (payslip_ago, payslip_sep):
+            basico = self._sueldo_basico(payslip)
+            novedad = self._novedad(payslip, 'CO_LIC_MAT')
+            self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    def test_incapacidad_laboral_cruza_fin_de_mes_dos_nominas(self):
+        """Incapacidad por accidente de trabajo del 28 de enero al 3 de febrero de 2026 --
+        cruza fin de mes bajo la misma convención de mes comercial de 30 días. Se usa
+        CO_INC_LABORAL (ARL paga 100% desde el día 1, sin tramos) para poder verificar la
+        invariante básico + novedad = sueldo del período en ambas nóminas; CO_INC_COMUN sí
+        tiene tramos escalonados (ver test_incapacidad_comun_sin_doble_pago, que se queda
+        deliberadamente dentro del tramo "100% empleador" para no reproducir esa fórmula)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract(
+            'IncLaboralCruzaMes', wage=wage, date_start=date(2024, 1, 1))
+        self._make_validated_leave(
+            employee, contract, self.leave_type_inc_laboral, date(2026, 1, 28), date(2026, 2, 3),
+            work_entries_from=date(2026, 1, 1), work_entries_to=date(2026, 2, 28),
+        )
+        payslip_ene = self._make_payslip(employee, contract, date(2026, 1, 1), date(2026, 1, 31))
+        payslip_ene.compute_sheet()
+        payslip_feb = self._make_payslip(employee, contract, date(2026, 2, 1), date(2026, 2, 28))
+        payslip_feb.compute_sheet()
+
+        dias_ene, _detalle_ene = payslip_ene._ne_ausencia_calendario('CO_INC_LABORAL')
+        dias_feb, _detalle_feb = payslip_feb._ne_ausencia_calendario('CO_INC_LABORAL')
+        self.assertEqual(dias_ene, 3)  # 28..31 ene -> comercial 28..30 = 3 días
+        self.assertEqual(dias_feb, 3)  # 1..3 feb = 3 días
+
+        for payslip in (payslip_ene, payslip_feb):
+            basico = self._sueldo_basico(payslip)
+            novedad = self._novedad(payslip, 'CO_INC_LABORAL')
+            self.assertEqual(round(basico + novedad, 2), round(wage, 2))

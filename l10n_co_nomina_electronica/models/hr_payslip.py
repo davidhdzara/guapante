@@ -22,6 +22,7 @@ V1.0, Resolución DIAN 000013 de 2021.
 """
 
 import base64
+import calendar
 import hashlib
 import logging
 from collections import defaultdict
@@ -60,15 +61,30 @@ DEVENGADO_SIMPLE_CONCEPTS = {
 HORA_EXTRA_CONCEPTS = {'HED', 'HEN', 'HRN', 'HEDDF', 'HRDDF', 'HENDF', 'HRNDF'}
 
 # H-013 (2026-10-08, QA Bloque 4, decisión de David): códigos de hr.work.entry.type de las
-# 7 ausencias colombianas que este módulo paga con su propia regla salarial (data/
-# l10n_co_ausencias_data.xml) -- CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/
-# CO_LIC_MAT/CO_LIC_PAT. _ne_dias_pagables() las excluye SIEMPRE del básico (nunca dependen
-# de hr.leave.type.unpaid, que es un eje distinto -- ver el comentario en esa función) y
-# cada regla (CO_VAC, etc.) lee los mismos días vía _ne_dias_novedad() -- una sola fuente
-# para ambos lados, nunca doble pago.
-_NOVEDAD_AUSENCIA_WORK_ENTRY_CODES = {
-    'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR', 'CO_INC_COMUN', 'CO_INC_LABORAL',
-    'CO_LIC_MAT', 'CO_LIC_PAT',
+# ausencias colombianas que este módulo paga con su propia regla salarial (data/
+# l10n_co_ausencias_data.xml). _ne_dias_pagables() las excluye SIEMPRE del básico (nunca
+# dependen de hr.leave.type.unpaid, que es un eje distinto -- ver el comentario en esa
+# función) y cada regla lee los mismos días -- una sola fuente para ambos lados, nunca
+# doble pago.
+#
+# Dos grupos, con dos mecanismos de conteo distintos (H-014, 2026-10-08, QA Bloque 5,
+# decisión de David basada en CST Art. 186/227/236 mod. Ley 2114/2021 y Concepto
+# Mintrabajo 63044901/2022):
+#
+# - CO_VAC/CO_LIC_REM/CO_LIC_NR: días HÁBILES según el calendario laboral del contrato
+#   (L-V, L-S o el de la compañía) -- cuentan vía worked_days (_ne_dias_novedad()), el
+#   mecanismo nativo de hr.work.entry ya hace esta cuenta correctamente.
+# - CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL: días CALENDARIO corridos (lunes a
+#   domingo, festivos incluidos -- el empleado no puede quedar subpagado). worked_days NO
+#   alcanza para esto: los work entries solo existen en los días que el calendario del
+#   contrato define como laborables (confirmado contra hr_work_entry_contract.
+#   _get_contract_work_entries_values -- un día sin asistencia en ese calendario, ej. el
+#   lunes en un calendario martes-a-domingo, nunca genera NINGÚN work entry). Por eso estos
+#   4 cuentan directamente desde las fechas de la hr.leave validada
+#   (_ne_ausencia_calendario()), no desde worked_days.
+_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES = {'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR'}
+_NOVEDAD_AUSENCIA_CALENDARIO_CODES = {
+    'CO_LIC_MAT', 'CO_LIC_PAT', 'CO_INC_COMUN', 'CO_INC_LABORAL',
 }
 
 DEDUCTION_SIMPLE_CONCEPTS = {
@@ -1590,6 +1606,54 @@ class HrPayslip(models.Model):
         self._dev_bonos_y_pagos(concept_lines, devengados)
         return devengados
 
+    @staticmethod
+    def _ne_dias_en_mes_calendario(year, month):
+        """Días reales de un mes calendario -- compartido por toda la aritmética de "mes
+        comercial" de 30 días (_ne_dia_comercial, _ne_dias_corridos_en_tramo).
+
+        Tech Lead (2026-10-08, revisión .77): usa calendar.monthrange() en vez de un
+        cálculo manual de año bisiesto -- misma regla gregoriana, sin reimplementarla."""
+        return calendar.monthrange(year, month)[1]
+
+    def _ne_dia_comercial(self, d, dias_mes):
+        """Mapea un día calendario real a su "día comercial" (convención colombiana de mes
+        de 30 días): el último día calendario REAL de cualquier mes (28/29-feb, 30 o 31)
+        siempre equivale al día comercial 30 -- no solo cuando el mes tiene exactamente 30
+        días. Compartido por _ne_dias_pagables() y _ne_dias_corridos_en_tramo() (H-014)."""
+        ultimo_dia_mes = self._ne_dias_en_mes_calendario(d.year, d.month)
+        if d.day == ultimo_dia_mes:
+            return dias_mes
+        return min(d.day, dias_mes)
+
+    def _ne_tramo_pagable_periodo(self):
+        """(periodo_ini, periodo_fin) -- el tramo del período de la nómina que realmente es
+        pagable bajo la convención de mes comercial de 30 días.
+
+        H-009 (2026-10-06, QA Bloque 2): en Liquidación, date_from es contract.date_start y
+        date_to la fecha de retiro -- un período que puede abarcar meses o años. Cuando el
+        período cruza más de un mes calendario, el tramo pagable se restringe al mes
+        calendario de date_to (los meses anteriores ya se pagaron en nóminas regulares);
+        dentro de un mismo mes (el caso normal mensual) el resultado es el período completo
+        tal cual. Compartido por _ne_dias_pagables() y _ne_ausencia_calendario() (H-014) --
+        ambos deben recortar al mismo tramo para no descontar/pagar fuera de él.
+        """
+        periodo_ini = self.date_from
+        periodo_fin = self.date_to
+        if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
+            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+        return periodo_ini, periodo_fin
+
+    def _ne_dias_corridos_en_tramo(self, fecha_ini, fecha_fin, tramo_ini, tramo_fin, dias_mes):
+        """Días CALENDARIO corridos (lunes a domingo) de [fecha_ini, fecha_fin] que caen
+        dentro de [tramo_ini, tramo_fin], bajo la convención de mes comercial de 30 días
+        (_ne_dia_comercial) -- 0 si no hay solapamiento. Usada por _ne_ausencia_calendario()
+        para los 4 conceptos de "días corridos" (H-014)."""
+        ini = max(fecha_ini, tramo_ini)
+        fin = min(fecha_fin, tramo_fin)
+        if ini > fin:
+            return 0
+        return self._ne_dia_comercial(fin, dias_mes) - self._ne_dia_comercial(ini, dias_mes) + 1
+
     def _ne_dias_pagables(self):
         """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
         usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
@@ -1603,43 +1667,13 @@ class HrPayslip(models.Model):
         "el Sueldo Trabajado por los días laborados" -- ambos deben contar exactamente lo
         mismo. Esta función es esa única fuente; CO_BASICO/CO_AUX_TRANS la llaman en vez de
         recalcular.
-
-        H-009 (2026-10-06, QA Bloque 2): en Liquidación, date_from es contract.date_start y
-        date_to la fecha de retiro -- un período que puede abarcar meses o años. Intersectar
-        ese período completo contra el contrato (como hacía esta función antes) devuelve el
-        total de días del contrato, sin relación con CO_LIQ_SALARIOS (que solo paga el tramo
-        pendiente del ÚLTIMO mes -- los meses anteriores ya se pagaron en nóminas regulares).
-        Cuando el período cruza más de un mes calendario, el tramo pagable se restringe al
-        mes calendario de date_to; dentro de un mismo mes (el caso normal mensual, incluyendo
-        ingreso/retiro a mitad de mes) el resultado no cambia.
         """
         self.ensure_one()
         contract = self.contract_id
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
-
-        def _dias_en_mes(year, month):
-            if month == 2:
-                bisiesto = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
-                return 29 if bisiesto else 28
-            if month in (4, 6, 9, 11):
-                return 30
-            return 31
-
-        def _dia_comercial(d):
-            # El último día calendario REAL de cualquier mes (28/29-feb, 30 o 31) siempre
-            # equivale al día comercial 30 -- no solo cuando el mes tiene exactamente 30 días.
-            ultimo_dia_mes = _dias_en_mes(d.year, d.month)
-            if d.day == ultimo_dia_mes:
-                return dias_mes
-            return min(d.day, dias_mes)
-
-        periodo_ini = self.date_from
-        periodo_fin = self.date_to
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
         contrato_ini = contract.date_start
         contrato_fin = contract.date_end or periodo_fin
-
-        if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
-            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
 
         activo_ini = max(periodo_ini, contrato_ini)
         activo_fin = min(periodo_fin, contrato_fin)
@@ -1647,7 +1681,10 @@ class HrPayslip(models.Model):
         if activo_ini > activo_fin:
             dias_bajo_contrato = 0
         else:
-            dias_bajo_contrato = _dia_comercial(activo_fin) - _dia_comercial(activo_ini) + 1
+            dias_bajo_contrato = (
+                self._ne_dia_comercial(activo_fin, dias_mes)
+                - self._ne_dia_comercial(activo_ini, dias_mes) + 1
+            )
 
         unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
         unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
@@ -1658,45 +1695,118 @@ class HrPayslip(models.Model):
         # esto: significa "sin continuidad de pago del empleador", mientras que vacaciones/
         # incapacidad/licencia remunerada SÍ se pagan en Colombia, solo que por un concepto
         # distinto al básico (Art. 186 CST, Ley 100/1993, etc.). Por eso se excluyen SIEMPRE
-        # estos 7 códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
-        dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORK_ENTRY_CODES
+        # estos códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
+        dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
         dias_excluidos = sum(
             wd.number_of_days
             for wd in self.worked_days_line_ids
             if wd.work_entry_type_id.code in dias_excluidos_codes
         )
+        # H-014 (2026-10-08, QA Bloque 5): CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
+        # se pagan en días CALENDARIO corridos (ver _ne_ausencia_calendario) -- se excluyen
+        # del básico por la misma cuenta, nunca por worked_days (ahí solo existirían los
+        # días que el calendario del contrato ya define como laborables, subcontando un
+        # festivo o un día no laboral dentro de la ausencia).
+        for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            dias_excluidos += self._ne_ausencia_calendario(codigo)[0]
         return dias_bajo_contrato - dias_excluidos
 
+    def _ne_ausencia_calendario(self, work_entry_code):
+        """Única fuente de días CALENDARIO corridos (lunes a domingo, festivos incluidos)
+        para un concepto de ausencia -- CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
+        (H-014, 2026-10-08, decisión de David: CST Art. 186/227/236 mod. Ley 2114/2021,
+        Concepto Mintrabajo 63044901/2022). A diferencia de CO_VAC/CO_LIC_REM/CO_LIC_NR
+        (H-013, días HÁBILES vía worked_days), estos 4 no pueden contarse desde worked_days:
+        los work entries solo existen en los días que el calendario del contrato define
+        como laborables (confirmado contra hr_work_entry_contract.
+        _get_contract_work_entries_values -- un día sin asistencia en ese calendario, ej.
+        el lunes en un calendario martes-a-domingo, nunca genera NINGÚN work entry, sea
+        cual sea el tipo de ausencia).
+
+        Recorta cada hr.leave validada al mismo tramo pagable del período
+        (_ne_tramo_pagable_periodo(), la misma restricción de mes comercial de 30 días que
+        usa _ne_dias_pagables() para Liquidación) y a la actividad del contrato.
+
+        Devuelve (dias_totales, detalle) -- dias_totales es la única fuente para la regla
+        de pago (_ne_dias_novedad_calendario()) Y para la exclusión del básico
+        (_ne_dias_pagables()); detalle es [(leave, dias, fecha_ini_recortada,
+        fecha_fin_recortada)] para quien necesite el desglose por ausencia
+        (_dev_novedades(), y el futuro corte de incapacidad en el día 90 del paso 3 de
+        H-013, que puede reusar esto mismo con las fechas ya recortadas).
+        """
+        self.ensure_one()
+        contract = self.contract_id
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_ini = contract.date_start
+        contrato_fin = contract.date_end or periodo_fin
+        tramo_ini = max(periodo_ini, contrato_ini)
+        tramo_fin = min(periodo_fin, contrato_fin)
+
+        # Tech Lead (2026-10-08, revisión .77): date_from/date_to son datetimes en UTC: una
+        # ausencia que termina de noche en Colombia (UTC-5, ej. el calendario Mar-Dom de
+        # Guapante) cae en la madrugada del día siguiente en UTC, y .date() contaría un día
+        # de más. request_date_from/request_date_to son las fechas puras que el usuario
+        # pidió (sin conversión de huso horario) -- misma lección ya aplicada a hr.leave en
+        # otras partes del módulo.
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'validate'),
+            ('holiday_status_id.work_entry_type_id.code', '=', work_entry_code),
+            ('request_date_from', '<=', self.date_to),
+            ('request_date_to', '>=', self.date_from),
+        ])
+
+        detalle = []
+        dias_totales = 0
+        for leave in leaves:
+            leave_ini = leave.request_date_from
+            leave_fin = leave.request_date_to
+            dias = self._ne_dias_corridos_en_tramo(leave_ini, leave_fin, tramo_ini, tramo_fin, dias_mes)
+            if dias > 0:
+                detalle.append((leave, dias, max(leave_ini, tramo_ini), min(leave_fin, tramo_fin)))
+                dias_totales += dias
+        return dias_totales, detalle
+
     def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
-        """(días desde Ausencias, días desde el input manual) para un concepto de novedad
-        (CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/CO_LIC_MAT/CO_LIC_PAT).
+        """(días desde Ausencias, días desde el input manual) para un concepto de novedad en
+        días HÁBILES (CO_VAC/CO_LIC_REM/CO_LIC_NR -- H-013).
 
         No decide ni falla -- eso lo hace el llamador: condition_python solo necesita saber
         si hay algo (cualquiera de los dos > 0); amount_python_compute (vía
-        _ne_dias_novedad()) necesita el valor final y el chequeo de conflicto. H-013
-        (2026-10-08)."""
+        _ne_dias_novedad()) necesita el valor final y el chequeo de conflicto."""
         worked_days_line = worked_days.get(work_entry_code)
         dias_ausencia = worked_days_line.number_of_days if worked_days_line else 0
         input_line = inputs.get(input_code)
         dias_input = input_line.amount if input_line else 0
         return dias_ausencia, dias_input
 
-    def _ne_dias_novedad(self, work_entry_code, input_code, inputs, worked_days):
-        """Única fuente de días para las reglas de ausencias pagadas (CO_VAC/CO_LIC_REM/
-        CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL/CO_LIC_MAT/CO_LIC_PAT) -- los mismos días que
-        _ne_dias_pagables() excluye del básico (_NOVEDAD_AUSENCIA_WORK_ENTRY_CODES).
+    def _ne_ausencia_calendario_dias_e_input(self, work_entry_code, input_code, inputs):
+        """Igual que _ne_dias_novedad_ausencia_e_input() pero para los 4 conceptos de días
+        CALENDARIO corridos (H-014) -- mismo rol (condition_python), fuente de días distinta
+        (_ne_ausencia_calendario() en vez de worked_days)."""
+        dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
+        return dias_ausencia, dias_input
+
+    def _ne_resolver_dias_novedad(self, dias_ausencia, input_code, inputs, work_entry_code):
+        """Combina los días que vienen de Ausencias con el input manual de respaldo para un
+        concepto de novedad -- nunca los dos a la vez. Compartido por _ne_dias_novedad()
+        (días hábiles, H-013) y _ne_dias_novedad_calendario() (días corridos, H-014): ambos
+        ya calcularon dias_ausencia por su propio mecanismo, y de aquí en adelante el
+        conflicto con el input manual se resuelve igual.
 
         H-013 (2026-10-08, decisión de David): prioriza el módulo de Ausencias (hr.leave
-        validada -> hr.work.entry -> worked_days, mecanismo nativo de Odoo -- ver
-        data/l10n_co_ausencias_data.xml). El input manual CO_XXX sigue existiendo como
+        validada -> ... -> esta función). El input manual CO_XXX sigue existiendo como
         respaldo para lo que Ausencias no haya capturado, pero NUNCA junto con una ausencia
         real del mismo concepto en la misma nómina: sumar los dos sería doble conteo, y
         elegir uno en silencio escondería un error de captura real. Nunca un default
         silencioso -- mismo principio que _dias_trabajados_requerido()/_pais_requerido()
         en services/nomina_xml_builder.py.
         """
-        dias_ausencia, dias_input = self._ne_dias_novedad_ausencia_e_input(
-            work_entry_code, input_code, inputs, worked_days)
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
         if dias_ausencia > 0 and dias_input > 0:
             raise UserError(_(
                 'Hay %(dias_ausencia)s día(s) de "%(code)s" ya registrados en Ausencias '
@@ -1708,6 +1818,21 @@ class HrPayslip(models.Model):
                 dias_input=dias_input, employee=self.employee_id.name,
             ))
         return dias_ausencia or dias_input
+
+    def _ne_dias_novedad(self, work_entry_code, input_code, inputs, worked_days):
+        """Única fuente de días para las reglas de ausencias en días HÁBILES (CO_VAC/
+        CO_LIC_REM/CO_LIC_NR, H-013) -- los mismos días que _ne_dias_pagables() excluye del
+        básico (_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES)."""
+        dias_ausencia, _dias_input = self._ne_dias_novedad_ausencia_e_input(
+            work_entry_code, input_code, inputs, worked_days)
+        return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
+
+    def _ne_dias_novedad_calendario(self, work_entry_code, input_code, inputs):
+        """Única fuente de días para las reglas de ausencias en días CALENDARIO corridos
+        (CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL, H-014) -- los mismos días que
+        _ne_dias_pagables() excluye del básico (_NOVEDAD_AUSENCIA_CALENDARIO_CODES)."""
+        dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
+        return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
 
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
@@ -1880,36 +2005,36 @@ class HrPayslip(models.Model):
             }
 
     def _dev_novedades(self, concept_lines, devengados):
-        """Devengados: incapacidades y licencias."""
+        """Devengados: incapacidades y licencias.
+
+        H-014 (2026-10-08): Incapacidades (CO_INC_COMUN/CO_INC_LABORAL) y LicenciaMP
+        (CO_LIC_MAT/CO_LIC_PAT) se formatean desde _ne_ausencia_calendario() -- la MISMA
+        fuente que ya paga la regla y descuenta el básico (días calendario corridos), para
+        no tener 3 cálculos distintos de lo mismo. LicenciaR/LicenciaNR siguen igual que
+        antes (días hábiles vía worked_days, _get_overlapping_leaves_data()) -- sin cambio.
+        """
         category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
 
-        # Incapacidades
+        # Incapacidades (común + laboral, cada una con su Tipo -- ya no por substring del
+        # código, por cuál de las 2 llamadas la produjo)
         if 'Incapacidad' in concept_lines:
-            actual_inc_leaves = category_leaves.get('incapacidad', [])
-            if actual_inc_leaves:
+            _dias_comun, detalle_comun = self._ne_ausencia_calendario('CO_INC_COMUN')
+            _dias_laboral, detalle_laboral = self._ne_ausencia_calendario('CO_INC_LABORAL')
+            detalle_inc = (
+                [(leave, dias, ini, fin, '1') for leave, dias, ini, fin in detalle_comun]
+                + [(leave, dias, ini, fin, '3') for leave, dias, ini, fin in detalle_laboral]
+            )
+            if detalle_inc:
                 items = []
                 total_pago = sum(l.total for l in concept_lines['Incapacidad'])
-                total_days = category_total_days['incapacidad']
-                for leave in actual_inc_leaves:
-                    days = category_leave_days['incapacidad'][leave.id]
-                    pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                    leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                    leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                    period_start = max(leave_start, self.date_from)
-                    period_end = min(leave_end, self.date_to)
-                    
-                    leave_code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
-                    inc_type = '1'
-                    if 'PROFESIONAL' in leave_code or 'INC_PROF' in leave_code:
-                        inc_type = '2'
-                    elif 'LABORAL' in leave_code or 'INC_LAB' in leave_code:
-                        inc_type = '3'
-
+                total_dias = sum(dias for _leave, dias, _ini, _fin, _tipo in detalle_inc)
+                for _leave, dias, ini, fin, tipo in detalle_inc:
+                    pago = total_pago * (dias / total_dias) if total_dias > 0 else 0.0
                     items.append({
-                        'FechaInicio': str(period_start),
-                        'FechaFin': str(period_end),
-                        'Cantidad': str(int(days)),
-                        'Tipo': inc_type,
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
+                        'Tipo': tipo,
                         'Pago': '%.2f' % pago,
                     })
                 devengados['Incapacidades'] = items
@@ -1926,21 +2051,49 @@ class HrPayslip(models.Model):
                 devengados['Incapacidades'] = items
 
         # Licencias
+        licencias = {}
+
+        # LicenciaMP (maternidad + paternidad): días calendario corridos, misma fuente que
+        # la regla y el descuento del básico (H-014).
+        if 'LicenciaMP' in concept_lines:
+            _dias_mat, detalle_mat = self._ne_ausencia_calendario('CO_LIC_MAT')
+            _dias_pat, detalle_pat = self._ne_ausencia_calendario('CO_LIC_PAT')
+            detalle_mp = detalle_mat + detalle_pat
+            if detalle_mp:
+                items = []
+                total_pago = sum(l.total for l in concept_lines['LicenciaMP'])
+                total_dias = sum(dias for _leave, dias, _ini, _fin in detalle_mp)
+                for _leave, dias, ini, fin in detalle_mp:
+                    pago = total_pago * (dias / total_dias) if total_dias > 0 else 0.0
+                    items.append({
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
+                        'Pago': '%.2f' % pago,
+                    })
+                licencias['LicenciaMP'] = items
+            else:
+                licencias['LicenciaMP'] = [{
+                    'FechaInicio': str(self.date_from),
+                    'FechaFin': str(self.date_to),
+                    'Cantidad': str(int(sum(l.quantity for l in concept_lines['LicenciaMP']))),
+                    'Pago': '%.2f' % sum(l.total for l in concept_lines['LicenciaMP']),
+                }]
+
+        # LicenciaR / LicenciaNR: días hábiles, sin cambio (H-013, worked_days vía
+        # _get_overlapping_leaves_data()).
         licencia_concepts = {
-            'LicenciaMP': 'LicenciaMP',
             'LicenciaR': 'LicenciaR',
             'LicenciaNR': 'LicenciaNR',
         }
         lic_concept_to_category = {
-            'LicenciaMP': 'licencia_mat',
             'LicenciaR': 'licencia_rem',
             'LicenciaNR': 'licencia_nr',
         }
-        licencias = {}
         for concept_key, xml_key in licencia_concepts.items():
             category = lic_concept_to_category[concept_key]
             actual_leaves = category_leaves.get(category, [])
-            
+
             if actual_leaves:
                 items = []
                 total_pago = sum(l.total for l in concept_lines.get(concept_key, []))
