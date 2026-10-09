@@ -659,3 +659,162 @@ class TestAusenciasNomina(TransactionCase):
         xml_dict = payslip._collect_payslip_data()
         self.assertNotIn('Incapacidades', xml_dict['devengados'])
         self.assertNotIn('Licencias', xml_dict['devengados'])
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-016 (2026-10-08, revisión .80, QA en staging -- NE0000000099): Vacaciones/
+    # LicenciaR/LicenciaNR ahora leen Cantidad/FechaInicio/FechaFin/Pago desde
+    # _ne_ausencia_habil() (días HÁBILES vía worked_days/hr.work.entry) -- antes venían de
+    # _get_overlapping_leaves_data() (días calendario puros), que no excluía un lunes no
+    # laborable ni un festivo del calendario del contrato: una ausencia 5-11/ene/2027 bajo
+    # calendario Martes-Domingo (el 11 es lunes, no laborable) mostraba Cantidad="7" junto
+    # a un Pago de solo 6 días -- el mismo nodo contradiciéndose a sí mismo.
+    # ──────────────────────────────────────────────────────────────────
+
+    def test_xml_vacaciones_cruza_lunes_no_laborable(self):
+        """Caso real de QA (NE0000000099): vacaciones 5-11/ene/2027 bajo calendario Martes
+        a Domingo -- el 11 de enero es LUNES, no laborable en ese calendario. Cantidad debe
+        ser 6 (coincidiendo con Pago), no 7, y FechaFin debe ser el último día realmente
+        hábil (10), no la fecha de la solicitud (11)."""
+        wage = 1800000.0
+        calendar = self._make_calendar_martes_a_domingo()
+        employee, contract = self._make_contract('XmlVacLunes', wage=wage, calendar=calendar)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2027, 1, 5), date(2027, 1, 11))
+        payslip = self._make_payslip(employee, contract, date(2027, 1, 1), date(2027, 1, 31))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_VAC')
+        xml_dict = payslip._collect_payslip_data()
+        vacaciones = xml_dict['devengados'].get('Vacaciones', {}).get('VacacionesComunes', [])
+        self.assertEqual(len(vacaciones), 1)
+        self.assertEqual(vacaciones[0]['Cantidad'], '6')
+        self.assertEqual(vacaciones[0]['FechaInicio'], '2027-01-05')
+        self.assertEqual(vacaciones[0]['FechaFin'], '2027-01-10')
+        self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_remunerada_cruza_lunes_no_laborable(self):
+        wage = 1800000.0
+        calendar = self._make_calendar_martes_a_domingo()
+        employee, contract = self._make_contract('XmlLicRemLunes', wage=wage, calendar=calendar)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_rem, date(2027, 1, 5), date(2027, 1, 11))
+        payslip = self._make_payslip(employee, contract, date(2027, 1, 1), date(2027, 1, 31))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_LIC_REM')
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaR', [])
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['Cantidad'], '6')
+        self.assertEqual(licencias[0]['FechaInicio'], '2027-01-05')
+        self.assertEqual(licencias[0]['FechaFin'], '2027-01-10')
+        self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_no_remunerada_cruza_lunes_no_laborable(self):
+        """CO_LIC_NR no lleva 'Pago' en el XML (ver test_xml_licencia_no_remunerada_fecha_
+        y_cantidad) -- aquí solo se verifica Cantidad/fechas."""
+        wage = 1800000.0
+        calendar = self._make_calendar_martes_a_domingo()
+        employee, contract = self._make_contract('XmlLicNRLunes', wage=wage, calendar=calendar)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_nr, date(2027, 1, 5), date(2027, 1, 11))
+        payslip = self._make_payslip(employee, contract, date(2027, 1, 1), date(2027, 1, 31))
+        payslip.compute_sheet()
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaNR', [])
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['Cantidad'], '6')
+        self.assertEqual(licencias[0]['FechaInicio'], '2027-01-05')
+        self.assertEqual(licencias[0]['FechaFin'], '2027-01-10')
+        self.assertNotIn('Pago', licencias[0])
+
+    def _festivo_8_dic(self):
+        return self.env['resource.calendar.leaves'].create({
+            'name': 'Inmaculada Concepción (prueba)',
+            'company_id': self.company.id,
+            'calendar_id': False,
+            'resource_id': False,
+            'date_from': datetime(2026, 12, 8, 0, 0, 0),
+            'date_to': datetime(2026, 12, 8, 23, 59, 59),
+        })
+
+    def test_xml_vacaciones_cruza_festivo_cantidad_coincide_con_pago(self):
+        """Un festivo (8 dic, Inmaculada Concepción) dentro del rango de vacaciones no debe
+        hacer que Cantidad (XML) y Pago (la misma regla) queden desacoplados. No se asume
+        aquí un número fijo de días -- ver filosofía del archivo (duda normativa de cuántos
+        días hábiles cuenta cada calendario, la resuelve David, no se inventa regla
+        propia) -- se verifica que Cantidad coincida con lo que _ne_ausencia_habil() (la
+        MISMA fuente que paga) realmente contó."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlVacFestivo', wage=wage)
+        self._festivo_8_dic()
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 12, 1), date(2026, 12, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias_totales, _detalle = payslip._ne_ausencia_habil('CO_VAC')
+        novedad = self._novedad(payslip, 'CO_VAC')
+        xml_dict = payslip._collect_payslip_data()
+        vacaciones = xml_dict['devengados'].get('Vacaciones', {}).get('VacacionesComunes', [])
+        self.assertGreater(dias_totales, 0)
+        self.assertEqual(len(vacaciones), 1)
+        self.assertEqual(vacaciones[0]['Cantidad'], str(int(dias_totales)))
+        self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_remunerada_cruza_festivo_cantidad_coincide_con_pago(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlLicRemFestivo', wage=wage)
+        self._festivo_8_dic()
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_rem, date(2026, 12, 1), date(2026, 12, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias_totales, _detalle = payslip._ne_ausencia_habil('CO_LIC_REM')
+        novedad = self._novedad(payslip, 'CO_LIC_REM')
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaR', [])
+        self.assertGreater(dias_totales, 0)
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['Cantidad'], str(int(dias_totales)))
+        self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_no_remunerada_cruza_festivo_cantidad_correcta(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlLicNRFestivo', wage=wage)
+        self._festivo_8_dic()
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_nr, date(2026, 12, 1), date(2026, 12, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+        dias_totales, _detalle = payslip._ne_ausencia_habil('CO_LIC_NR')
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaNR', [])
+        self.assertGreater(dias_totales, 0)
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['Cantidad'], str(int(dias_totales)))
+
+    def test_xml_vacaciones_cruza_periodo_dos_nominas(self):
+        """Vacaciones del 25 de agosto al 5 de septiembre de 2026 -- cada nómina (agosto y
+        septiembre) debe mostrar en el XML SOLO los días hábiles de su propio tramo
+        (_ne_ausencia_habil() filtra por el date_from/date_to de CADA nómina), coincidiendo
+        con lo que la regla realmente pagó en cada una -- ningún tramo se cuenta dos veces
+        ni se pierde en el corte de período."""
+        wage = 1800000.0
+        employee, contract = self._make_contract(
+            'XmlVacCruzaPeriodo', wage=wage, date_start=date(2024, 1, 1))
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 8, 25), date(2026, 9, 5),
+            work_entries_from=date(2026, 8, 1), work_entries_to=date(2026, 9, 30),
+        )
+        payslip_ago = self._make_payslip(employee, contract, date(2026, 8, 1), date(2026, 8, 31))
+        payslip_ago.compute_sheet()
+        payslip_sep = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip_sep.compute_sheet()
+
+        for payslip in (payslip_ago, payslip_sep):
+            dias_totales, _detalle = payslip._ne_ausencia_habil('CO_VAC')
+            novedad = self._novedad(payslip, 'CO_VAC')
+            xml_dict = payslip._collect_payslip_data()
+            vacaciones = xml_dict['devengados'].get('Vacaciones', {}).get('VacacionesComunes', [])
+            self.assertGreater(dias_totales, 0)
+            self.assertEqual(len(vacaciones), 1)
+            self.assertEqual(vacaciones[0]['Cantidad'], str(int(dias_totales)))
+            self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)

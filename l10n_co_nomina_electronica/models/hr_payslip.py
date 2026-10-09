@@ -1768,6 +1768,69 @@ class HrPayslip(models.Model):
                 dias_totales += dias
         return dias_totales, detalle
 
+    def _ne_ausencia_habil(self, work_entry_code):
+        """Única fuente de días HÁBILES (vía worked_days/hr.work.entry) para Vacaciones/
+        LicenciaR/LicenciaNR (H-016, 2026-10-08, QA en staging -- NE0000000099).
+
+        H-016, causa confirmada por QA: _get_overlapping_leaves_data() (el mecanismo que
+        formateaba estos 3 conceptos en el XML antes de esta revisión) cuenta días
+        CALENDARIO puros entre las fechas de la hr.leave, mientras que CO_VAC/CO_LIC_REM/
+        CO_LIC_NR pagan y descuentan el básico en días HÁBILES del calendario del contrato
+        (worked_days_line_ids, vía _ne_dias_novedad()). Un lunes no laborable o un festivo
+        dentro del rango de la ausencia hacía que "Cantidad" (calendario) y "Pago" (hábil)
+        del mismo nodo XML no cuadraran -- ej. vacaciones 5-11/ene con un lunes no laboral:
+        Cantidad="7" (calendario) junto a Pago de solo 6 días (hábil).
+
+        Por cada hr.leave validada de este código, agrupa sus hr.work.entry generados
+        (ligados vía leave_id, mecanismo nativo de hr_work_entry_holidays -- confirmado
+        contra hr_work_entry_contract._get_contract_work_entries_values(): solo se genera
+        un work entry por cada intervalo de asistencia real del calendario que cae dentro
+        de la ausencia, nunca uno para un día sin asistencia) y cuenta los días calendario
+        DISTINTOS que esos work entries realmente cubren dentro del período de esta
+        nómina -- el mismo criterio "hay o no hay work entry ese día" que ya determina el
+        pago, nunca un conteo de fechas sin pasar por el calendario del contrato.
+
+        Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
+        mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
+        _dev_prestaciones() los traten igual.
+        """
+        self.ensure_one()
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'validate'),
+            ('holiday_status_id.work_entry_type_id.code', '=', work_entry_code),
+            ('request_date_from', '<=', self.date_to),
+            ('request_date_to', '>=', self.date_from),
+        ])
+        if not leaves:
+            return 0, []
+
+        periodo_ini_dt = datetime.combine(self.date_from, datetime.min.time())
+        periodo_fin_dt = datetime.combine(self.date_to + timedelta(days=1), datetime.min.time())
+        work_entries = self.env['hr.work.entry'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('leave_id', 'in', leaves.ids),
+            ('date_start', '<', periodo_fin_dt),
+            ('date_stop', '>', periodo_ini_dt),
+        ])
+
+        entries_by_leave = defaultdict(list)
+        for entry in work_entries:
+            entries_by_leave[entry.leave_id.id].append(entry)
+
+        detalle = []
+        dias_totales = 0
+        for leave in leaves:
+            entries = entries_by_leave.get(leave.id)
+            if not entries:
+                continue
+            dates = sorted({entry.date_start.date() for entry in entries})
+            dias = len(dates)
+            if dias > 0:
+                detalle.append((leave, dias, dates[0], dates[-1]))
+                dias_totales += dias
+        return dias_totales, detalle
+
     def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
         """(días desde Ausencias, días desde el input manual) para un concepto de novedad en
         días HÁBILES (CO_VAC/CO_LIC_REM/CO_LIC_NR -- H-013).
@@ -1965,23 +2028,21 @@ class HrPayslip(models.Model):
         if vac_comunes or vac_compensadas:
             vacaciones = {}
             if vac_comunes:
-                category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
-                actual_vac_leaves = category_leaves.get('vacaciones', [])
-                if actual_vac_leaves:
+                # H-016 (revisión .80, decisión de David): fuente única con la regla/el
+                # básico -- días HÁBILES vía worked_days/hr.work.entry
+                # (_ne_ausencia_habil()), no días calendario puros
+                # (_get_overlapping_leaves_data(), causa real del defecto reportado por QA
+                # en NE0000000099).
+                dias_totales, detalle = self._ne_ausencia_habil('CO_VAC')
+                if detalle:
                     items = []
                     total_pago = sum(l.total for l in vac_comunes)
-                    total_days = category_total_days['vacaciones']
-                    for leave in actual_vac_leaves:
-                        days = category_leave_days['vacaciones'][leave.id]
-                        pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                        leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                        leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                        period_start = max(leave_start, self.date_from)
-                        period_end = min(leave_end, self.date_to)
+                    for _leave, dias, ini, fin in detalle:
+                        pago = total_pago * (dias / dias_totales) if dias_totales > 0 else 0.0
                         items.append({
-                            'FechaInicio': str(period_start),
-                            'FechaFin': str(period_end),
-                            'Cantidad': str(int(days)),
+                            'FechaInicio': str(ini),
+                            'FechaFin': str(fin),
+                            'Cantidad': str(int(dias)),
                             'Pago': '%.2f' % pago,
                         })
                     vacaciones['VacacionesComunes'] = items
@@ -2036,8 +2097,15 @@ class HrPayslip(models.Model):
         H-014 (2026-10-08): Incapacidades (CO_INC_COMUN/CO_INC_LABORAL) y LicenciaMP
         (CO_LIC_MAT/CO_LIC_PAT) se formatean desde _ne_ausencia_calendario() -- la MISMA
         fuente que ya paga la regla y descuenta el básico (días calendario corridos), para
-        no tener 3 cálculos distintos de lo mismo. LicenciaR/LicenciaNR siguen igual que
-        antes (días hábiles vía worked_days, _get_overlapping_leaves_data()).
+        no tener 3 cálculos distintos de lo mismo.
+
+        H-016 (revisión .80): LicenciaR/LicenciaNR ahora se formatean desde
+        _ne_ausencia_habil() (días HÁBILES vía worked_days/hr.work.entry) -- ya no desde
+        _get_overlapping_leaves_data() (días calendario puros, causa del defecto de QA en
+        NE0000000099: Cantidad/Pago del mismo nodo no cuadraban cuando la ausencia cruzaba
+        un lunes no laborable o un festivo). _get_overlapping_leaves_data() queda SIN
+        ningún llamador en todo el módulo tras este cambio -- no se eliminó, reportado a
+        Tech Lead para que decida su retiro.
 
         Revisión .79 (2026-10-08, decisión de David): si hay un pago/registro de
         Incapacidad, LicenciaMP o LicenciaR SIN ninguna hr.leave validada que lo respalde
@@ -2051,8 +2119,6 @@ class HrPayslip(models.Model):
         detalle de cuántos días hubo, si nadie registra la ausencia (límite conocido, sin
         resolver). Vacaciones (CO_VAC) recibe el mismo tratamiento en _dev_prestaciones().
         """
-        category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
-
         # Incapacidades (común + laboral, cada una con su Tipo -- ya no por substring del
         # código, por cuál de las 2 llamadas la produjo)
         if 'Incapacidad' in concept_lines:
@@ -2130,38 +2196,29 @@ class HrPayslip(models.Model):
                     employee=self.employee_id.name,
                 ))
 
-        # LicenciaR / LicenciaNR: días hábiles, sin cambio (H-013, worked_days vía
-        # _get_overlapping_leaves_data()).
+        # LicenciaR / LicenciaNR: días HÁBILES, misma fuente que la regla y el descuento
+        # del básico (H-016, revisión .80: _ne_ausencia_habil(), ya no
+        # _get_overlapping_leaves_data() -- causa del defecto de QA en NE0000000099, ver
+        # docstring de _ne_ausencia_habil()).
         licencia_concepts = {
-            'LicenciaR': 'LicenciaR',
-            'LicenciaNR': 'LicenciaNR',
+            'LicenciaR': 'CO_LIC_REM',
+            'LicenciaNR': 'CO_LIC_NR',
         }
-        lic_concept_to_category = {
-            'LicenciaR': 'licencia_rem',
-            'LicenciaNR': 'licencia_nr',
-        }
-        for concept_key, xml_key in licencia_concepts.items():
-            category = lic_concept_to_category[concept_key]
-            actual_leaves = category_leaves.get(category, [])
+        for xml_key, work_entry_code in licencia_concepts.items():
+            concept_key = xml_key
+            dias_totales, detalle = self._ne_ausencia_habil(work_entry_code)
 
-            if actual_leaves:
+            if detalle:
                 items = []
                 total_pago = sum(l.total for l in concept_lines.get(concept_key, []))
-                total_days = category_total_days[category]
-                
-                for leave in actual_leaves:
-                    days = category_leave_days[category][leave.id]
-                    pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                    
-                    leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                    leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                    period_start = max(leave_start, self.date_from)
-                    period_end = min(leave_end, self.date_to)
-                    
+
+                for _leave, dias, ini, fin in detalle:
+                    pago = total_pago * (dias / dias_totales) if dias_totales > 0 else 0.0
+
                     lic_data = {
-                        'FechaInicio': str(period_start),
-                        'FechaFin': str(period_end),
-                        'Cantidad': str(int(days)),
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
                     }
                     if concept_key != 'LicenciaNR':
                         lic_data['Pago'] = '%.2f' % pago
