@@ -1905,12 +1905,18 @@ class HrPayslip(models.Model):
             code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
             if hasattr(self, '_LEAVE_CODE_MAP'):
                 return self._LEAVE_CODE_MAP.get(code)
+            # Copia defensiva de HrPayslipLeaveIntegration._LEAVE_CODE_MAP (hr_leave_ne.py)
+            # -- nunca se ejercita en producción porque ese mixin siempre está presente en
+            # este modelo heredado, pero debe quedar sincronizada para no divergir (H-014,
+            # revisión .78: se agregaron los 7 códigos CO_ al mapa real, ver ese archivo).
             local_map = {
                 'INCAPACIDAD': 'incapacidad', 'SICK': 'incapacidad', 'INC_COMUN': 'incapacidad', 'INC_LABORAL': 'incapacidad',
+                'CO_INC_COMUN': 'incapacidad', 'CO_INC_LABORAL': 'incapacidad',
                 'MATERNIDAD': 'licencia_mat', 'MATERNITY': 'licencia_mat', 'PATERNIDAD': 'licencia_mat', 'PATERNITY': 'licencia_mat', 'LIC_MAT': 'licencia_mat', 'LIC_PAT': 'licencia_mat',
-                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones',
-                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem',
-                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr',
+                'CO_LIC_MAT': 'licencia_mat', 'CO_LIC_PAT': 'licencia_mat',
+                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones', 'CO_VAC': 'vacaciones',
+                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem', 'CO_LIC_REM': 'licencia_rem',
+                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr', 'CO_LIC_NR': 'licencia_nr',
             }
             return local_map.get(code)
 

@@ -43,27 +43,15 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'date_start': date(2026, 6, 1),
             'state': 'open',
         })
-        # Crear tipos de ausencias
-        self.work_entry_type_sick = self.env['hr.work.entry.type'].create({
-            'name': 'Incapacidad Común',
-            'code': 'INC_COMUN',
-            'is_leave': True,
-        })
-        self.leave_type_sick = self.env['hr.leave.type'].create({
-            'name': 'Incapacidad Común',
-            'work_entry_type_id': self.work_entry_type_sick.id,
-            'requires_allocation': 'no',
-        })
-        self.work_entry_type_vac = self.env['hr.work.entry.type'].create({
-            'name': 'Vacaciones',
-            'code': 'VACACIONES',
-            'is_leave': True,
-        })
-        self.leave_type_vac = self.env['hr.leave.type'].create({
-            'name': 'Vacaciones',
-            'work_entry_type_id': self.work_entry_type_vac.id,
-            'requires_allocation': 'no',
-        })
+        # H-014 (revisión .78, Tech Lead): usar los tipos de ausencia REALES de H-013
+        # (data/l10n_co_ausencias_data.xml) en vez de tipos inventados con códigos propios
+        # (INC_COMUN, VACACIONES) -- ese código inventado nunca pasa por el camino real del
+        # usuario desde H-013/H-014 (ni para el pago, que exige CO_INC_COMUN exacto, ni
+        # para el resumen de action_detect_leaves()/_LEAVE_CODE_MAP).
+        self.leave_type_sick = self.env.ref(
+            'l10n_co_nomina_electronica.hr_leave_type_co_inc_comun')
+        self.leave_type_vac = self.env.ref(
+            'l10n_co_nomina_electronica.hr_leave_type_co_vac')
         self.rule_category = self.env['hr.salary.rule.category'].search([('code', '=', 'ALW')], limit=1)
         if not self.rule_category:
             self.rule_category = self.env['hr.salary.rule.category'].create({
@@ -118,8 +106,15 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         # Verificar contadores automáticos
         self.assertEqual(payslip.l10n_co_ne_dias_incapacidad, 4)
         self.assertEqual(payslip.l10n_co_ne_dias_vacaciones, 11)
-        self.assertIn('Incapacidad: 4 días (Incapacidad Común)', payslip.l10n_co_ne_leave_summary)
-        self.assertIn('Vacaciones: 11 días (Vacaciones)', payslip.l10n_co_ne_leave_summary)
+        # H-014 (.78): el nombre entre paréntesis es leave.holiday_status_id.name del tipo
+        # REAL de H-013 (data/l10n_co_ausencias_data.xml) -- "Incapacidad Enfermedad
+        # General"/"Vacaciones Disfrutadas", no el nombre inventado que tenía este test
+        # antes de usar los tipos reales.
+        self.assertIn(
+            'Incapacidad: 4 días (Incapacidad Enfermedad General)',
+            payslip.l10n_co_ne_leave_summary)
+        self.assertIn(
+            'Vacaciones: 11 días (Vacaciones Disfrutadas)', payslip.l10n_co_ne_leave_summary)
 
         # Probar la preparación del XML: llamar a _collect_payslip_data()
         # Mockear las lineas de la nomina requeridas para simular los pagos de las reglas

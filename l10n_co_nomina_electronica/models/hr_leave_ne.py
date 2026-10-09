@@ -58,6 +58,15 @@ class HrPayslipLeaveIntegration(models.Model):
         'SICK': 'incapacidad',
         'INC_COMUN': 'incapacidad',
         'INC_LABORAL': 'incapacidad',
+        # H-014 (revisión .78, Tech Lead): códigos reales de hr.work.entry.type que H-013
+        # (2026-10-08, data/l10n_co_ausencias_data.xml) shippeo para el camino real del
+        # usuario -- este mapa se habia quedado sincronizado solo con los codigos legacy de
+        # arriba, nunca con estos 7. Afectaba el resumen de action_detect_leaves() y, via
+        # _get_overlapping_leaves_data(), las secciones XML de Vacaciones/LicenciaR/
+        # LicenciaNR (Incapacidad/LicenciaMP ya no pasan por aqui desde H-014, ver
+        # _ne_ausencia_calendario() en hr_payslip.py).
+        'CO_INC_COMUN': 'incapacidad',
+        'CO_INC_LABORAL': 'incapacidad',
         # Licencia maternidad / paternidad
         'MATERNIDAD': 'licencia_mat',
         'MATERNITY': 'licencia_mat',
@@ -65,19 +74,24 @@ class HrPayslipLeaveIntegration(models.Model):
         'PATERNITY': 'licencia_mat',
         'LIC_MAT': 'licencia_mat',
         'LIC_PAT': 'licencia_mat',
+        'CO_LIC_MAT': 'licencia_mat',
+        'CO_LIC_PAT': 'licencia_mat',
         # Vacaciones
         'VACACIONES': 'vacaciones',
         'VACATION': 'vacaciones',
         'VAC': 'vacaciones',
+        'CO_VAC': 'vacaciones',
         # Licencia remunerada
         'LICENCIA_REM': 'licencia_rem',
         'LIC_REM': 'licencia_rem',
         'PERMISO': 'licencia_rem',
+        'CO_LIC_REM': 'licencia_rem',
         # Licencia no remunerada
         'LICENCIA_NR': 'licencia_nr',
         'LIC_NR': 'licencia_nr',
         'UNPAID': 'licencia_nr',
         'SIN_SUELDO': 'licencia_nr',
+        'CO_LIC_NR': 'licencia_nr',
     }
 
     # Etiquetas legibles para el resumen
@@ -158,19 +172,24 @@ class HrPayslipLeaveIntegration(models.Model):
         | Código tipo ausencia      | Novedad NE              |
         +===========================+=========================+
         | INCAPACIDAD, SICK,        | Incapacidad             |
-        | INC_COMUN, INC_LABORAL    |                         |
+        | INC_COMUN, INC_LABORAL,   |                         |
+        | CO_INC_COMUN,             |                         |
+        | CO_INC_LABORAL            |                         |
         +---------------------------+-------------------------+
         | MATERNIDAD, MATERNITY,    | Licencia Mat/Pat        |
         | PATERNIDAD, PATERNITY,    |                         |
-        | LIC_MAT, LIC_PAT         |                         |
+        | LIC_MAT, LIC_PAT,         |                         |
+        | CO_LIC_MAT, CO_LIC_PAT    |                         |
         +---------------------------+-------------------------+
-        | VACACIONES, VACATION, VAC | Vacaciones              |
+        | VACACIONES, VACATION,     | Vacaciones              |
+        | VAC, CO_VAC               |                         |
         +---------------------------+-------------------------+
         | LICENCIA_REM, LIC_REM,    | Licencia remunerada     |
-        | PERMISO                   |                         |
+        | PERMISO, CO_LIC_REM       |                         |
         +---------------------------+-------------------------+
-        | LICENCIA_NR, LIC_NR,     | Licencia no remunerada  |
-        | UNPAID, SIN_SUELDO       |                         |
+        | LICENCIA_NR, LIC_NR,      | Licencia no remunerada  |
+        | UNPAID, SIN_SUELDO,       |                         |
+        | CO_LIC_NR                 |                         |
         +---------------------------+-------------------------+
         | Otros                     | Se registran en resumen |
         |                           | pero no suman días      |

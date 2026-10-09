@@ -485,3 +485,95 @@ class TestAusenciasNomina(TransactionCase):
             basico = self._sueldo_basico(payslip)
             novedad = self._novedad(payslip, 'CO_INC_LABORAL')
             self.assertEqual(round(basico + novedad, 2), round(wage, 2))
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-014 (2026-10-08, revisión .78, Tech Lead): nadie probaba el nodo XML de estas 5
+    # novedades (_collect_payslip_data()/_dev_novedades()/_dev_prestaciones()) con los
+    # tipos REALES de H-013 -- las pruebas de arriba solo verifican las reglas salariales
+    # (básico + novedad = sueldo). _LEAVE_CODE_MAP se sincronizó en esta revisión con los
+    # 7 códigos CO_ (hr_leave_ne.py); antes de eso, Vacaciones/LicenciaR/LicenciaNR habrían
+    # caído en el mismo fallback silencioso de fechas de período completo que expuso Tech
+    # Lead para Incapacidad/LicenciaMP.
+    # ──────────────────────────────────────────────────────────────────
+
+    def test_xml_vacaciones_fecha_y_pago(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlVac', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 16), date(2026, 9, 30))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_VAC')
+        xml_dict = payslip._collect_payslip_data()
+        vacaciones = xml_dict['devengados'].get('Vacaciones', {}).get('VacacionesComunes', [])
+        self.assertEqual(len(vacaciones), 1)
+        self.assertEqual(vacaciones[0]['FechaInicio'], '2026-09-16')
+        self.assertEqual(vacaciones[0]['FechaFin'], '2026-09-30')
+        self.assertEqual(vacaciones[0]['Cantidad'], '15')
+        self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_remunerada_fecha_y_pago(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlLicRem', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_rem, date(2026, 9, 1), date(2026, 9, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_LIC_REM')
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaR', [])
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['FechaInicio'], '2026-09-01')
+        self.assertEqual(licencias[0]['FechaFin'], '2026-09-10')
+        self.assertEqual(licencias[0]['Cantidad'], '10')
+        self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_no_remunerada_fecha_y_cantidad(self):
+        """CO_LIC_NR nunca paga (0 pesos por diseño, ver amount_python_compute en data/
+        hr_payroll_structure_data.xml) -- el nodo XML de LicenciaNR no lleva el campo
+        'Pago' en absoluto (ver _dev_novedades()), no es que valga '0.00'."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlLicNR', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_nr, date(2026, 9, 1), date(2026, 9, 5))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaNR', [])
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['FechaInicio'], '2026-09-01')
+        self.assertEqual(licencias[0]['FechaFin'], '2026-09-05')
+        self.assertEqual(licencias[0]['Cantidad'], '5')
+        self.assertNotIn('Pago', licencias[0])
+
+    def test_xml_incapacidad_fecha_y_pago(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlInc', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_inc_comun, date(2026, 9, 1), date(2026, 9, 2))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_INC_COMUN')
+        xml_dict = payslip._collect_payslip_data()
+        incapacidades = xml_dict['devengados'].get('Incapacidades', [])
+        self.assertEqual(len(incapacidades), 1)
+        self.assertEqual(incapacidades[0]['FechaInicio'], '2026-09-01')
+        self.assertEqual(incapacidades[0]['FechaFin'], '2026-09-02')
+        self.assertEqual(incapacidades[0]['Cantidad'], '2')
+        self.assertEqual(incapacidades[0]['Pago'], '%.2f' % novedad)
+
+    def test_xml_licencia_maternidad_fecha_y_pago(self):
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlLicMat', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_mat, date(2026, 9, 1), date(2026, 9, 10))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        novedad = self._novedad(payslip, 'CO_LIC_MAT')
+        xml_dict = payslip._collect_payslip_data()
+        licencias = xml_dict['devengados'].get('Licencias', {}).get('LicenciaMP', [])
+        self.assertEqual(len(licencias), 1)
+        self.assertEqual(licencias[0]['FechaInicio'], '2026-09-01')
+        self.assertEqual(licencias[0]['FechaFin'], '2026-09-10')
+        self.assertEqual(licencias[0]['Cantidad'], '10')
+        self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
