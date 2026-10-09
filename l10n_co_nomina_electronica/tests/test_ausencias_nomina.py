@@ -577,3 +577,85 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(licencias[0]['FechaFin'], '2026-09-10')
         self.assertEqual(licencias[0]['Cantidad'], '10')
         self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-014 (2026-10-08, revisión .79, decisión de David): el input manual de respaldo sin
+    # ninguna ausencia registrada no tiene fechas reales que reportar a la DIAN -- antes
+    # _dev_novedades() inventaba las fechas del período completo en silencio; ahora se
+    # detiene con UserError. Confirmado contra el XSD V1.0.6 de nómina individual:
+    # Incapacidades/Licencias/LicenciaMP/LicenciaR/LicenciaNR son todos minOccurs=0 (sin
+    # ausencia, el nodo simplemente no se emite).
+    # ──────────────────────────────────────────────────────────────────
+
+    def _solo_input_manual(self, payslip, input_xmlid, code, amount):
+        """Carga el input manual de respaldo de un concepto SIN registrar ninguna
+        ausencia -- el único camino que hoy puede dejar un pago sin fechas reales."""
+        input_type = self.env.ref('l10n_co_nomina_electronica.%s' % input_xmlid)
+        self.env['hr.payslip.input'].create({
+            'payslip_id': payslip.id,
+            'input_type_id': input_type.id,
+            'code': code,
+            'amount': amount,
+        })
+
+    def test_xml_vacaciones_sin_ausencia_levanta_usererror(self):
+        employee, contract = self._make_contract('XmlVacSinAusencia', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self._solo_input_manual(payslip, 'input_co_vac', 'CO_VAC', 15)
+        payslip.compute_sheet()
+        with self.assertRaises(UserError):
+            payslip._collect_payslip_data()
+
+    def test_xml_incapacidad_sin_ausencia_levanta_usererror(self):
+        """El UserError vive en _dev_novedades() (parte de _collect_payslip_data(), llamada
+        al generar el XML) -- compute_sheet() por sí solo nunca lo dispara, solo calcula
+        las líneas de la nómina."""
+        employee, contract = self._make_contract('XmlIncSinAusencia', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self._solo_input_manual(payslip, 'input_co_inc_comun', 'CO_INC_COMUN', 2)
+        payslip.compute_sheet()
+        with self.assertRaises(UserError):
+            payslip._collect_payslip_data()
+
+    def test_xml_licencia_maternidad_sin_ausencia_levanta_usererror(self):
+        employee, contract = self._make_contract('XmlLicMatSinAusencia', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self._solo_input_manual(payslip, 'input_co_lic_mat', 'CO_LIC_MAT', 10)
+        payslip.compute_sheet()
+        with self.assertRaises(UserError):
+            payslip._collect_payslip_data()
+
+    def test_xml_licencia_remunerada_sin_ausencia_levanta_usererror(self):
+        employee, contract = self._make_contract('XmlLicRemSinAusencia', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self._solo_input_manual(payslip, 'input_co_lic_rem', 'CO_LIC_REM', 5)
+        payslip.compute_sheet()
+        with self.assertRaises(UserError):
+            payslip._collect_payslip_data()
+
+    def test_xml_licencia_no_remunerada_solo_input_no_emite_nodo_ni_error(self):
+        """CO_LIC_NR es distinto a los otros 3: su amount_python_compute es SIEMPRE 0 (no
+        genera pago, por diseño). _group_lines_by_concept() omite del concept_lines
+        cualquier línea con total=0 -- así que, sin ausencia, la línea del input manual
+        NUNCA llega al fallback (ni al UserError nuevo de los otros 3): el nodo
+        'LicenciaNR' simplemente no se emite, igual que si no hubiera novedad. No hay
+        fecha inventada ni dinero mal reportado a la DIAN, solo se pierde el detalle de
+        cuántos días si nadie registra la ausencia -- reportado a Tech Lead, no se toca
+        en esta revisión."""
+        employee, contract = self._make_contract('XmlLicNRSinAusencia', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        self._solo_input_manual(payslip, 'input_co_lic_nr', 'CO_LIC_NR', 3)
+        payslip.compute_sheet()
+        xml_dict = payslip._collect_payslip_data()
+        self.assertNotIn('Licencias', xml_dict['devengados'])
+
+    def test_xml_sin_novedades_no_trae_incapacidades_ni_licencias(self):
+        """Una nómina estándar sin ninguna novedad de ausencia (ni input manual, ni
+        hr.leave) nunca debe levantar el UserError -- los nodos simplemente no se emiten
+        (minOccurs=0), que es distinto de "hay un pago sin fechas"."""
+        employee, contract = self._make_contract('XmlSinNovedades', wage=1800000.0)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        xml_dict = payslip._collect_payslip_data()
+        self.assertNotIn('Incapacidades', xml_dict['devengados'])
+        self.assertNotIn('Licencias', xml_dict['devengados'])

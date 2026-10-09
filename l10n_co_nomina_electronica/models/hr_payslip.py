@@ -1947,7 +1947,18 @@ class HrPayslip(models.Model):
         return category_leaves, category_leave_days, category_total_days
 
     def _dev_prestaciones(self, concept_lines, devengados):
-        """Devengados: vacaciones, primas, cesantías e intereses."""
+        """Devengados: vacaciones, primas, cesantías e intereses.
+
+        Revisión .79 (2026-10-08, decisión de David): un pago de VacacionesComunes
+        (CO_VAC) sin ninguna hr.leave validada que lo respalde (típicamente el input
+        manual de respaldo usado solo, sin registrar la ausencia) se detiene con
+        UserError en vez de emitir las fechas del período completo en silencio -- mismo
+        criterio que Incapacidades/LicenciaMP/LicenciaR. VacacionesCompensadas (CO_VAC_COMP)
+        no lleva FechaInicio/FechaFin en el XML (ver más abajo, Pago/Cantidad solamente) --
+        no hay fecha que inventar, y por su naturaleza (pago en dinero de días NO
+        disfrutados) tampoco hay una ausencia que la respalde, así que no entra en este
+        mismo tratamiento.
+        """
         # Vacaciones
         vac_comunes = concept_lines.get('VacacionesComunes', [])
         vac_compensadas = concept_lines.get('VacacionesCompensadas', [])
@@ -1975,12 +1986,21 @@ class HrPayslip(models.Model):
                         })
                     vacaciones['VacacionesComunes'] = items
                 else:
-                    vacaciones['VacacionesComunes'] = [{
-                        'FechaInicio': str(self.date_from),
-                        'FechaFin': str(self.date_to),
-                        'Cantidad': str(int(sum(l.quantity for l in vac_comunes))),
-                        'Pago': '%.2f' % sum(l.total for l in vac_comunes),
-                    }]
+                    # H-014 (revisión .79, decisión de David): mismo criterio que
+                    # Incapacidad/LicenciaMP/LicenciaR -- sin ausencia validada no hay
+                    # fechas reales que reportar, y aquí SÍ hay dinero real de por medio
+                    # (CO_VAC). Antes se emitían las fechas del período completo en
+                    # silencio.
+                    raise UserError(_(
+                        'Hay un pago de Vacaciones (%(pago)s) en la nómina de '
+                        '%(employee)s sin ninguna ausencia (CO_VAC) validada en '
+                        'Ausencias que lo respalde con fechas reales -- la DIAN exige '
+                        'las fechas reales de las vacaciones, no las del período '
+                        'completo. Registre la ausencia en Ausencias antes de generar '
+                        'el XML.',
+                        pago='%.2f' % sum(l.total for l in vac_comunes),
+                        employee=self.employee_id.name,
+                    ))
             if vac_compensadas:
                 vacaciones['VacacionesCompensadas'] = [{
                     'Cantidad': str(int(sum(l.quantity for l in vac_compensadas))),
@@ -2017,7 +2037,19 @@ class HrPayslip(models.Model):
         (CO_LIC_MAT/CO_LIC_PAT) se formatean desde _ne_ausencia_calendario() -- la MISMA
         fuente que ya paga la regla y descuenta el básico (días calendario corridos), para
         no tener 3 cálculos distintos de lo mismo. LicenciaR/LicenciaNR siguen igual que
-        antes (días hábiles vía worked_days, _get_overlapping_leaves_data()) -- sin cambio.
+        antes (días hábiles vía worked_days, _get_overlapping_leaves_data()).
+
+        Revisión .79 (2026-10-08, decisión de David): si hay un pago/registro de
+        Incapacidad, LicenciaMP o LicenciaR SIN ninguna hr.leave validada que lo respalde
+        (típicamente el input manual de respaldo usado solo, sin registrar la ausencia),
+        se detiene con UserError en vez de emitir las fechas del período completo en
+        silencio -- la DIAN exige las fechas reales de la ausencia (los nodos del XSD
+        V1.0.6 son minOccurs=0: sin ausencia simplemente no se emite el nodo, nunca un
+        dato inventado). LicenciaNR NUNCA llega a este camino: su amount_python_compute
+        es siempre 0 (no genera pago, por diseño) y _group_lines_by_concept() omite del
+        concept_lines cualquier línea con total=0 -- lo único que se pierde ahí es el
+        detalle de cuántos días hubo, si nadie registra la ausencia (límite conocido, sin
+        resolver). Vacaciones (CO_VAC) recibe el mismo tratamiento en _dev_prestaciones().
         """
         category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
 
@@ -2045,16 +2077,21 @@ class HrPayslip(models.Model):
                     })
                 devengados['Incapacidades'] = items
             else:
-                items = []
-                for line in concept_lines['Incapacidad']:
-                    items.append({
-                        'FechaInicio': str(self.date_from),
-                        'FechaFin': str(self.date_to),
-                        'Cantidad': str(int(line.quantity)) if line.quantity else '0',
-                        'Tipo': '1',  # 1=Común, se puede extender
-                        'Pago': '%.2f' % line.total,
-                    })
-                devengados['Incapacidades'] = items
+                # H-014 (revisión .79, decisión de David): la DIAN exige las fechas reales
+                # de la incapacidad -- un pago sin ninguna hr.leave validada que lo
+                # respalde (ej. solo el input manual CO_INC_COMUN/CO_INC_LABORAL de
+                # respaldo, sin registrar la ausencia) no tiene de dónde sacar esas fechas.
+                # Antes se emitían las fechas del período completo en silencio; ahora se
+                # detiene con un error claro en vez de mandar un dato inventado a la DIAN.
+                raise UserError(_(
+                    'Hay un pago de Incapacidad (%(pago)s) en la nómina de %(employee)s '
+                    'sin ninguna ausencia de Incapacidad (CO_INC_COMUN/CO_INC_LABORAL) '
+                    'validada en Ausencias que lo respalde con fechas reales -- la DIAN '
+                    'exige las fechas reales de la incapacidad, no las del período '
+                    'completo. Registre la ausencia en Ausencias antes de generar el XML.',
+                    pago='%.2f' % sum(l.total for l in concept_lines['Incapacidad']),
+                    employee=self.employee_id.name,
+                ))
 
         # Licencias
         licencias = {}
@@ -2079,12 +2116,19 @@ class HrPayslip(models.Model):
                     })
                 licencias['LicenciaMP'] = items
             else:
-                licencias['LicenciaMP'] = [{
-                    'FechaInicio': str(self.date_from),
-                    'FechaFin': str(self.date_to),
-                    'Cantidad': str(int(sum(l.quantity for l in concept_lines['LicenciaMP']))),
-                    'Pago': '%.2f' % sum(l.total for l in concept_lines['LicenciaMP']),
-                }]
+                # H-014 (revisión .79, decisión de David): mismo criterio que Incapacidad
+                # -- maternidad/paternidad SON licencias (LicenciaMP), no incapacidades, y
+                # ya están separadas en el código; sin ausencia no hay fechas reales que
+                # reportar.
+                raise UserError(_(
+                    'Hay un pago de Licencia de Maternidad/Paternidad (%(pago)s) en la '
+                    'nómina de %(employee)s sin ninguna ausencia (CO_LIC_MAT/CO_LIC_PAT) '
+                    'validada en Ausencias que lo respalde con fechas reales -- la DIAN '
+                    'exige las fechas reales de la licencia, no las del período completo. '
+                    'Registre la ausencia en Ausencias antes de generar el XML.',
+                    pago='%.2f' % sum(l.total for l in concept_lines['LicenciaMP']),
+                    employee=self.employee_id.name,
+                ))
 
         # LicenciaR / LicenciaNR: días hábiles, sin cambio (H-013, worked_days vía
         # _get_overlapping_leaves_data()).
@@ -2123,19 +2167,29 @@ class HrPayslip(models.Model):
                         lic_data['Pago'] = '%.2f' % pago
                     items.append(lic_data)
                 licencias[xml_key] = items
-            elif concept_key in concept_lines:
-                lic_data = {
-                    'FechaInicio': str(self.date_from),
-                    'FechaFin': str(self.date_to),
-                    'Cantidad': str(int(sum(
+            elif concept_key == 'LicenciaR' and concept_key in concept_lines:
+                # H-014 (revisión .79, decisión de David): sin ausencia no hay fechas
+                # reales que reportar -- mismo criterio que Incapacidad/LicenciaMP/
+                # Vacaciones. LicenciaNR NUNCA entra aquí: su amount_python_compute es
+                # siempre 0 (no genera pago, por diseño -- ver data/hr_payroll_structure_
+                # data.xml) y _group_lines_by_concept() omite del concept_lines cualquier
+                # línea con total=0, así que una rama "elif 'LicenciaNR' in concept_lines"
+                # sería código muerto que nada prueba (Tech Lead, revisión .79). Lo único
+                # que se pierde en ese caso es el detalle de cuántos días de licencia no
+                # remunerada hubo, si nadie registra la ausencia -- límite conocido, no se
+                # resuelve aquí (ver test_xml_licencia_no_remunerada_solo_input_no_emite_
+                # nodo_ni_error).
+                raise UserError(_(
+                    'Hay un registro de Licencia Remunerada (%(cantidad)s día(s)) en la '
+                    'nómina de %(employee)s sin ninguna ausencia validada en Ausencias '
+                    'que lo respalde con fechas reales -- la DIAN exige las fechas reales '
+                    'de la licencia, no las del período completo. Registre la ausencia en '
+                    'Ausencias antes de generar el XML.',
+                    cantidad=str(int(sum(
                         l.quantity for l in concept_lines[concept_key]
                     ))),
-                }
-                if concept_key != 'LicenciaNR':
-                    lic_data['Pago'] = '%.2f' % sum(
-                        l.total for l in concept_lines[concept_key]
-                    )
-                licencias[xml_key] = [lic_data]
+                    employee=self.employee_id.name,
+                ))
         if licencias:
             devengados['Licencias'] = licencias
 
