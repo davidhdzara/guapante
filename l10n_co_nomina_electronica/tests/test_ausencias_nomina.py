@@ -673,8 +673,10 @@ class TestAusenciasNomina(TransactionCase):
     def test_xml_vacaciones_cruza_lunes_no_laborable(self):
         """Caso real de QA (NE0000000099): vacaciones 5-11/ene/2027 bajo calendario Martes
         a Domingo -- el 11 de enero es LUNES, no laborable en ese calendario. Cantidad debe
-        ser 6 (coincidiendo con Pago), no 7, y FechaFin debe ser el último día realmente
-        hábil (10), no la fecha de la solicitud (11)."""
+        ser 6 (coincidiendo con Pago, días hábiles), pero FechaInicio/FechaFin son las
+        fechas REALES de la ausencia (5 y 11 -- lo que se pidió, no el último día con
+        work entry) -- Tech Lead, revisión .81: a la DIAN va la fecha real de la ausencia,
+        no la del primer/último día efectivamente pagado."""
         wage = 1800000.0
         calendar = self._make_calendar_martes_a_domingo()
         employee, contract = self._make_contract('XmlVacLunes', wage=wage, calendar=calendar)
@@ -688,7 +690,7 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(vacaciones), 1)
         self.assertEqual(vacaciones[0]['Cantidad'], '6')
         self.assertEqual(vacaciones[0]['FechaInicio'], '2027-01-05')
-        self.assertEqual(vacaciones[0]['FechaFin'], '2027-01-10')
+        self.assertEqual(vacaciones[0]['FechaFin'], '2027-01-11')
         self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
 
     def test_xml_licencia_remunerada_cruza_lunes_no_laborable(self):
@@ -705,7 +707,7 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(licencias), 1)
         self.assertEqual(licencias[0]['Cantidad'], '6')
         self.assertEqual(licencias[0]['FechaInicio'], '2027-01-05')
-        self.assertEqual(licencias[0]['FechaFin'], '2027-01-10')
+        self.assertEqual(licencias[0]['FechaFin'], '2027-01-11')
         self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
 
     def test_xml_licencia_no_remunerada_cruza_lunes_no_laborable(self):
@@ -723,8 +725,25 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(licencias), 1)
         self.assertEqual(licencias[0]['Cantidad'], '6')
         self.assertEqual(licencias[0]['FechaInicio'], '2027-01-05')
-        self.assertEqual(licencias[0]['FechaFin'], '2027-01-10')
+        self.assertEqual(licencias[0]['FechaFin'], '2027-01-11')
         self.assertNotIn('Pago', licencias[0])
+
+    def test_xml_vacaciones_cantidad_coincide_con_worked_days(self):
+        """Tech Lead (revisión .81): _ne_ausencia_habil() es una fuente paralela a
+        worked_days_line_ids (cuenta fechas distintas con work entry, en vez de reusar la
+        fórmula de number_of_days de hr_payroll, que es Enterprise/código cerrado) --
+        esta prueba detecta de inmediato cualquier divergencia entre las dos para una
+        ausencia de día completo (el único caso que existe en este módulo)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('XmlVacWorkedDays', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 16), date(2026, 9, 30))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        dias_totales, _detalle = payslip._ne_ausencia_habil('CO_VAC')
+        dias_worked = self._dias_worked(payslip, 'CO_VAC')
+        self.assertGreater(dias_totales, 0)
+        self.assertEqual(dias_totales, int(dias_worked))
 
     def _festivo_8_dic(self):
         return self.env['resource.calendar.leaves'].create({

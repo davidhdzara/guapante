@@ -1790,6 +1790,14 @@ class HrPayslip(models.Model):
         nómina -- el mismo criterio "hay o no hay work entry ese día" que ya determina el
         pago, nunca un conteo de fechas sin pasar por el calendario del contrato.
 
+        Tech Lead (revisión .81): SOLO la CANTIDAD viene de los work entries -- FechaInicio/
+        FechaFin son las fechas REALES de la ausencia (leave.request_date_from/
+        request_date_to, recortadas al período de esta nómina), igual que
+        _ne_ausencia_calendario(). Usar el primer/último work entry para las fechas (como
+        hacía esta función antes de .81) recorta la fecha cuando la ausencia empieza o
+        termina en un día sin work entry (festivo, sábado, lunes no laborable) -- a la DIAN
+        va la fecha real de la ausencia, no la del primer/último día efectivamente pagado.
+
         Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
         mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
         _dev_prestaciones() los traten igual.
@@ -1824,10 +1832,11 @@ class HrPayslip(models.Model):
             entries = entries_by_leave.get(leave.id)
             if not entries:
                 continue
-            dates = sorted({entry.date_start.date() for entry in entries})
-            dias = len(dates)
+            dias = len({entry.date_start.date() for entry in entries})
             if dias > 0:
-                detalle.append((leave, dias, dates[0], dates[-1]))
+                ini = max(leave.request_date_from, self.date_from)
+                fin = min(leave.request_date_to, self.date_to)
+                detalle.append((leave, dias, ini, fin))
                 dias_totales += dias
         return dias_totales, detalle
 
