@@ -513,6 +513,13 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
 
     def test_xml_licencia_remunerada_fecha_y_pago(self):
+        # H-016 (.82): CO_LIC_REM se paga por DIAS HABILES reales (work entries),
+        # no por dias calendario -- la ausencia 1-10 sep/2026 cae bajo el
+        # calendario L-V por defecto de este test:
+        # sep 1(mar) 2(mie) 3(jue) 4(vie) = habiles
+        # sep 5(sab) 6(dom) = fin de semana, excluidos
+        # sep 7(lun) 8(mar) 9(mie) 10(jue) = habiles
+        # No hay festivo colombiano en ese rango -> 4 + 4 = 8 dias habiles.
         wage = 1800000.0
         employee, contract = self._make_contract('XmlLicRem', wage=wage)
         self._make_validated_leave(
@@ -525,13 +532,22 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(licencias), 1)
         self.assertEqual(licencias[0]['FechaInicio'], '2026-09-01')
         self.assertEqual(licencias[0]['FechaFin'], '2026-09-10')
-        self.assertEqual(licencias[0]['Cantidad'], '10')
+        self.assertEqual(licencias[0]['Cantidad'], '8')
+        # El Pago ya es dinamico (se compara contra lo que la regla CO_LIC_REM
+        # realmente calculo, 'novedad'), por lo que sigue correspondiendo a los
+        # mismos 8 dias habiles sin necesidad de cambiar esta asercion.
         self.assertEqual(licencias[0]['Pago'], '%.2f' % novedad)
 
     def test_xml_licencia_no_remunerada_fecha_y_cantidad(self):
         """CO_LIC_NR nunca paga (0 pesos por diseño, ver amount_python_compute en data/
         hr_payroll_structure_data.xml) -- el nodo XML de LicenciaNR no lleva el campo
-        'Pago' en absoluto (ver _dev_novedades()), no es que valga '0.00'."""
+        'Pago' en absoluto (ver _dev_novedades()), no es que valga '0.00'.
+
+        H-016 (.82): Cantidad sale de DIAS HABILES reales (work entries), no de
+        dias calendario -- la ausencia 1-5 sep/2026 bajo el calendario L-V por
+        defecto de este test: sep 1(mar) 2(mie) 3(jue) 4(vie) = habiles;
+        sep 5(sab) = no laborable, excluido -> 4 dias habiles (no 5).
+        """
         wage = 1800000.0
         employee, contract = self._make_contract('XmlLicNR', wage=wage)
         self._make_validated_leave(
@@ -543,7 +559,7 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(licencias), 1)
         self.assertEqual(licencias[0]['FechaInicio'], '2026-09-01')
         self.assertEqual(licencias[0]['FechaFin'], '2026-09-05')
-        self.assertEqual(licencias[0]['Cantidad'], '5')
+        self.assertEqual(licencias[0]['Cantidad'], '4')
         self.assertNotIn('Pago', licencias[0])
 
     def test_xml_incapacidad_fecha_y_pago(self):

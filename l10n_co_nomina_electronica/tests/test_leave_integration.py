@@ -146,6 +146,12 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'struct_id': self.structure.id,
             'category_id': self.rule_category.id,
         })
+        # H-016 (.82): la ausencia de vacaciones (15-25 jun/2026) se paga por
+        # DIAS HABILES reales, no por dias calendario. Bajo el calendario L-V
+        # por defecto de este test, con jun 15 (lunes) festivo "Sagrado
+        # Corazon": 15(festivo,excluido) 16 17 18 19(habiles) 20 21(fin de
+        # semana,excluidos) 22 23 24 25(habiles) = 8 dias habiles.
+        # La regla ad hoc de este test paga a 100.000/dia -> total = 800.000.
         self.env['hr.payslip.line'].create({
             'slip_id': payslip.id,
             'employee_id': self.employee.id,
@@ -153,8 +159,8 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'salary_rule_id': rule_vac.id,
             'code': 'VAC_PAGO',
             'name': 'Vacaciones Comunes Pago',
-            'total': 1100000.0,
-            'quantity': 11,
+            'total': 800000.0,
+            'quantity': 8,
             'rate': 100,
         })
 
