@@ -134,12 +134,35 @@ class TestIdentificacionSincronizada(TransactionCase):
         toca este estado a propósito -- solo completa vat=False, nunca
         sobrescribe un valor ya distinto -- y el UPDATE SQL directo es la
         única forma de dejar esa discrepancia en la prueba sin pasar por
-        partner.write() (que la resincronizaría de inmediato)."""
+        partner.write() (que la resincronizaría de inmediato).
+
+        .96 (3er hallazgo de Tech Lead en staging, leyó el traceback real):
+        el UPDATE directo "no se veía" -- el contacto seguía en el vat del
+        empleado, no en vat_contacto. Causa real: la sincronización del
+        create() ya había escrito vat por ORM y esa escritura quedaba
+        PENDIENTE de flush; el UPDATE SQL se ejecutaba, pero al leer
+        después (incluso tras invalidate_recordset) Odoo hacía el flush de
+        lo pendiente primero, sobrescribiendo el UPDATE con el valor viejo.
+        Arreglo: flush_all() ANTES del UPDATE (para que no quede nada
+        pendiente que pueda pisarlo después) e invalidate_all() después (no
+        el invalidate_recordset acotado, que no evita un flush posterior de
+        otros campos pendientes en el entorno)."""
+        self.env.flush_all()
         self.env.cr.execute(
             'UPDATE res_partner SET vat = %s WHERE id = %s',
             (vat_contacto, employee.work_contact_id.id),
         )
-        employee.work_contact_id.invalidate_recordset(['vat'])
+        self.env.invalidate_all()
+        self.env.cr.execute(
+            'SELECT vat FROM res_partner WHERE id = %s',
+            (employee.work_contact_id.id,),
+        )
+        vat_en_bd = self.env.cr.fetchone()[0]
+        assert vat_en_bd == vat_contacto, (
+            'El UPDATE directo no se reflejó en la base (quedó %r, se '
+            'esperaba %r) -- el estado de partida del conflicto no es el '
+            'que la prueba cree.' % (vat_en_bd, vat_contacto)
+        )
 
     def test_conflicto_preexistente_la_edicion_desde_el_empleado_gana(self):
         """Pregunta de Tech Lead sobre los 2 empleados con discrepancia real en

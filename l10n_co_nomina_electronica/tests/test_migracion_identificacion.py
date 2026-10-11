@@ -109,12 +109,18 @@ class TestMigracionIdentificacion(TransactionCase):
         este test necesita simular. Forzar vat a NULL por SQL y luego
         escribir el tipo por ORM (como hacía antes) dejaba una escritura
         ORM de por medio cuyo propio check_vat podía interactuar con la
-        invalidación de caché de forma no confiable. Ahora se fuerzan AMBOS
-        campos juntos en una sola sentencia SQL, sin ningún paso por el
-        ORM entre medio, y se invalida TODO el caché del entorno
-        (env.invalidate_all(), igual que test_dian_status_recheck.py hace
-        tras un UPDATE directo) para no arrastrar ningún valor en caché del
-        create() normal."""
+        invalidación de caché de forma no confiable. Se fuerzan AMBOS
+        campos juntos en una sola sentencia SQL, sin ningún paso por el ORM
+        entre medio.
+
+        .96 (2do hallazgo de Tech Lead, leyó el traceback real): seguía
+        fallando -- la sincronización del create() de arriba ya había
+        escrito vat='777888999' por ORM y esa escritura quedaba PENDIENTE
+        de flush; el UPDATE SQL se ejecutaba, pero al leer después (incluso
+        tras invalidate_all()) Odoo hacía el flush de lo pendiente primero,
+        sobrescribiendo el UPDATE con el valor viejo. flush_all() ANTES del
+        UPDATE deja nada pendiente que pueda pisarlo; una lectura SQL
+        directa confirma el estado de partida antes de seguir."""
         employee = self.env['hr.employee'].create({
             'name': 'MigracionNumeroYTipo',
             'identification_id': '777888999',
@@ -122,12 +128,23 @@ class TestMigracionIdentificacion(TransactionCase):
             'l10n_co_ne_payment_method': '10',
         })
         it_vat = self.env.ref('l10n_latam_base.it_vat')
+        self.env.flush_all()
         self.env.cr.execute(
             'UPDATE res_partner SET vat = NULL, l10n_latam_identification_type_id = %s '
             'WHERE id = %s',
             (it_vat.id, employee.work_contact_id.id),
         )
         self.env.invalidate_all()
+        self.env.cr.execute(
+            'SELECT vat, l10n_latam_identification_type_id FROM res_partner WHERE id = %s',
+            (employee.work_contact_id.id,),
+        )
+        vat_en_bd, tipo_en_bd = self.env.cr.fetchone()
+        assert vat_en_bd is None and tipo_en_bd == it_vat.id, (
+            'El UPDATE directo no se reflejó en la base (vat=%r, tipo=%r) -- '
+            'el estado de partida de la migración no es el que la prueba '
+            'cree.' % (vat_en_bd, tipo_en_bd)
+        )
         self.assertFalse(employee.work_contact_id.vat)
         self.assertEqual(employee.work_contact_id.l10n_latam_identification_type_id, it_vat)
 
