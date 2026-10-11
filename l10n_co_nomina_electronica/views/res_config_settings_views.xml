@@ -40,13 +40,11 @@
                                     <button type="object" name="action_refresh_habilitacion" string="Actualizar" class="btn-link col-lg-2"/>
                                 </div>
                                 <div class="row mt8" invisible="l10n_co_ne_hab_state == 'idle'">
-                                    <field name="l10n_co_ne_hab_summary" nolabel="1" readonly="1" class="text-muted"/>
+                                    <field name="l10n_co_ne_hab_summary" nolabel="1" readonly="1"/>
                                 </div>
                                 <div class="row mt8" invisible="not l10n_co_ne_hab_message">
                                     <field name="l10n_co_ne_hab_state" invisible="1"/>
-                                    <field name="l10n_co_ne_hab_message" nolabel="1" readonly="1"
-                                           decoration-danger="l10n_co_ne_hab_state == 'error'"
-                                           decoration-success="l10n_co_ne_hab_state == 'done'"/>
+                                    <field name="l10n_co_ne_hab_message" nolabel="1" readonly="1"/>
                                 </div>
                             </div>
                         </setting>

@@ -64,7 +64,7 @@
                 <div class="alert alert-warning text-center mb-0"
                      role="alert"
                      invisible="l10n_co_ne_state != 'sent'">
-                    <strong><i class="fa fa-clock-o"/> Pendiente de validación DIAN</strong>
+                    <strong>Pendiente de validación DIAN</strong>
                     <br/>
                     La nómina electrónica ha sido transmitida y está en espera de la validación del webservice.
                 </div>
@@ -73,7 +73,7 @@
                 <div class="alert alert-warning text-center mb-0"
                      role="alert"
                      invisible="l10n_co_ne_state != 'uncertain'">
-                    <strong><i class="fa fa-exclamation-circle"/> Envío Incierto -- requiere conciliación</strong>
+                    <strong>Envío Incierto -- requiere conciliación</strong>
                     <br/>
                     <!-- H-012 (2026-10-06): 'uncertain' cubre 2 causas distintas (sin
                     ZipKey confirmado, o con ZipKey pero sin veredicto de la DIAN dentro
@@ -86,7 +86,7 @@
                 <div class="alert alert-danger text-center mb-0"
                      role="alert"
                      invisible="l10n_co_ne_state != 'rejected'">
-                    <strong><i class="fa fa-exclamation-triangle"/> Nómina Rechazada por la DIAN</strong>
+                    <strong>Nómina Rechazada por la DIAN</strong>
                     <br/>
                     Revise los detalles del error en el chatter a continuación. Corrija los datos correspondientes en el empleado, contrato o compañía, y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo (sin desperdiciar números).
                 </div>
