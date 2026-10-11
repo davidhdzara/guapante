@@ -1457,6 +1457,16 @@ class HrPayslip(models.Model):
         campo nativo de hr.employee -- por defecto la dirección de la compañía, editable
         por empleado para un teletrabajador vía Contactos). Sin dato por defecto
         silencioso: si falta país, departamento o municipio, UserError explícito.
+
+        Limitación de diseño conocida, documentada a propósito (Tech Lead, 2026-10-11,
+        nota en el pool de deuda técnica -- NO es un olvido): esto exige departamento y
+        municipio SIEMPRE, incluso si LugarTrabajoPais no es Colombia. Un trabajador real
+        en el exterior (escenario que AUD-DIAN-34 protegió explícitamente: el Anexo
+        Técnico admite cualquier código alfa-2 en LugarTrabajoPais, NIE050) necesitaría un
+        res.country.state/res.city cargado para ese país, que puede no existir en la base.
+        Decisión explícita: se deja estricto así -- Guapante no tiene hoy ningún
+        trabajador en el exterior. Si eso cambia, revisar esta función antes de dar por
+        hecho que un trabajador en el exterior puede generar nómina.
         """
         self.ensure_one()
         employee = self.employee_id
