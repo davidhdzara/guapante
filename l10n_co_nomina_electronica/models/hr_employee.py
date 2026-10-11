@@ -125,6 +125,44 @@ class HrEmployee(models.Model):
         return res
 
     # ──────────────────────────────────────────────────────────────────
+    # Default del TIPO de identificación para empleados colombianos nuevos
+    # (UX-02, 2026-10-11, decisión de David, punto 3 de la .93/.94). Hallazgo:
+    # work_contact_id se crea en hr/models/hr_employee_base.py::
+    # _create_work_contacts() con vals = {email, mobile, name, image_1920,
+    # company_id} -- nunca incluye el tipo de identificación, así que el
+    # campo cae siempre en su default de CLASE
+    # (l10n_latam_base/models/res_partner.py:
+    # default=lambda self: self.env.ref('l10n_latam_base.it_vat')), el tipo
+    # genérico "VAT", que no tiene (a propósito) código DIAN. El
+    # @api.onchange('country_id') de ese mismo archivo no ayuda: solo corre
+    # en formularios UI (nunca en create() por ORM) y, aunque corriera,
+    # elegiría NIT (l10n_co.rut, el único tipo colombiano con is_vat=True en
+    # l10n_co/data/l10n_latam.identification.type.csv), no Cédula.
+    #
+    # David decidió que, en la práctica, casi todos los empleados
+    # colombianos son Cédula de ciudadanía -- ese debe ser el valor INICIAL,
+    # no "VAT" (que ni es un tipo de documento real). Es un default, no un
+    # constraint: el usuario sigue pudiendo cambiarlo a mano después. Nunca
+    # toca un contacto que ya tenga otro tipo -- este método solo procesa
+    # contactos RECIÉN creados, nunca uno existente -- ver también el
+    # backfill equivalente para los contactos que ya existían antes de este
+    # cambio, en migrations/18.0.3.0.89/post-sync_identification_number.py.
+    # ──────────────────────────────────────────────────────────────────
+    def _create_work_contacts(self):
+        super()._create_work_contacts()
+        it_vat = self.env.ref('l10n_latam_base.it_vat', raise_if_not_found=False)
+        cedula = self.env.ref('l10n_co.national_citizen_id', raise_if_not_found=False)
+        if not it_vat or not cedula:
+            return
+        for employee in self:
+            partner = employee.work_contact_id
+            if not partner or employee.company_id.partner_id.country_id.code != 'CO':
+                continue
+            tipo_actual = partner.l10n_latam_identification_type_id
+            if not tipo_actual or tipo_actual == it_vat:
+                partner.sudo().l10n_latam_identification_type_id = cedula.id
+
+    # ──────────────────────────────────────────────────────────────────
     # Tipo y Subtipo de Trabajador
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_worker_type = fields.Selection(

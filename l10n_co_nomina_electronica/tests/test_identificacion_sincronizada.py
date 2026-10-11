@@ -106,14 +106,22 @@ class TestIdentificacionSincronizada(TransactionCase):
         )
 
     def _desincronizar_por_sql(self, employee, vat_contacto):
-        """Reproduce el estado de 2 empleados reales de staging (Tech Lead,
-        2026-10-11: Andres Felipe Zapata, Diana Cristina Gil Posada) con
-        identification_id distinto del vat de su contacto, desde ANTES de que
-        este sincronismo existiera -- la migración (migrations/18.0.3.0.89/
-        post-sync_identification_number.py) no los toca a propósito, solo
-        completa vat=False, nunca sobrescribe un valor ya distinto. El UPDATE
-        SQL directo es la única forma de dejar esa discrepancia en la prueba
-        sin pasar por partner.write() (que la resincronizaría de inmediato)."""
+        """.93 (hallazgo de Tech Lead en staging): esta prueba simulaba el
+        estado de 2 empleados reales (Andres Felipe Zapata, Diana Cristina Gil
+        Posada) usando sus números REALES como valores de prueba -- al correr
+        contra una copia de la base real de Guapante (ver AUD-DIAN-34 en
+        test_dian_matching.py), esos valores colisionaban con datos de verdad
+        en la base y la prueba dependía de ellos en vez de ser autosuficiente.
+        Ahora usa valores puramente sintéticos (prefijo 'SINT', imposible de
+        confundir con una cédula o NIT real) -- el estado que importa (número
+        del empleado distinto del vat del contacto, de antes de que este
+        sincronismo existiera) se reproduce igual por UPDATE SQL directo, sin
+        depender de qué empleados reales existan en la base. La migración
+        (migrations/18.0.3.0.89/post-sync_identification_number.py) tampoco
+        toca este estado a propósito -- solo completa vat=False, nunca
+        sobrescribe un valor ya distinto -- y el UPDATE SQL directo es la
+        única forma de dejar esa discrepancia en la prueba sin pasar por
+        partner.write() (que la resincronizaría de inmediato)."""
         self.env.cr.execute(
             'UPDATE res_partner SET vat = %s WHERE id = %s',
             (vat_contacto, employee.work_contact_id.id),
@@ -126,36 +134,59 @@ class TestIdentificacionSincronizada(TransactionCase):
         solo el conflicto previo ni levanta ningún error por él -- simplemente,
         la PRÓXIMA edición (de cualquier lado) es la que gana y el otro lado la
         sigue, igual que en cualquier otra edición. Aquí la edición llega desde
-        el empleado."""
-        employee = self._make_employee('ConflictoDesdeEmpleado', identification_id='1037598227')
-        self._desincronizar_por_sql(employee, '1020422294')
-        self.assertEqual(employee.identification_id, '1037598227')
-        self.assertEqual(employee.work_contact_id.vat, '1020422294')
+        el empleado. Valores sintéticos, no dependen de ningún empleado real
+        (ver _desincronizar_por_sql)."""
+        employee = self._make_employee('ConflictoDesdeEmpleado', identification_id='SINT-EMP-001')
+        self._desincronizar_por_sql(employee, 'SINT-CONTACTO-002')
+        self.assertEqual(employee.identification_id, 'SINT-EMP-001')
+        self.assertEqual(employee.work_contact_id.vat, 'SINT-CONTACTO-002')
 
-        employee.identification_id = '1037598227999'
-        self.assertEqual(employee.work_contact_id.vat, '1037598227999')
+        employee.identification_id = 'SINT-EMP-001-EDITADO'
+        self.assertEqual(employee.work_contact_id.vat, 'SINT-EMP-001-EDITADO')
 
     def test_conflicto_preexistente_la_edicion_desde_contactos_gana(self):
         """Mismo caso, lado contrario: si la edición que resuelve el conflicto
         llega desde Contactos (vat), es identification_id del empleado el que
-        se actualiza para seguirla."""
-        employee = self._make_employee('ConflictoDesdeContactos', identification_id='43927526')
-        self._desincronizar_por_sql(employee, '901975355-1')
-        self.assertEqual(employee.identification_id, '43927526')
-        self.assertEqual(employee.work_contact_id.vat, '901975355-1')
+        se actualiza para seguirla. Valores sintéticos, no dependen de ningún
+        empleado real (ver _desincronizar_por_sql)."""
+        employee = self._make_employee('ConflictoDesdeContactos', identification_id='SINT-EMP-003')
+        self._desincronizar_por_sql(employee, 'SINT-CONTACTO-004')
+        self.assertEqual(employee.identification_id, 'SINT-EMP-003')
+        self.assertEqual(employee.work_contact_id.vat, 'SINT-CONTACTO-004')
 
-        employee.work_contact_id.vat = '901975355-9'
-        self.assertEqual(employee.identification_id, '901975355-9')
+        employee.work_contact_id.vat = 'SINT-CONTACTO-004-EDITADO'
+        self.assertEqual(employee.identification_id, 'SINT-CONTACTO-004-EDITADO')
 
     def test_tipo_nit_con_numero_invalido_falla_validacion_nativa(self):
         """Tipo RUT (NIT): l10n_co.check_vat() SÍ valida el dígito de
         verificación (vía base_vat/stdnum) cuando el tipo de identificación es
-        RUT -- a diferencia de Cédula, que no se valida. Un valor claramente
-        no numérico debe fallar esa validación nativa al sincronizarse como vat."""
+        RUT -- a diferencia de Cédula, que no se valida.
+
+        .93 (hallazgo de Tech Lead en staging: "ValidationError not raised").
+        Verificado contra el código fuente real de base_vat (18.0,
+        ResPartner._run_vat_test()): la validación de Colombia (stdnum
+        co.nit) solo se alcanza por la rama "default_country"
+        (partner.commercial_partner_id.country_id) -- exige country_id='CO'
+        en el contacto, que esta prueba nunca ponía. Sin country_id,
+        _run_vat_test() intenta primero leer los 2 primeros caracteres del
+        valor como prefijo de país (_split_vat); el valor anterior,
+        'NIT-CLARAMENTE-INVALIDO', empieza por 'NI' -- código real de
+        Nicaragua, un país sin validador de VAT registrado -- y ese camino,
+        al no tener cómo refutarlo, lo da por válido por defecto
+        (simple_vat_check: "No VAT validation available, default to check
+        that the country code exists"). La prueba nunca llegaba a stdnum.
+
+        Con country_id='CO' puesto (como lo tendría cualquier contacto real
+        de un empleado colombiano) y un valor puramente numérico (sin un
+        prefijo de 1-2 letras que pueda confundirse con un código de país
+        real), la validación SÍ llega a stdnum.co.nit.is_valid() -- confirmado
+        localmente con python-stdnum: is_valid('123456789') devuelve False --
+        y esta vez sí levanta ValidationError."""
         employee = self._make_employee('TipoNitInvalido')
+        employee.work_contact_id.country_id = self.env.ref('base.co').id
         employee.l10n_co_ne_identification_type_id = self.env.ref('l10n_co.rut').id
         with self.assertRaises(ValidationError):
-            employee.identification_id = 'NIT-CLARAMENTE-INVALIDO'
+            employee.identification_id = '123456789'
 
     def test_tipo_sin_codigo_dian_levanta_usererror_en_xml(self):
         """foreign_id_card ("Cédula Extranjera", tipo genérico de l10n_latam_base

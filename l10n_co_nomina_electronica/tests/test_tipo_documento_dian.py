@@ -93,8 +93,18 @@ class TestTipoDocumentoDian(TransactionCase):
 
     def test_tipo_documento_sin_tipo_levanta_usererror(self):
         """Sin tipo de documento configurado en work_contact_id: UserError que nombra
-        al empleado, nunca un '13' inventado como hacía el default silencioso anterior."""
+        al empleado, nunca un '13' inventado como hacía el default silencioso anterior.
+
+        .94 (hallazgo de Tech Lead en staging): un empleado recién creado
+        NUNCA queda con este campo realmente vacío por sí solo -- siempre
+        cae en algún default (VAT genérico de l10n_latam_base si la
+        compañía no es colombiana, o Cédula de ciudadanía si lo es, desde
+        _create_work_contacts() en hr_employee.py). Para reproducir el
+        estado "sin tipo" que este UserError cubre (ej. un dato importado
+        sin tipo, o alguien que lo borra a mano) hay que limpiarlo
+        explícitamente."""
         payslip = self._make_payslip('SinTipo')
+        payslip.employee_id.l10n_co_ne_identification_type_id = False
         self.assertFalse(payslip.employee_id.l10n_co_ne_identification_type_id)
         with self.assertRaises(UserError) as exc:
             payslip._ne_tipo_documento()
@@ -172,3 +182,39 @@ class TestTipoDocumentoDian(TransactionCase):
         data = payslip._collect_payslip_data()
         self.assertEqual(data['trabajador']['TipoDocumento'], '13')
         self.assertEqual(data['trabajador']['TipoDocumento'], payslip._ne_tipo_documento())
+
+    def test_empleado_nuevo_compania_colombiana_sin_tipo_explicito_queda_en_cedula(self):
+        """.94 (decisión de David): un empleado de una compañía colombiana,
+        creado SIN tipo de documento explícito, debe terminar con Cédula de
+        ciudadanía -- nunca "VAT" (el default de clase de l10n_latam_base,
+        sin código DIAN) -- porque en la práctica casi todos los empleados
+        colombianos lo son. Ver _create_work_contacts() en hr_employee.py.
+        End-to-end: confirma también que el XML sale con TipoDocumento '13'
+        sin que nadie haya tocado el campo a mano."""
+        self.company.partner_id.write({'country_id': self.co_country.id})
+        payslip = self._make_payslip('ColombianoSinTipoExplicito')
+        employee = payslip.employee_id
+        self.assertEqual(
+            employee.l10n_co_ne_identification_type_id,
+            self.env.ref('l10n_co.national_citizen_id'),
+        )
+        co_state = self.env['res.country.state'].search(
+            [('country_id', '=', self.co_country.id)], limit=1)
+        if not co_state:
+            co_state = self.env['res.country.state'].create({
+                'name': 'Departamento Prueba Default Tipo',
+                'code': 'PE',
+                'country_id': self.co_country.id,
+            })
+        co_city = self.env['res.city'].create({
+            'name': 'Ciudad Prueba Default Tipo',
+            'state_id': co_state.id,
+            'country_id': self.co_country.id,
+        })
+        self.company.partner_id.write({
+            'state_id': co_state.id,
+            'city_id': co_city.id,
+            'street': 'Calle Prueba Default Tipo # 1-1',
+        })
+        data = payslip._collect_payslip_data()
+        self.assertEqual(data['trabajador']['TipoDocumento'], '13')
