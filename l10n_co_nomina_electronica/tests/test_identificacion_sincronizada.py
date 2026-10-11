@@ -112,8 +112,21 @@ class TestIdentificacionSincronizada(TransactionCase):
         contra una copia de la base real de Guapante (ver AUD-DIAN-34 en
         test_dian_matching.py), esos valores colisionaban con datos de verdad
         en la base y la prueba dependía de ellos en vez de ser autosuficiente.
-        Ahora usa valores puramente sintéticos (prefijo 'SINT', imposible de
-        confundir con una cédula o NIT real) -- el estado que importa (número
+
+        .95 (2do hallazgo de Tech Lead en staging): el primer arreglo
+        sintético ('SINT-EMP-001', etc.) seguía fallando, ahora con
+        ValidationError al crear el empleado -- ya con el default de Cédula
+        de la .94, el contacto SÍ entra a la validación nativa de base_vat
+        (verificado contra el código fuente real, ResPartner._run_vat_test():
+        sin country_id puesto en el contacto -- que _create_work_contacts()
+        nunca pone -- la validación igual intenta leer los 2 primeros
+        caracteres del valor como prefijo de país; 'SI' de 'SINT-...' es el
+        código real de Eslovenia, que SÍ tiene validador de VAT registrado en
+        stdnum, y el resto del valor no pasa ese formato). Un valor puramente
+        numérico nunca se confunde con ningún prefijo de país (ver
+        _split_vat(): solo intenta 2 letras como prefijo cuando el segundo
+        carácter es alfabético) -- por eso esta vez los valores son
+        solamente dígitos, sin ningún prefijo. El estado que importa (número
         del empleado distinto del vat del contacto, de antes de que este
         sincronismo existiera) se reproduce igual por UPDATE SQL directo, sin
         depender de qué empleados reales existan en la base. La migración
@@ -134,28 +147,28 @@ class TestIdentificacionSincronizada(TransactionCase):
         solo el conflicto previo ni levanta ningún error por él -- simplemente,
         la PRÓXIMA edición (de cualquier lado) es la que gana y el otro lado la
         sigue, igual que en cualquier otra edición. Aquí la edición llega desde
-        el empleado. Valores sintéticos, no dependen de ningún empleado real
-        (ver _desincronizar_por_sql)."""
-        employee = self._make_employee('ConflictoDesdeEmpleado', identification_id='SINT-EMP-001')
-        self._desincronizar_por_sql(employee, 'SINT-CONTACTO-002')
-        self.assertEqual(employee.identification_id, 'SINT-EMP-001')
-        self.assertEqual(employee.work_contact_id.vat, 'SINT-CONTACTO-002')
+        el empleado. Valores sintéticos puramente numéricos, no dependen de
+        ningún empleado real (ver _desincronizar_por_sql)."""
+        employee = self._make_employee('ConflictoDesdeEmpleado', identification_id='900000001')
+        self._desincronizar_por_sql(employee, '900000002')
+        self.assertEqual(employee.identification_id, '900000001')
+        self.assertEqual(employee.work_contact_id.vat, '900000002')
 
-        employee.identification_id = 'SINT-EMP-001-EDITADO'
-        self.assertEqual(employee.work_contact_id.vat, 'SINT-EMP-001-EDITADO')
+        employee.identification_id = '900000011'
+        self.assertEqual(employee.work_contact_id.vat, '900000011')
 
     def test_conflicto_preexistente_la_edicion_desde_contactos_gana(self):
         """Mismo caso, lado contrario: si la edición que resuelve el conflicto
         llega desde Contactos (vat), es identification_id del empleado el que
-        se actualiza para seguirla. Valores sintéticos, no dependen de ningún
-        empleado real (ver _desincronizar_por_sql)."""
-        employee = self._make_employee('ConflictoDesdeContactos', identification_id='SINT-EMP-003')
-        self._desincronizar_por_sql(employee, 'SINT-CONTACTO-004')
-        self.assertEqual(employee.identification_id, 'SINT-EMP-003')
-        self.assertEqual(employee.work_contact_id.vat, 'SINT-CONTACTO-004')
+        se actualiza para seguirla. Valores sintéticos puramente numéricos,
+        no dependen de ningún empleado real (ver _desincronizar_por_sql)."""
+        employee = self._make_employee('ConflictoDesdeContactos', identification_id='900000003')
+        self._desincronizar_por_sql(employee, '900000004')
+        self.assertEqual(employee.identification_id, '900000003')
+        self.assertEqual(employee.work_contact_id.vat, '900000004')
 
-        employee.work_contact_id.vat = 'SINT-CONTACTO-004-EDITADO'
-        self.assertEqual(employee.identification_id, 'SINT-CONTACTO-004-EDITADO')
+        employee.work_contact_id.vat = '900000012'
+        self.assertEqual(employee.identification_id, '900000012')
 
     def test_tipo_nit_con_numero_invalido_falla_validacion_nativa(self):
         """Tipo RUT (NIT): l10n_co.check_vat() SÍ valida el dígito de

@@ -99,28 +99,40 @@ class TestMigracionIdentificacion(TransactionCase):
     def test_migracion_rellena_numero_y_tipo_juntos(self):
         """El backfill del número (.89) y el del tipo (.94) conviven en el
         mismo script -- un contacto sin vat y con tipo VAT genérico debe
-        salir con AMBOS corregidos en una sola corrida."""
+        salir con AMBOS corregidos en una sola corrida.
+
+        .95 (hallazgo de Tech Lead en staging): "'777888999' is not false"
+        -- con la sincronización activa (y, desde la .94, el default de
+        Cédula para compañía colombiana), un create() normal NUNCA deja al
+        contacto sin vat ni en VAT genérico -- exactamente el estado de
+        "contacto viejo, de antes de que existieran esos mecanismos" que
+        este test necesita simular. Forzar vat a NULL por SQL y luego
+        escribir el tipo por ORM (como hacía antes) dejaba una escritura
+        ORM de por medio cuyo propio check_vat podía interactuar con la
+        invalidación de caché de forma no confiable. Ahora se fuerzan AMBOS
+        campos juntos en una sola sentencia SQL, sin ningún paso por el
+        ORM entre medio, y se invalida TODO el caché del entorno
+        (env.invalidate_all(), igual que test_dian_status_recheck.py hace
+        tras un UPDATE directo) para no arrastrar ningún valor en caché del
+        create() normal."""
         employee = self.env['hr.employee'].create({
             'name': 'MigracionNumeroYTipo',
             'identification_id': '777888999',
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
         })
-        employee.l10n_co_ne_identification_type_id = self.env.ref(
-            'l10n_latam_base.it_vat').id
-        # Vacía el vat por SQL directo para simular un contacto de ANTES de
-        # que la sincronización del número existiera (ver _desincronizar_
-        # por_sql en test_identificacion_sincronizada.py, mismo recurso).
+        it_vat = self.env.ref('l10n_latam_base.it_vat')
         self.env.cr.execute(
-            'UPDATE res_partner SET vat = NULL WHERE id = %s',
-            (employee.work_contact_id.id,),
+            'UPDATE res_partner SET vat = NULL, l10n_latam_identification_type_id = %s '
+            'WHERE id = %s',
+            (it_vat.id, employee.work_contact_id.id),
         )
-        employee.work_contact_id.invalidate_recordset(['vat'])
+        self.env.invalidate_all()
         self.assertFalse(employee.work_contact_id.vat)
+        self.assertEqual(employee.work_contact_id.l10n_latam_identification_type_id, it_vat)
 
         self.migracion.migrate(self.env.cr, '18.0.3.0.89')
-        employee.invalidate_recordset(['l10n_co_ne_identification_type_id'])
-        employee.work_contact_id.invalidate_recordset(['vat'])
+        self.env.invalidate_all()
         self.assertEqual(employee.work_contact_id.vat, '777888999')
         self.assertEqual(
             employee.l10n_co_ne_identification_type_id,
