@@ -21,7 +21,14 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'identification_id': '10203040',
             'l10n_co_ne_worker_type': '01',
             'l10n_co_ne_worker_subtype': '00',
-            'l10n_co_ne_payment_method': '1',  # 1 = Transferencia Bancaria
+            # UX-02 (b, .91, hallazgo de Tech Lead en staging): Efectivo aquí,
+            # no Transferencia -- bank_account_id no puede ir en este mismo
+            # create() (work_contact_id recién existe DESPUÉS de que create()
+            # termina), y _check_bank_account_for_transfer() ya exige la
+            # cuenta en el momento en que el método es Transferencia. Se
+            # cambia a Transferencia junto con la cuenta en un solo write()
+            # más abajo, nunca en 2 pasos sueltos.
+            'l10n_co_ne_payment_method': '10',
         })
         # UX-02 (2026-10-11): el tipo de documento ya no se fija al crear el
         # empleado -- work_contact_id (el partner que lo guarda) recién existe
@@ -29,13 +36,19 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         self.employee.l10n_co_ne_identification_type_id = self.env.ref(
             'l10n_co.national_citizen_id').id
         # UX-02 (2026-10-11): Banco/NumeroCuenta salen de la Cuenta Bancaria
-        # nativa (bank_account_id, res.partner.bank) -- el método de pago es
-        # Transferencia, así que _check_bank_account_for_transfer() la exige.
-        self.employee.bank_account_id = self.env['res.partner.bank'].create({
+        # nativa (bank_account_id, res.partner.bank). El método de pago pasa a
+        # Transferencia EN LA MISMA escritura que bank_account_id -- el
+        # constraint mira ambos campos juntos al final del write(), igual que
+        # al final de create().
+        bank_account = self.env['res.partner.bank'].create({
             'acc_number': '1234567890',
             'partner_id': self.employee.work_contact_id.id,
             'bank_id': self.env['res.bank'].create({'name': 'Bancolombia'}).id,
-        }).id
+        })
+        self.employee.write({
+            'l10n_co_ne_payment_method': '1',  # 1 = Transferencia Bancaria
+            'bank_account_id': bank_account.id,
+        })
         self.structure_type = self.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura',
             'country_id': co_country.id,

@@ -72,10 +72,22 @@ class TestPagoCuentaBancaria(TransactionCase):
         })
 
     def test_pago_con_cuenta_bancaria_lee_banco_y_numero(self):
-        """Banco y NumeroCuenta salen de bank_account_id, no de campos propios."""
-        payslip = self._make_payslip('ConCuenta', payment_method='1')
+        """Banco y NumeroCuenta salen de bank_account_id, no de campos propios.
+
+        .91 (hallazgo propio al corregir test_leave_integration.py por el
+        mismo patrón, Tech Lead): no se puede crear el empleado con
+        payment_method='1' de una sola vez -- _check_bank_account_for_
+        transfer() exige la cuenta YA puesta en esa misma escritura, y
+        bank_account_id no existe todavía en el create() (requiere
+        work_contact_id, que hr nativo crea DESPUÉS). Por eso se crea en
+        Efectivo y se cambia a Transferencia junto con bank_account_id en un
+        solo write()."""
+        payslip = self._make_payslip('ConCuenta', payment_method='10')
         cuenta = self._set_bank_account(payslip.employee_id, 'Bancolombia', '00000000001')
-        payslip.employee_id.bank_account_id = cuenta.id
+        payslip.employee_id.write({
+            'l10n_co_ne_payment_method': '1',
+            'bank_account_id': cuenta.id,
+        })
 
         pago = payslip._ne_pago()
         self.assertEqual(pago['Metodo'], '1')
@@ -87,9 +99,12 @@ class TestPagoCuentaBancaria(TransactionCase):
         """A nivel del XML serializado (no solo del dict): TipoCuenta no debe
         aparecer como atributo del nodo Pago, porque _ne_pago() nunca lo
         incluye (XSD V1.0.6: opcional, sin fuente nativa real)."""
-        payslip = self._make_payslip('XmlSinTipoCuenta', payment_method='1')
+        payslip = self._make_payslip('XmlSinTipoCuenta', payment_method='10')
         cuenta = self._set_bank_account(payslip.employee_id, 'Davivienda', '99887766')
-        payslip.employee_id.bank_account_id = cuenta.id
+        payslip.employee_id.write({
+            'l10n_co_ne_payment_method': '1',
+            'bank_account_id': cuenta.id,
+        })
 
         pago = payslip._ne_pago()
         parent = etree.Element('Test')
@@ -111,8 +126,23 @@ class TestPagoCuentaBancaria(TransactionCase):
 
     def test_pago_sin_cuenta_y_transferencia_levanta_usererror(self):
         """Medio Transferencia sin bank_account_id: UserError explícito, nunca
-        un Banco/NumeroCuenta vacíos enviados a la DIAN."""
-        payslip = self._make_payslip('SinCuentaTransferencia', payment_method='1')
+        un Banco/NumeroCuenta vacíos enviados a la DIAN.
+
+        .91 (hallazgo propio): esta combinación ya no se puede alcanzar por un
+        write()/create() normal -- el constraint del empleado (_check_bank_
+        account_for_transfer, el MISMO caso que prueba test_constraint_bank_
+        account_id_para_transferencia) la bloquea primero con ValidationError.
+        El UserError de _ne_pago() es una segunda defensa, pensada para un
+        estado que pudo quedar inconsistente antes de que ese constraint
+        existiera (ej. datos migrados) -- para poder probarlo hay que forzar
+        ese estado por SQL directo, igual que test_dian_status_recheck.py
+        hace con write_date, nunca alcanzable desde el ORM."""
+        payslip = self._make_payslip('SinCuentaTransferencia', payment_method='10')
+        self.env.cr.execute(
+            "UPDATE hr_employee SET l10n_co_ne_payment_method = '1' WHERE id = %s",
+            (payslip.employee_id.id,),
+        )
+        payslip.employee_id.invalidate_recordset(['l10n_co_ne_payment_method'])
         with self.assertRaises(UserError) as exc:
             payslip._ne_pago()
         self.assertIn('SinCuentaTransferencia', str(exc.exception))
