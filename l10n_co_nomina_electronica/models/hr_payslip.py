@@ -1906,6 +1906,89 @@ class HrPayslip(models.Model):
         dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
         return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
 
+    def _ne_ultimo_ibc_anterior(self, contract):
+        """Último IBC de seguridad social confirmado antes de esta nómina (H-017a,
+        2026-10-11, punto a del diseño -- decisión de David + Tech Lead).
+
+        Mismo patrón que Procedure2.action_calculate_retention_procedure2()
+        (hr_contract_retefuente.py): última nómina 'done' del mismo contrato y
+        estructura, antes del date_from de esta nómina, leyendo su línea
+        invisible CO_SS_BASE_IBC. Sin historial (primera nómina del contrato):
+        fallback a contract.wage -- confirmado el caso real de los 18 empleados
+        de Guapante hoy (ninguno tiene nómina previa).
+
+        Lectura literal (Tech Lead, 2026-10-11): si hubo un cambio de salario
+        entre el mes anterior y el de la novedad, se usa el IBC real del mes
+        anterior tal cual, NUNCA un valor prorrateado al salario nuevo.
+        """
+        self.ensure_one()
+        payslip_anterior = self.env['hr.payslip'].search([
+            ('contract_id', '=', contract.id),
+            ('struct_id', '=', self.struct_id.id),
+            ('state', '=', 'done'),
+            ('date_from', '<', self.date_from),
+        ], order='date_from desc', limit=1)
+        if not payslip_anterior:
+            return contract.wage
+        linea_ibc = payslip_anterior.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
+        return linea_ibc.total if linea_ibc else contract.wage
+
+    def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
+        """IBC de seguridad social del empleado (H-017a, 2026-10-11, decisión de David +
+        Tech Lead): incluye en la base de salud/pensión los días de vacaciones, licencia
+        remunerada ordinaria y licencia de maternidad/paternidad que hoy quedan fuera de
+        categories['DEV_SAL'] (CO_VAC/CO_LIC_REM/CO_LIC_MAT/CO_LIC_PAT tienen categoría
+        VAC/INC, parent DEV, no DEV_SAL).
+
+        Maternidad/paternidad: base = result_rules['CO_LIC_MAT']/['CO_LIC_PAT']['total'] --
+        única fuente (no se recalcula la fórmula aparte). Tech Lead (2026-10-11) verificó
+        contra el código real de Enterprise hr_payroll (hr_payslip.py, _get_localdict()):
+        result_rules se crea UNA sola vez por payslip y el MISMO localdict se pasa tanto a
+        rule._satisfy_condition() como a rule._compute_rule() -- disponible en
+        condition_python y en amount_python_compute por igual. Es además un
+        DefaultDictPayroll: una clave aún no calculada (ej. una regla que no corrió este
+        período) devuelve totales en 0, nunca KeyError/NameError. CO_LIC_MAT/CO_LIC_PAT
+        (secuencia 55/56) corren antes que CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (100/101/102),
+        así que su resultado ya está disponible aquí.
+
+        Única fuente para CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (las 3 reglas de empleado).
+        Alcance explícito de H-017a, NO tocar sin decisión de Tech Lead:
+        - Las 6 reglas patronales (CO_SALUD_CIA/CO_PENSION_CIA/CO_ARL_CIA/CO_CCF_CIA/
+          CO_SENA_CIA/CO_ICBF_CIA), el wizard de PILA y el reporte UGPP siguen leyendo su
+          propia base tal cual -- se alinean en H-017b (después del 15, antes del primer
+          pago de PILA), junto con la decisión normativa del piso de 1 SMMLV / techo de 25
+          SMMLV.
+        - Las incapacidades (CO_INC_COMUN, CO_INC_LABORAL) NO entran a esta base todavía --
+          quedan para el paso 3 de incapacidad (corte del día 90, piso de salario mínimo).
+          No agregar CO_INC_COMUN/CO_INC_LABORAL aquí sin que ese paso lo decida
+          explícitamente (decisión de Tech Lead, 2026-10-11).
+        """
+        self.ensure_one()
+        if contract.l10n_co_ne_integral_salary:
+            return contract.wage * self._rule_parameter(
+                'l10n_co_factor_integral_salary', self.date_from)
+
+        ibc = categories['DEV_SAL']
+        dias_mes_comercial = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+
+        # Vacaciones y licencia remunerada: base = último IBC anterior a la novedad,
+        # prorrateado por los mismos días que ya paga la novedad (_ne_dias_novedad()).
+        ultimo_ibc = None
+        for work_entry_code in ('CO_VAC', 'CO_LIC_REM'):
+            dias_ausencia, dias_input = self._ne_dias_novedad_ausencia_e_input(
+                work_entry_code, work_entry_code, inputs, worked_days)
+            dias = dias_ausencia or dias_input
+            if dias > 0:
+                if ultimo_ibc is None:
+                    ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
+                ibc += (ultimo_ibc / dias_mes_comercial) * dias
+
+        # Maternidad/paternidad: base = lo que la licencia ya pagó -- result_rules es la
+        # única fuente, ver docstring.
+        ibc += result_rules.get('CO_LIC_MAT', {}).get('total', 0.0)
+        ibc += result_rules.get('CO_LIC_PAT', {}).get('total', 0.0)
+        return ibc
+
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
         # Sueldo básico

@@ -860,3 +860,185 @@ class TestAusenciasNomina(TransactionCase):
             self.assertEqual(len(vacaciones), 1)
             self.assertEqual(vacaciones[0]['Cantidad'], str(int(dias_totales)))
             self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-017a (2026-10-11, decisión de David + Tech Lead): la base de salud/pensión del
+    # empleado (CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP) incluía solo categories['DEV_SAL']
+    # (básico trabajado), excluyendo vacaciones, licencia remunerada ordinaria y licencia
+    # de maternidad/paternidad (CO_VAC/CO_LIC_REM/CO_LIC_MAT/CO_LIC_PAT tienen categoría
+    # VAC/INC, parent DEV, no DEV_SAL) -- ver _ne_ibc_seguridad_social() en hr_payslip.py.
+    # Alcance de H-017a: solo estas 3 reglas de empleado. Las 6 reglas patronales (CIA),
+    # PILA y UGPP quedan para H-017b (decisión de Tech Lead, no se tocan aquí). Las
+    # incapacidades (CO_INC_COMUN/CO_INC_LABORAL) tampoco entran a esta base todavía --
+    # quedan para el paso 3 de incapacidad.
+    # ──────────────────────────────────────────────────────────────────
+
+    def test_ibc_ss_vacaciones_ejemplo_david(self):
+        """Ejemplo exacto de David: 20 días trabajados + 10 de vacaciones, salario
+        3.000.000, primera nómina del contrato (sin historial -> fallback a
+        contract.wage como "último IBC anterior"). Vacaciones 14-25 sep/2026 bajo el
+        calendario L-V de la compañía de prueba (sin festivos): 14-18(lun-vie)=5,
+        19-20(fin de semana)=excluidos, 21-25(lun-vie)=5 -> 10 días hábiles exactos,
+        20 días trabajados restantes. IBC = básico(20 días) + base_vac(10 días) =
+        (3.000.000/30)x20 + (3.000.000/30)x10 = 2.000.000 + 1.000.000 = 3.000.000.
+        Salud y pensión 4% = 120.000 cada una."""
+        wage = 3000000.0
+        employee, contract = self._make_contract('IbcVacDavid', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 14), date(2026, 9, 25))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        dias_vac = self._dias_worked(payslip, 'CO_VAC')
+        self.assertEqual(dias_vac, 10)
+        basico = self._sueldo_basico(payslip)
+        self.assertEqual(round(basico, 2), 2000000.0)
+
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        pension = self._novedad(payslip, 'CO_PENSION_EMP')
+        self.assertEqual(round(abs(salud), 2), 120000.0)
+        self.assertEqual(round(abs(pension), 2), 120000.0)
+
+    def test_ibc_ss_paternidad_14_dias_qa_y_orden_de_reglas(self):
+        """Caso QA: paternidad 14 días calendario, salario 1.800.000. CO_LIC_PAT
+        (secuencia 56, corre antes que CO_SALUD_EMP en 100) paga 100% del salario de
+        esos 14 días calendario ((wage/30)x14=840.000); el básico cubre los 16 días
+        restantes ((wage/30)x16=960.000). IBC = 960.000+840.000 = 1.800.000 (el
+        salario completo). Salud y pensión 4% = 72.000 cada una. También prueba
+        explícitamente el orden: si CO_SALUD_EMP solo leyera el básico, saldría 4%
+        de 960.000 (38.400), no de 1.800.000 (72.000)."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('IbcPatQA', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_pat, date(2026, 12, 1), date(2026, 12, 14))
+        payslip = self._make_payslip(employee, contract, date(2026, 12, 1), date(2026, 12, 31))
+        payslip.compute_sheet()
+
+        dias, _detalle = payslip._ne_ausencia_calendario('CO_LIC_PAT')
+        self.assertEqual(dias, 14)
+        basico = self._sueldo_basico(payslip)
+        lic_pat = self._novedad(payslip, 'CO_LIC_PAT')
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        pension = self._novedad(payslip, 'CO_PENSION_EMP')
+
+        self.assertEqual(round(abs(salud), 2), 72000.0)
+        self.assertEqual(round(abs(pension), 2), 72000.0)
+        # Prueba explícita del orden de las reglas (Tech Lead, 2026-10-11): la base
+        # real es básico + licencia, nunca solo el básico.
+        self.assertEqual(round(abs(salud), 2), round((basico + lic_pat) * 0.04, 2))
+        self.assertNotEqual(round(abs(salud), 2), round(basico * 0.04, 2))
+
+    def test_ibc_ss_licencia_remunerada_3_dias_ibc_completo(self):
+        """Licencia remunerada ordinaria de 3 días hábiles (1-3 sep/2026, mar-jue, sin
+        fin de semana de por medio), salario 1.800.000, primera nómina (sin historial
+        -> fallback a contract.wage). Con salario fijo, básico + base especial
+        coinciden exactamente con el salario completo (punto 2 del diseño de David:
+        "con salario fijo coinciden") -- salud y pensión 4% = 72.000 cada una, sin
+        importar cuántos días exactos cuente la licencia."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('IbcLicRem3Dias', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_lic_rem, date(2026, 9, 1), date(2026, 9, 3))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        dias_lic = self._dias_worked(payslip, 'CO_LIC_REM')
+        self.assertEqual(dias_lic, 3)
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        pension = self._novedad(payslip, 'CO_PENSION_EMP')
+        self.assertEqual(round(abs(salud), 2), 72000.0)
+        self.assertEqual(round(abs(pension), 2), 72000.0)
+
+    def test_ibc_ss_usa_ultimo_ibc_de_nomina_anterior_no_salario_actual(self):
+        """Punto (a) del diseño: con historial, "último IBC anterior" se lee de
+        CO_SS_BASE_IBC de la última nómina 'done' del mismo contrato/estructura, NO
+        del salario actual -- lectura literal de la regla de David, confirmada por
+        Tech Lead incluso con cambio salarial reciente entre el mes anterior y el de
+        la novedad."""
+        employee, contract = self._make_contract(
+            'IbcHistorial', wage=2500000.0, date_start=date(2024, 1, 1))
+
+        payslip_anterior = self._make_payslip(
+            employee, contract, date(2026, 8, 1), date(2026, 8, 31))
+        payslip_anterior.compute_sheet()
+        payslip_anterior.write({'state': 'done'})
+        linea_ibc_anterior = payslip_anterior.line_ids.filtered(
+            lambda l: l.code == 'CO_SS_BASE_IBC')
+        self.assertTrue(linea_ibc_anterior)
+        self.assertEqual(round(linea_ibc_anterior.total, 2), 2500000.0)
+
+        # Cambio salarial real entre meses -- la lectura es literal: se usa el IBC
+        # del mes anterior tal cual, no el salario nuevo.
+        contract.write({'wage': 1800000.0})
+
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 1), date(2026, 9, 3))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        ultimo_ibc = payslip._ne_ultimo_ibc_anterior(contract)
+        self.assertEqual(ultimo_ibc, 2500000.0)
+        self.assertNotEqual(ultimo_ibc, contract.wage)
+
+    def test_ibc_ss_salario_integral_no_cambia(self):
+        """Punto (b.v) del diseño: salario integral sigue igual que antes (factor 70%
+        del salario, Art. 132 CST) -- una ausencia de vacaciones no debe alterarlo;
+        _ne_ibc_seguridad_social() devuelve ese valor directo sin pasar por DEV_SAL ni
+        por la base especial de vacaciones/licencias."""
+        wage = 10000000.0
+        employee, contract = self._make_contract('IbcIntegral', wage=wage)
+        contract.write({'l10n_co_ne_integral_salary': True})
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 14), date(2026, 9, 25))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        ibc_esperado = wage * 0.70
+        self.assertEqual(round(abs(salud), 2), round(ibc_esperado * 0.04, 2))
+
+    def test_incapacidad_no_entra_al_ibc_todavia(self):
+        """Punto (c), decisión explícita de Tech Lead (2026-10-11): las incapacidades
+        (CO_INC_COMUN/CO_INC_LABORAL) NO entran a la base de salud/pensión en este
+        ciclo -- quedan para el paso 3 de incapacidad (corte del día 90, piso de
+        salario mínimo). Esta prueba existe para que nadie lo dé por hecho sin querer
+        en un cambio futuro: si alguien agrega CO_INC_COMUN a
+        _ne_ibc_seguridad_social() sin que ese paso lo decida explícitamente, esta
+        prueba debe fallar."""
+        wage = 1800000.0
+        employee, contract = self._make_contract('IbcIncapacidad', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_inc_comun, date(2026, 9, 1), date(2026, 9, 2))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        basico = self._sueldo_basico(payslip)
+        inc = self._novedad(payslip, 'CO_INC_COMUN')
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        self.assertGreater(inc, 0)
+        self.assertEqual(round(abs(salud), 2), round(basico * 0.04, 2))
+        self.assertNotEqual(round(abs(salud), 2), round((basico + inc) * 0.04, 2))
+
+    def test_co_ss_base_ibc_no_aparece_ni_afecta_totales(self):
+        """Punto (d): el acumulador CO_SS_BASE_IBC es invisible (appears_on_payslip=
+        False) y su categoría (ACUM_INT) no tiene parent_id -- no debe aparecer en el
+        recibo ni afectar los totales de devengados (CO_BRUTO = categories['DEV']).
+        Salario por encima de 2 SMMLV (2026: 1.750.905 x2=3.501.810) a propósito, para
+        que CO_AUX_TRANS no entre y la comparación bruto == básico+vacaciones quede
+        limpia, sin sumarle otro concepto no salarial a la cuenta."""
+        wage = 4000000.0
+        employee, contract = self._make_contract('IbcInvisible', wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_vac, date(2026, 9, 14), date(2026, 9, 25))
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+
+        linea_ibc = payslip.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
+        self.assertTrue(linea_ibc)
+        self.assertFalse(linea_ibc.salary_rule_id.appears_on_payslip)
+        self.assertFalse(linea_ibc.salary_rule_id.category_id.parent_id)
+
+        basico = self._sueldo_basico(payslip)
+        vac = self._novedad(payslip, 'CO_VAC')
+        bruto = self._novedad(payslip, 'CO_BRUTO')
+        self.assertEqual(round(bruto, 2), round(basico + vac, 2))
