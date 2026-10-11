@@ -1387,16 +1387,7 @@ class HrPayslip(models.Model):
 
         }
         data['trabajador'] = self._ne_trabajador()
-        data['pago'] = {
-                'Forma': '1',  # 1=Contado
-                'Metodo': employee.l10n_co_ne_payment_method or '1',
-                'Banco': employee.l10n_co_ne_bank_name or '',
-                'TipoCuenta': (
-                    'Ahorro' if employee.l10n_co_ne_bank_account_type == 'ahorro'
-                    else 'Corriente'
-                ) if employee.l10n_co_ne_bank_account_type else '',
-                'NumeroCuenta': employee.l10n_co_ne_bank_account or '',
-        }
+        data['pago'] = self._ne_pago()
         data['periodo'] = {
                 'FechaIngreso': str(contract.date_start) if contract.date_start else '',
                 'FechaRetiro': str(contract.date_end) if contract.date_end else '',
@@ -1516,6 +1507,56 @@ class HrPayslip(models.Model):
                 employee=employee.name,
             ))
         return codigo
+
+    def _ne_pago(self):
+        """Sección <Pago> del XML de nómina electrónica (UX-02, 2026-10-11, decisión de
+        David + Tech Lead).
+
+        Antes Banco/TipoCuenta/NumeroCuenta salían de 3 campos propios
+        (l10n_co_ne_bank_name/bank_account_type/bank_account), duplicando la cuenta
+        bancaria nativa del empleado (employee.bank_account_id, res.partner.bank, ya
+        visible en "Información privada" > grupo "Contacto privado"). Ahora Banco =
+        bank_account_id.bank_id.name, NumeroCuenta = bank_account_id.acc_number.
+
+        TipoCuenta (Ahorro/Corriente) se OMITE a propósito: no existe ningún campo
+        nativo de community ni de l10n_co que represente ese concepto -- acc_type
+        nativo (account/base_iban) es una clasificación de FORMATO del número de
+        cuenta ('bank'/'iban', para decidir si validar con el algoritmo IBAN), no
+        tiene nada que ver con Ahorros/Corriente. l10n_co_account_type sí existe,
+        pero viene de l10n_co_bank_payment_export (módulo propio de InSoTech, fuera
+        de este repo) -- David decidió no depender de él ni crear un campo propio
+        para esto. Tech Lead verificó en el Anexo Técnico (NIE067) que la regla de
+        TipoCuenta es de tipo "N" (notificación), no "R" (rechazo): omitirlo no
+        rechaza el documento, puede generar una notificación de la DIAN -- QA debe
+        confirmar en staging si llega alguna. El XML builder (nomina_xml_builder.py)
+        ya trata Banco/TipoCuenta/NumeroCuenta como opcionales (omite la llave si no
+        hay valor), consistente con el XSD V1.0.6 (Forma/Metodo obligatorios).
+
+        Metodo (l10n_co_ne_payment_method) se queda como el único campo propio de
+        esta sección -- sin equivalente nativo verificado (no hay nada en
+        account.payment.method que mapee a los 3 códigos DIAN 1/2/10 de nómina).
+
+        Si el método es transferencia (código '1') y no hay bank_account_id:
+        UserError explícito, nunca un Banco/NumeroCuenta vacíos enviados a la DIAN.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        metodo = employee.l10n_co_ne_payment_method or '1'
+        cuenta = employee.bank_account_id
+        if metodo == '1' and not cuenta:
+            raise UserError(_(
+                'El empleado %(employee)s no tiene una Cuenta Bancaria configurada '
+                '(Información privada > Contacto privado) y el método de pago es '
+                'Transferencia Bancaria. Configure la cuenta o cambie el método de '
+                'pago antes de generar la nómina electrónica.',
+                employee=employee.name,
+            ))
+        return {
+            'Forma': '1',  # 1=Contado
+            'Metodo': metodo,
+            'Banco': (cuenta.bank_id.name or '') if cuenta else '',
+            'NumeroCuenta': (cuenta.acc_number or '') if cuenta else '',
+        }
 
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""

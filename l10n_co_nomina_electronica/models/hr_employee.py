@@ -183,8 +183,15 @@ class HrEmployee(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
-    # Información de pago bancario
-    # Nodo <Pago> del XML de nómina electrónica
+    # Información de pago bancario (UX-02, 2026-10-11, decisión de David +
+    # Tech Lead): Banco/TipoCuenta/NumeroCuenta ya NO son campos propios --
+    # duplicaban la cuenta bancaria nativa del empleado (bank_account_id,
+    # res.partner.bank, visible en "Información privada" > grupo "Contacto
+    # privado"). Banco y NumeroCuenta salen de ahí
+    # (HrPayslip._ne_pago()); TipoCuenta se omite del XML (es opcional en
+    # el XSD -- no existe campo nativo real para Ahorro/Corriente, ver
+    # docstring de _ne_pago()). Metodo sigue siendo el único campo propio
+    # de esta sección: no tiene equivalente nativo verificado.
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_payment_method = fields.Selection(
         selection=[
@@ -195,25 +202,9 @@ class HrEmployee(models.Model):
         string='Método de Pago',
         default='1',
         help='Método de pago de la nómina al trabajador. Se refleja en '
-             'el atributo Metodo del nodo <Pago> del XML.',
-    )
-    l10n_co_ne_bank_name = fields.Char(
-        string='Nombre del Banco',
-        help='Nombre de la entidad bancaria donde el trabajador tiene '
-             'su cuenta de nómina.',
-    )
-    l10n_co_ne_bank_account_type = fields.Selection(
-        selection=[
-            ('ahorro', 'Cuenta de Ahorro'),
-            ('corriente', 'Cuenta Corriente'),
-        ],
-        string='Tipo de Cuenta',
-        help='Tipo de cuenta bancaria del trabajador.',
-    )
-    l10n_co_ne_bank_account = fields.Char(
-        string='Número de Cuenta',
-        help='Número de cuenta bancaria del trabajador para el pago '
-             'de nómina.',
+             'el atributo Metodo del nodo <Pago> del XML. La cuenta '
+             'bancaria se elige en "Información privada" (Cuenta '
+             'Bancaria).',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -326,17 +317,20 @@ class HrEmployee(models.Model):
                     employee.name,
                 ))
 
-    @api.constrains('l10n_co_ne_payment_method', 'l10n_co_ne_bank_account')
+    @api.constrains('l10n_co_ne_payment_method', 'bank_account_id')
     def _check_bank_account_for_transfer(self):
-        """Valida que la cuenta bancaria esté informada si el pago es por transferencia."""
+        """Valida que la cuenta bancaria esté informada si el pago es por transferencia.
+
+        UX-02 (2026-10-11): ahora mira el campo nativo bank_account_id en vez del
+        propio l10n_co_ne_bank_account (retirado)."""
         for employee in self:
             if (
                 employee.l10n_co_ne_payment_method == '1'
-                and not employee.l10n_co_ne_bank_account
+                and not employee.bank_account_id
             ):
                 raise ValidationError(_(
-                    'Debe informar el número de cuenta bancaria cuando el '
-                    'método de pago es Transferencia Bancaria. '
+                    'Debe informar la Cuenta Bancaria (Información privada) cuando '
+                    'el método de pago es Transferencia Bancaria. '
                     'Empleado: %s',
                     employee.name,
                 ))

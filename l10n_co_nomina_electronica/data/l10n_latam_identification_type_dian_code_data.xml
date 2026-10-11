@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="1">
+    <data noupdate="0">
 
         <!-- UX-02 (2026-10-11): tabla de equivalencias entre los tipos de identificación
              nativos (l10n_latam.identification.type, cargados por l10n_co/l10n_latam_base)
@@ -10,41 +10,74 @@
              genérico de otros países LATAM) y vat (l10n_latam_base.it_vat, "VAT", también
              genérico) quedan SIN registro aquí a propósito: sin código DIAN,
              HrPayslip._ne_trabajador() debe fallar con UserError si algún empleado tiene
-             uno de esos dos tipos, nunca inventar un valor. -->
+             uno de esos dos tipos, nunca inventar un valor.
 
-        <record id="l10n_co.civil_registration" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">11</field>
-        </record>
-        <record id="l10n_co.id_card" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">12</field>
-        </record>
-        <record id="l10n_co.national_citizen_id" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">13</field>
-        </record>
-        <record id="l10n_co.foreign_colombian_card" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">21</field>
-        </record>
-        <record id="l10n_co.foreign_resident_card" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">22</field>
-        </record>
-        <record id="l10n_co.rut" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">31</field>
-        </record>
-        <record id="l10n_latam_base.it_pass" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">41</field>
-        </record>
-        <record id="l10n_co.residence_document" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">47</field>
-        </record>
-        <record id="l10n_co.48" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">48</field>
-        </record>
-        <record id="l10n_co.external_id" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">50</field>
-        </record>
-        <record id="l10n_co.niup_id" model="l10n_latam.identification.type">
-            <field name="l10n_co_ne_dian_document_code">91</field>
-        </record>
+             .91 (2026-10-11, hallazgo real de Tech Lead en staging): la .89 envolvía esto
+             en <record id="l10n_co.xxx"> dentro de <data noupdate="1">. Verificado contra
+             el código fuente real (odoo/tools/convert.py, Odoo 18.0, _tag_record linea 347):
+             "if self.noupdate and self.mode != 'init': ... if xid ya existe en
+             ir.model.data: return None", self.noupdate es el de NUESTRO propio <data>,
+             no el que el xmlid ya tenia por pertenecer a l10n_co. Como estos 13 xmlids
+             (l10n_co.national_citizen_id, etc.) ya existian en ir.model.data desde que
+             l10n_co cargo sus propios datos, y nuestro <data noupdate="1"> + mode='update'
+             (cualquier -u sobre un modulo ya instalado, el caso real de Guapante) cumplia
+             esa condicion, el <record> se saltaba entero sin escribir nada: de ahi que los
+             13 tipos quedaran con l10n_co_ne_dian_document_code=False en staging.
+
+             <function name="write"> tiene el MISMO guard (_tag_function linea 261, idéntica
+             condición), así que el primer intento de corrección (solo cambiar <record> por
+             <function> sin tocar el noupdate de este <data>) tampoco habría funcionado,
+             seguía heredando noupdate=1. El fix real es este <data noupdate="0">: con
+             self.noupdate=False, _tag_function nunca entra al return temprano y el write()
+             se ejecuta en cada instalación (-i) y en cada actualización (-u) por igual. Es
+             seguro porque es un write() idempotente sobre un dato de catálogo, no una
+             creación: no hay riesgo de duplicar ni de pisar nada que el usuario haya
+             editado (nadie edita el código DIAN de un tipo de identificación a mano). -->
+
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.civil_registration')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '11'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.id_card')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '12'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.national_citizen_id')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '13'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.foreign_colombian_card')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '21'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.foreign_resident_card')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '22'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.rut')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '31'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_latam_base.it_pass')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '41'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.residence_document')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '47'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.48')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '48'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.external_id')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '50'}"/>
+        </function>
+        <function model="l10n_latam.identification.type" name="write">
+            <value eval="[ref('l10n_co.niup_id')]"/>
+            <value eval="{'l10n_co_ne_dian_document_code': '91'}"/>
+        </function>
 
     </data>
 </odoo>

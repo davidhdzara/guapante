@@ -44,19 +44,15 @@
                     </group>
                 </group>
 
+                <!-- UX-02 (2026-10-11, precisión de David): Banco/TipoCuenta/
+                     NumeroCuenta ya no viven aquí, salen de la Cuenta Bancaria
+                     nativa del empleado (bank_account_id, "Información privada" >
+                     "Contacto privado"). Este grupo queda solo con el medio de
+                     pago, que no tiene equivalente nativo; su ayuda (tooltip)
+                     indica dónde se elige la cuenta. -->
                 <group string="Datos de Pago" name="payment_data">
-                    <group>
-                        <field name="l10n_co_ne_payment_method"
-                               string="Medio de Pago"/>
-                        <field name="l10n_co_ne_bank_name"
-                               string="Nombre del Banco"/>
-                    </group>
-                    <group>
-                        <field name="l10n_co_ne_bank_account_type"
-                               string="Tipo de Cuenta"/>
-                        <field name="l10n_co_ne_bank_account"
-                               string="Número de Cuenta"/>
-                    </group>
+                    <field name="l10n_co_ne_payment_method"
+                           string="Medio de Pago"/>
                 </group>
 
                 <group string="PILA - Administradoras" name="pila_administradoras">

@@ -17,3 +17,4 @@ from . import test_liquidacion_wizard_departure
 from . import test_ausencias_nomina
 from . import test_tipo_documento_dian
 from . import test_identificacion_sincronizada
+from . import test_pago_cuenta_bancaria

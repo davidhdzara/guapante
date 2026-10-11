@@ -22,15 +22,20 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'l10n_co_ne_worker_type': '01',
             'l10n_co_ne_worker_subtype': '00',
             'l10n_co_ne_payment_method': '1',  # 1 = Transferencia Bancaria
-            'l10n_co_ne_bank_account': '1234567890',
-            'l10n_co_ne_bank_name': 'Bancolombia',
-            'l10n_co_ne_bank_account_type': 'ahorro',
         })
         # UX-02 (2026-10-11): el tipo de documento ya no se fija al crear el
         # empleado -- work_contact_id (el partner que lo guarda) recién existe
         # DESPUÉS de este create() (hr nativo lo crea en _create_work_contacts()).
         self.employee.l10n_co_ne_identification_type_id = self.env.ref(
             'l10n_co.national_citizen_id').id
+        # UX-02 (2026-10-11): Banco/NumeroCuenta salen de la Cuenta Bancaria
+        # nativa (bank_account_id, res.partner.bank) -- el método de pago es
+        # Transferencia, así que _check_bank_account_for_transfer() la exige.
+        self.employee.bank_account_id = self.env['res.partner.bank'].create({
+            'acc_number': '1234567890',
+            'partner_id': self.employee.work_contact_id.id,
+            'bank_id': self.env['res.bank'].create({'name': 'Bancolombia'}).id,
+        }).id
         self.structure_type = self.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura',
             'country_id': co_country.id,

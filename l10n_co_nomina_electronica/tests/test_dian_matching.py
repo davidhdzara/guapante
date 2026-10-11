@@ -78,7 +78,7 @@ class TestDianMatchingCommon(TransactionCase):
             'company_id': self.company.id,
             # AUD-DIAN-34 (2026-10-05): l10n_co_ne_payment_method default
             # es '1' (Transferencia Bancaria), que _check_bank_account_for_
-            # transfer() exige con l10n_co_ne_bank_account -- sin interés
+            # transfer() exige con bank_account_id (UX-02) -- sin interés
             # para estas pruebas, 'Efectivo' evita fabricar datos bancarios.
             'l10n_co_ne_payment_method': '10',
         })

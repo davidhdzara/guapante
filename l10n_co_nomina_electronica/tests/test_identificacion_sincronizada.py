@@ -105,6 +105,48 @@ class TestIdentificacionSincronizada(TransactionCase):
             'una indica un ciclo entre employee.write() y partner.write().',
         )
 
+    def _desincronizar_por_sql(self, employee, vat_contacto):
+        """Reproduce el estado de 2 empleados reales de staging (Tech Lead,
+        2026-10-11: Andres Felipe Zapata, Diana Cristina Gil Posada) con
+        identification_id distinto del vat de su contacto, desde ANTES de que
+        este sincronismo existiera -- la migración (migrations/18.0.3.0.89/
+        post-sync_identification_number.py) no los toca a propósito, solo
+        completa vat=False, nunca sobrescribe un valor ya distinto. El UPDATE
+        SQL directo es la única forma de dejar esa discrepancia en la prueba
+        sin pasar por partner.write() (que la resincronizaría de inmediato)."""
+        self.env.cr.execute(
+            'UPDATE res_partner SET vat = %s WHERE id = %s',
+            (vat_contacto, employee.work_contact_id.id),
+        )
+        employee.work_contact_id.invalidate_recordset(['vat'])
+
+    def test_conflicto_preexistente_la_edicion_desde_el_empleado_gana(self):
+        """Pregunta de Tech Lead sobre los 2 empleados con discrepancia real en
+        staging: ¿qué pasa cuando alguien edita un lado? El diseño no "corrige"
+        solo el conflicto previo ni levanta ningún error por él -- simplemente,
+        la PRÓXIMA edición (de cualquier lado) es la que gana y el otro lado la
+        sigue, igual que en cualquier otra edición. Aquí la edición llega desde
+        el empleado."""
+        employee = self._make_employee('ConflictoDesdeEmpleado', identification_id='1037598227')
+        self._desincronizar_por_sql(employee, '1020422294')
+        self.assertEqual(employee.identification_id, '1037598227')
+        self.assertEqual(employee.work_contact_id.vat, '1020422294')
+
+        employee.identification_id = '1037598227999'
+        self.assertEqual(employee.work_contact_id.vat, '1037598227999')
+
+    def test_conflicto_preexistente_la_edicion_desde_contactos_gana(self):
+        """Mismo caso, lado contrario: si la edición que resuelve el conflicto
+        llega desde Contactos (vat), es identification_id del empleado el que
+        se actualiza para seguirla."""
+        employee = self._make_employee('ConflictoDesdeContactos', identification_id='43927526')
+        self._desincronizar_por_sql(employee, '901975355-1')
+        self.assertEqual(employee.identification_id, '43927526')
+        self.assertEqual(employee.work_contact_id.vat, '901975355-1')
+
+        employee.work_contact_id.vat = '901975355-9'
+        self.assertEqual(employee.identification_id, '901975355-9')
+
     def test_tipo_nit_con_numero_invalido_falla_validacion_nativa(self):
         """Tipo RUT (NIT): l10n_co.check_vat() SÍ valida el dígito de
         verificación (vía base_vat/stdnum) cuando el tipo de identificación es
