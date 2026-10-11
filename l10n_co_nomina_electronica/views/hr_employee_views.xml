@@ -16,16 +16,17 @@
         <field name="arch" type="xml">
             <xpath expr="//page[@name='hr_payroll']" position="inside">
 
+                <!-- UX-02 (2026-10-11): el tipo de documento ya no vive aquí, sale del
+                     tipo de identificación nativo de Contactos, mostrado junto al número
+                     en "Información privada" (ver xpath de identification_id abajo). -->
                 <group string="Identificación DIAN" name="dian_identification">
                     <group>
-                        <field name="l10n_co_ne_document_type"
-                               string="Tipo Documento DIAN"/>
                         <field name="l10n_co_ne_worker_type"
                                string="Tipo Trabajador"/>
-                    </group>
-                    <group>
                         <field name="l10n_co_ne_worker_subtype"
                                string="Subtipo Trabajador"/>
+                    </group>
+                    <group>
                         <field name="l10n_co_ne_high_risk_pension"
                                string="Pensión Alto Riesgo"/>
                     </group>
@@ -73,6 +74,15 @@
                     </group>
                 </group>
 
+            </xpath>
+
+            <!-- UX-02 (2026-10-11, precisión de David): el tipo de documento va justo
+                 ENCIMA del número, en la misma pestaña nativa donde ya vive
+                 identification_id (page[@name='personal_information'], grupo
+                 "Citizenship"), editable ahí, sin repetirse en ninguna otra pestaña. -->
+            <xpath expr="//page[@name='personal_information']//field[@name='identification_id']"
+                   position="before">
+                <field name="l10n_co_ne_identification_type_id" string="Tipo de Documento"/>
             </xpath>
         </field>
     </record>

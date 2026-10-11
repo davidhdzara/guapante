@@ -651,9 +651,15 @@ class L10nCoNominaUgpp(models.Model):
             ]))
 
             # -- Tipo documento → código corto UGPP --------------------
-            tipo_doc_ugpp = _DOC_TYPE_UGPP_MAP.get(
-                employee.l10n_co_ne_document_type or '', ''
+            # UX-02 (2026-10-11): el código DIAN ya no sale de un Selection propio --
+            # sale del tipo de identificación nativo de Contactos (work_contact_id),
+            # igual que HrPayslip._ne_tipo_documento() (sin el UserError de ahí: este
+            # reporte tolera un tipo vacío/sin equivalente, igual que antes).
+            dian_code = (
+                employee.work_contact_id.l10n_latam_identification_type_id
+                .l10n_co_ne_dian_document_code or ''
             )
+            tipo_doc_ugpp = _DOC_TYPE_UGPP_MAP.get(dian_code, '')
 
             # -- Ingreso / Retiro en el período ------------------------
             es_ingreso = False

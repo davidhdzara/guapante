@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- UX-02 (2026-10-11): tabla de equivalencias entre los tipos de identificación
+             nativos (l10n_latam.identification.type, cargados por l10n_co/l10n_latam_base)
+             y el código DIAN de la tabla 5.1 del Anexo Técnico de Nómina Electrónica
+             (Resolución 000013 de 2021), como DATO del módulo, nunca como diccionario en
+             Python. foreign_id_card (l10n_latam_base.it_fid, "Cédula Extranjera", tipo
+             genérico de otros países LATAM) y vat (l10n_latam_base.it_vat, "VAT", también
+             genérico) quedan SIN registro aquí a propósito: sin código DIAN,
+             HrPayslip._ne_trabajador() debe fallar con UserError si algún empleado tiene
+             uno de esos dos tipos, nunca inventar un valor. -->
+
+        <record id="l10n_co.civil_registration" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">11</field>
+        </record>
+        <record id="l10n_co.id_card" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">12</field>
+        </record>
+        <record id="l10n_co.national_citizen_id" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">13</field>
+        </record>
+        <record id="l10n_co.foreign_colombian_card" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">21</field>
+        </record>
+        <record id="l10n_co.foreign_resident_card" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">22</field>
+        </record>
+        <record id="l10n_co.rut" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">31</field>
+        </record>
+        <record id="l10n_latam_base.it_pass" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">41</field>
+        </record>
+        <record id="l10n_co.residence_document" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">47</field>
+        </record>
+        <record id="l10n_co.48" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">48</field>
+        </record>
+        <record id="l10n_co.external_id" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">50</field>
+        </record>
+        <record id="l10n_co.niup_id" model="l10n_latam.identification.type">
+            <field name="l10n_co_ne_dian_document_code">91</field>
+        </record>
+
+    </data>
+</odoo>

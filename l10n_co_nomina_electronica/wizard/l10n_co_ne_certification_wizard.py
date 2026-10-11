@@ -293,6 +293,11 @@ class L10nCoNeCertificationWizard(models.TransientModel):
             'identification_id': employee_def['identification_id'],
             **habilitacion_test_data.TEST_EMPLOYEE_COMMON_VALUES,
         })
+        # UX-02 (2026-10-11): el tipo de documento ya no se fija al crear el
+        # empleado -- work_contact_id (el partner que lo guarda) recién existe
+        # DESPUÉS de este create() (hr nativo lo crea en _create_work_contacts()).
+        employee.l10n_co_ne_identification_type_id = self.env.ref(
+            habilitacion_test_data.TEST_EMPLOYEE_IDENTIFICATION_TYPE_XMLID).id
         structure_type = self.env.ref(
             'l10n_co_nomina_electronica.hr_payroll_structure_type_co')
         start_date = fields.Date.context_today(self) - relativedelta(

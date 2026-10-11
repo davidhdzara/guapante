@@ -1,6 +1,6 @@
 {
     'name': 'Nómina Electrónica Colombia - DIAN',
-    'version': '18.0.3.0.88',
+    'version': '18.0.3.0.89',
     'category': 'Human Resources/Payroll',
     'summary': 'Generación y envío de Nómina Electrónica a la DIAN (Resolución 000013 de 2021)',
     'description': """
@@ -33,6 +33,7 @@ Funcionalidades principales:
         'hr_payroll_account',
         'account',
         'l10n_co',
+        'l10n_latam_base',
         'hr_holidays',
         'certificate',
     ],
@@ -64,6 +65,7 @@ Funcionalidades principales:
         'data/ir_cron_habilitacion.xml',
         'data/ir_cron_dian_status_recheck.xml',
         'data/ir_config_parameter_dian_data.xml',
+        'data/l10n_latam_identification_type_dian_code_data.xml',
         # Views
         'wizard/hr_payslip_send_views.xml',
         'wizard/l10n_co_ne_certification_wizard_views.xml',

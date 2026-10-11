@@ -5,12 +5,16 @@
 Extensión de hr.employee para Nómina Electrónica DIAN.
 
 Agrega los campos requeridos por el nodo ``<Trabajador>`` del XML de nómina
-electrónica: tipo/subtipo de trabajador, tipo de documento según codificación
-DIAN, indicadores de alto riesgo y extranjería, así como información bancaria
-para el nodo ``<Pago>``. El lugar de trabajo (LugarTrabajoPais/
-DepartamentoEstado/MunicipioCiudad/Direccion) NO vive aquí -- sale del campo
-nativo ``address_id`` (Dirección de Trabajo) vía
-``HrPayslip._ne_lugar_trabajo_partner()`` (H-018, 2026-10-11).
+electrónica: tipo/subtipo de trabajador, indicadores de alto riesgo y
+extranjería, así como información bancaria para el nodo ``<Pago>``. El lugar
+de trabajo (LugarTrabajoPais/DepartamentoEstado/MunicipioCiudad/Direccion) NO
+vive aquí -- sale del campo nativo ``address_id`` (Dirección de Trabajo) vía
+``HrPayslip._ne_lugar_trabajo_partner()`` (H-018, 2026-10-11). El tipo de
+documento de identidad (TipoDocumento del XML) tampoco vive aquí como
+Selection propio -- sale de ``l10n_latam.identification.type`` vía
+``work_contact_id`` (UX-02, 2026-10-11); ver
+``l10n_co_ne_identification_type_id`` abajo y
+``HrPayslip._ne_trabajador()``.
 
 Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica
 V1.0, secciones 6.2.8 (Trabajador) y 6.2.9 (Pago).
@@ -26,29 +30,99 @@ class HrEmployee(models.Model):
     _inherit = 'hr.employee'
 
     # ──────────────────────────────────────────────────────────────────
-    # Tipo de documento de identidad (codificación DIAN)
+    # Tipo de documento de identidad (UX-02, 2026-10-11, decisión de David +
+    # Tech Lead): antes un Selection propio, duplicando el tipo de
+    # identificación que Contactos ya guarda en work_contact_id (el mismo
+    # partner que exige el dominio nativo de bank_account_id). El código
+    # DIAN (TipoDocumento del nodo <Trabajador>) ahora sale de
+    # l10n_latam.identification.type.l10n_co_ne_dian_document_code (dato del
+    # módulo, data/l10n_latam_identification_type_dian_code_data.xml -- ver
+    # HrPayslip._ne_trabajador()). El NÚMERO (identification_id) sigue siendo
+    # el mismo Char nativo de siempre (sin cambiar su naturaleza ni los ~12
+    # usos reales que ya tiene) -- lo que se agrega es sincronización
+    # bidireccional con work_contact_id.vat, ver create()/write() más abajo
+    # y models/res_partner.py (decisión de David, 2026-10-11: "que el
+    # contacto y el empleado queden sincronizados en el número").
     # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_document_type = fields.Selection(
-        selection=[
-            ('11', 'Registro Civil'),
-            ('12', 'Tarjeta de Identidad'),
-            ('13', 'Cédula de Ciudadanía'),
-            ('21', 'Tarjeta de Extranjería'),
-            ('22', 'Cédula de Extranjería'),
-            ('31', 'NIT'),
-            ('41', 'Pasaporte'),
-            ('42', 'Documento de Identificación Extranjero'),
-            ('47', 'PEP – Permiso Especial de Permanencia'),
-            ('48', 'PPT – Permiso de Protección Temporal'),
-            ('50', 'NIT de otro país'),
-            ('91', 'NUIP'),
-        ],
-        string='Tipo Documento DIAN',
-        help='Tipo de documento de identidad del trabajador según la '
-             'codificación oficial de la DIAN para nómina electrónica.\n'
-             'Este valor se usa en el atributo TipoDocumento del nodo '
-             '<Trabajador> del XML.',
+    l10n_co_ne_identification_type_id = fields.Many2one(
+        comodel_name='l10n_latam.identification.type',
+        string='Tipo de Documento',
+        compute='_compute_l10n_co_ne_identification_type_id',
+        inverse='_inverse_l10n_co_ne_identification_type_id',
+        help='Tipo de documento de identidad del trabajador -- espejo '
+             'editable de work_contact_id.l10n_latam_identification_type_id '
+             '(el mismo dato de Contactos, mostrado aquí junto al número '
+             'para no exigir 2 pestañas distintas).',
     )
+
+    @api.depends('work_contact_id.l10n_latam_identification_type_id')
+    def _compute_l10n_co_ne_identification_type_id(self):
+        for employee in self:
+            employee.l10n_co_ne_identification_type_id = (
+                employee.work_contact_id.l10n_latam_identification_type_id)
+
+    def _inverse_l10n_co_ne_identification_type_id(self):
+        # El Internal User "RRHH" (hr.group_hr_user) no tiene de por sí
+        # permiso de escritura en res.partner (access_res_partner_group_user:
+        # perm_write=0 en la base de Odoo -- solo group_partner_manager lo
+        # tiene) -- mismo caso que resuelve hr nativo con sudo() en
+        # _inverse_work_contact_details() (hr_employee_base.py). sudo()
+        # acotado a esta sola escritura, nunca a todo el registro.
+        for employee in self:
+            if employee.work_contact_id:
+                employee.work_contact_id.sudo().write({
+                    'l10n_latam_identification_type_id':
+                        employee.l10n_co_ne_identification_type_id.id,
+                })
+
+    # ──────────────────────────────────────────────────────────────────
+    # Sincronización del NÚMERO de identificación con Contactos (UX-02,
+    # 2026-10-11, decisión de David: "que el contacto y el empleado queden
+    # sincronizados en el número"). La dirección Contactos -> empleado vive
+    # en models/res_partner.py (write() de res.partner, cuando cambia vat).
+    #
+    # Por qué un create()/write() explícitos y no un related/compute+store
+    # en identification_id: ese campo es nativo de hr (Char, sin related) y
+    # tiene ~12 usos reales en este módulo (NumeroDocumento del XML, UGPP,
+    # PILA, la clave de idempotencia del wizard de certificación, y pruebas)
+    # -- convertirlo en related cambiaría su naturaleza de almacenamiento,
+    # más riesgo del necesario. Además hay un problema real de orden en la
+    # creación (verificado contra hr/models/hr_employee.py::create()): para
+    # un empleado SIN usuario vinculado (el caso típico), work_contact_id NO
+    # existe todavía cuando super().create() procesa identification_id --
+    # hr nativo lo crea DESPUÉS, en _create_work_contacts(), llamado tras
+    # super().create(). Por eso la propagación debe hacerse DESPUÉS de que
+    # el create() completo (incluida esa post-creación) haya terminado.
+    #
+    # Guards explícitos (Tech Lead, 2026-10-11): nunca propagar un valor
+    # vacío/False en ninguna dirección (borraría el dato real del otro
+    # lado), y comparar antes de escribir para no generar un ciclo
+    # empleado->contacto->empleado->... (ver test_sin_bucle_infinito_entre_
+    # employee_y_partner en test_identificacion_sincronizada.py).
+    # ──────────────────────────────────────────────────────────────────
+    @api.model_create_multi
+    def create(self, vals_list):
+        employees = super().create(vals_list)
+        for employee in employees:
+            if (
+                employee.identification_id
+                and employee.work_contact_id
+                and employee.work_contact_id.vat != employee.identification_id
+            ):
+                employee.work_contact_id.sudo().vat = employee.identification_id
+        return employees
+
+    def write(self, vals):
+        res = super().write(vals)
+        if 'identification_id' in vals:
+            for employee in self:
+                if (
+                    employee.identification_id
+                    and employee.work_contact_id
+                    and employee.work_contact_id.vat != employee.identification_id
+                ):
+                    employee.work_contact_id.sudo().vat = employee.identification_id
+        return res
 
     # ──────────────────────────────────────────────────────────────────
     # Tipo y Subtipo de Trabajador

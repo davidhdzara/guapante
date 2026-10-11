@@ -109,6 +109,10 @@ class TestDianPaisMoneda(TransactionCase):
             'l10n_co_ne_payment_method': '10',
         }
         employee = self.env['hr.employee'].create(employee_vals)
+        # UX-02 (2026-10-11): _ne_tipo_documento() exige un tipo de documento con
+        # equivalente DIAN en work_contact_id.
+        employee.l10n_co_ne_identification_type_id = self.env.ref(
+            'l10n_co.national_citizen_id').id
         if work_address is not None:
             employee.address_id = work_address.id
         contract = self.env['hr.contract'].create({

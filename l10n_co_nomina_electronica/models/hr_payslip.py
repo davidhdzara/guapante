@@ -1489,6 +1489,34 @@ class HrPayslip(models.Model):
             ))
         return partner
 
+    def _ne_tipo_documento(self):
+        """Código DIAN (TipoDocumento del nodo <Trabajador>) del tipo de identificación
+        del empleado (UX-02, 2026-10-11, decisión de David + Tech Lead).
+
+        Antes era un Selection propio en hr.employee, duplicando el tipo de
+        identificación que Contactos ya guarda en work_contact_id.l10n_latam_
+        identification_type_id (el mismo partner que exige el dominio nativo de
+        bank_account_id). Ahora sale de ahí, vía l10n_latam.identification.type.
+        l10n_co_ne_dian_document_code (dato del módulo, data/l10n_latam_identification_
+        type_dian_code_data.xml). Sin tipo configurado, o con un tipo sin equivalente
+        DIAN (ej. los genéricos "Cédula Extranjera"/"VAT" de otros países LATAM, que
+        deliberadamente no tienen registro en esos datos): UserError que nombra al
+        empleado, nunca un '13' inventado como hacía el default silencioso anterior.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        tipo = employee.work_contact_id.l10n_latam_identification_type_id
+        codigo = tipo.l10n_co_ne_dian_document_code
+        if not codigo:
+            raise UserError(_(
+                'El empleado %(employee)s no tiene un Tipo de Documento con '
+                'equivalente DIAN configurado (Información privada > Tipo de '
+                'Documento). Complete ese dato antes de generar la nómina '
+                'electrónica.',
+                employee=employee.name,
+            ))
+        return codigo
+
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
@@ -1501,7 +1529,7 @@ class HrPayslip(models.Model):
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'
             ),
-            'TipoDocumento': employee.l10n_co_ne_document_type or '13',
+            'TipoDocumento': self._ne_tipo_documento(),
             'NumeroDocumento': employee.identification_id or '',
             'PrimerApellido': _name_parts.get('primer_apellido', ''),
             'SegundoApellido': _name_parts.get('segundo_apellido', ''),

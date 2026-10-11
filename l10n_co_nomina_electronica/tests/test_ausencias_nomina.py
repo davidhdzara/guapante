@@ -127,6 +127,11 @@ class TestAusenciasNomina(TransactionCase):
             # l10n_co_ne_bank_account -- sin interés aquí, 'Efectivo' evita datos bancarios falsos.
             'l10n_co_ne_payment_method': '10',
         })
+        # UX-02 (2026-10-11): _ne_tipo_documento() exige un tipo de documento con
+        # equivalente DIAN en work_contact_id -- sin esto, los tests test_xml_* fallan
+        # con ese UserError nuevo, no por el defecto que cada uno prueba.
+        employee.l10n_co_ne_identification_type_id = self.env.ref(
+            'l10n_co.national_citizen_id').id
         contract_vals = {
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
