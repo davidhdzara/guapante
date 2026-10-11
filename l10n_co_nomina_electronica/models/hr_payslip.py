@@ -1441,12 +1441,50 @@ class HrPayslip(models.Model):
         dv = dian_utils.compute_dv(nit) if self.company_id.vat else ''
         return nit, dv
 
+    def _ne_lugar_trabajo_partner(self):
+        """Único partner fuente de los 4 atributos LugarTrabajo* del nodo <Trabajador>
+        (H-018, 2026-10-11, decisión de David + Tech Lead).
+
+        Antes mezclaba orígenes: LugarTrabajoPais/LugarTrabajoDireccion salían de
+        employee.work_contact_id (la ficha de contacto del empleado -- nombre/correo/
+        teléfono, NO una dirección; puede no tener país ni calle) o, de respaldo, de la
+        compañía; LugarTrabajoDepartamentoEstado/LugarTrabajoMunicipioCiudad salían de un
+        campo propio (l10n_co_ne_dane_city_id, removido en este cambio) que, vacío, caía
+        en silencio al municipio de la compañía. Resultado posible: un empleado con la
+        calle de su casa y el municipio de la compañía en el mismo nodo.
+
+        Ahora los 4 salen del MISMO partner: employee.address_id ("Dirección de Trabajo",
+        campo nativo de hr.employee -- por defecto la dirección de la compañía, editable
+        por empleado para un teletrabajador vía Contactos). Sin dato por defecto
+        silencioso: si falta país, departamento o municipio, UserError explícito.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        partner = employee.address_id
+        faltantes = []
+        if not partner.country_id:
+            faltantes.append(_('país'))
+        if not partner.state_id:
+            faltantes.append(_('departamento'))
+        if not partner.city_id:
+            faltantes.append(_('municipio'))
+        if faltantes:
+            raise UserError(_(
+                'La Dirección de Trabajo de %(employee)s no tiene %(campos)s '
+                'configurado(s) (ficha del empleado, campo "Dirección de Trabajo", o el '
+                'contacto que apunte -- en Contactos). Complete esos datos antes de '
+                'generar la nómina electrónica: los 4 atributos LugarTrabajo* del XML '
+                'deben salir del mismo lugar, nunca de un valor inventado.',
+                employee=employee.name, campos=', '.join(faltantes),
+            ))
+        return partner
+
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
         contract = self.contract_id
-        company = self.company_id
         _name_parts = dian_utils.split_name(employee.name or '')
+        lugar_trabajo = self._ne_lugar_trabajo_partner()
         return {
             'TipoTrabajador': employee.l10n_co_ne_worker_type or '01',
             'SubTipoTrabajador': employee.l10n_co_ne_worker_subtype or '00',
@@ -1461,24 +1499,14 @@ class HrPayslip(models.Model):
             'OtrosNombres': _name_parts.get('otros_nombres', ''),
             # AUD-DIAN-34 (2026-10-05): a diferencia de Idioma/TipoMoneda, el Anexo Técnico
             # NO fija LugarTrabajoPais a Colombia (NIE050: admite cualquier código alfa-2,
-            # "país actual donde se encontraba ubicado el trabajador") -- mismo criterio de
-            # LugarTrabajoDireccion/MunicipioCiudad: dato real del trabajador si lo hay
-            # (work_contact_id), si no la ubicación de la compañía.
-            'LugarTrabajoPais': (
-                employee.work_contact_id.country_id.code
-                or company.partner_id.country_id.code
-            ),
+            # "país actual donde se encontraba ubicado el trabajador"). H-018 (2026-10-11):
+            # los 4 atributos LugarTrabajo* salen del mismo partner -- ver
+            # _ne_lugar_trabajo_partner().
+            'LugarTrabajoPais': lugar_trabajo.country_id.code,
             'LugarTrabajoDepartamentoEstado': dian_utils.get_department_code(
-                employee.l10n_co_ne_dane_city_id.state_id
-                if employee.l10n_co_ne_dane_city_id
-                else company.partner_id.state_id
-            ),
-            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(
-                employee.l10n_co_ne_dane_city_id
-            ) if employee.l10n_co_ne_dane_city_id else dian_utils.get_city_code(
-                company.partner_id.city_id
-            ),
-            'LugarTrabajoDireccion': employee.work_contact_id.street or company.partner_id.street or '',
+                lugar_trabajo.state_id),
+            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(lugar_trabajo.city_id),
+            'LugarTrabajoDireccion': lugar_trabajo.street or '',
 
             'SalarioIntegral': (
                 'true' if contract.l10n_co_ne_integral_salary else 'false'

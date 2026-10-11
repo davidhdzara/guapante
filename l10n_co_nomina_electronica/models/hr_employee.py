@@ -6,8 +6,11 @@ Extensión de hr.employee para Nómina Electrónica DIAN.
 
 Agrega los campos requeridos por el nodo ``<Trabajador>`` del XML de nómina
 electrónica: tipo/subtipo de trabajador, tipo de documento según codificación
-DIAN, lugar de trabajo (municipio DANE), indicadores de alto riesgo y
-extranjería, así como información bancaria para el nodo ``<Pago>``.
+DIAN, indicadores de alto riesgo y extranjería, así como información bancaria
+para el nodo ``<Pago>``. El lugar de trabajo (LugarTrabajoPais/
+DepartamentoEstado/MunicipioCiudad/Direccion) NO vive aquí -- sale del campo
+nativo ``address_id`` (Dirección de Trabajo) vía
+``HrPayslip._ne_lugar_trabajo_partner()`` (H-018, 2026-10-11).
 
 Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica
 V1.0, secciones 6.2.8 (Trabajador) y 6.2.9 (Pago).
@@ -103,18 +106,6 @@ class HrEmployee(models.Model):
         default=False,
         help='Indica si el trabajador es un colombiano que presta sus '
              'servicios desde el exterior.',
-    )
-
-    # ──────────────────────────────────────────────────────────────────
-    # Lugar de trabajo (codificación DANE)
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_dane_city_id = fields.Many2one(
-        comodel_name='res.city',
-        string='Municipio Lugar de Trabajo',
-        help='Municipio donde el trabajador presta sus servicios, '
-             'codificado según el DANE. Se usa en los atributos '
-             'LugarTrabajoDepartamentoEstado y LugarTrabajoMunicipioCiudad '
-             'del nodo <Trabajador>.',
     )
 
     # ──────────────────────────────────────────────────────────────────
