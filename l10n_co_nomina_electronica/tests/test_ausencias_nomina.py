@@ -497,6 +497,13 @@ class TestAusenciasNomina(TransactionCase):
     # ──────────────────────────────────────────────────────────────────
 
     def test_xml_vacaciones_fecha_y_pago(self):
+        # H-016 (.83): Cantidad es DIAS HABILES, no calendario. Ausencia 16-30
+        # sep/2026 bajo el calendario L-V por defecto de esta compania de
+        # prueba (sin festivos cargados, es una compania aislada creada en
+        # setUpClass): 16(mie) 17(jue) 18(vie) = 3; 19(sab)/20(dom) excluidos;
+        # 21(lun) 22(mar) 23(mie) 24(jue) 25(vie) = 5; 26(sab)/27(dom)
+        # excluidos; 28(lun) 29(mar) 30(mie) = 3. Total = 3+5+3 = 11 dias
+        # habiles (no 15, que era el conteo calendario viejo).
         wage = 1800000.0
         employee, contract = self._make_contract('XmlVac', wage=wage)
         self._make_validated_leave(
@@ -509,7 +516,7 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(len(vacaciones), 1)
         self.assertEqual(vacaciones[0]['FechaInicio'], '2026-09-16')
         self.assertEqual(vacaciones[0]['FechaFin'], '2026-09-30')
-        self.assertEqual(vacaciones[0]['Cantidad'], '15')
+        self.assertEqual(vacaciones[0]['Cantidad'], '11')
         self.assertEqual(vacaciones[0]['Pago'], '%.2f' % novedad)
 
     def test_xml_licencia_remunerada_fecha_y_pago(self):

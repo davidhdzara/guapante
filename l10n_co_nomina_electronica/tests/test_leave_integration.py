@@ -180,5 +180,10 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         self.assertEqual(len(vacaciones), 1)
         self.assertEqual(vacaciones[0]['FechaInicio'], '2026-06-15')
         self.assertEqual(vacaciones[0]['FechaFin'], '2026-06-25')
-        self.assertEqual(vacaciones[0]['Cantidad'], '11')
-        self.assertEqual(vacaciones[0]['Pago'], '1100000.00')
+        # H-016 (.83): Cantidad/Pago del XML son dias HABILES (8, ver comentario
+        # de la regla ad hoc arriba), no los 11 dias CALENDARIO que sigue
+        # mostrando correctamente l10n_co_ne_dias_vacaciones (linea 108) -- ese
+        # contador es un mecanismo distinto (_compute_leave_days_in_period(),
+        # resumen de accion_detect_leaves(), siempre calendario) y no cambia.
+        self.assertEqual(vacaciones[0]['Cantidad'], '8')
+        self.assertEqual(vacaciones[0]['Pago'], '800000.00')
