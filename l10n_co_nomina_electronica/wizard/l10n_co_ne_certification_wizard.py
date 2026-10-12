@@ -214,21 +214,28 @@ class L10nCoNeCertificationWizard(models.TransientModel):
 
         Regla: el periodo del último ``hr.payslip`` confirmado
         (``state='done'``) de la estructura Nómina General de la
-        compañía -- refleja el ciclo de nómina real más reciente. Si no
-        hay ninguno todavía, cae al mes calendario actual completo.
+        compañía YA INICIADO (``date_from`` <= hoy) -- refleja el ciclo
+        de nómina real más reciente. Si no hay ninguno todavía, cae al
+        mes calendario actual completo.
+
+        .98 (hallazgo de Tech Lead en staging): sin el filtro de fecha,
+        un payslip de prueba con periodo futuro (``date_to`` hasta
+        2027-01-31) ganaba por ``order='date_to desc'`` y el asistente
+        elegía un periodo que todavía no empieza.
         """
         self.ensure_one()
+        today = fields.Date.context_today(self)
         struct = self.env.ref(
             'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         last = self.env['hr.payslip'].search([
             ('company_id', '=', self.company_id.id),
             ('struct_id', '=', struct.id),
             ('state', '=', 'done'),
+            ('date_from', '<=', today),
         ], order='date_to desc', limit=1)
         if last:
             return last.date_from, last.date_to
 
-        today = fields.Date.context_today(self)
         first_day = today.replace(day=1)
         last_day = first_day + relativedelta(months=1, days=-1)
         return first_day, last_day

@@ -20,3 +20,4 @@ from . import test_identificacion_sincronizada
 from . import test_pago_cuenta_bancaria
 from . import test_migracion_identificacion
 from . import test_ui_sin_colores_propios
+from . import test_certification_wizard_period
