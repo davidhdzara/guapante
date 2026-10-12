@@ -6,6 +6,46 @@
         <field name="model">res.config.settings</field>
         <field name="inherit_id" ref="hr_payroll.res_config_settings_view_form"/>
         <field name="arch" type="xml">
+            <!-- Localización nómina (.99, pedido de David): primer bloque de la
+                 app, calcado del bloque "Fiscal Localization" de Accounting
+                 (chart_template/reload_template, verificado contra el código
+                 real de account 18.0). hr_payroll no tiene un framework de
+                 plantillas equivalente: este bloque calca el patrón VISUAL,
+                 no reusa un mecanismo nativo de Nómina que no existe. -->
+            <block id="hr_payroll_accountant" position="before">
+                <block title="Localización nómina" id="l10n_co_ne_settings_localizacion"
+                       invisible="not is_root_company or company_country_code != 'CO'">
+                    <setting string="Localización nómina" company_dependent="1"
+                             help="Reglas salariales, parámetros legales y nómina electrónica de su país">
+                        <div class="content-group">
+                            <div class="mt16">
+                                <div>
+                                    <label for="l10n_co_ne_payroll_package" string="Paquete" class="col-2 o_light_label"/>
+                                    <field name="l10n_co_ne_payroll_package"
+                                           readonly="l10n_co_ne_has_payroll_entries"
+                                           required="l10n_co_ne_payroll_package"/>
+                                </div>
+                                <div class="mt16">
+                                    <field name="l10n_co_ne_has_payroll_entries" invisible="1"/>
+                                    <button name="action_reload_payroll_package" type="object" string="Recargar"
+                                            class="btn-secondary ps-2 w-100"
+                                            invisible="not l10n_co_ne_has_payroll_entries or not l10n_co_ne_payroll_package"/>
+                                </div>
+                            </div>
+                        </div>
+                    </setting>
+                </block>
+            </block>
+            <!-- hr_payroll ya oculta su propio setting "Payroll Rules" (el
+                 botón "Choose a Payroll Localization") cuando fr/be/in están
+                 instalados, para no duplicar con su propio bloque de
+                 localización: mismo criterio, agregamos nuestra condición
+                 con OR (XML real confirmado por Tech Lead contra el servidor,
+                 enterprise/hr_payroll/views/res_config_settings_views.xml). -->
+            <xpath expr="//block[@id='hr_payroll_settings']/setting[@string='Payroll Rules']"
+                   position="attributes">
+                <attribute name="invisible">module_l10n_fr_hr_payroll or module_l10n_be_hr_payroll or module_l10n_in_hr_payroll or l10n_co_ne_payroll_package</attribute>
+            </xpath>
             <block id="hr_payroll_settings" position="after">
                 <field name="company_country_code" invisible="1"/>
                 <t invisible="company_country_code != 'CO'">

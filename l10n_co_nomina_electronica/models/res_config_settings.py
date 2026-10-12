@@ -155,3 +155,31 @@ class ResConfigSettings(models.TransientModel):
 
     def action_refresh_habilitacion(self):
         return {'type': 'ir.actions.client', 'tag': 'reload'}
+
+    # ──────────────────────────────────────────────────────────────────
+    # Localización nómina (.99, pedido de David): paquete de nómina
+    # electrónica + botón "Recargar". A diferencia de chart_template de
+    # Accounting (que dispara la carga completa en el mismo set_values()
+    # al cambiar de valor), aquí con una sola opción real no hay "carga
+    # por primera vez" que disparar desde este campo -- el dato ya
+    # existe desde la instalación del módulo. "Recargar" es una acción
+    # explícita separada (action_reload_payroll_package), nunca
+    # automática al guardar.
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_payroll_package = fields.Selection(
+        related='company_id.l10n_co_ne_payroll_package', readonly=False,
+    )
+    l10n_co_ne_has_payroll_entries = fields.Boolean(compute='_compute_l10n_co_ne_has_payroll_entries')
+
+    @api.depends('company_id')
+    def _compute_l10n_co_ne_has_payroll_entries(self):
+        for settings in self:
+            settings.l10n_co_ne_has_payroll_entries = bool(self.env['hr.payslip'].search_count([
+                ('company_id', '=', settings.company_id.id),
+                ('state', 'in', ('done', 'paid')),
+            ]))
+
+    def action_reload_payroll_package(self):
+        self.ensure_one()
+        self.company_id._l10n_co_ne_reload_payroll_package()
+        return {'type': 'ir.actions.client', 'tag': 'reload'}
