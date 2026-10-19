@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 from odoo import fields
 from odoo.exceptions import UserError
@@ -381,6 +382,59 @@ class TestPreparationDay(TransactionCase):
             session.state,
             'done',
             "Session should auto-finish when no pending lines remain",
+        )
+
+    # ── Tests de identificación por PIN (Fase 1, 2026-10-19) ──
+    # El gate solo aplica dentro de un contexto HTTP real (ver comentario en
+    # action_save_line_weight), así que se simula con un mock de `request` —
+    # sin mock (como en los tests de arriba), request es falsy y el gate no corre.
+
+    def test_save_line_weight_requires_pin_when_http_context(self):
+        """Con contexto HTTP pero sin operario identificado, debe fallar."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        mock_request = MagicMock()
+        mock_request.session = {}
+        with patch(
+            'odoo.addons.theme_guapante.models.preparation_day.request',
+            mock_request,
+        ):
+            with self.assertRaises(UserError):
+                session.action_save_line_weight(line.id)
+
+    def test_save_line_weight_logs_identified_employee(self):
+        """Con operario identificado en sesión, el log debe guardar su employee_id."""
+        employee = self.env['hr.employee'].create({'name': 'Operario Test Prep'})
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        mock_request = MagicMock()
+        mock_request.session = {
+            'guapante_prep_employee_id': employee.id,
+        }
+        with patch(
+            'odoo.addons.theme_guapante.models.preparation_day.request',
+            mock_request,
+        ):
+            session.action_save_line_weight(line.id)
+
+        log = self.env['guapante.picking.log'].search([
+            ('wizard_id', '=', session.id),
+            ('product_product_id', '=', line.product_product_id.id),
+        ])
+        self.assertEqual(
+            log.employee_id,
+            employee,
+            "El log debe registrar al operario identificado por PIN",
         )
 
     # ── Tests de action_undo_line() ──

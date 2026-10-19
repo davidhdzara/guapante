@@ -6,6 +6,11 @@ import pytz
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.http import request
+
+# Misma clave de sesión que el controlador de identificación
+# (theme_guapante/controllers/preparation_day_identification_controller.py).
+_PREP_OPERATOR_SESSION_KEY = 'guapante_prep_employee_id'
 
 _logger = logging.getLogger(__name__)
 
@@ -44,6 +49,15 @@ class PreparationDayLog(models.Model):
         'res.users',
         string='Operario',
         default=lambda self: self.env.user,
+    )
+    employee_id = fields.Many2one(
+        'hr.employee',
+        string='Operario identificado (PIN)',
+        help=(
+            'Operario físico que se identificó con su PIN en el paso de '
+            'pesaje — distinto de user_id, que siempre es la cuenta '
+            'compartida operacion@donguapante.com.'
+        ),
     )
     product_product_id = fields.Many2one(
         'product.product',
@@ -688,6 +702,26 @@ class PreparationDay(models.Model):
         if not Line or Line.is_done or Line.actual_kg <= 0:
             return False
 
+        # Identificación por PIN (Fase 1, 2026-10-19): sin operario identificado en esta
+        # sesión de navegador no se registra el peso — no hay default silencioso a la
+        # cuenta compartida. El gate solo aplica dentro de un contexto HTTP real (el
+        # único camino de este método en producción) — `request` es un LocalProxy sin
+        # contexto vinculado en tests/odoo-bin shell (bool(request) es False ahí), donde
+        # el concepto de "operario físico" no existe.
+        Employee = self.env['hr.employee']
+        if request:
+            employee_id = request.session.get(_PREP_OPERATOR_SESSION_KEY)
+            if not employee_id:
+                raise UserError(
+                    'Debes identificarte con tu PIN antes de registrar un peso.'
+                )
+            Employee = Employee.sudo().browse(employee_id)
+            if not Employee.exists():
+                raise UserError(
+                    'Tu identificación de operario ya no es válida — vuelve a '
+                    'ingresar tu PIN.'
+                )
+
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de
         # escritura directa sobre stock.move.line del almacén.
@@ -753,6 +787,7 @@ class PreparationDay(models.Model):
             'wizard_id': self.id,
             'actual_kg': Line.actual_kg,
             'time_taken_seconds': time_taken,
+            'employee_id': Employee.id,
         })
 
         self.save_note = (
@@ -944,6 +979,14 @@ class PreparationDayProductWizard(models.TransientModel):
         string='Progreso de Empaque',
         compute='_compute_lists',
     )
+    operator_identification = fields.Char(
+        string='Operario',
+        compute='_compute_operator_identification',
+        help=(
+            'Punto de montaje del widget de identificación por PIN — el '
+            'estado real vive en request.session, no en este campo.'
+        ),
+    )
 
     # Pendientes y Hechos (separados para las vistas XML)
     detail_line_pending_ids = fields.Many2many(
@@ -976,6 +1019,10 @@ class PreparationDayProductWizard(models.TransientModel):
                 )
             else:
                 wiz.progress_percentage = 0.0
+
+    def _compute_operator_identification(self) -> None:
+        for wiz in self:
+            wiz.operator_identification = ''
 
     def action_back_to_session(self) -> dict:
         """Regresa a la vista principal de la sesión."""

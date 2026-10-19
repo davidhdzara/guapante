@@ -266,9 +266,10 @@
                     <!-- Header del detalle -->
                     <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
                         <h3 class="mb-0 text-primary fw-bold">
-                            <i class="fa fa-pencil-square-o"></i> Empacando: 
+                            <i class="fa fa-pencil-square-o"></i> Empacando:
                             <field name="product_id" readonly="1" nolabel="1" class="d-inline text-dark" options="{'no_open': True}"/>
                         </h3>
+                        <field name="operator_identification" widget="guapante_operator_badge" nolabel="1"/>
                     </div>
                     
                     <!-- Indicador de stock y progreso -->
