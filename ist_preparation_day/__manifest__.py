@@ -10,7 +10,7 @@
     """,
     'author': 'InSoTech',
     'website': 'https://www.insotech.com',
-    'depends': ['base', 'stock', 'sale', 'stock_picking_batch', 'hr'],
+    'depends': ['base', 'stock', 'sale', 'sale_stock', 'stock_picking_batch', 'hr'],
     'data': [
         'security/ir.model.access.csv',
         'views/preparation_day_views.xml',
