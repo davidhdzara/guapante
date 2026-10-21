@@ -45,9 +45,9 @@ for order in Orders.sorted('daily_sequence'):
 # 2. Reset de daily_sequence a 0
 if Orders:
     Orders.sudo().write({'daily_sequence': 0})
-    print(f"\n  ✅ {len(Orders)} órdenes reseteadas a daily_sequence = 0")
+    print(f"\n  {len(Orders)} órdenes reseteadas a daily_sequence = 0")
 else:
-    print("\n  ℹ️  No hay órdenes para resetear")
+    print("\n  No hay órdenes para resetear")
 
 # 3. Reset del ir.sequence diario
 cid = env.company.id
@@ -55,12 +55,12 @@ seq_code = f'guapante.daily.{cid}.{delivery_date.strftime("%Y%m%d")}'
 IrSeq = env['ir.sequence'].sudo().search([('code', '=', seq_code)], limit=1)
 if IrSeq:
     IrSeq.write({'number_next': 1})
-    print(f"  ✅ ir.sequence '{seq_code}' reseteado a number_next = 1")
+    print(f"  ir.sequence '{seq_code}' reseteado a number_next = 1")
 else:
-    print(f"  ℹ️  No existe ir.sequence con código '{seq_code}'")
+    print(f"  No existe ir.sequence con código '{seq_code}'")
 
 # 4. Commit
 env.cr.commit()
-print(f"\n  ✅ COMMIT realizado. Todo listo.")
+print(f"\n  COMMIT realizado. Todo listo.")
 print(f"  → Ahora elimina la sesión del Preparation Day y crea una nueva.")
 print(f"{'='*60}\n")
