@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- Sequence for Nómina Electrónica (NE) -->
+    <record id="seq_l10n_co_nomina_electronica" model="ir.sequence">
+        <field name="name">Nómina Electrónica</field>
+        <field name="code">l10n_co_nomina.electronica</field>
+        <field name="prefix">NE</field>
+        <field name="padding">10</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+    <!-- Sequence for Nota de Ajuste (NA) -->
+    <record id="seq_l10n_co_nomina_ajuste" model="ir.sequence">
+        <field name="name">Nota de Ajuste Nómina</field>
+        <field name="code">l10n_co_nomina.ajuste</field>
+        <field name="prefix">NA</field>
+        <field name="padding">10</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+    <!-- Sequence for Nómina Temporal (PRE-NOM) -->
+    <record id="seq_l10n_co_nomina_temporal" model="ir.sequence">
+        <field name="name">Nómina Temporal</field>
+        <field name="code">l10n_co_nomina.temporal</field>
+        <field name="prefix">PRE-NOM</field>
+        <field name="padding">10</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+</odoo>

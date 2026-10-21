@@ -1,0 +1,9 @@
+<odoo noupdate="1">
+    <record id="seq_portal_employee_certificate_issuance" model="ir.sequence">
+        <field name="name">Emisión certificado laboral Portal</field>
+        <field name="code">l10n_co.portal.employee.certificate.issuance</field>
+        <field name="prefix">CERT-PORTAL-</field>
+        <field name="padding">6</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>

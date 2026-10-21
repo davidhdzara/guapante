@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Wizard Liquidación - Form View                               -->
+    <!-- ============================================================ -->
+    <record id="view_l10n_co_hr_liquidacion_wizard_form" model="ir.ui.view">
+        <field name="name">l10n.co.hr.liquidacion.wizard.form</field>
+        <field name="model">l10n.co.hr.liquidacion.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Generar Liquidación de Contrato">
+                <field name="requires_dias_restantes" invisible="1"/>
+                <group>
+                    <group>
+                        <field name="employee_id"
+                               string="Empleado"
+                               options="{'no_create': True}"/>
+                        <field name="contract_id"
+                               string="Contrato"
+                               domain="[('employee_id', '=', employee_id)]"
+                               options="{'no_create': True}"/>
+                    </group>
+                    <group>
+                        <field name="date_end" string="Fecha de Retiro"/>
+                        <field name="cause" string="Causa de Retiro"/>
+                    </group>
+                </group>
+                <group invisible="cause != 'sin_justa_causa' or not requires_dias_restantes"
+                       string="Indemnización (Art. 64 CST)">
+                    <field name="dias_restantes_contrato"
+                           help="Días que faltaban para cumplir el plazo pactado del contrato u obra/labor al momento del retiro."/>
+                </group>
+                <footer>
+                    <button name="action_create_liquidacion"
+                            string="Generar Liquidación"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancelar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Wizard Liquidación - Action                                  -->
+    <!-- ============================================================ -->
+    <record id="action_l10n_co_hr_liquidacion_wizard" model="ir.actions.act_window">
+        <field name="name">Generar Liquidación</field>
+        <field name="res_model">l10n.co.hr.liquidacion.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu Item para el Wizard                                     -->
+    <!-- ============================================================ -->
+    <!-- Doc 20: ya no hay modelo/lista propia de liquidaciones (viven -->
+    <!-- como hr.payslip normal, visibles en Recibos de nómina), así   -->
+    <!-- que un único item de menú alcanza para el wizard, mismo       -->
+    <!-- patrón que PILA (menu_l10n_co_hr_pila_wizard_v2 en             -->
+    <!-- hr_pila_wizard_v2_views.xml, doc 25 retiró el wizard v1).     -->
+    <menuitem id="menu_l10n_co_liquidacion_wizard"
+              name="Generar Liquidación"
+              parent="hr_payroll.menu_hr_payroll_payslips"
+              action="action_l10n_co_hr_liquidacion_wizard"
+              sequence="65"
+              groups="hr_payroll.group_hr_payroll_manager"/>
+
+</odoo>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Extiende el formulario nativo de Asignaciones Salariales
+        (hr.salary.attachment, hr_payroll) con los 2 campos colombianos del
+        embargo híbrido, ver
+        correcciones_normativas_2026/16_diseno_embargo_hibrido_salary_attachment.md.
+        Sin vista/menú/acción propios: se usa el menú nativo
+        "Asignaciones Salariales" (hr_payroll.hr_salary_attachment_action).
+    -->
+    <record id="view_hr_salary_attachment_form_l10n_co" model="ir.ui.view">
+        <field name="name">hr.salary.attachment.form.l10n.co</field>
+        <field name="model">hr.salary.attachment</field>
+        <field name="inherit_id" ref="hr_payroll.hr_salary_attachment_view_form"/>
+        <field name="arch" type="xml">
+            <field name="monthly_amount" invisible="is_quantity" position="after">
+                <field name="l10n_co_embargo_porcentaje"/>
+            </field>
+            <field name="date_start" position="after">
+                <field name="l10n_co_embargo_juzgado"/>
+            </field>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Avanza la habilitación DIAN automática una etapa por ejecución; el propio método se
+             re-programa con ir.cron._trigger mientras queda trabajo. Sin trabajo pendiente no hace nada. -->
+        <record id="ir_cron_ne_habilitacion" model="ir.cron">
+            <field name="name">Nómina Electrónica: avance de la habilitación DIAN</field>
+            <field name="model_id" ref="model_l10n_co_ne_habilitacion"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_step()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>
