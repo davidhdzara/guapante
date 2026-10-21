@@ -6,6 +6,9 @@ import pytz
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.http import request
+
+from .const_preparation import PREP_OPERATOR_SESSION_KEY
 
 _logger = logging.getLogger(__name__)
 
@@ -44,6 +47,15 @@ class PreparationDayLog(models.Model):
         'res.users',
         string='Operario',
         default=lambda self: self.env.user,
+    )
+    employee_id = fields.Many2one(
+        'hr.employee',
+        string='Operario identificado (PIN)',
+        help=(
+            'Operario físico que se identificó con su PIN en el paso de '
+            'pesaje — distinto de user_id, que siempre es la cuenta '
+            'compartida operacion@donguapante.com.'
+        ),
     )
     product_product_id = fields.Many2one(
         'product.product',
@@ -429,15 +441,18 @@ class PreparationDay(models.Model):
             session.draft_count = len(DraftOrders)
 
     def action_view_summaries(self) -> dict:
-        """Abre la vista de resumen por producto (Smart Button)."""
+        """Abre la vista (kanban agrupado + lista) de resumen por producto."""
         self.ensure_one()
         return {
             'name': 'Productos a preparar',
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.summary',
-            'view_mode': 'list',
+            'view_mode': 'kanban,list',
             'domain': [('wizard_id', '=', self.id)],
-            'context': {'default_wizard_id': self.id},
+            'context': {
+                'default_wizard_id': self.id,
+                'search_default_group_by_status': 1,
+            },
             'target': 'current',
         }
 
@@ -603,11 +618,11 @@ class PreparationDay(models.Model):
 
         if added_count == 0:
             self.save_note = (
-                '✅ Listado actualizado. No se detectaron productos nuevos.'
+                'Listado actualizado. No se detectaron productos nuevos.'
             )
         else:
             self.save_note = (
-                f'✅ {added_count} líneas nuevas cargadas a la preparación.'
+                f'{added_count} líneas nuevas cargadas a la preparación.'
             )
 
         return False
@@ -688,6 +703,26 @@ class PreparationDay(models.Model):
         if not Line or Line.is_done or Line.actual_kg <= 0:
             return False
 
+        # Identificación por PIN (Fase 1, 2026-10-19 — migrada a este módulo 2026-10-21):
+        # sin operario identificado en esta sesión de navegador no se registra el peso —
+        # no hay default silencioso a la cuenta compartida. El gate solo aplica dentro de
+        # un contexto HTTP real (el único camino de este método en producción) —
+        # `request` es un LocalProxy sin contexto vinculado en tests/odoo-bin shell
+        # (bool(request) es False ahí), donde el concepto de "operario físico" no existe.
+        Employee = self.env['hr.employee']
+        if request:
+            employee_id = request.session.get(PREP_OPERATOR_SESSION_KEY)
+            if not employee_id:
+                raise UserError(
+                    'Debes identificarte con tu PIN antes de registrar un peso.'
+                )
+            Employee = Employee.sudo().browse(employee_id)
+            if not Employee.exists():
+                raise UserError(
+                    'Tu identificación de operario ya no es válida — vuelve a '
+                    'ingresar tu PIN.'
+                )
+
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de
         # escritura directa sobre stock.move.line del almacén.
@@ -701,7 +736,7 @@ class PreparationDay(models.Model):
                 manual_entry=True, # Contexto para Odoo 18
                 guapante_wizard_intent=True, # Permitir correcciones humanas
             )
-            
+
             # Odoo 18 Nativo: Al marcar 'picked' en el movimiento, habilitamos
             # la edición directa de cantidad. Odoo se encargará de crear
             # o actualizar la stock.move.line de forma estable.
@@ -710,11 +745,11 @@ class PreparationDay(models.Model):
                 'quantity': Line.actual_kg,
                 'is_weight_confirmed': True,
             })
-            
+
             # Sincronización de estado para asegurar persistencia
             if Move.state == 'confirmed':
                 Move.write({'state': 'assigned'})
-            
+
             # Asegurar que todas las líneas tengan el flag 'picked' (Odoo 18)
             if Move.move_line_ids:
                 Move.move_line_ids.write({'picked': True})
@@ -753,11 +788,11 @@ class PreparationDay(models.Model):
             'wizard_id': self.id,
             'actual_kg': Line.actual_kg,
             'time_taken_seconds': time_taken,
+            'employee_id': Employee.id,
         })
 
         self.save_note = (
-            f'✅ Peso de {Line.order_name} guardado: '
-            f'{Line.actual_kg} kg.'
+            f'Peso de {Line.order_name} guardado: {Line.actual_kg} kg.'
         )
 
         # Forzar invalidación para actualizar importes de la SO.
@@ -777,8 +812,8 @@ class PreparationDay(models.Model):
         if pending_total == 0:
             self.action_mark_done()
             self.save_note = (
-                '🎉 ¡Todos los productos han sido empaquetados '
-                'exitosamente! Sesión Finalizada.'
+                'Todos los productos han sido empaquetados exitosamente. '
+                'Sesión finalizada.'
             )
 
         return True
@@ -801,7 +836,7 @@ class PreparationDay(models.Model):
                 # y no lo borre por estar "esperando otra operación".
                 if dest.state in ('waiting', 'confirmed'):
                     dest.sudo().write({'state': 'assigned'})
-                
+
                 self._propagate_weight_to_chain(dest, weight)
 
     def action_mark_done(self) -> bool:
@@ -945,6 +980,15 @@ class PreparationDayProductWizard(models.TransientModel):
         compute='_compute_lists',
     )
 
+    operator_identification = fields.Char(
+        string='Operario',
+        compute='_compute_operator_identification',
+        help=(
+            'Punto de montaje del widget de identificación por PIN — el '
+            'estado real vive en request.session, no en este campo.'
+        ),
+    )
+
     # Pendientes y Hechos (separados para las vistas XML)
     detail_line_pending_ids = fields.Many2many(
         'guapante.preparation.day.line',
@@ -976,6 +1020,10 @@ class PreparationDayProductWizard(models.TransientModel):
                 )
             else:
                 wiz.progress_percentage = 0.0
+
+    def _compute_operator_identification(self) -> None:
+        for wiz in self:
+            wiz.operator_identification = ''
 
     def action_back_to_session(self) -> dict:
         """Regresa a la vista principal de la sesión."""

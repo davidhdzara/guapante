@@ -264,7 +264,9 @@ class SaleOrder(models.Model):
         Includes ALL states (even cancelled) to prevent box number
         reuse after order cancellation.
         """
-        from .preparation_day import _date_to_utc_range
+        from odoo.addons.ist_preparation_day.models.preparation_day import (
+            _date_to_utc_range,
+        )
         dt_start, dt_end = _date_to_utc_range(self.env, delivery_date)
         cid = company_id if company_id else None
         domain_company = (
@@ -371,7 +373,9 @@ class SaleOrder(models.Model):
         # Buscar solo pickings PICK (internal/Recolectar) PENDIENTES.
         # Excluir done/cancel: órdenes ya entregadas no deben recibir
         # un nuevo número de caja (bug S00204/S00220).
-        from .preparation_day import _date_to_utc_range
+        from odoo.addons.ist_preparation_day.models.preparation_day import (
+            _date_to_utc_range,
+        )
         dt_start, dt_end = _date_to_utc_range(self.env, delivery_date)
         Pickings = self.env['stock.picking'].sudo().search([
             ('scheduled_date', '>=', dt_start),

@@ -8,7 +8,7 @@
         'static/description/guapante_preview.png',
         'static/description/icon.png',
     ],
-    'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'stock_picking_batch', 'fleet', 'account', 'sale', 'purchase'],
+    'depends': ['base', 'contacts', 'website', 'website_sale', 'auth_signup', 'l10n_co', 'stock', 'stock_picking_batch', 'fleet', 'account', 'sale', 'purchase', 'ist_preparation_day'],
     'data': [
         'security/ir.model.access.csv',
         'data/stock_config.xml',
@@ -16,7 +16,6 @@
         'views/purchase_order_views.xml',
         'report/sale_report_templates.xml',
         'report/purchase_report_templates.xml',
-        'views/preparation_day_views.xml',
         'views/purchase_demand_views.xml',
         'views/stock_picking_views.xml',
         'views/shop/order_status.xml',
@@ -113,9 +112,6 @@
             'theme_guapante/static/src/js/seasonal_harvest.js',  # Seasonal products dynamic loader
             'theme_guapante/static/src/js/search_modal.js',  # Full-screen search overlay
             'theme_guapante/static/src/js/help_search.js',  # Help Center JS Search
-        ],
-        'web.assets_backend': [
-            'theme_guapante/static/src/js/preparation_list.js',
         ],
     },
     'application': False,

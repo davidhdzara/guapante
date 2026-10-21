@@ -150,17 +150,17 @@ class PreparationDayExport(http.Controller):
 
         # Encabezados de tabla
         headers = [
-            'Producto', 
-            'Especificaciones / Atributos', 
+            'Producto',
+            'Especificaciones / Atributos',
             'Cliente',
             'Zona',
-            'Cantidad Pedida', 
-            'UdM Cliente', 
-            'Total en Kilogramos', 
-            'Disponible en Bodega (Kg)', 
+            'Cantidad Pedida',
+            'UdM Cliente',
+            'Total en Kilogramos',
+            'Disponible en Bodega (Kg)',
             'Cantidad de Pedidos'
         ]
-        
+
         for col_num, header in enumerate(headers):
             worksheet.write(2, col_num, header, header_format)
 
@@ -180,7 +180,7 @@ class PreparationDayExport(http.Controller):
             pkg = data['packaging_name']
             cust = data['customer_name']
             zone = data['zone_name']
-            
+
             spec = desc
             if pkg and pkg not in desc:
                 spec = f"{desc} ({pkg})"
@@ -201,10 +201,10 @@ class PreparationDayExport(http.Controller):
             worksheet.write(row_idx, 5, uom_label, cell_center_format)
             worksheet.write(row_idx, 6, data['total_kg'], number_format_kg)
             worksheet.write(row_idx, 7, stock_dict.get(product.id, 0.0), number_format_kg)
-            
+
             order_count = len(set(line.sale_order_id.id for line in data['lines']))
             worksheet.write(row_idx, 8, order_count, cell_center_format)
-            
+
             row_idx += 1
 
         # Ajustar ancho de las columnas automáticamente al contenido
