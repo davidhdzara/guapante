@@ -115,8 +115,6 @@
             'theme_guapante/static/src/js/help_search.js',  # Help Center JS Search
         ],
         'web.assets_backend': [
-            'theme_guapante/static/src/js/preparation_operator_state.js',
-            'theme_guapante/static/src/js/preparation_operator_badge.js',
             'theme_guapante/static/src/js/preparation_list.js',
         ],
     },

@@ -1,9 +1,7 @@
 import { registry } from "@web/core/registry";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { FloatField, floatField } from "@web/views/fields/float/float_field";
-import { Component, xml, useState, onWillStart, onWillUnmount } from "@odoo/owl";
-
-import { operatorState, ensureOperatorLoaded } from "./preparation_operator_state";
+import { Component, xml, useState, onWillUnmount } from "@odoo/owl";
 
 // Puerto por convención fija (Backend/Tech Lead, Fase 8 del proyecto Guapante Scale Agent) — el
 // Agent solo escucha en 127.0.0.1, sin puerto público. No hay ir.config_parameter para esto:
@@ -27,8 +25,6 @@ const TRACKING_MESSAGE = "Leyendo en vivo — deja el producto quieto para que s
 const FIRST_USE_HINT =
     "La primera vez, Chrome puede pedir permiso de acceso a la red local — acéptalo " +
     "para que funcione.";
-const NOT_IDENTIFIED_MESSAGE =
-    "Identifícate con tu PIN (arriba) antes de registrar un peso.";
 
 class ScaleWeightField extends Component {
     static template = xml`
@@ -39,7 +35,7 @@ class ScaleWeightField extends Component {
                 </div>
                 <button type="button"
                         t-attf-class="btn btn-sm p-1 {{ state.status === 'tracking' ? 'btn-primary' : 'btn-outline-secondary' }}"
-                        t-att-disabled="props.readonly || !operatorState.employeeId"
+                        t-att-disabled="props.readonly"
                         t-on-click="onToggleTracking"
                         title="Tomar peso de báscula">
                     <i class="fa fa-balance-scale" role="img" aria-label="Tomar peso"/>
@@ -52,9 +48,6 @@ class ScaleWeightField extends Component {
                 <span t-elif="state.status === 'error'" class="text-danger">
                     <t t-esc="state.message"/>
                 </span>
-                <span t-elif="!operatorState.employeeId" class="text-warning">
-                    <t t-esc="notIdentifiedMessage"/>
-                </span>
                 <span t-elif="!state.hasAttempted" class="text-muted">
                     <t t-esc="firstUseHint"/>
                 </span>
@@ -66,34 +59,22 @@ class ScaleWeightField extends Component {
 
     setup() {
         this.state = useState({ status: "idle", message: "", hasAttempted: false });
-        this.operatorState = operatorState;
         this.trackingMessage = TRACKING_MESSAGE;
         this.firstUseHint = FIRST_USE_HINT;
-        this.notIdentifiedMessage = NOT_IDENTIFIED_MESSAGE;
         this._pollTimer = null;
         this._lastWeight = null;
         this._stableReads = 0;
-        onWillStart(() => ensureOperatorLoaded());
         onWillUnmount(() => this._stopPolling());
     }
 
     get floatFieldProps() {
         return {
             ...this.props,
-            readonly: (
-                this.props.readonly
-                || this.state.status === "tracking"
-                || !this.operatorState.employeeId
-            ),
+            readonly: this.props.readonly || this.state.status === "tracking",
         };
     }
 
     onToggleTracking() {
-        if (!this.operatorState.employeeId) {
-            this.state.status = "idle";
-            return;
-        }
-
         if (this.state.status === "tracking") {
             this._stopPolling();
             this.state.status = "idle";
