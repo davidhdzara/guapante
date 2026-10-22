@@ -622,13 +622,27 @@ class PreparationDay(models.Model):
         stock.picking.write() (reprogramación), ambos ya filtrando que
         date_val caiga en la ventana de "hoy" antes de llamar esto —
         no auto-crea sesiones de fechas futuras.
+
+        Carrera entre dos confirmaciones casi simultáneas para la
+        misma fecha: el create() va envuelto en un savepoint — si
+        _check_unique_date lo rechaza porque la otra transacción ya
+        commiteó su sesión, descartamos (rollback quirúrgico) solo
+        nuestro intento de create y devolvemos la que ya existe, en
+        vez de dejar que el ValidationError se propague y tumbe toda
+        la confirmación de la orden por un efecto secundario que no
+        tiene nada que ver con ella.
         """
         Session = self.sudo().search([('date', '=', date_val)], limit=1)
         if not Session:
-            Session = self.sudo().create({'date': date_val})
-        self.env['bus.bus']._sendone(
-            f'guapante_preparation_day-{Session.id}', 'reload', {},
-        )
+            try:
+                with self.env.cr.savepoint():
+                    Session = self.sudo().create({'date': date_val})
+            except ValidationError:
+                Session = self.sudo().search([('date', '=', date_val)], limit=1)
+        if Session:
+            self.env['bus.bus']._sendone(
+                f'guapante_preparation_day-{Session.id}', 'reload', {},
+            )
         return Session
 
     @api.depends('summary_ids')
