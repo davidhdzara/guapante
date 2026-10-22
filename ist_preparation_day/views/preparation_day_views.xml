@@ -98,11 +98,16 @@
         <field name="name">guapante.preparation.day.tree</field>
         <field name="model">guapante.preparation.day</field>
         <field name="arch" type="xml">
-            <list string="Sesiones de Preparación" decoration-info="state == 'draft'" decoration-success="state == 'done'">
+            <list string="Sesiones de Preparación">
                 <field name="name"/>
                 <field name="date" string="Inicio"/>
                 <field name="so_count" string="Cantidad órdenes"/>
-                <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-warning="state == 'loaded'" decoration-success="state == 'done'"/>
+                <field name="state"
+                       widget="badge"
+                       decoration-muted="state == 'draft'"
+                       decoration-warning="state == 'loaded'"
+                       decoration-success="state == 'done'"
+                       class="text-dark"/>
             </list>
         </field>
     </record>
@@ -157,6 +162,8 @@
                 <filter string="Nueva Sesión" name="filter_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="En Progreso" name="filter_loaded" domain="[('state', '=', 'loaded')]"/>
                 <filter string="Finalizada" name="filter_done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter name="filter_date" string="Inicio" date="date"/>
                 <group expand="0" string="Agrupar Por">
                     <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
                     <filter string="Fecha" name="group_by_date" context="{'group_by': 'date'}"/>
