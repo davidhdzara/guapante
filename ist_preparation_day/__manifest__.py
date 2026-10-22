@@ -10,6 +10,7 @@
     """,
     'author': 'InSoTech',
     'website': 'https://www.insotech.com',
+    'images': ['static/description/icon.png'],
     'depends': ['base', 'stock', 'sale', 'sale_stock', 'stock_picking_batch', 'hr'],
     'data': [
         'security/ir.model.access.csv',
@@ -24,6 +25,6 @@
         ],
     },
     'installable': True,
-    'application': False,
+    'application': True,
     'license': 'LGPL-3',
 }

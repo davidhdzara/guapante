@@ -237,6 +237,24 @@
         sequence="50"
     />
 
+    <!-- App propia en el grid de Aplicaciones (module.application=True). El menú raíz
+         NUNCA lleva action directo (mismo patrón que stock/contacts: raíz solo con
+         web_icon, el hijo lleva la acción) — es justamente el patrón nativo que evita
+         el problema de "acción suelta en megamenú" mencionado arriba. -->
+    <menuitem
+        id="menu_preparation_day_root"
+        name="Preparación del Día"
+        web_icon="ist_preparation_day,static/description/icon.png"
+        sequence="155"
+    />
+    <menuitem
+        id="menu_preparation_day_app"
+        name="Sesiones"
+        parent="menu_preparation_day_root"
+        action="action_preparation_day"
+        sequence="10"
+    />
+
     <!-- Wizard Transitorio: Aislamiento visual por usuario -->
     <record id="view_preparation_day_product_wizard_form" model="ir.ui.view">
         <field name="name">guapante.preparation.day.product.wizard.form</field>
