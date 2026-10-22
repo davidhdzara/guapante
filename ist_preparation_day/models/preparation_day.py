@@ -502,7 +502,11 @@ class PreparationDay(models.Model):
             base_domain + [('picking_type_code', '=', 'internal')]
         )
         Orders = Pickings.mapped('sale_id')
-        if not Orders and not self.line_ids:
+        # Solo bloquear en la PRIMERA carga (state sigue en 'draft' en este
+        # punto — recién pasa a 'loaded' al final del método). Una recarga
+        # posterior que resulte en cero pedidos (p. ej. porque todos se
+        # cancelaron) debe dejar la sesión vacía, no romper con error.
+        if not Orders and not self.line_ids and self.state == 'draft':
             raise UserError(
                 'No hay pedidos pendientes para la fecha seleccionada.'
             )
