@@ -14,6 +14,7 @@
     'depends': ['base', 'stock', 'sale', 'sale_stock', 'stock_picking_batch', 'hr'],
     'data': [
         'security/ir.model.access.csv',
+        'data/ir_sequence_data.xml',
         'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
     ],

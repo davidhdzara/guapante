@@ -309,6 +309,7 @@ class PreparationDay(models.Model):
             ('loaded', 'En Progreso'),
             ('done', 'Finalizada'),
         ],
+        string='Estado',
         default='draft',
     )
     save_note = fields.Char(string='Resultado', readonly=True)
@@ -360,11 +361,12 @@ class PreparationDay(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('name', 'Nueva Sesión') == 'Nueva Sesión':
-                date_str = vals.get(
-                    'date',
-                    fields.Date.context_today(self),
+                vals['name'] = (
+                    self.env['ir.sequence'].next_by_code(
+                        'guapante.preparation.day',
+                    )
+                    or 'Nueva Sesión'
                 )
-                vals['name'] = f'Preparación: {date_str}'
         return super().create(vals_list)
 
     @api.depends('summary_ids')
