@@ -12,6 +12,9 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     PREP_OPERATOR_SESSION_KEY,
 )
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _date_to_utc_range,
+)
 
 
 @tagged('post_install', '-at_install')
@@ -81,12 +84,17 @@ class TestPreparationDay(TransactionCase):
         })
         order.action_confirm()
 
-        # Fijar la fecha de picking para que coincida con delivery_date
-        dt = fields.Datetime.to_datetime(self.delivery_date)
+        # Fijar la fecha de picking para que coincida con delivery_date.
+        # dt_start ya está en UTC (medianoche LOCAL del delivery_date
+        # convertida a UTC) — usar fields.Datetime.to_datetime(date) aquí
+        # sería incorrecto: lo guardaría como medianoche UTC "naive", que
+        # cae antes de que arranque la ventana que busca action_load()
+        # (ver _date_to_utc_range), dejando el picking fuera del rango.
+        dt_start, _dt_end = _date_to_utc_range(self.env, self.delivery_date)
         for picking in order.picking_ids.filtered(
             lambda p: p.state not in ('done', 'cancel')
         ):
-            picking.scheduled_date = dt
+            picking.scheduled_date = dt_start
 
         return order
 
@@ -416,7 +424,13 @@ class TestPreparationDay(TransactionCase):
 
     def test_save_line_weight_logs_identified_employee(self):
         """Con operario identificado en sesión, el log debe guardar su employee_id."""
-        employee = self.env['hr.employee'].create({'name': 'Operario Test Prep'})
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Test Prep',
+            # l10n_co_nomina_electronica exige cuenta bancaria cuando el
+            # método de pago es transferencia (default); el PIN de
+            # Preparación del Día no tiene relación con esto.
+            'l10n_co_ne_payment_method': '10',
+        })
         self._create_confirmed_order(qty=2.0)
         session = self._create_session()
         session.action_load()
@@ -446,8 +460,14 @@ class TestPreparationDay(TransactionCase):
 
     def test_identify_operator_blocks_duplicate_pin(self):
         """Gap #1: un PIN compartido por 2 empleados debe bloquear, no adivinar."""
-        self.env['hr.employee'].create({'name': 'Operario A', 'pin': '4321'})
-        self.env['hr.employee'].create({'name': 'Operario B', 'pin': '4321'})
+        self.env['hr.employee'].create({
+            'name': 'Operario A', 'pin': '4321',
+            'l10n_co_ne_payment_method': '10',
+        })
+        self.env['hr.employee'].create({
+            'name': 'Operario B', 'pin': '4321',
+            'l10n_co_ne_payment_method': '10',
+        })
 
         mock_request = MagicMock()
         mock_request.env = self.env
