@@ -80,6 +80,7 @@
                             <field name="line_ids">
                                 <list create="0" delete="0" editable="bottom" decoration-muted="is_done">
                                     <field name="daily_sequence" string="Caja #" readonly="1"/>
+                                    <field name="order_name" string="Orden" readonly="1"/>
                                     <field name="product_product_id" string="Producto" readonly="1"/>
                                     <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
                                     <field name="zone_name" string="Zona" readonly="1"/>
@@ -180,7 +181,7 @@
         <field name="res_model">guapante.preparation.day</field>
         <field name="view_mode">list,kanban,form</field>
         <field name="search_view_id" ref="view_preparation_day_search"/>
-        <field name="context">{'search_default_group_by_state': 1}</field>
+        <field name="context">{'search_default_filter_draft': 1, 'search_default_filter_loaded': 1}</field>
         <field name="help" type="html">
           <p class="o_view_nocontent_smiling_face">
             Crea una nueva Sesión de Preparación
