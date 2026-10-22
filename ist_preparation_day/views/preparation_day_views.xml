@@ -81,7 +81,7 @@
                                 <list create="0" delete="0" editable="bottom" decoration-muted="is_done">
                                     <field name="daily_sequence" string="Caja #" readonly="1"/>
                                     <field name="order_name" string="Orden" readonly="1"/>
-                                    <field name="product_product_id" string="Producto" readonly="1"/>
+                                    <field name="product_description" string="Producto" readonly="1"/>
                                     <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
                                     <field name="zone_name" string="Zona" readonly="1"/>
                                     <field name="customer_qty_display" string="Pidió" readonly="1"/>
