@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from odoo import fields, models
 
+from .preparation_day import _current_session_date, _utc_datetime_to_session_date
+
 
 class StockPicking(models.Model):
     """Numeración diaria de cajas ("Caja #") sobre stock.picking.
@@ -17,6 +19,32 @@ class StockPicking(models.Model):
         store=True,
         readonly=True,
     )
+
+    def write(self, vals):
+        """Al reprogramar scheduled_date, asegura la sesión de
+        Preparación del Día de 'hoy' si la nueva fecha cae en esa
+        ventana — no crea sesiones para fechas futuras.
+        """
+        res = super().write(vals)
+        if 'scheduled_date' in vals:
+            today_session_date = _current_session_date(self.env)
+            Relevant = self.filtered(
+                lambda p: (
+                    p.picking_type_code == 'internal'
+                    and p.sale_id
+                    and p.scheduled_date
+                    and p.state not in ('done', 'cancel')
+                )
+            )
+            for picking in Relevant:
+                date_val = _utc_datetime_to_session_date(
+                    self.env, picking.scheduled_date,
+                )
+                if date_val == today_session_date:
+                    self.env['guapante.preparation.day']._ensure_session_for_date(
+                        date_val,
+                    )
+        return res
 
     def action_reset_daily_sequence(self) -> dict:
         """Resetea la numeración de cajas para los pickings seleccionados.

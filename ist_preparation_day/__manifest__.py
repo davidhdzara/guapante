@@ -11,7 +11,7 @@
     'author': 'InSoTech',
     'website': 'https://www.insotech.com',
     'images': ['static/description/icon.png'],
-    'depends': ['base', 'mail', 'stock', 'sale', 'sale_stock', 'stock_picking_batch', 'hr'],
+    'depends': ['base', 'bus', 'mail', 'stock', 'sale', 'sale_stock', 'stock_picking_batch', 'hr'],
     'data': [
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
@@ -23,6 +23,7 @@
             'ist_preparation_day/static/src/js/preparation_operator_state.js',
             'ist_preparation_day/static/src/js/preparation_operator_badge.js',
             'ist_preparation_day/static/src/js/preparation_list.js',
+            'ist_preparation_day/static/src/js/preparation_day_live_refresh.js',
         ],
     },
     'installable': True,

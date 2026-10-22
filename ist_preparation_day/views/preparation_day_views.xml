@@ -44,6 +44,7 @@
                 </header>
 
                 <sheet>
+                    <field name="live_refresh_anchor" invisible="1" widget="guapante_live_refresh"/>
                     <field name="total_lines" invisible="1"/>
                     <field name="done_lines" invisible="1"/>
                     <field name="pending_lines" invisible="1"/>

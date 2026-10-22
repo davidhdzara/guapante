@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 import pytz
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
 from .const_preparation import PREP_OPERATOR_SESSION_KEY
@@ -15,27 +15,78 @@ _logger = logging.getLogger(__name__)
 # Zona horaria por defecto para operaciones de Guapante.
 _DEFAULT_TZ = 'America/Bogota'
 
+# Hora de corte de la ventana de sesión — parámetro de sistema (no
+# hardcodeada) para poder cambiarla sin tocar código ni redesplegar.
+# Ajustes > Técnico > Parámetros del Sistema.
+_CUTOFF_PARAM_KEY = 'ist_preparation_day.cutoff_time'
+_CUTOFF_DEFAULT_TIME = '00:30'
+
+
+def _get_cutoff_time(env) -> tuple:
+    """Hora de corte configurable (hour, minute) que define el límite
+    de la ventana de sesión — ver _CUTOFF_PARAM_KEY."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        _CUTOFF_PARAM_KEY, default=_CUTOFF_DEFAULT_TIME,
+    )
+    try:
+        hour_str, minute_str = raw.split(':')
+        return int(hour_str), int(minute_str)
+    except (ValueError, AttributeError):
+        _logger.warning(
+            'Guapante: parámetro %s inválido (%r), usando default %s',
+            _CUTOFF_PARAM_KEY, raw, _CUTOFF_DEFAULT_TIME,
+        )
+        hour_str, minute_str = _CUTOFF_DEFAULT_TIME.split(':')
+        return int(hour_str), int(minute_str)
+
 
 def _date_to_utc_range(env, date_val):
     """Convert a naive date into a UTC datetime range respecting
-    the user's (or default) timezone.
+    the user's (or default) timezone and la hora de corte configurable.
 
     Returns (dt_start_utc, dt_end_utc) where:
-      - dt_start_utc = midnight of *date_val* in local tz → UTC
-      - dt_end_utc   = midnight of *date_val + 1 day* in local tz → UTC
+      - dt_start_utc = hora de corte de *date_val* en tz local → UTC
+      - dt_end_utc   = hora de corte de *date_val + 1 día* en tz local → UTC
 
-    Example for America/Bogota (UTC-5):
+    Example for America/Bogota (UTC-5), corte 00:30:
       date_val = 2026-04-04
-      → dt_start = 2026-04-04 05:00:00 UTC
-      → dt_end   = 2026-04-05 05:00:00 UTC
+      → dt_start = 2026-04-04 05:30:00 UTC
+      → dt_end   = 2026-04-05 05:30:00 UTC
     """
     tz_name = env.user.tz or _DEFAULT_TZ
     local_tz = pytz.timezone(tz_name)
-    naive_start = fields.Datetime.to_datetime(date_val)
-    naive_end = fields.Datetime.to_datetime(date_val + timedelta(days=1))
+    hour, minute = _get_cutoff_time(env)
+    naive_start = datetime.combine(date_val, time(hour, minute))
+    naive_end = datetime.combine(
+        date_val + timedelta(days=1), time(hour, minute),
+    )
     dt_start = local_tz.localize(naive_start).astimezone(pytz.utc).replace(tzinfo=None)
     dt_end = local_tz.localize(naive_end).astimezone(pytz.utc).replace(tzinfo=None)
     return dt_start, dt_end
+
+
+def _utc_datetime_to_session_date(env, utc_dt):
+    """Inversa de _date_to_utc_range: dado un datetime naive en UTC,
+    determina a qué 'día de sesión' pertenece según la hora de corte
+    configurable (si cae antes del corte, pertenece al día anterior).
+    """
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    local_dt = pytz.utc.localize(utc_dt).astimezone(local_tz)
+    hour, minute = _get_cutoff_time(env)
+    cutoff_today = local_dt.replace(
+        hour=hour, minute=minute, second=0, microsecond=0,
+    )
+    if local_dt < cutoff_today:
+        return (local_dt - timedelta(days=1)).date()
+    return local_dt.date()
+
+
+def _current_session_date(env):
+    """Fecha de sesión a la que pertenece 'ahora mismo', según la
+    ventana de corte configurable — usada para no auto-crear sesiones
+    de fechas futuras al confirmar pedidos programados más adelante."""
+    return _utc_datetime_to_session_date(env, fields.Datetime.now())
 
 
 class PreparationDayLog(models.Model):
@@ -512,6 +563,14 @@ class PreparationDay(models.Model):
         help='Cotizaciones (draft/sent) que podrían ser cajas si se confirman.',
     )
 
+    # Punto de montaje del widget de refresco en vivo vía bus.bus — el valor
+    # no se usa, solo existe para que el campo exista en el arch y el
+    # widget OWL se monte (mismo patrón que operator_identification en
+    # PreparationDayProductWizard).
+    live_refresh_anchor = fields.Char(
+        compute='_compute_live_refresh_anchor',
+    )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -523,6 +582,54 @@ class PreparationDay(models.Model):
                     or 'Nueva Sesión'
                 )
         return super().create(vals_list)
+
+    def _compute_live_refresh_anchor(self) -> None:
+        for session in self:
+            session.live_refresh_anchor = ''
+
+    @api.constrains('date')
+    def _check_unique_date(self) -> None:
+        """Evita crear/editar hacia una fecha duplicada.
+
+        No es un _sql_constraints UNIQUE a propósito: ya existen
+        duplicados históricos en la data (de antes de esta regla) y un
+        UNIQUE real rompería la actualización del módulo. Esta
+        validación solo protege hacia adelante — dispara nada más
+        cuando se escribe el campo date, no al editar otros campos de
+        un registro histórico que ya viola la regla.
+        """
+        for session in self:
+            if not session.date:
+                continue
+            duplicate = self.search([
+                ('date', '=', session.date),
+                ('id', '!=', session.id),
+            ], limit=1)
+            if duplicate:
+                raise ValidationError(
+                    f'Ya existe una sesión de Preparación para el '
+                    f'{session.date} ({duplicate.name}). No se pueden '
+                    f'crear sesiones duplicadas para la misma fecha.'
+                )
+
+    @api.model
+    def _ensure_session_for_date(self, date_val):
+        """Garantiza que exista una sesión de Preparación para
+        date_val — la crea en borrador (Nueva Sesión) si falta, y
+        avisa en vivo por bus.bus a quien la tenga abierta.
+
+        Pensado para dispararse desde sale.order.action_confirm() y
+        stock.picking.write() (reprogramación), ambos ya filtrando que
+        date_val caiga en la ventana de "hoy" antes de llamar esto —
+        no auto-crea sesiones de fechas futuras.
+        """
+        Session = self.sudo().search([('date', '=', date_val)], limit=1)
+        if not Session:
+            Session = self.sudo().create({'date': date_val})
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{Session.id}', 'reload', {},
+        )
+        return Session
 
     @api.depends('summary_ids')
     def _compute_summary_count(self) -> None:
