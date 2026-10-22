@@ -52,24 +52,10 @@
 
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-th-large" invisible="state == 'draft' or summary_count == 0">
-                            <field name="summary_count" widget="statinfo" string="Productos"/>
-                        </button>
-                        <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-hourglass-half" invisible="state == 'draft' or total_lines == 0">
-                            <div class="o_stat_info">
-                                <span class="o_stat_value">
-                                    <field name="pending_lines" nolabel="1"/>
-                                </span>
-                                <span class="o_stat_text">Pendientes</span>
-                                <span class="o_stat_text">
-                                    (<field name="global_progress_pct" nolabel="1" widget="integer"/>%)
-                                </span>
-                            </div>
+                            <field name="summary_count" widget="statinfo" string="Picking"/>
                         </button>
                         <button class="oe_stat_button" type="object" name="action_view_confirmed_orders" icon="fa-cubes" invisible="state == 'draft' or pick_count == 0">
                             <field name="pick_count" widget="statinfo" string="Cajas confirmadas"/>
-                        </button>
-                        <button class="oe_stat_button" type="object" name="action_view_draft_orders" icon="fa-file-text-o" invisible="state == 'draft' or draft_count == 0">
-                            <field name="draft_count" widget="statinfo" string="Cotizaciones pendientes"/>
                         </button>
                     </div>
 
@@ -80,21 +66,19 @@
                     </div>
 
                     <group>
-                        <field name="date" string="Fecha programada" widget="date" readonly="state != 'draft'"/>
-                        <label for="done_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
+                        <label for="total_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
                         <div class="o_row" invisible="state == 'draft' or total_lines == 0">
-                            <field name="done_lines" readonly="1" nolabel="1"/>
-                            <span>/</span>
                             <field name="total_lines" readonly="1" nolabel="1"/>
                         </div>
                         <field name="date_start" invisible="not date_start"/>
                         <field name="date_done" invisible="not date_done"/>
+                        <field name="responsible_employee_id"/>
                     </group>
 
                     <notebook invisible="state == 'draft'">
                         <page string="Productos" name="componentes">
                             <field name="line_ids" readonly="1">
-                                <list create="0" edit="0" delete="0" decoration-muted="is_done">
+                                <list create="0" edit="0" delete="0" open="0" decoration-muted="is_done">
                                     <field name="daily_sequence" string="Caja #"/>
                                     <field name="product_product_id" string="Producto"/>
                                     <field name="main_customer_name" string="Cliente Principal"/>
@@ -102,6 +86,7 @@
                                     <field name="customer_qty_display" string="Pidió"/>
                                     <field name="customer_uom_label" string="En"/>
                                     <field name="actual_kg" string="Peso real" digits="[10,3]"/>
+                                    <field name="is_done" string="Terminado"/>
                                 </list>
                             </field>
                         </page>

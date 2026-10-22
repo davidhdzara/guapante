@@ -291,16 +291,20 @@ class PreparationDay(models.Model):
         default=fields.Date.context_today,
     )
     date_start = fields.Datetime(
-        string='Fecha de inicio',
+        string='Fecha programada',
         readonly=True,
         copy=False,
         help='Momento en que la sesión pasó a En Progreso por primera vez.',
     )
     date_done = fields.Datetime(
-        string='Fecha de finalización',
+        string='Finalización programada',
         readonly=True,
         copy=False,
         help='Momento en que la sesión se marcó como Finalizada.',
+    )
+    responsible_employee_id = fields.Many2one(
+        'hr.employee',
+        string='Responsable de operación',
     )
     line_ids = fields.One2many(
         'guapante.preparation.day.line',
