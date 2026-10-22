@@ -2,6 +2,10 @@
 from odoo import fields
 from odoo.tests.common import TransactionCase, tagged
 
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _date_to_utc_range,
+)
+
 
 @tagged('post_install', '-at_install')
 class TestDailySequence(TransactionCase):
@@ -45,12 +49,15 @@ class TestDailySequence(TransactionCase):
         return order
 
     def _set_pickings_scheduled_date(self, orders, delivery_date):
-        dt = fields.Datetime.to_datetime(delivery_date)
+        # Usar _date_to_utc_range (misma conversión tz-aware que usa
+        # _assign_daily_sequences) — fields.Datetime.to_datetime(date) deja
+        # el picking 5h antes de que arranque la ventana que se busca.
+        dt_start, _dt_end = _date_to_utc_range(self.env, delivery_date)
         for order in orders:
             for picking in order.picking_ids.filtered(
                 lambda p: p.state not in ('done', 'cancel')
             ):
-                picking.scheduled_date = dt
+                picking.scheduled_date = dt_start
 
     def test_assign_daily_sequence_unique_increment(self):
         """New orders on the same delivery day get distinct positive consecutive numbers."""
