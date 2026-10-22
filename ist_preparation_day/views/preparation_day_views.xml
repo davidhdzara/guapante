@@ -86,7 +86,7 @@
                                     <field name="zone_name" string="Zona" readonly="1"/>
                                     <field name="customer_qty_display" string="Pidió" readonly="1"/>
                                     <field name="customer_uom_label" string="En" readonly="1"/>
-                                    <field name="actual_kg" string="Peso real" digits="[10,3]" readonly="1"/>
+                                    <field name="actual_kg" string="Peso" digits="[10,3]" readonly="1"/>
                                     <field name="is_done" string="Terminado" readonly="1"/>
                                 </list>
                             </field>
