@@ -288,6 +288,16 @@ class PreparationDayLine(models.Model):
         self.ensure_one()
         if not self.stock_move_id:
             return
+        if self.stock_move_id.state in ('done', 'cancel'):
+            estado = (
+                'cancelado' if self.stock_move_id.state == 'cancel'
+                else 'ya procesado'
+            )
+            raise UserError(
+                f'No se puede actualizar el peso: el movimiento de stock '
+                f'de esta línea está {estado} y ya no admite cambios. '
+                f'Contacta a Inventario si el dato necesita corregirse.'
+            )
         Move = self.stock_move_id.sudo().with_context(
             skip_inverse_visual_qty=True,
             skip_recolectar_zero_check=True,
