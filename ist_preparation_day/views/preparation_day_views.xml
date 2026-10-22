@@ -56,8 +56,19 @@
                         </h1>
                     </div>
 
-                    <group invisible="state != 'draft'">
-                        <field name="date" widget="date"/>
+                    <group invisible="state == 'draft'">
+                        <label for="done_lines" string="Líneas de picking"/>
+                        <div class="o_row" invisible="total_lines == 0">
+                            <field name="done_lines" readonly="1" nolabel="1"/>
+                            <span>/</span>
+                            <field name="total_lines" readonly="1" nolabel="1"/>
+                        </div>
+                    </group>
+
+                    <group>
+                        <field name="date" string="Fecha programada" widget="date" readonly="state != 'draft'"/>
+                        <field name="date_start" invisible="not date_start"/>
+                        <field name="date_done" invisible="not date_done"/>
                     </group>
 
                     <field name="total_lines" invisible="1"/>
@@ -68,9 +79,7 @@
 
                     <group string="Avance de la sesión" invisible="state == 'draft' or total_lines == 0">
                         <field name="global_progress_pct" widget="progressbar" options="{'editable': false}"/>
-                        <field name="done_lines" readonly="1"/>
                         <field name="pending_lines" readonly="1"/>
-                        <field name="total_lines" readonly="1"/>
                     </group>
 
                     <group string="Conciliación cajas: ventas vs. inventario"
@@ -88,7 +97,24 @@
                     <div class="alert alert-success" role="status" invisible="not save_note">
                         <field name="save_note" readonly="1"/>
                     </div>
+
+                    <notebook invisible="state == 'draft'">
+                        <page string="Componentes" name="componentes">
+                            <field name="line_ids" readonly="1">
+                                <list create="0" edit="0" delete="0" decoration-muted="is_done">
+                                    <field name="daily_sequence" string="Caja #"/>
+                                    <field name="product_product_id" string="Producto"/>
+                                    <field name="main_customer_name" string="Cliente Principal"/>
+                                    <field name="zone_name" string="Zona"/>
+                                    <field name="customer_qty_display" string="Pidió"/>
+                                    <field name="customer_uom_label" string="En"/>
+                                    <field name="actual_kg" string="Peso real" digits="[10,3]"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
+                <chatter/>
             </form>
         </field>
     </record>

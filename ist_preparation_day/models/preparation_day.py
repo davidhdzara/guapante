@@ -276,6 +276,7 @@ class PreparationDay(models.Model):
     """Session: select a date → see products to prepare → enter weights."""
     _name = 'guapante.preparation.day'
     _description = 'Sesión Permanente de Preparación del Día'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     name = fields.Char(
         string='Referencia',
@@ -288,6 +289,18 @@ class PreparationDay(models.Model):
         string='Fecha de entrega a preparar',
         required=True,
         default=fields.Date.context_today,
+    )
+    date_start = fields.Datetime(
+        string='Fecha de inicio',
+        readonly=True,
+        copy=False,
+        help='Momento en que la sesión pasó a En Progreso por primera vez.',
+    )
+    date_done = fields.Datetime(
+        string='Fecha de finalización',
+        readonly=True,
+        copy=False,
+        help='Momento en que la sesión se marcó como Finalizada.',
     )
     line_ids = fields.One2many(
         'guapante.preparation.day.line',
@@ -621,6 +634,8 @@ class PreparationDay(models.Model):
 
         self._rebuild_summary()
         self.state = 'loaded'
+        if not self.date_start:
+            self.date_start = fields.Datetime.now()
 
         if added_count == 0:
             self.save_note = (
@@ -848,6 +863,7 @@ class PreparationDay(models.Model):
     def action_mark_done(self) -> bool:
         """Mark session as done."""
         self.state = 'done'
+        self.date_done = fields.Datetime.now()
         return False
 
     def action_reopen(self) -> bool:
