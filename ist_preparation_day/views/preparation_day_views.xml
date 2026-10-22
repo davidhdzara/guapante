@@ -77,16 +77,16 @@
 
                     <notebook invisible="state == 'draft'">
                         <page string="Productos" name="componentes">
-                            <field name="line_ids" readonly="1">
-                                <list create="0" edit="0" delete="0" open="0" decoration-muted="is_done">
-                                    <field name="daily_sequence" string="Caja #"/>
-                                    <field name="product_product_id" string="Producto"/>
-                                    <field name="main_customer_name" string="Cliente Principal"/>
-                                    <field name="zone_name" string="Zona"/>
-                                    <field name="customer_qty_display" string="Pidió"/>
-                                    <field name="customer_uom_label" string="En"/>
-                                    <field name="actual_kg" string="Peso real" digits="[10,3]"/>
-                                    <field name="is_done" string="Terminado"/>
+                            <field name="line_ids">
+                                <list create="0" delete="0" editable="bottom" decoration-muted="is_done">
+                                    <field name="daily_sequence" string="Caja #" readonly="1"/>
+                                    <field name="product_product_id" string="Producto" readonly="1"/>
+                                    <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
+                                    <field name="zone_name" string="Zona" readonly="1"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                    <field name="customer_uom_label" string="En" readonly="1"/>
+                                    <field name="actual_kg" string="Peso real" digits="[10,3]" readonly="1"/>
+                                    <field name="is_done" string="Terminado" readonly="1"/>
                                 </list>
                             </field>
                         </page>
