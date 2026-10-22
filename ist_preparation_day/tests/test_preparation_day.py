@@ -107,13 +107,12 @@ class TestPreparationDay(TransactionCase):
     # ── Tests de Creación de Sesión ──
 
     def test_session_create_default_name(self):
-        """Session name should include the date."""
+        """Session should get an auto-generated name from the daily
+        sequence (PK/PICK/NNNNN) instead of the default 'Nueva Sesión'.
+        """
         session = self._create_session()
-        self.assertIn(
-            str(self.delivery_date),
-            session.name,
-            "Session name should contain the delivery date",
-        )
+        self.assertNotEqual(session.name, 'Nueva Sesión')
+        self.assertRegex(session.name, r'^PK/PICK/\d+$')
         self.assertEqual(session.state, 'draft')
 
     # ── Tests de action_load() ──
