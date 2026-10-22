@@ -66,13 +66,17 @@
                     </div>
 
                     <group>
-                        <label for="total_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
-                        <div class="o_row" invisible="state == 'draft' or total_lines == 0">
-                            <field name="total_lines" readonly="1" nolabel="1"/>
-                        </div>
-                        <field name="date_start" invisible="not date_start"/>
-                        <field name="date_done" invisible="not date_done"/>
-                        <field name="responsible_employee_id"/>
+                        <group>
+                            <label for="total_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
+                            <div class="o_row" invisible="state == 'draft' or total_lines == 0">
+                                <field name="total_lines" readonly="1" nolabel="1"/>
+                            </div>
+                        </group>
+                        <group>
+                            <field name="date_start" invisible="not date_start"/>
+                            <field name="date_done" invisible="not date_done"/>
+                            <field name="responsible_employee_id"/>
+                        </group>
                     </group>
 
                     <notebook invisible="state == 'draft'">
@@ -80,12 +84,12 @@
                             <field name="line_ids">
                                 <list create="0" delete="0" editable="bottom" decoration-muted="is_done">
                                     <field name="daily_sequence" string="Caja #" readonly="1"/>
-                                    <field name="order_name" string="Orden" readonly="1"/>
+                                    <field name="order_name" string="Orden" readonly="1" optional="show"/>
                                     <field name="product_description" string="Producto" readonly="1"/>
-                                    <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
-                                    <field name="zone_name" string="Zona" readonly="1"/>
-                                    <field name="customer_qty_display" string="Pidió" readonly="1"/>
-                                    <field name="customer_uom_label" string="En" readonly="1"/>
+                                    <field name="main_customer_name" string="Cliente Principal" readonly="1" optional="show"/>
+                                    <field name="zone_name" string="Zona" readonly="1" optional="show"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1" optional="show"/>
+                                    <field name="customer_uom_label" string="En" readonly="1" optional="show"/>
                                     <field name="actual_kg" string="Peso" digits="[10,3]" readonly="1"/>
                                     <field name="is_done" string="Terminado" readonly="1"/>
                                 </list>
