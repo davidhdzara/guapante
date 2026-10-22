@@ -8,8 +8,9 @@
         <field name="name">guapante.preparation.day.line.picking.kanban</field>
         <field name="model">guapante.preparation.day.line</field>
         <field name="arch" type="xml">
-            <kanban class="o_kanban_small_column" create="0" delete="0" group_create="0" group_delete="0" group_edit="0" quick_create="0" default_group_by="is_done">
+            <kanban class="o_kanban_small_column" create="0" delete="0" group_create="0" group_delete="0" group_edit="0" quick_create="0" default_group_by="picking_status">
                 <field name="is_done"/>
+                <field name="picking_status"/>
                 <field name="daily_sequence"/>
                 <field name="product_description"/>
                 <field name="main_customer_name"/>
@@ -29,7 +30,7 @@
                                     Pidió: <field name="customer_qty_display"/> <field name="customer_uom_label"/>
                                 </div>
                                 <field name="picking_operator_anchor" widget="guapante_operator_badge"/>
-                                <field name="actual_kg" widget="scale_weight" string="Peso real"/>
+                                <field name="actual_kg" widget="scale_weight" string="Peso"/>
                             </div>
                         </div>
                     </t>
