@@ -22,7 +22,7 @@
                     <button
                         name="action_mark_done"
                         type="object"
-                        string="Finalizar Sesión"
+                        string="Finalizar Operación"
                         class="btn-success"
                         invisible="state == 'draft' or state == 'done'"
                         confirm="¿Estás seguro que deseas finalizar esta sesión?"
@@ -44,9 +44,32 @@
                 </header>
 
                 <sheet>
+                    <field name="total_lines" invisible="1"/>
+                    <field name="done_lines" invisible="1"/>
+                    <field name="pending_lines" invisible="1"/>
+                    <field name="so_count" invisible="1"/>
+                    <field name="box_match" invisible="1"/>
+
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-th-large" invisible="state == 'draft' or summary_count == 0">
                             <field name="summary_count" widget="statinfo" string="Productos"/>
+                        </button>
+                        <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-hourglass-half" invisible="state == 'draft' or total_lines == 0">
+                            <div class="o_stat_info">
+                                <span class="o_stat_value">
+                                    <field name="pending_lines" nolabel="1"/>
+                                </span>
+                                <span class="o_stat_text">Pendientes</span>
+                                <span class="o_stat_text">
+                                    (<field name="global_progress_pct" nolabel="1" widget="integer"/>%)
+                                </span>
+                            </div>
+                        </button>
+                        <button class="oe_stat_button" type="object" name="action_view_confirmed_orders" icon="fa-cubes" invisible="state == 'draft' or pick_count == 0">
+                            <field name="pick_count" widget="statinfo" string="Cajas confirmadas"/>
+                        </button>
+                        <button class="oe_stat_button" type="object" name="action_view_draft_orders" icon="fa-file-text-o" invisible="state == 'draft' or draft_count == 0">
+                            <field name="draft_count" widget="statinfo" string="Cotizaciones pendientes"/>
                         </button>
                     </div>
 
@@ -56,50 +79,20 @@
                         </h1>
                     </div>
 
-                    <group invisible="state == 'draft'">
-                        <label for="done_lines" string="Líneas de picking"/>
-                        <div class="o_row" invisible="total_lines == 0">
+                    <group>
+                        <field name="date" string="Fecha programada" widget="date" readonly="state != 'draft'"/>
+                        <label for="done_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
+                        <div class="o_row" invisible="state == 'draft' or total_lines == 0">
                             <field name="done_lines" readonly="1" nolabel="1"/>
                             <span>/</span>
                             <field name="total_lines" readonly="1" nolabel="1"/>
                         </div>
-                    </group>
-
-                    <group>
-                        <field name="date" string="Fecha programada" widget="date" readonly="state != 'draft'"/>
                         <field name="date_start" invisible="not date_start"/>
                         <field name="date_done" invisible="not date_done"/>
                     </group>
 
-                    <field name="total_lines" invisible="1"/>
-                    <field name="done_lines" invisible="1"/>
-                    <field name="pending_lines" invisible="1"/>
-                    <field name="so_count" invisible="1"/>
-                    <field name="box_match" invisible="1"/>
-
-                    <group string="Avance de la sesión" invisible="state == 'draft' or total_lines == 0">
-                        <field name="global_progress_pct" widget="progressbar" options="{'editable': false}"/>
-                        <field name="pending_lines" readonly="1"/>
-                    </group>
-
-                    <group string="Conciliación cajas: ventas vs. inventario"
-                           invisible="state == 'draft' or (so_count == 0 and pick_count == 0 and draft_count == 0)">
-                        <field name="pick_count" readonly="1" string="Cajas confirmadas (Pickings)"/>
-                        <field name="box_diff" readonly="1" invisible="box_match"/>
-                        <field name="draft_count" readonly="1" string="Cotizaciones pendientes" invisible="draft_count == 0"/>
-                    </group>
-
-                    <div class="alert alert-info" role="status" invisible="state == 'draft' or total_lines == 0">
-                        Usa el botón "Productos" arriba para empacar — se abre agrupado por estado,
-                        igual que la vista de Taller de Manufactura.
-                    </div>
-
-                    <div class="alert alert-success" role="status" invisible="not save_note">
-                        <field name="save_note" readonly="1"/>
-                    </div>
-
                     <notebook invisible="state == 'draft'">
-                        <page string="Componentes" name="componentes">
+                        <page string="Productos" name="componentes">
                             <field name="line_ids" readonly="1">
                                 <list create="0" edit="0" delete="0" decoration-muted="is_done">
                                     <field name="daily_sequence" string="Caja #"/>

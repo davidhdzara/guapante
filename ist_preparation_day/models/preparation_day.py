@@ -455,6 +455,43 @@ class PreparationDay(models.Model):
             ])
             session.draft_count = len(DraftOrders)
 
+    def action_view_confirmed_orders(self) -> dict:
+        """Abre las órdenes con picking PICK confirmado para self.date."""
+        self.ensure_one()
+        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
+        Pickings = self.env['stock.picking'].sudo().search([
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('picking_type_code', '=', 'internal'),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
+            ('state', 'not in', ('cancel',)),
+        ])
+        return {
+            'name': 'Cajas confirmadas',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sale.order',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', Pickings.mapped('sale_id').ids)],
+        }
+
+    def action_view_draft_orders(self) -> dict:
+        """Abre las cotizaciones (draft/sent) pendientes para self.date."""
+        self.ensure_one()
+        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
+        return {
+            'name': 'Cotizaciones pendientes',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sale.order',
+            'view_mode': 'list,form',
+            'domain': [
+                ('state', 'in', ('draft', 'sent')),
+                '|',
+                '&', ('expected_date', '>=', dt_start), ('expected_date', '<', dt_end),
+                '&', ('date_order', '>=', dt_start), ('date_order', '<', dt_end),
+            ],
+        }
+
     def action_view_summaries(self) -> dict:
         """Abre la vista (kanban agrupado + lista) de resumen por producto."""
         self.ensure_one()
