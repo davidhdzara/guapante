@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Kanban de Picking: pantalla completa, agrupada por is_done (no por
+         producto — eso ya lo resuelve el Summary kanban + wizard de
+         ist_preparation_day). El operario recorre todas las cajas
+         pendientes de la sesión sin el paso extra de elegir producto. -->
+    <record id="view_preparation_day_line_picking_kanban" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.line.picking.kanban</field>
+        <field name="model">guapante.preparation.day.line</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_small_column" create="0" delete="0" group_create="0" group_delete="0" group_edit="0" quick_create="0" default_group_by="is_done">
+                <field name="is_done"/>
+                <field name="daily_sequence"/>
+                <field name="product_description"/>
+                <field name="main_customer_name"/>
+                <field name="customer_qty_display"/>
+                <field name="customer_uom_label"/>
+                <field name="actual_kg"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div class="o_kanban_record_top">
+                                <strong>Caja #<field name="daily_sequence"/></strong>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div><field name="product_description"/></div>
+                                <div class="text-muted"><field name="main_customer_name"/></div>
+                                <div>
+                                    Pidió: <field name="customer_qty_display"/> <field name="customer_uom_label"/>
+                                </div>
+                                <field name="picking_operator_anchor" widget="guapante_operator_badge"/>
+                                <field name="actual_kg" widget="scale_weight" string="Peso real"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+</odoo>

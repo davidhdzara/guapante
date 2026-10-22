@@ -28,7 +28,13 @@ class PreparationDayIdentificationController(http.Controller):
         if not pin:
             return {'success': False, 'error': 'Ingresa tu PIN.'}
 
-        Employees = request.env['hr.employee'].sudo().search([('pin', '=', pin)])
+        # is_guapante_prep_operator: solo empleados habilitados explícitamente
+        # pueden identificarse acá — evita que cualquier empleado con PIN
+        # configurado (para otra cosa, ej. asistencia) quede como operario.
+        Employees = request.env['hr.employee'].sudo().search([
+            ('pin', '=', pin),
+            ('is_guapante_prep_operator', '=', True),
+        ])
         if not Employees:
             return {'success': False, 'error': 'PIN no reconocido.'}
         if len(Employees) > 1:

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Controla quién ve el menú/acción de Picking (pantalla completa) —
+         no toca los permisos de modelo (siguen en base.group_user como ya
+         estaban en ist_preparation_day). Complementario al campo
+         is_guapante_prep_operator en hr.employee: ese controla quién puede
+         identificarse con PIN como operario; este grupo controla quién
+         puede siquiera entrar a la pantalla. El usuario compartido de
+         Picking se agrega a este grupo. -->
+    <record id="group_preparation_picking_operator" model="res.groups">
+        <field name="name">Guapante: Operación Picking</field>
+    </record>
+</odoo>

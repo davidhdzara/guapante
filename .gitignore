@@ -35,6 +35,8 @@
 !l10n_co_retention_certificate_guapante/**
 !ist_preparation_day/
 !ist_preparation_day/**
+!ist_preparation_day_picking/
+!ist_preparation_day_picking/**
 !requirements.txt
 
 # Always ignore compiled Python files

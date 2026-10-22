@@ -461,10 +461,12 @@ class TestPreparationDay(TransactionCase):
         """Gap #1: un PIN compartido por 2 empleados debe bloquear, no adivinar."""
         self.env['hr.employee'].create({
             'name': 'Operario A', 'pin': '4321',
+            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
         self.env['hr.employee'].create({
             'name': 'Operario B', 'pin': '4321',
+            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
 
