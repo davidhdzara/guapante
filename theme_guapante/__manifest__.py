@@ -65,10 +65,14 @@
         'views/snippets/snippets.xml',
     ],
     'assets': {
-        'web._assets_primary_variables': [
-            'theme_guapante/static/src/scss/primary_variables.scss',
-        ],
         'web.assets_frontend': [
+            # Variables de marca (debe ir primero: Bootstrap/Odoo las consumen
+            # al compilar el resto del SCSS). Antes vivían en el bundle
+            # compartido web._assets_primary_variables, que Odoo inyecta en
+            # prácticamente todos los bundles incluido el backend — pintaba
+            # de verde (#13ec6d) toda la UI de escritorio de Guapante, no
+            # solo el ecommerce (2026-10-22).
+            'theme_guapante/static/src/scss/primary_variables.scss',
             # Base theme styles
             'theme_guapante/static/src/scss/theme.scss',
             # Layout components
