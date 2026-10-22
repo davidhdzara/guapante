@@ -1,5 +1,5 @@
 {
-    'name': 'Preparación del Día (Guapante)',
+    'name': 'Preparación (Guapante)',
     'version': '18.0.1.0.0',
     'category': 'Inventory/Inventory',
     'summary': 'Alistamiento de pedidos por producto, pesaje con identificación por PIN',

@@ -328,7 +328,7 @@
          el problema de "acción suelta en megamenú" mencionado arriba. -->
     <menuitem
         id="menu_preparation_day_root"
-        name="Preparación del Día"
+        name="Preparación"
         web_icon="ist_preparation_day,static/description/icon.png"
         sequence="155"
     />
