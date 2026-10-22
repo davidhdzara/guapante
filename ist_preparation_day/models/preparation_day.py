@@ -233,18 +233,146 @@ class PreparationDayLine(models.Model):
     def write(self, vals):
         """Override para auto-guardar peso al escribir actual_kg.
 
+        Dos orígenes posibles para una edición de actual_kg:
+        - Picking (tablet compartido, widget de báscula): requiere PIN,
+          pasa por action_save_line_weight() tal cual, sin cambios.
+        - Pestaña Productos del formulario (edición inline en backend):
+          el usuario de Odoo logueado ya identifica quién hizo el cambio,
+          no exige PIN. Se distingue por si hay un operario identificado
+          por PIN en la sesión del navegador (request.session) — eso es
+          justo lo que Picking exige antes de dejar pesar, así que su
+          presencia es señal confiable de que el origen es Picking.
+
         Usa flag de contexto 'skip_auto_save' para evitar recursión
-        cuando action_save_line_weight() escribe is_done en la misma línea.
+        cuando estos mismos métodos vuelven a escribir en la línea.
         """
-        res = super().write(vals)
-        if (
+        track_kg = (
             'actual_kg' in vals
             and not self.env.context.get('skip_auto_save')
-        ):
+        )
+        old_snapshot = {}
+        if track_kg:
+            old_snapshot = {
+                line.id: (line.actual_kg, line.is_done) for line in self
+            }
+
+        res = super().write(vals)
+
+        if track_kg:
+            has_pin_operator = bool(
+                request and request.session.get(PREP_OPERATOR_SESSION_KEY)
+            )
             for line in self:
-                if line.actual_kg > 0 and not line.is_done:
-                    line.wizard_id.action_save_line_weight(line.id)
+                old_kg, was_done = old_snapshot.get(line.id, (0.0, False))
+                new_kg = line.actual_kg
+
+                if was_done:
+                    if new_kg > 0 and new_kg != old_kg:
+                        line._register_weight_correction(
+                            old_kg, has_pin_operator,
+                        )
+                elif new_kg > 0:
+                    if has_pin_operator:
+                        line.wizard_id.action_save_line_weight(line.id)
+                    else:
+                        line._register_weight_from_productos_tab()
         return res
+
+    def _sync_weight_to_stock(self, weight: float) -> None:
+        """Escribe el peso real en stock.move.line y lo propaga a la cadena.
+
+        Compartido por los flujos de edición inline (primer guardado y
+        corrección) desde la pestaña Productos — action_save_line_weight()
+        no se toca y mantiene su propia copia de esta lógica.
+        """
+        self.ensure_one()
+        if not self.stock_move_id:
+            return
+        Move = self.stock_move_id.sudo().with_context(
+            skip_inverse_visual_qty=True,
+            skip_recolectar_zero_check=True,
+            manual_entry=True,
+            guapante_wizard_intent=True,
+        )
+        Move.write({
+            'picked': True,
+            'quantity': weight,
+            'is_weight_confirmed': True,
+        })
+        if Move.state == 'confirmed':
+            Move.write({'state': 'assigned'})
+        if Move.move_line_ids:
+            Move.move_line_ids.write({'picked': True})
+        self.wizard_id._propagate_weight_to_chain(Move, weight)
+
+    def _register_weight_from_productos_tab(self) -> None:
+        """Primer guardado de un peso editado inline desde la pestaña
+        Productos (sin PIN — el usuario de Odoo logueado ya identifica
+        quién hizo el cambio). Reutiliza la sincronización de stock de
+        Picking pero sin su gate de PIN ni su log de operario físico.
+        """
+        self.ensure_one()
+        self._sync_weight_to_stock(self.actual_kg)
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary.total_done_kg = round(
+                Summary.total_done_kg + self.actual_kg, 3,
+            )
+
+        self.with_context(skip_auto_save=True).write({'is_done': True})
+
+        self.wizard_id.sudo().message_post(
+            body=(
+                f"Peso registrado desde Productos — Caja #{self.daily_sequence}: "
+                f"{self.actual_kg:.3f} kg (por {self.env.user.name})."
+            )
+        )
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
+
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.wizard_id.id),
+            ('is_done', '=', False),
+        ])
+        if pending_total == 0:
+            self.wizard_id.action_mark_done()
+
+    def _register_weight_correction(
+        self, old_kg: float, has_pin_operator: bool,
+    ) -> None:
+        """Corrige el peso de una línea ya Terminada, editada inline desde
+        Productos — re-sincroniza stock/resumen sin repetir los efectos de
+        un primer guardado (no re-evalúa auto-finish, no toca date_done).
+        """
+        self.ensure_one()
+        new_kg = self.actual_kg
+        self._sync_weight_to_stock(new_kg)
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary.total_done_kg = round(
+                max(0.0, Summary.total_done_kg - old_kg + new_kg), 3,
+            )
+
+        quien = 'operario con PIN activo' if has_pin_operator else self.env.user.name
+        self.wizard_id.sudo().message_post(
+            body=(
+                f"Corrección post-cierre — Caja #{self.daily_sequence}: "
+                f"peso de {old_kg:.3f} kg a {new_kg:.3f} kg "
+                f"(la línea ya estaba Terminada; corregido por {quien})."
+            )
+        )
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
 
     def action_undo_line(self) -> bool:
         """Devuelve una línea de los Hechos a Pendientes para corregirla."""
