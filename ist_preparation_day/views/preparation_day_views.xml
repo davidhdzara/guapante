@@ -106,8 +106,7 @@
                        widget="badge"
                        decoration-muted="state == 'draft'"
                        decoration-warning="state == 'loaded'"
-                       decoration-success="state == 'done'"
-                       class="text-dark"/>
+                       decoration-success="state == 'done'"/>
             </list>
         </field>
     </record>
