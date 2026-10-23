@@ -7,6 +7,7 @@ import { clearOperator } from "@ist_preparation_day/js/preparation_operator_stat
 import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingWeightInput } from "./preparation_picking_weight_input";
+import { PickingNoteDialog } from "./preparation_picking_note_dialog";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -45,6 +46,7 @@ export class PickingLinesDisplay extends Component {
             lines: [],
             foldedDone: true,
             loaded: false,
+            noteTemplates: [],
         });
         this.isDestroyed = false;
         this.channel = null;
@@ -57,6 +59,12 @@ export class PickingLinesDisplay extends Component {
                 return;
             }
             await this.loadLines();
+            // Fase D — chips del diálogo de notas: lectura simple, sin
+            // bloquear el resto de la pantalla si falla (no es crítico
+            // para pesar/terminar cajas).
+            this.orm.searchRead(
+                "guapante.preparation.day.note.template", [], ["name"],
+            ).then((templates) => { this.state.noteTemplates = templates; });
             this.channel = `guapante_preparation_day-${this.state.wizardId}`;
             await this.busService.addChannel(this.channel);
             this.busService.subscribe("picking_operation_finished", this.onOperationFinished);
@@ -257,6 +265,29 @@ export class PickingLinesDisplay extends Component {
                 { context: { guapante_picking_flow: true } },
             );
             await this.loadLines();
+        } catch (error) {
+            await this._handleError(error);
+        }
+    }
+
+    // Fase D — engrane de la tarjeta de la caja: diálogo propio (no hay
+    // widget nativo de texto libre + chips), ownership/operario activo
+    // los exige action_add_note() en el servidor. No hace falta
+    // loadLines() al guardar — la nota no cambia ningún dato que la
+    // tarjeta muestre.
+    onAddNote(line) {
+        this.dialog.add(PickingNoteDialog, {
+            templates: this.state.noteTemplates,
+            onConfirm: (text) => this._saveNote(line, text),
+        });
+    }
+
+    async _saveNote(line, text) {
+        try {
+            await this.orm.call(
+                "guapante.preparation.day.line", "action_add_note", [[line.id], text],
+                { context: { guapante_picking_flow: true } },
+            );
         } catch (error) {
             await this._handleError(error);
         }

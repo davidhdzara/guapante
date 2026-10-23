@@ -19,7 +19,10 @@
     # copia ningún archivo suyo a este módulo (LGPL-3), solo se
     # reutilizan las clases en nuestras propias plantillas (David,
     # especificación visual 2026-10-23, punto 2).
-    'depends': ['ist_preparation_day', 'mrp_workorder'],
+    # stock: Fase D depende directo de stock.scrap/stock.group_stock_manager/
+    # stock_scrap_form_view2 — ya llegaba transitivo por ist_preparation_day,
+    # se declara directo porque ahora se referencia explícitamente.
+    'depends': ['ist_preparation_day', 'mrp_workorder', 'stock'],
     'data': [
         'security/security.xml',
         'security/ir.model.access.csv',
@@ -27,6 +30,7 @@
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
+        'views/preparation_day_note_template_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -37,6 +41,7 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_operator_header.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_claim_menu.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_weight_input.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_note_dialog.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.xml',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.xml',

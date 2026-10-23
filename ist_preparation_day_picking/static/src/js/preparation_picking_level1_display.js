@@ -237,6 +237,16 @@ export class PickingClaimsDisplay extends Component {
         }
     }
 
+    async onScrap(claim) {
+        // Fase D — el diálogo nativo de stock.scrap se cierra solo tras
+        // Validar y no toca líneas/claims (solo descuenta stock): no
+        // hace falta loadRecords() al volver, Nivel 1 queda como estaba.
+        const result = await this._callClaim("action_open_scrap_wizard", claim.id);
+        if (result) {
+            await this.actionService.doAction(result);
+        }
+    }
+
     async onStop(claim) {
         // Mismo diálogo nativo (target=new) de siempre, sin cambios —
         // action_stop() ya llama _notify_bus(), y este componente ya

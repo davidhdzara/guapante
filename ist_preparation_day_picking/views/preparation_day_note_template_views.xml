@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Fase D — Modelos de notas (replica pos.note): lista editable
+         simple, sin formulario aparte (nombre + secuencia, nada más que
+         configurar). Grupo de permisos (Tech Lead, 2026-10-23): todavía
+         no existe un grupo propio de "supervisor" en este módulo — se
+         reutiliza stock.group_stock_manager (Diana y Mauricio lo
+         tienen en producción, el usuario compartido del tablet NO) para
+         crear/editar/borrar, y base.group_user para leer (el diálogo de
+         notas de Nivel 2 necesita leer los chips). Se migra a un grupo
+         propio cuando se arme la categoría de permisos nativos de
+         Preparación. -->
+    <record id="view_preparation_day_note_template_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.note.template.list</field>
+        <field name="model">guapante.preparation.day.note.template</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_preparation_day_note_template" model="ir.actions.act_window">
+        <field name="name">Modelos de notas</field>
+        <field name="res_model">guapante.preparation.day.note.template</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <menuitem
+        id="menu_preparation_day_note_template"
+        name="Modelos de notas"
+        parent="ist_preparation_day.menu_preparation_day_root"
+        action="action_preparation_day_note_template"
+        groups="stock.group_stock_manager"
+        sequence="60"
+    />
+</odoo>

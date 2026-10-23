@@ -2,6 +2,7 @@
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.http import request
+from odoo.tools import plaintext2html
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     get_active_prep_operator_id,
@@ -151,6 +152,49 @@ class PreparationDayLine(models.Model):
             line.with_context(guapante_picking_flow=True).write({
                 'actual_kg': line.estimated_kg,
             })
+        return True
+
+    def action_add_note(self, text: str) -> bool:
+        """Fase D — engrane de Nivel 2, "Agregar nota": mismo ownership
+        que action_undo_line (self._check_picking_ownership, exige
+        guapante_picking_flow en contexto del llamador — el JS lo pasa
+        explícito, igual que en los otros métodos de Nivel 2).
+
+        Nota interna (subtype mail.mt_note) en el picking INTERNO de
+        esta caja (stock_move_id.picking_id) — no en el picking de
+        venta/salida, sino en el que mueve la caja dentro de la bodega,
+        que es el único al que esta línea está ligada. Caso borde (Tech
+        Lead): stock_move_id puede ser False (ver create() en
+        ist_preparation_day/preparation_day.py — una línea se crea sin
+        move cuando no hay uno que mapear) — ahí cae a la sesión
+        (wizard_id), con el número de caja en el texto para no perder a
+        qué caja corresponde.
+        """
+        self.ensure_one()
+        clean_text = (text or '').strip()
+        if not clean_text:
+            raise UserError('La nota no puede estar vacía.')
+        self._check_picking_ownership()
+        employee_id = (
+            get_active_prep_operator_id(request.session, refresh=True)
+            if request else False
+        )
+        Employee = self.env['hr.employee'].sudo().browse(employee_id)
+        # Tech Lead: message_post(body=<str>) trata el cuerpo como HTML
+        # — texto libre de un operario ("<b>x</b>", "a < b") se
+        # renderizaba como HTML activo y los saltos de línea se
+        # perdían. plaintext2html() escapa entidades y convierte \n en
+        # <br/>, devolviendo un Markup ya seguro — mismo cuidado que el
+        # resto del chatter de Picking (peso, detener, etc.).
+        Picking = self.stock_move_id.picking_id
+        if Picking:
+            body = plaintext2html(f'{clean_text}\n(por {Employee.name})')
+            Picking.sudo().message_post(body=body, subtype_xmlid='mail.mt_note')
+        else:
+            body = plaintext2html(
+                f'Caja #{self.daily_sequence} — {clean_text}\n(por {Employee.name})'
+            )
+            self.wizard_id.sudo().message_post(body=body, subtype_xmlid='mail.mt_note')
         return True
 
     def _maybe_release_finished_claim(self) -> None:

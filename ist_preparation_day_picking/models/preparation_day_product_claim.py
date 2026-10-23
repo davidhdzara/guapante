@@ -386,6 +386,53 @@ class PreparationDayProductClaim(models.Model):
             'context': {'default_claim_id': self.id},
         }
 
+    def action_open_scrap_wizard(self) -> dict:
+        """Fase D — engrane de Nivel 1, "Desechar": abre el MISMO diálogo
+        nativo que stock.picking.button_scrap (stock_scrap_form_view2,
+        target=new), sin formulario propio. Sin default_origin (Tech
+        Lead, corrección 1: ese campo no está en la vista form2 — los
+        default_* solo aplican a campos que la vista pide en
+        default_get — el Documento origen quedaría vacío; se escribe en
+        preparation_day_scrap.py:StockScrap.do_scrap(), el único punto
+        por el que pasan tanto el camino feliz como el del asistente de
+        cantidad insuficiente).
+
+        picking_wizard_id/picking_claim_id en contexto (no
+        default_picking_id — Tech Lead: "un producto abarca varios
+        pedidos"): do_scrap() los exige cuando ve guapante_picking_flow,
+        nunca cae al flujo sin chequeo (corrección 2 de Tech Lead).
+        """
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+        if self.assigned_employee_id.id != employee_id:
+            raise UserError(
+                f'No puedes desechar {self.product_tmpl_id.name} — '
+                'no está asignado a ti.'
+            )
+        View = self.env.ref('stock.stock_scrap_form_view2')
+        return {
+            'name': 'Desechar productos',
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.scrap',
+            'view_mode': 'form',
+            'view_id': View.id,
+            'views': [(View.id, 'form')],
+            'target': 'new',
+            'context': {
+                'product_ids': self.product_tmpl_id.product_variant_ids.ids,
+                # guapante.preparation.day no tiene company_id propio
+                # (bug real encontrado en navegador: "object has no
+                # attribute 'company_id'") — la compañía activa del
+                # entorno es la correcta acá, igual que para cualquier
+                # otro flujo de Picking (single-company en Guapante).
+                'default_company_id': self.env.company.id,
+                'guapante_picking_flow': True,
+                'picking_wizard_id': self.wizard_id.id,
+                'picking_claim_id': self.id,
+            },
+        }
+
     def action_open_lines_kanban(self) -> dict:
         """Nivel 2 real (Fase C) como client action propio
         (especificación visual, 2026-10-23 — decisión final de Tech

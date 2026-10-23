@@ -91,6 +91,7 @@
                                         <button t-if="status === 'stopped'" type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
                                         <span t-if="status === 'done'"/>
                                         <PickingClaimGearMenu t-if="status === 'in_progress' and claim.is_mine"
+                                                               onScrap="() => this.onScrap(claim)"
                                                                onStop="() => this.onStop(claim)"
                                                                onRelease="() => this.onRelease(claim)"/>
                                     </div>

@@ -66,11 +66,13 @@
                                     Pidió: <t t-esc="line.customer_qty_display"/> <t t-esc="line.customer_uom_label"/>
                                 </li>
                             </ul>
-                            <div class="card-footer d-flex align-items-center">
+                            <div class="card-footer d-flex align-items-center justify-content-between">
                                 <PickingWeightInput t-if="line.needs_weighing"
                                                      value="line.actual_kg"
                                                      onConfirm="(value) => this.onConfirmWeight(line, value)"/>
                                 <button t-else="" type="button" class="btn btn-primary" t-on-click="() => this.onMarkReady(line)">Listo</button>
+                                <button type="button" class="btn btn-light fa fa-sticky-note-o"
+                                        title="Agregar nota" t-on-click="() => this.onAddNote(line)"/>
                             </div>
                         </div>
                     </t>
@@ -106,7 +108,11 @@
                                 </ul>
                                 <div class="card-footer d-flex justify-content-between align-items-center">
                                     <span class="text-success">Registrado: <t t-esc="line.actual_kg"/> kg</span>
-                                    <button t-if="line.claim_is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onUndo(line)">Corregir</button>
+                                    <div class="d-flex gap-2">
+                                        <button t-if="line.claim_is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onUndo(line)">Corregir</button>
+                                        <button type="button" class="btn btn-light fa fa-sticky-note-o"
+                                                title="Agregar nota" t-on-click="() => this.onAddNote(line)"/>
+                                    </div>
                                 </div>
                             </div>
                         </t>
