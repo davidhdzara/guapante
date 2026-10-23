@@ -178,6 +178,49 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertEqual(claim.assigned_employee_id, self.operator_a)
         self.assertTrue(claim.assigned_date)
 
+    def test_action_assign_rejects_if_claim_stopped(self):
+        """Tech Lead: el SELECT bloqueado tiene que mirar también
+        stop_reason — un claim Detenido queda sin dueño, así que mirar
+        solo assigned_employee_id dejaba que Asignarme lo tomara
+        saltándose Retomar."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            with self.assertRaises(UserError):
+                claim.action_assign()
+        self.assertFalse(claim.assigned_employee_id)
+        self.assertEqual(claim.stop_reason, 'sin_stock')
+
+    def test_action_assign_rejects_if_claim_done(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            with self.assertRaises(UserError):
+                claim.action_assign()
+
+    def test_action_resume_rejects_if_claim_done(self):
+        """Caso borde: todas las líneas quedaron is_done por otra vía
+        (ej. Productos) mientras el claim seguía con stop_reason."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            with self.assertRaises(UserError):
+                claim.action_resume()
+
     def test_action_assign_rejects_if_already_assigned_to_other(self):
         session = self._load_session_with_product()
         claim = session.product_claim_ids
@@ -333,3 +376,38 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             "El dueño se suelta al terminar la última línea pendiente",
         )
         self.assertEqual(claim.status, 'done')
+
+    # ── bus.bus al pesar (Tech Lead, punto 2) ──
+
+    def test_line_write_notifies_bus_on_is_done_change(self):
+        """El Nivel 1 tiene que enterarse de un pesaje hecho en el kanban
+        de líneas, no solo de las acciones del propio claim — si no, los
+        demás tablets siguen viendo 'En progreso' y el contador de
+        pendientes viejo hasta recargar a mano."""
+        session = self._load_session_with_product()
+        BusModel = self.env.registry['bus.bus']
+        with patch.object(BusModel, '_sendone') as mock_sendone:
+            session.line_ids.with_context(skip_auto_save=True).write({
+                'is_done': True, 'actual_kg': 2.0,
+            })
+        mock_sendone.assert_called_once_with(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated',
+            {},
+        )
+
+    def test_line_write_notifies_bus_once_per_session_not_per_line(self):
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Claim Bus Dos Líneas',
+            'type': 'consu',
+        })
+        self._create_confirmed_order(qty=1.0, product=product_b)
+        session = self._load_session_with_product()
+        self.assertGreaterEqual(len(session.line_ids), 2)
+
+        BusModel = self.env.registry['bus.bus']
+        with patch.object(BusModel, '_sendone') as mock_sendone:
+            session.line_ids.with_context(skip_auto_save=True).write({
+                'is_done': True, 'actual_kg': 1.0,
+            })
+        mock_sendone.assert_called_once()

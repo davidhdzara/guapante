@@ -190,18 +190,38 @@ class PreparationDayProductClaim(models.Model):
         # action_assign() de un test, dentro de la misma transacción)
         # puede leer el valor viejo de la tabla real y dar un falso
         # negativo (bug encontrado por los tests de la Fase B).
+        #
+        # El SELECT bloqueado tiene que leer TODO lo que decide si este
+        # claim es tomable — no solo assigned_employee_id (hallazgo de
+        # Tech Lead): un claim Detenido queda sin dueño, así que mirar
+        # solo assigned_employee_id dejaba que "Asignarme" tomara un
+        # producto detenido (saltándose Retomar y su chatter) o uno ya
+        # Terminado.
         self.flush_recordset()
         self.env.cr.execute(
-            'SELECT assigned_employee_id FROM guapante_preparation_day_product_claim '
-            'WHERE id = %s FOR UPDATE',
+            'SELECT assigned_employee_id, stop_reason FROM '
+            'guapante_preparation_day_product_claim WHERE id = %s FOR UPDATE',
             (self.id,),
         )
         row = self.env.cr.fetchone()
-        if row and row[0]:
+        locked_assigned_id, locked_stop_reason = row if row else (False, False)
+        Lines = self._get_lines()
+        is_done = bool(Lines) and all(line.is_done for line in Lines)
+        if locked_assigned_id:
             self.invalidate_recordset(['assigned_employee_id'])
             raise UserError(
                 f'{self.assigned_employee_id.name} ya se asignó '
                 f'{self.product_tmpl_id.name} — actualiza la pantalla.'
+            )
+        if locked_stop_reason:
+            raise UserError(
+                f'{self.product_tmpl_id.name} está detenido — usa Retomar. '
+                'Actualiza la pantalla.'
+            )
+        if is_done:
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
+                'actualiza la pantalla.'
             )
         self.write({
             'assigned_employee_id': employee_id,
@@ -229,6 +249,16 @@ class PreparationDayProductClaim(models.Model):
             self.invalidate_recordset(['stop_reason'])
             raise UserError(
                 f'{self.product_tmpl_id.name} ya no está detenido — '
+                'actualiza la pantalla.'
+            )
+        # Caso borde (Tech Lead): si todas las líneas quedaron is_done por
+        # otra vía (ej. edición directa en la pestaña Productos) mientras
+        # el claim seguía con stop_reason puesto, el status computado ya
+        # muestra 'done' — Retomar no debe revivirlo.
+        Lines = self._get_lines()
+        if Lines and all(line.is_done for line in Lines):
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
                 'actualiza la pantalla.'
             )
         Employee = self.env['hr.employee'].sudo().browse(employee_id)

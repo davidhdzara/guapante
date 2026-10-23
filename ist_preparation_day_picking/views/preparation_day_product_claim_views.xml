@@ -4,7 +4,11 @@
          base (plantilla). Referencia visual verificada contra
          addons/mrp/views/mrp_production_views.xml (mrp_production_kanban_view):
          t-name="card" (sintaxis moderna, no kanban-box), badge de estado con
-         clases nativas text-bg-* de Bootstrap. Cero CSS propio.
+         clases nativas text-bg-* de Bootstrap. Menú "..." de la tarjeta
+         verificado contra addons/hr_recruitment/views/hr_applicant_views.xml
+         y addons/crm/views/crm_lead_views.xml: t-name="menu" con
+         <a role="menuitem" type="object" .../>, sin dropdown propio. Cero
+         CSS propio.
 
          js_class="guapante_picking_claims_kanban": un kanban nativo no se
          suscribe solo al bus.bus — el js_class le agrega esa suscripción al
@@ -31,6 +35,20 @@
                 <field name="pending_line_count"/>
                 <field name="total_line_count"/>
                 <templates>
+                    <!-- Menú nativo de la tarjeta (Odoo 18): el kanban ya
+                         renderiza el botón "..." solo con que exista este
+                         template — nada de markup de dropdown propio (CRM,
+                         hr_recruitment, etc. usan exactamente este patrón:
+                         <a role="menuitem" type="object" .../> dentro de
+                         t-name="menu"). -->
+                    <t t-name="menu">
+                        <a t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
+                           role="menuitem" name="action_open_stop_wizard" type="object"
+                           class="dropdown-item">Detener</a>
+                        <a t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
+                           role="menuitem" name="action_release" type="object"
+                           class="dropdown-item">Liberar</a>
+                    </t>
                     <t t-name="card">
                         <div class="d-flex justify-content-between align-items-start mb-1">
                             <strong><field name="product_tmpl_id"/></strong>
@@ -58,16 +76,6 @@
                             <button t-if="record.status.raw_value === 'stopped'"
                                     type="object" name="action_resume"
                                     class="btn btn-sm btn-primary">Retomar</button>
-                            <div t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
-                                 class="dropdown">
-                                <a href="#" class="dropdown-toggle o-no-caret btn btn-sm" data-bs-toggle="dropdown">
-                                    <i class="fa fa-ellipsis-v"/>
-                                </a>
-                                <div class="dropdown-menu" role="menu">
-                                    <a type="object" name="action_open_stop_wizard" class="dropdown-item" role="menuitem">Detener</a>
-                                    <a type="object" name="action_release" class="dropdown-item" role="menuitem">Liberar</a>
-                                </div>
-                            </div>
                         </footer>
                     </t>
                 </templates>

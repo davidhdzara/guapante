@@ -36,6 +36,17 @@ class PreparationDayLine(models.Model):
         res = super().write(vals)
         if 'is_done' in vals or 'actual_kg' in vals:
             self._maybe_release_finished_claim()
+        if 'is_done' in vals:
+            # El Nivel 1 no se entera solo — _notify_bus() en el modelo de
+            # claim solo corre en sus propias acciones (Asignarme, Detener,
+            # etc.), así que un pesaje hecho en el kanban de líneas (que
+            # cambia is_done pero no pasa por ninguna acción del claim)
+            # dejaba a los demás tablets viendo "En progreso — Asignado a
+            # X" y el contador de pendientes viejos hasta recargar a mano
+            # (hallazgo de Tech Lead). Uno por sesión afectada, no uno por
+            # línea — un pesaje en lote de varias líneas de la misma
+            # sesión no debe mandar N notificaciones idénticas.
+            self._notify_picking_claims_bus()
         return res
 
     def _maybe_release_finished_claim(self) -> None:
@@ -55,6 +66,15 @@ class PreparationDayLine(models.Model):
                     'assigned_employee_id': False,
                     'assigned_date': False,
                 })
+
+    def _notify_picking_claims_bus(self) -> None:
+        Bus = self.env['bus.bus']
+        for wizard_id in self.mapped('wizard_id').ids:
+            Bus._sendone(
+                f'guapante_preparation_day-{wizard_id}',
+                'picking_claim_updated',
+                {},
+            )
 
     # Punto de montaje del widget de identificación por PIN en cada card
     # del kanban de Picking — el valor no se usa (operatorState es un
