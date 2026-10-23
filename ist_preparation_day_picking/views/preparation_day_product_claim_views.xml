@@ -1,97 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Nivel 1 de Picking: kanban agrupado por status, tarjeta = producto
-         base (plantilla). Referencia visual verificada contra
-         addons/mrp/views/mrp_production_views.xml (mrp_production_kanban_view):
-         t-name="card" (sintaxis moderna, no kanban-box), badge de estado con
-         clases nativas text-bg-* de Bootstrap. Menú "..." de la tarjeta
-         verificado contra addons/hr_recruitment/views/hr_applicant_views.xml
-         y addons/crm/views/crm_lead_views.xml: t-name="menu" con
-         <a role="menuitem" type="object" .../>, sin dropdown propio. Cero
-         CSS propio.
+    <!-- Nivel 1 de Picking vive como client action propio en JS
+         (preparation_picking_level1_display.js/.xml, registrado como
+         "guapante_picking_level1"), no una vista/acción XML aquí —
+         especificación visual, 2026-10-23, decisión final de Tech Lead
+         tras dos rondas de kanban nativo + t-inherit que nunca
+         igualaron la tarjeta/barra de Taller real (el envoltorio
+         o_kanban_record del kanban no se podía quitar).
 
-         js_class="guapante_picking_claims_kanban": un kanban nativo no se
-         suscribe solo al bus.bus — el js_class le agrega esa suscripción al
-         controller (ver preparation_picking_claims_kanban.js), igual que
-         LiveRefreshAnchor hace para el form de la sesión. Con ~60 tarjetas
-         como máximo (dato real de producción), un recargue completo del
-         modelo al recibir la notificación es suficiente — no vale la pena
-         actualizar tarjeta por tarjeta (decisión de Tech Lead). -->
-    <record id="view_preparation_day_product_claim_kanban" model="ir.ui.view">
-        <field name="name">guapante.preparation.day.product.claim.kanban</field>
-        <field name="model">guapante.preparation.day.product.claim</field>
-        <field name="arch" type="xml">
-            <kanban js_class="guapante_picking_claims_kanban"
-                    class="o_kanban_small_column"
-                    create="0" delete="0" group_create="0" group_delete="0"
-                    group_edit="0" quick_create="0"
-                    default_group_by="status">
-                <field name="status"/>
-                <field name="product_tmpl_id"/>
-                <field name="assigned_employee_id"/>
-                <field name="stop_reason"/>
-                <field name="stopped_by_employee_id"/>
-                <field name="is_mine"/>
-                <field name="pending_line_count"/>
-                <field name="total_line_count"/>
-                <templates>
-                    <!-- Menú nativo de la tarjeta (Odoo 18): el kanban ya
-                         renderiza el botón "..." solo con que exista este
-                         template — nada de markup de dropdown propio (CRM,
-                         hr_recruitment, etc. usan exactamente este patrón:
-                         <a role="menuitem" type="object" .../> dentro de
-                         t-name="menu").
-
-                         Nota de Tech Lead (no bloqueante): como el template
-                         "menu" siempre existe, las tarjetas que no están
-                         in_progress+is_mine probablemente muestran el botón
-                         "..." con el menú vacío (sin ítems visibles). Queda
-                         anotado para revisar en la Fase C si David lo ve
-                         feo — no se le agregó una entrada informativa
-                         todavía para no asumir cuál. -->
-                    <t t-name="menu">
-                        <a t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
-                           role="menuitem" name="action_open_stop_wizard" type="object"
-                           class="dropdown-item">Detener</a>
-                        <a t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
-                           role="menuitem" name="action_release" type="object"
-                           class="dropdown-item">Liberar</a>
-                    </t>
-                    <t t-name="card">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <strong><field name="product_tmpl_id"/></strong>
-                            <span t-attf-class="badge #{record.status.raw_value === 'done' ? 'text-bg-success' : record.status.raw_value === 'stopped' ? 'text-bg-danger' : record.status.raw_value === 'in_progress' ? 'text-bg-warning' : 'text-bg-secondary'}">
-                                <field name="status"/>
-                            </span>
-                        </div>
-                        <div class="text-muted small">
-                            <field name="pending_line_count"/> de <field name="total_line_count"/> órdenes pendientes
-                        </div>
-                        <div t-if="record.status.raw_value === 'in_progress'" class="small">
-                            <t t-if="record.is_mine.raw_value">Asignado a mí</t>
-                            <t t-else="">Asignado a: <field name="assigned_employee_id"/></t>
-                        </div>
-                        <div t-if="record.status.raw_value === 'stopped'" class="text-danger small">
-                            Motivo: <field name="stop_reason"/> — detenido por <field name="stopped_by_employee_id"/>
-                        </div>
-                        <footer class="d-flex justify-content-between align-items-center mt-2">
-                            <button t-if="record.status.raw_value === 'pending'"
-                                    type="object" name="action_assign"
-                                    class="btn btn-sm btn-primary">Asignarme</button>
-                            <button t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
-                                    type="object" name="action_open_lines_kanban"
-                                    class="btn btn-sm btn-secondary">Continuar</button>
-                            <button t-if="record.status.raw_value === 'stopped'"
-                                    type="object" name="action_resume"
-                                    class="btn btn-sm btn-primary">Retomar</button>
-                        </footer>
-                    </t>
-                </templates>
-            </kanban>
-        </field>
-    </record>
-
-    <!-- Diálogo nativo (target=new) para pedir el motivo de detención —
+         Diálogo nativo (target=new) para pedir el motivo de detención —
          lista corta fija, sin texto libre. -->
     <record id="view_preparation_day_product_claim_stop_wizard_form" model="ir.ui.view">
         <field name="name">guapante.preparation.day.product.claim.stop.wizard.form</field>

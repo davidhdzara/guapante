@@ -13,12 +13,17 @@
     """,
     'author': 'InSoTech',
     'website': 'https://www.insotech.com',
-    'depends': ['ist_preparation_day'],
+    # mrp_workorder (Taller, Enterprise/OEEL-1): se depende para reusar
+    # sus clases y SCSS (o_mrp_display, o_mrp_display_record, la
+    # animación de tarjeta, etc.) vía web.assets_backend — nunca se
+    # copia ningún archivo suyo a este módulo (LGPL-3), solo se
+    # reutilizan las clases en nuestras propias plantillas (David,
+    # especificación visual 2026-10-23, punto 2).
+    'depends': ['ist_preparation_day', 'mrp_workorder'],
     'data': [
         'security/security.xml',
         'security/ir.model.access.csv',
         'views/preparation_day_form_views.xml',
-        'views/preparation_day_line_picking_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
@@ -26,14 +31,16 @@
     'assets': {
         'web.assets_backend': [
             'ist_preparation_day_picking/static/src/js/preparation_picking_idle_watcher.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_install_menu.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_badge_patch.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_operator_header.js',
-            'ist_preparation_day_picking/static/src/js/preparation_picking_claims_kanban.xml',
-            'ist_preparation_day_picking/static/src/js/preparation_picking_claims_kanban.js',
-            'ist_preparation_day_picking/static/src/js/preparation_picking_lines_kanban.xml',
-            'ist_preparation_day_picking/static/src/js/preparation_picking_lines_kanban.js',
-            'ist_preparation_day_picking/static/src/js/preparation_picking_scale_weight_patch.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_claim_menu.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_weight_input.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.xml',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.xml',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.js',
         ],
     },
     'installable': True,

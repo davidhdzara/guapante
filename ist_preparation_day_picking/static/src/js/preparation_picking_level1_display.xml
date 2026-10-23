@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!-- Nivel 1 como client action propio — ver preparation_picking_level1_display.js.
+
+         Barra propia (no &lt;Layout&gt;/&lt;ControlPanel&gt; nativos: esos
+         requieren un env.searchModel real, que WithSearch le da a
+         MrpDisplay — acá se construye la misma barra a mano con
+         Bootstrap, MISMA posición ya validada con David/Tech Lead en la
+         versión kanban: buscador centrado (clases o_cp_searchview /
+         o_searchview_input_container nativas), refrescar + Cerrar a la
+         derecha del buscador, operario + Cerrar sesión + hamburguesa en
+         el extremo derecho. Nada a la izquierda.
+
+         Tarjeta: misma estructura que mrp_workorder.MrpDisplayRecord
+         (card-header con título + badge, list-group-flush, card-footer
+         con botón + engranaje) — clase o_mrp_display_record real (de
+         mrp_workorder, agregado a depends) para la animación/opacidad
+         nativas, sin copiar ningún archivo de ese módulo (OEEL-1). -->
+    <t t-name="ist_preparation_day_picking.PickingClaimsDisplay">
+        <div class="o_action o_mrp_display h-100 d-flex flex-column">
+            <div class="o_control_panel d-flex flex-column gap-2 px-3 pt-2 pb-2 border-bottom">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                    <div class="o_cp_searchview d-flex input-group flex-grow-1" role="search" style="max-width: 480px;">
+                        <div class="o_searchview form-control d-flex align-items-center py-1">
+                            <i class="o_searchview_icon oi oi-search me-2"/>
+                            <div class="o_searchview_input_container d-flex flex-grow-1">
+                                <input type="text"
+                                       class="o_searchview_input o_input flex-grow-1 border-0"
+                                       placeholder="Buscar producto…"
+                                       t-model="state.searchText"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
+                        <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
+                            <i class="fa fa-lg fa-sign-out me-md-1"/><span class="d-none d-md-inline">Cerrar</span>
+                        </button>
+                        <PickingOperatorHeader/>
+                        <PickingInstallMenu/>
+                    </div>
+                </div>
+            </div>
+
+            <div t-if="state.loaded &amp;&amp; !state.claims.length" class="flex-grow-1 d-flex align-items-center justify-content-center">
+                <div class="o_view_nocontent text-center">
+                    <div class="o_nocontent_help">
+                        <p class="o_view_nocontent_smiling_face" t-esc="state.hasLines ? 'No hay productos pendientes en este momento.' : 'La sesión de hoy todavía no está cargada.'"/>
+                        <p t-esc="state.hasLines ? 'Vuelve cuando se cargue un nuevo pedido.' : 'Pídele a un supervisor que la cargue desde Preparación › Sesiones.'"/>
+                    </div>
+                </div>
+            </div>
+
+            <div t-else="" class="o_mrp_display_records flex-grow-1 m-2 d-flex gap-3 overflow-auto">
+                <t t-foreach="statusOrder" t-as="status" t-key="status">
+                    <div class="d-flex flex-column w-25">
+                        <div class="d-flex align-items-center mb-2 text-muted" style="height: 24px;">
+                            <button t-if="status === 'done'" type="button"
+                                    class="btn btn-link p-0 text-muted text-decoration-none d-flex align-items-center gap-1"
+                                    t-on-click="toggleDoneGroup">
+                                <i t-attf-class="fa #{state.foldedDone ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
+                                <strong t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
+                            </button>
+                            <strong t-else="" t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
+                        </div>
+                        <t t-if="status !== 'done' || !state.foldedDone">
+                            <t t-foreach="groupedClaims[status]" t-as="claim" t-key="claim.id">
+                                <div t-attf-class="o_mrp_display_record card border rounded m-0 mb-2 #{status === 'in_progress' &amp;&amp; !claim.is_mine ? 'o_disabled' : ''}">
+                                    <div class="card-header">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="h6 mb-0 text-truncate" t-esc="claim.product_tmpl_name"/>
+                                            <small t-attf-class="rounded-pill px-2 text-nowrap #{status === 'done' ? 'text-bg-success' : status === 'stopped' ? 'text-bg-danger' : status === 'in_progress' ? 'text-bg-warning' : 'text-bg-light border border-secondary'}"
+                                                   t-esc="statusLabels[status]"/>
+                                        </div>
+                                    </div>
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item">
+                                            <t t-esc="claim.pending_line_count"/> de <t t-esc="claim.total_line_count"/> órdenes pendientes
+                                        </li>
+                                        <li t-if="status === 'in_progress'" class="list-group-item">
+                                            <t t-if="claim.is_mine">Asignado a mí</t>
+                                            <t t-else="">Asignado a: <t t-esc="claim.assigned_employee_name"/></t>
+                                        </li>
+                                        <li t-if="status === 'stopped'" class="list-group-item text-danger">
+                                            <t t-esc="stopReasonLabels[claim.stop_reason] || claim.stop_reason"/> — detenido por <t t-esc="claim.stopped_by_employee_name"/>
+                                        </li>
+                                    </ul>
+                                    <div class="card-footer d-flex justify-content-between align-items-center">
+                                        <button t-if="status === 'pending'" type="button" class="btn btn-primary" t-on-click="() => this.onAssign(claim)">Asignarme</button>
+                                        <button t-if="status === 'in_progress' and claim.is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onContinue(claim)">Continuar</button>
+                                        <button t-if="status === 'stopped'" type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
+                                        <span t-if="status === 'done'"/>
+                                        <PickingClaimGearMenu t-if="status === 'in_progress' and claim.is_mine"
+                                                               onStop="() => this.onStop(claim)"
+                                                               onRelease="() => this.onRelease(claim)"/>
+                                    </div>
+                                </div>
+                            </t>
+                        </t>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+</templates>

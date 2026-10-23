@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!-- Nivel 2 como client action propio — ver
+         preparation_picking_level2_display.js. Misma barra hecha a
+         mano que Nivel 1 (preparation_picking_level1_display.xml),
+         con "← Productos" agregado a la izquierda (único botón de
+         navegación propia de Nivel 2 — sin breadcrumb nativo no hay
+         vuelta atrás sola).
+
+         Tarjeta: misma estructura o_mrp_display_record que Nivel 1,
+         agrupada por picking_status (Pendiente/Terminado) en vez de
+         las 4 columnas de Nivel 1. -->
+    <t t-name="ist_preparation_day_picking.PickingLinesDisplay">
+        <div class="o_action o_mrp_display h-100 d-flex flex-column">
+            <div class="o_control_panel d-flex flex-column gap-2 px-3 pt-2 pb-2 border-bottom">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-light text-nowrap" t-on-click="onClickBackToLevel1">
+                            <i class="fa fa-arrow-left me-1"/>Productos
+                        </button>
+                        <strong t-esc="state.productName"/>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
+                        <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
+                            <i class="fa fa-lg fa-sign-out me-md-1"/><span class="d-none d-md-inline">Cerrar</span>
+                        </button>
+                        <PickingOperatorHeader/>
+                        <PickingInstallMenu/>
+                    </div>
+                </div>
+            </div>
+
+            <div t-if="state.loaded &amp;&amp; !state.lines.length" class="flex-grow-1 d-flex align-items-center justify-content-center">
+                <div class="o_view_nocontent text-center">
+                    <div class="o_nocontent_help">
+                        <p class="o_view_nocontent_smiling_face">No hay cajas para este producto en este momento.</p>
+                        <p>Actualiza la pantalla o vuelve a Productos.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div t-else="" class="o_mrp_display_records flex-grow-1 m-2 d-flex gap-3 overflow-auto">
+                <div class="d-flex flex-column w-25">
+                    <div class="d-flex align-items-center mb-2 text-muted" style="height: 24px;">
+                        <strong t-esc="'Pendiente (' + pendingLines.length + ')'"/>
+                    </div>
+                    <t t-foreach="pendingLines" t-as="line" t-key="line.id">
+                        <div class="o_mrp_display_record card border rounded m-0 mb-2">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="h6 mb-0">Caja #<t t-esc="line.daily_sequence"/></span>
+                                    <small class="rounded-pill px-2 text-nowrap text-bg-light border border-secondary">Pendiente</small>
+                                </div>
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li t-if="line.attribute_names.length" class="list-group-item d-flex gap-1 flex-wrap">
+                                    <t t-foreach="line.attribute_names" t-as="attrName" t-key="attrName">
+                                        <span class="badge text-bg-secondary" t-esc="attrName"/>
+                                    </t>
+                                </li>
+                                <li class="list-group-item">
+                                    <t t-esc="line.main_customer_name"/> · <t t-esc="line.zone_name"/>
+                                </li>
+                                <li class="list-group-item">
+                                    Pidió: <t t-esc="line.customer_qty_display"/> <t t-esc="line.customer_uom_label"/>
+                                </li>
+                            </ul>
+                            <div class="card-footer d-flex align-items-center">
+                                <PickingWeightInput t-if="line.needs_weighing"
+                                                     value="line.actual_kg"
+                                                     onConfirm="(value) => this.onConfirmWeight(line, value)"/>
+                                <button t-else="" type="button" class="btn btn-primary" t-on-click="() => this.onMarkReady(line)">Listo</button>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+
+                <div class="d-flex flex-column w-25">
+                    <div class="d-flex align-items-center mb-2 text-muted" style="height: 24px;">
+                        <button type="button"
+                                class="btn btn-link p-0 text-muted text-decoration-none d-flex align-items-center gap-1"
+                                t-on-click="toggleDoneGroup">
+                            <i t-attf-class="fa #{state.foldedDone ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
+                            <strong t-esc="'Terminado (' + doneLines.length + ')'"/>
+                        </button>
+                    </div>
+                    <t t-if="!state.foldedDone">
+                        <t t-foreach="doneLines" t-as="line" t-key="line.id">
+                            <div class="o_mrp_display_record card border rounded m-0 mb-2">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h6 mb-0">Caja #<t t-esc="line.daily_sequence"/></span>
+                                        <small class="rounded-pill px-2 text-nowrap text-bg-success">Terminado</small>
+                                    </div>
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li t-if="line.attribute_names.length" class="list-group-item d-flex gap-1 flex-wrap">
+                                        <t t-foreach="line.attribute_names" t-as="attrName" t-key="attrName">
+                                            <span class="badge text-bg-secondary" t-esc="attrName"/>
+                                        </t>
+                                    </li>
+                                    <li class="list-group-item">
+                                        <t t-esc="line.main_customer_name"/> · <t t-esc="line.zone_name"/>
+                                    </li>
+                                </ul>
+                                <div class="card-footer d-flex justify-content-between align-items-center">
+                                    <span class="text-success">Registrado: <t t-esc="line.actual_kg"/> kg</span>
+                                    <button t-if="line.claim_is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onUndo(line)">Corregir</button>
+                                </div>
+                            </div>
+                        </t>
+                    </t>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>

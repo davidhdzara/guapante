@@ -78,9 +78,26 @@ class PreparationDay(models.Model):
         return res
 
     def action_view_product_claims(self) -> dict:
-        """Nivel 1 de Picking: kanban de product.claim agrupado por
-        status — punto de entrada real desde
+        """Nivel 1 de Picking como client action propio (especificación
+        visual, 2026-10-23 — decisión final de Tech Lead tras dos
+        rondas de kanban nativo + t-inherit que nunca igualaron la
+        tarjeta/barra de Taller real: el envoltorio o_kanban_record del
+        kanban no se podía quitar). Punto de entrada real desde
         action_resolve_picking_handoff.
+
+        Ya no hace falta devolver un xmlid+context para forzar el
+        camino de markup() de doAction() (el bug de 'help' escapado era
+        específico de un campo Html de ir.actions.act_window, que un
+        client action no tiene) ni la variante doble de 'help' según
+        estado: el componente OWL
+        (preparation_picking_level1_display.js) decide el texto de
+        estado vacío él mismo (state.hasLines, calculado con los datos
+        que ya carga).
+
+        context: 'guapante_picking_flow' vive en la ACCIÓN (no solo en
+        llamadas RPC sueltas) porque el watcher de inactividad lo lee de
+        action.currentController.action.context
+        (preparation_picking_idle_watcher.js).
         """
         self.ensure_one()
         if not self.env.user.has_group(
@@ -90,36 +107,13 @@ class PreparationDay(models.Model):
                 'No tienes acceso a la pantalla de Picking.'
             )
         return {
-            'name': 'Picking',
-            'type': 'ir.actions.act_window',
-            'res_model': 'guapante.preparation.day.product.claim',
-            'view_mode': 'kanban',
-            # 'views' explícito (no solo view_mode): _preprocessAction
-            # del cliente web (action_service.js) hace
-            # action.views.map(...) sin validar que exista — una action
-            # ir.actions.act_window armada a mano en Python, sin pasar
-            # por el ORM de ir.actions.actions, nunca la llena sola (a
-            # diferencia de una acción guardada que sí trae 'views' al
-            # leerse). Sin esto: "Cannot read properties of undefined
-            # (reading 'map')" al hacer doAction (bug real, encontrado
-            # por David en el handoff de Picking).
-            'views': [(False, 'kanban')],
-            'domain': [('wizard_id', '=', self.id)],
+            'type': 'ir.actions.client',
+            'tag': 'guapante_picking_level1',
             'target': 'fullscreen',
             'context': {
                 'guapante_picking_flow': True,
-                'picking_wizard_id': self.id,
+                'wizard_id': self.id,
             },
-            # Estado vacío nativo — las líneas solo nacen en action_load()
-            # (que un operario de Picking nunca dispara), así que una
-            # sesión recién auto-creada por la Fase A puede no tener nada
-            # todavía (Tech Lead, punto 8).
-            'help': (
-                '<p class="o_view_nocontent_smiling_face">'
-                'La sesión de hoy todavía no está cargada.</p>'
-                '<p>Pídele a un supervisor que la cargue desde '
-                'Preparación › Sesiones.</p>'
-            ),
         }
 
     def action_open_picking_app(self) -> dict:

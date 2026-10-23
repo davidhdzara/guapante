@@ -56,6 +56,13 @@ class PreparationDayProductClaim(models.Model):
         string='Producto',
         required=True,
     )
+    # .name (no .display_name): la tarjeta de Nivel 1 no debe mostrar el
+    # código interno [XXX-0000] (especificación visual, David 2026-10-23)
+    # — <field name="product_tmpl_id"/> en kanban renderiza display_name,
+    # que sí lo trae.
+    product_tmpl_name = fields.Char(
+        related='product_tmpl_id.name', string='Producto (sin código)',
+    )
     assigned_employee_id = fields.Many2one(
         'hr.employee', string='Asignado a',
     )
@@ -380,36 +387,32 @@ class PreparationDayProductClaim(models.Model):
         }
 
     def action_open_lines_kanban(self) -> dict:
-        """Nivel 2 real (Fase C): abre el kanban de líneas de la
-        plantilla de este claim — reutiliza el mismo xmlid que el
-        kanban temporal de la Fase B, reescrito con t-name="card",
-        botón Listo para needs_weighing=False y alerta de peso.
+        """Nivel 2 real (Fase C) como client action propio
+        (especificación visual, 2026-10-23 — decisión final de Tech
+        Lead tras dos rondas de kanban nativo + t-inherit que nunca
+        igualaron la tarjeta de Taller real). El componente OWL
+        (preparation_picking_level2_display.js) resuelve este claim por
+        su id (orm.read) y carga las líneas con orm.searchRead — ya no
+        hace falta 'views'/'help' ni domain armado acá (eso era
+        específico de un ir.actions.act_window), ni picking_wizard_id en
+        contexto: el componente lo obtiene leyendo el propio claim.
+
+        context: 'guapante_picking_flow' vive en la ACCIÓN (no solo en
+        llamadas RPC sueltas) porque el watcher de inactividad lo lee de
+        action.currentController.action.context
+        (preparation_picking_idle_watcher.js) — mismo motivo que en
+        action_view_product_claims (preparation_day.py).
         """
         self.ensure_one()
         self._check_picking_access()
         return {
+            'type': 'ir.actions.client',
+            'tag': 'guapante_picking_level2',
             'name': self.product_tmpl_id.name,
-            'type': 'ir.actions.act_window',
-            'res_model': 'guapante.preparation.day.line',
-            'view_mode': 'kanban',
-            # 'views' explícito — ver nota en action_view_product_claims
-            # (preparation_day.py): _preprocessAction del cliente web
-            # hace action.views.map(...) sin validar que exista.
-            'views': [(False, 'kanban')],
-            'domain': [
-                ('wizard_id', '=', self.wizard_id.id),
-                ('product_id', '=', self.product_tmpl_id.id),
-            ],
             'target': 'fullscreen',
-            # picking_wizard_id: igual que en action_view_product_claims,
-            # para que el controller del kanban de Nivel 2
-            # (preparation_picking_lines_kanban.js) pueda suscribirse al
-            # mismo canal de bus que Nivel 1 y enterarse de
-            # picking_operation_finished sin esperar al próximo poll del
-            # watchdog (Fase C, punto 4 de Tech Lead).
             'context': {
                 'guapante_picking_flow': True,
-                'picking_wizard_id': self.wizard_id.id,
+                'claim_id': self.id,
             },
         }
 

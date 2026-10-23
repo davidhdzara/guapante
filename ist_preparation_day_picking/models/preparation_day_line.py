@@ -198,6 +198,41 @@ class PreparationDayLine(models.Model):
             )
             line.expected_kg_per_unit = Claim.expected_kg_per_unit if Claim else 0.0
 
+    # .name (no .display_name): la tarjeta de Nivel 2 tampoco debe
+    # mostrar el código interno (especificación visual, David
+    # 2026-10-23) — mismo motivo que product_tmpl_name en el claim.
+    product_name = fields.Char(related='product_id.name', string='Producto (sin código)')
+
+    # Chips de grado de madurez y tamaño en la tarjeta de Nivel 2 —
+    # widget nativo many2many_tags, cero CSS propio. Vienen de
+    # sale_line_id porque el pedido se hace con create_variant='no_variant'
+    # (hallazgo de Fase C, grounded en datos reales de producción: el
+    # 100% de las variantes de líneas needs_weighing=True tienen
+    # product_template_attribute_value_ids vacío — el atributo real
+    # elegido por el cliente vive en la línea de venta, no en la
+    # variante del producto).
+    no_variant_attribute_value_ids = fields.Many2many(
+        'product.template.attribute.value',
+        related='sale_line_id.product_no_variant_attribute_value_ids',
+        string='Madurez / Tamaño',
+    )
+
+    # Para el botón "Corregir" de Nivel 2 (terminada): solo visible
+    # mientras el claim de esta línea siga siendo mío — una vez
+    # Terminado el producto completo, el claim se libera y Corregir deja
+    # de estar disponible (Tech Lead: "Terminado es solo lectura desde
+    # Picking", mismo _check_picking_ownership que ya lo exige en el
+    # servidor — este campo solo evita mostrar un botón que el servidor
+    # igual va a rechazar).
+    claim_is_mine = fields.Boolean(compute='_compute_claim_is_mine')
+
+    def _compute_claim_is_mine(self) -> None:
+        for line in self:
+            Claim = line.wizard_id.product_claim_ids.filtered(
+                lambda c: c.product_tmpl_id == line.product_id
+            )
+            line.claim_is_mine = bool(Claim and Claim.is_mine)
+
     # Espejo de is_done con labels legibles — el kanban de Picking agrupa
     # por este campo en vez de por is_done directo, porque Odoo no deja
     # poner labels custom a un group_by de un Boolean (sale "No"/"Sí"
