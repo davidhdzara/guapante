@@ -32,7 +32,7 @@ const NOT_IDENTIFIED_MESSAGE =
 
 export class ScaleWeightField extends Component {
     static template = xml`
-        <div class="o_field_scale_weight" t-on-keydown="onKeydown">
+        <div class="o_field_scale_weight">
             <div class="d-flex align-items-center gap-1">
                 <div class="flex-grow-1 text-truncate">
                     <FloatField t-props="floatFieldProps"/>
@@ -87,15 +87,6 @@ export class ScaleWeightField extends Component {
             ),
         };
     }
-
-    // No-op acá a propósito (Fase C, punto 1 de Tech Lead): en la lista
-    // editable de Productos, Enter ya lo maneja la lista nativa (guarda
-    // y pasa a la fila siguiente) — este método no debe interceptar
-    // nada ni hacer preventDefault, para no duplicar ese guardado ni
-    // romper la navegación por filas. Picking (ist_preparation_day_picking)
-    // parchea este método para guardar con Enter dentro de una tarjeta
-    // kanban, donde no existe ese manejo de lista.
-    onKeydown(ev) {}
 
     onToggleTracking() {
         if (!this.operatorState.employeeId) {
@@ -161,21 +152,15 @@ export class ScaleWeightField extends Component {
 
         if (this._stableReads >= STABLE_READS_REQUIRED) {
             this._stopPolling();
-            await this._saveWeight();
+            // Mismo camino de guardado que el tecleo manual + Enter en
+            // la lista editable: dispara write() -> PreparationDayLine.write()
+            // -> action_save_line_weight(), con todo el blindaje ya
+            // existente (is_weight_confirmed, propagación, gate de
+            // validación).
+            await this.props.record.save();
             this.state.status = "idle";
             this.state.message = "";
         }
-    }
-
-    // Separado de _poll() (Fase C, punto 1 de Tech Lead) para que Picking
-    // pueda parchear solo este método (agregar la alerta de peso
-    // sospechoso antes de guardar) sin copiar el resto de _poll() —
-    // mismo camino de guardado que el tecleo manual + Enter en la lista
-    // editable: dispara write() -> PreparationDayLine.write() ->
-    // action_save_line_weight(), con todo el blindaje ya existente
-    // (is_weight_confirmed, propagación, gate de validación).
-    async _saveWeight() {
-        await this.props.record.save();
     }
 
     _setError() {
