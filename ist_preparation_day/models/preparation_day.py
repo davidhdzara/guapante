@@ -8,7 +8,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
-from .const_preparation import PREP_OPERATOR_SESSION_KEY
+from .const_preparation import get_active_prep_operator_id
 
 _logger = logging.getLogger(__name__)
 
@@ -285,14 +285,24 @@ class PreparationDayLine(models.Model):
         """Override para auto-guardar peso al escribir actual_kg.
 
         Dos orígenes posibles para una edición de actual_kg:
-        - Picking (tablet compartido, widget de báscula): requiere PIN,
-          pasa por action_save_line_weight() tal cual, sin cambios.
-        - Pestaña Productos del formulario (edición inline en backend):
-          el usuario de Odoo logueado ya identifica quién hizo el cambio,
-          no exige PIN. Se distingue por si hay un operario identificado
-          por PIN en la sesión del navegador (request.session) — eso es
-          justo lo que Picking exige antes de dejar pesar, así que su
-          presencia es señal confiable de que el origen es Picking.
+        - Picking (tablet compartido, widget de báscula): requiere operario
+          identificado por PIN, pasa por action_save_line_weight() tal cual.
+        - Pestaña Productos del formulario (edición inline en backend): el
+          usuario de Odoo logueado ya identifica quién hizo el cambio, no
+          exige PIN.
+
+        El origen se distingue por el flag de contexto 'guapante_picking_flow'
+        — lo inyecta la acción de Picking (ist_preparation_day_picking), no
+        la presencia de un operario de PIN en la sesión. Antes de este
+        cambio (Fase A, hallazgo de Tech Lead) se usaba esa presencia como
+        señal de origen; con el cierre por inactividad de Picking, un
+        operario cuya sesión expiró mientras pesaba dejaba de tener PIN en
+        request.session y el pesaje caía silenciosamente en la rama de
+        Productos — se guardaba a nombre del usuario compartido, sin
+        operario y sin error, justo lo que el timeout busca evitar. Con el
+        flag de contexto como señal de origen, un pesaje que sale de Picking
+        sin operario activo (expiró) lanza UserError en vez de colarse por
+        la otra rama.
 
         Usa flag de contexto 'skip_auto_save' para evitar recursión
         cuando estos mismos métodos vuelven a escribir en la línea.
@@ -310,9 +320,16 @@ class PreparationDayLine(models.Model):
         res = super().write(vals)
 
         if track_kg:
-            has_pin_operator = bool(
-                request and request.session.get(PREP_OPERATOR_SESSION_KEY)
+            is_picking_flow = bool(self.env.context.get('guapante_picking_flow'))
+            operator_employee_id = (
+                get_active_prep_operator_id(request.session, refresh=True)
+                if request else False
             )
+            if is_picking_flow and not operator_employee_id:
+                raise UserError(
+                    'Tu sesión de operario expiró por inactividad. '
+                    'Ingresa tu NIP de nuevo.'
+                )
             for line in self:
                 old_kg, was_done = old_snapshot.get(line.id, (0.0, False))
                 new_kg = line.actual_kg
@@ -320,10 +337,10 @@ class PreparationDayLine(models.Model):
                 if was_done:
                     if new_kg > 0 and new_kg != old_kg:
                         line._register_weight_correction(
-                            old_kg, has_pin_operator,
+                            old_kg, is_picking_flow,
                         )
                 elif new_kg > 0:
-                    if has_pin_operator:
+                    if is_picking_flow:
                         line.wizard_id.action_save_line_weight(line.id)
                     else:
                         line._register_weight_from_productos_tab()
@@ -1032,7 +1049,7 @@ class PreparationDay(models.Model):
         # (bool(request) es False ahí), donde el concepto de "operario físico" no existe.
         Employee = self.env['hr.employee']
         if request:
-            employee_id = request.session.get(PREP_OPERATOR_SESSION_KEY)
+            employee_id = get_active_prep_operator_id(request.session, refresh=True)
             if not employee_id:
                 raise UserError(
                     'Debes identificarte con tu PIN antes de registrar un peso.'

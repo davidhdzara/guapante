@@ -4,7 +4,11 @@ import logging
 from odoo import http
 from odoo.http import request
 
-from ..models.const_preparation import PREP_OPERATOR_SESSION_KEY
+from ..models.const_preparation import (
+    clear_active_prep_operator,
+    get_active_prep_operator_id,
+    set_active_prep_operator,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ class PreparationDayIdentificationController(http.Controller):
                 ),
             }
 
-        request.session[PREP_OPERATOR_SESSION_KEY] = Employees.id
+        set_active_prep_operator(request.session, Employees.id)
         return {
             'success': True,
             'employee_id': Employees.id,
@@ -59,13 +63,18 @@ class PreparationDayIdentificationController(http.Controller):
         auth='user',
     )
     def current_operator(self, **kwargs):
-        employee_id = request.session.get(PREP_OPERATOR_SESSION_KEY)
+        """Lectura de solo consulta (refresh=False): la usa tanto el estado
+        inicial del gate de Picking como el watchdog de inactividad del
+        cliente — si esta sola pregunta extendiera la sesión, el cierre por
+        5 minutos de inactividad nunca se cumpliría mientras la pestaña
+        quede abierta (Fase A, hallazgo de Tech Lead)."""
+        employee_id = get_active_prep_operator_id(request.session, refresh=False)
         if not employee_id:
             return {'employee_id': False, 'employee_name': False}
 
         Employee = request.env['hr.employee'].sudo().browse(employee_id)
         if not Employee.exists():
-            request.session.pop(PREP_OPERATOR_SESSION_KEY, None)
+            clear_active_prep_operator(request.session)
             return {'employee_id': False, 'employee_name': False}
 
         return {'employee_id': Employee.id, 'employee_name': Employee.name}
@@ -78,5 +87,5 @@ class PreparationDayIdentificationController(http.Controller):
     def clear_operator(self, **kwargs):
         """Cierra la identificación del operario en esta estación (gap #2 de la Fase 1:
         antes solo se podía re-identificar, no había una salida explícita)."""
-        request.session.pop(PREP_OPERATOR_SESSION_KEY, None)
+        clear_active_prep_operator(request.session)
         return {'success': True}

@@ -18,8 +18,16 @@
         'security/security.xml',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_line_picking_views.xml',
+        'views/preparation_day_picking_menus.xml',
+        'views/hr_employee_config_views.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'ist_preparation_day_picking/static/src/js/preparation_picking_idle_watcher.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',
+        ],
+    },
     'installable': True,
-    'application': False,
+    'application': True,
     'license': 'LGPL-3',
 }

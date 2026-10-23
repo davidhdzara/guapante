@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +11,11 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
     PreparationDayIdentificationController,
 )
 from odoo.addons.ist_preparation_day.models.const_preparation import (
+    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+    PREP_OPERATOR_LAST_ACTIVITY_KEY,
     PREP_OPERATOR_SESSION_KEY,
+    get_active_prep_operator_id,
+    set_active_prep_operator,
 )
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _date_to_utc_range,
@@ -438,9 +443,8 @@ class TestPreparationDay(TransactionCase):
         line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
 
         mock_request = MagicMock()
-        mock_request.session = {
-            PREP_OPERATOR_SESSION_KEY: employee.id,
-        }
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, employee.id)
         with patch(
             'odoo.addons.ist_preparation_day.models.preparation_day.request',
             mock_request,
@@ -484,6 +488,104 @@ class TestPreparationDay(TransactionCase):
 
         self.assertFalse(result['success'])
         self.assertNotIn(PREP_OPERATOR_SESSION_KEY, mock_request.session)
+
+    # ── Tests de cierre por inactividad en Picking (Fase A, 2026-10-22) ──
+
+    def test_get_active_prep_operator_id_expires_after_timeout(self):
+        """Un timestamp de actividad viejo (>5 min) debe expirar la sesión del
+        operario, no devolver el employee_id heredado."""
+        session = {}
+        set_active_prep_operator(session, 42)
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = (
+            time.time() - PREP_OPERATOR_IDLE_TIMEOUT_SECONDS - 1
+        )
+
+        result = get_active_prep_operator_id(session)
+
+        self.assertFalse(result, "Debe expirar pasados los 5 minutos")
+        self.assertNotIn(
+            PREP_OPERATOR_SESSION_KEY, session,
+            "La sesión vencida debe limpiarse, no solo ignorarse",
+        )
+
+    def test_get_active_prep_operator_id_refresh_true_extends_session(self):
+        """refresh=True (acción real del operario) debe extender la ventana."""
+        session = {}
+        set_active_prep_operator(session, 42)
+        old_timestamp = time.time() - 250  # dentro de la ventana, pero vieja
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = old_timestamp
+
+        result = get_active_prep_operator_id(session, refresh=True)
+
+        self.assertEqual(result, 42)
+        self.assertGreater(
+            session[PREP_OPERATOR_LAST_ACTIVITY_KEY], old_timestamp,
+            "refresh=True debe actualizar el timestamp de actividad",
+        )
+
+    def test_get_active_prep_operator_id_refresh_false_does_not_extend(self):
+        """refresh=False (consulta de solo lectura, ej. watchdog del cliente)
+        no debe extender la ventana — si lo hiciera, el timeout nunca se
+        cumpliría mientras la pestaña siga preguntando."""
+        session = {}
+        set_active_prep_operator(session, 42)
+        old_timestamp = time.time() - 250
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = old_timestamp
+
+        result = get_active_prep_operator_id(session, refresh=False)
+
+        self.assertEqual(result, 42)
+        self.assertEqual(
+            session[PREP_OPERATOR_LAST_ACTIVITY_KEY], old_timestamp,
+            "refresh=False no debe tocar el timestamp de actividad",
+        )
+
+    def test_picking_flow_weight_with_expired_session_raises(self):
+        """Hallazgo de Tech Lead: un pesaje que sale de Picking
+        (guapante_picking_flow=True) con el operario expirado debe fallar
+        con un error claro, nunca colarse por la rama de Productos."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[:1]
+
+        mock_request = MagicMock()
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, 999999)
+        mock_request.session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = (
+            time.time() - PREP_OPERATOR_IDLE_TIMEOUT_SECONDS - 1
+        )
+        with patch(
+            'odoo.addons.ist_preparation_day.models.preparation_day.request',
+            mock_request,
+        ):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).write(
+                    {'actual_kg': 1.5}
+                )
+
+        self.assertEqual(
+            line.actual_kg, 0.0,
+            "La línea no debe quedar con el peso aplicado si el pesaje falló",
+        )
+        self.assertFalse(line.is_done)
+
+    def test_non_picking_flow_weight_still_uses_productos_branch(self):
+        """Regresión: un pesaje SIN el flag de Picking (edición inline normal
+        de la pestaña Productos) debe seguir funcionando igual que antes,
+        sin exigir operario identificado."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[:1]
+
+        line.write({'actual_kg': 1.5})
+
+        self.assertTrue(
+            line.is_done,
+            "Sin el flag de Picking, el pesaje debe registrarse igual que "
+            "antes por la pestaña Productos (sin exigir PIN)",
+        )
 
     # ── Tests de action_undo_line() ──
 

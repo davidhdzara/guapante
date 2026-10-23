@@ -10,7 +10,7 @@
         <field name="inherit_id" ref="ist_preparation_day.view_preparation_day_form"/>
         <field name="arch" type="xml">
             <button name="action_view_summaries" position="attributes">
-                <attribute name="name">action_view_picking_kanban</attribute>
+                <attribute name="name">action_open_picking_app</attribute>
                 <attribute name="groups">ist_preparation_day_picking.group_preparation_picking_operator</attribute>
             </button>
         </field>

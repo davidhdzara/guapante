@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Scoped App de Picking — mismo mecanismo nativo que usan Taller
+         (mrp_workorder.action_mrp_display), POS, Asistencias y Recepción:
+         ir.actions.client con `path` propio para que /scoped_app pueda
+         instalarlo como PWA, target fullscreen para que entre sin
+         menú/sidebar del backend. El tag `guapante_picking_app` registra
+         el componente OWL (pantalla de NIP + handoff) en
+         preparation_picking_app.js.
+
+         context.guapante_picking_flow: misma marca que usa
+         action_view_picking_kanban() — la reutiliza el watchdog de
+         inactividad del cliente para saber si el operario sigue dentro
+         de Picking (gate o kanban) antes de forzar la vuelta a la
+         pantalla de NIP. -->
+    <record id="action_picking_app" model="ir.actions.client">
+        <field name="name">Picking</field>
+        <field name="path">picking</field>
+        <field name="tag">guapante_picking_app</field>
+        <field name="target">fullscreen</field>
+        <field name="context">{'guapante_picking_flow': True}</field>
+    </record>
+
+    <!-- Ícono pendiente de insotech_designer — sin web_icon por ahora
+         (no bloquea el resto de la Fase A; se agrega en un commit chico
+         aparte cuando esté listo, igual que ist_preparation_day ya
+         reemplazó el suyo en un commit propio). Hasta entonces este menú
+         no aparece como tile en la grilla de Aplicaciones, pero la app ya
+         es alcanzable por el botón "Picking" del form de la sesión. -->
+    <menuitem
+        id="menu_picking_root"
+        name="Picking"
+        groups="ist_preparation_day_picking.group_preparation_picking_operator"
+        sequence="156"
+    />
+    <menuitem
+        id="menu_picking_app"
+        parent="menu_picking_root"
+        action="action_picking_app"
+    />
+</odoo>
