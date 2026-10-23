@@ -16,16 +16,19 @@
     'depends': ['ist_preparation_day'],
     'data': [
         'security/security.xml',
+        'security/ir.model.access.csv',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_line_picking_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
+        'views/preparation_day_product_claim_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
             'ist_preparation_day_picking/static/src/js/preparation_picking_idle_watcher.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_badge_patch.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_claims_kanban.js',
         ],
     },
     'installable': True,
