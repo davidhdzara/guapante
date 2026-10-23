@@ -21,15 +21,10 @@
         <field name="context">{'guapante_picking_flow': True}</field>
     </record>
 
-    <!-- Ícono pendiente de insotech_designer — sin web_icon por ahora (no
-         bloquea el resto de la Fase A; se agrega en un commit chico aparte
-         cuando esté listo, igual que ist_preparation_day ya reemplazó el
-         suyo en un commit propio). El tile SÍ aparece en la grilla de
-         Aplicaciones mientras tanto, con el ícono por defecto de Odoo 18
-         — no es que falte el menú, falta solo el ícono final. -->
     <menuitem
         id="menu_picking_root"
         name="Picking"
+        web_icon="ist_preparation_day_picking,static/description/icon.png"
         groups="ist_preparation_day_picking.group_preparation_picking_operator"
         sequence="156"
     />
