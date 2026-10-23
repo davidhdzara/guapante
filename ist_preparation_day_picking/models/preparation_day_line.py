@@ -81,6 +81,14 @@ class PreparationDayLine(models.Model):
         No-op si la llamada no viene de Picking (sin
         guapante_picking_flow en contexto) — fuera de Picking (pestaña
         Productos) no aplica ownership por caja, solo el ACL normal.
+
+        Exige dueño activo, no solo "que no sea de otro" (Tech Lead,
+        corrección sobre la primera versión): un claim sin dueño
+        (Pendiente, o recién liberado al Terminar su última caja) no deja
+        pesar/Listo/Corregir a nadie sin pasar antes por Asignarme. Esto
+        es consecuencia directa del plan: Terminado es solo lectura desde
+        Picking — una corrección post-cierre la hace un supervisor desde
+        la pestaña Productos, no un operario de Picking sin asignación.
         """
         if not self.env.context.get('guapante_picking_flow'):
             return
@@ -99,21 +107,15 @@ class PreparationDayLine(models.Model):
             Claim = line.wizard_id.product_claim_ids.filtered(
                 lambda c: c.product_tmpl_id == line.product_id
             )
-            # Solo rechaza si el claim tiene OTRO dueño puesto — un claim
-            # sin dueño (pendiente, o recién liberado al terminar su
-            # última caja) no bloquea a nadie, igual que Asignarme acepta
-            # cualquier claim pendiente. Comparar contra
-            # assigned_employee_id vacío (False) habría dejado
-            # action_undo_line inservible justo después de terminar un
-            # producto, que es exactamente cuando el claim se libera.
-            if (
-                Claim
-                and Claim.assigned_employee_id
-                and Claim.assigned_employee_id.id != employee_id
-            ):
+            if not Claim or Claim.assigned_employee_id.id != employee_id:
+                if Claim and not Claim.assigned_employee_id:
+                    raise UserError(
+                        f'Asígnate {Claim.product_tmpl_id.name} primero '
+                        '— actualiza la pantalla.'
+                    )
                 raise UserError(
-                    f'{Claim.product_tmpl_id.name} no está asignado a ti '
-                    '— actualiza la pantalla.'
+                    f'{line.product_description or "Esta caja"} no está '
+                    'asignada a ti — actualiza la pantalla.'
                 )
 
     def action_undo_line(self) -> bool:

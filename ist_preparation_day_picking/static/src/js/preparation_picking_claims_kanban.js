@@ -5,6 +5,7 @@ import { useService } from "@web/core/utils/hooks";
 import { onWillStart, onWillUnmount } from "@odoo/owl";
 
 import { clearOperator } from "@ist_preparation_day/js/preparation_operator_state";
+import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -17,6 +18,12 @@ const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app
 // más simple y suficientemente rápido — no vale la pena actualizar
 // tarjeta por tarjeta (decisión de Tech Lead, Fase B).
 class PickingClaimsKanbanController extends KanbanController {
+    static template = "ist_preparation_day_picking.PickingClaimsKanbanView";
+    static components = {
+        ...KanbanController.components,
+        PickingOperatorHeader,
+    };
+
     setup() {
         super.setup();
         this.actionService = useService("action");

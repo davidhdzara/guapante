@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!-- t-inherit real sobre la plantilla OWL del kanban nativo (no una
+         vista XML de Odoo) — mismo mecanismo que usa project_update_kanban
+         en addons/project, verificado en el source de web.KanbanView.
+         Inserta el nombre del operario + Cerrar sesión (Fase C, punto 3
+         de Tech Lead) en el slot real del control panel, junto al menú
+         de engranaje nativo. -->
+    <t t-name="ist_preparation_day_picking.PickingClaimsKanbanView"
+       t-inherit="web.KanbanView" t-inherit-mode="primary">
+        <xpath expr="//t[@t-set-slot='control-panel-additional-actions']/CogMenu" position="before">
+            <PickingOperatorHeader/>
+        </xpath>
+    </t>
+</templates>

@@ -265,24 +265,26 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             line_done.with_context(guapante_picking_flow=True).action_undo_line()
         self.assertFalse(line_done.is_done)
 
-    def test_action_undo_line_allowed_once_claim_has_no_owner(self):
-        """Una vez terminado el último pendiente, el claim se libera
-        (regla de la Fase B) — el ownership no debe dejar el undo
-        inservible justo cuando más se necesita."""
+    def test_action_undo_line_blocks_once_claim_has_no_owner(self):
+        """Corrección de Tech Lead: una vez terminado el último
+        pendiente, el claim se libera (regla de la Fase B) — pero eso NO
+        abre la puerta a corregir desde Picking sin asignación. Terminado
+        es solo lectura desde Picking; la corrección post-cierre la hace
+        un supervisor desde la pestaña Productos."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         claim = session.product_claim_ids
         mock_a = self._request_as(self.operator_a)
-        mock_b = self._request_as(self.operator_b)
         with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
             claim.action_assign()
         line.with_context(skip_auto_save=True).write({
             'is_done': True, 'actual_kg': 2.0,
         })
         self.assertFalse(claim.assigned_employee_id)
-        with patch(REQUEST_PATCH_TARGET_LINE, mock_b):
-            line.with_context(guapante_picking_flow=True).action_undo_line()
-        self.assertFalse(line.is_done)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).action_undo_line()
+        self.assertTrue(line.is_done)
 
     # ── aviso de cierre de operación (punto 4 de Tech Lead) ──
 

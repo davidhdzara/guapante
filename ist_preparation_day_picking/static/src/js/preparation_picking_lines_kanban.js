@@ -5,6 +5,7 @@ import { useService } from "@web/core/utils/hooks";
 import { onMounted, onWillStart, onWillUnmount } from "@odoo/owl";
 
 import { clearOperator } from "@ist_preparation_day/js/preparation_operator_state";
+import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -27,6 +28,12 @@ const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app
 //    sesión de un tablet que no fue el que hizo el último pesaje seguiría
 //    viva en el servidor hasta el timeout de 5 minutos.
 class PickingLinesKanbanController extends KanbanController {
+    static template = "ist_preparation_day_picking.PickingLinesKanbanView";
+    static components = {
+        ...KanbanController.components,
+        PickingOperatorHeader,
+    };
+
     setup() {
         super.setup();
         this.actionService = useService("action");
