@@ -371,6 +371,10 @@ class PreparationDayProductClaim(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.product.claim.stop.wizard',
             'view_mode': 'form',
+            # 'views' explícito — ver nota en action_view_product_claims
+            # (preparation_day.py): _preprocessAction del cliente web
+            # hace action.views.map(...) sin validar que exista.
+            'views': [(False, 'form')],
             'target': 'new',
             'context': {'default_claim_id': self.id},
         }
@@ -388,6 +392,10 @@ class PreparationDayProductClaim(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.line',
             'view_mode': 'kanban',
+            # 'views' explícito — ver nota en action_view_product_claims
+            # (preparation_day.py): _preprocessAction del cliente web
+            # hace action.views.map(...) sin validar que exista.
+            'views': [(False, 'kanban')],
             'domain': [
                 ('wizard_id', '=', self.wizard_id.id),
                 ('product_id', '=', self.product_tmpl_id.id),

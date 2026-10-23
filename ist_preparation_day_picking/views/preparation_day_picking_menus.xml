@@ -8,10 +8,10 @@
          el componente OWL (pantalla de NIP + handoff) en
          preparation_picking_app.js.
 
-         context.guapante_picking_flow: misma marca que usa
-         action_view_picking_kanban() — la reutiliza el watchdog de
-         inactividad del cliente para saber si el operario sigue dentro
-         de Picking (gate o kanban) antes de forzar la vuelta a la
+         context.guapante_picking_flow: misma marca que llevan todas las
+         acciones de Picking (Nivel 1, Nivel 2) — la reutiliza el
+         watchdog de inactividad del cliente para saber si el operario
+         sigue dentro de Picking antes de forzar la vuelta a la
          pantalla de NIP. -->
     <record id="action_picking_app" model="ir.actions.client">
         <field name="name">Picking</field>

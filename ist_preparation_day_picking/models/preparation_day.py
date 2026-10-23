@@ -78,13 +78,9 @@ class PreparationDay(models.Model):
         return res
 
     def action_view_product_claims(self) -> dict:
-        """Nivel 1 de Picking (Fase B): kanban de product.claim agrupado
-        por status — reemplaza al kanban de líneas como punto de entrada
-        real desde action_resolve_picking_handoff. El kanban de líneas
-        (action_view_picking_kanban) se mantiene vivo todavía como destino
-        TEMPORAL de Asignarme/Continuar/Retomar hasta que exista el
-        Nivel 2 real (Fase C) — ver action_open_lines_kanban en el modelo
-        de claim.
+        """Nivel 1 de Picking: kanban de product.claim agrupado por
+        status — punto de entrada real desde
+        action_resolve_picking_handoff.
         """
         self.ensure_one()
         if not self.env.user.has_group(
@@ -98,6 +94,16 @@ class PreparationDay(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.product.claim',
             'view_mode': 'kanban',
+            # 'views' explícito (no solo view_mode): _preprocessAction
+            # del cliente web (action_service.js) hace
+            # action.views.map(...) sin validar que exista — una action
+            # ir.actions.act_window armada a mano en Python, sin pasar
+            # por el ORM de ir.actions.actions, nunca la llena sola (a
+            # diferencia de una acción guardada que sí trae 'views' al
+            # leerse). Sin esto: "Cannot read properties of undefined
+            # (reading 'map')" al hacer doAction (bug real, encontrado
+            # por David en el handoff de Picking).
+            'views': [(False, 'kanban')],
             'domain': [('wizard_id', '=', self.id)],
             'target': 'fullscreen',
             'context': {
@@ -114,44 +120,6 @@ class PreparationDay(models.Model):
                 '<p>Pídele a un supervisor que la cargue desde '
                 'Preparación › Sesiones.</p>'
             ),
-        }
-
-    def action_view_picking_kanban(self) -> dict:
-        """Abre Picking: kanban a pantalla completa de las líneas
-        pendientes de esta sesión — báscula + PIN, sin paso de
-        selección de producto (eso ya lo resuelve el Summary kanban +
-        wizard existentes).
-
-        Chequeo de grupo explícito en Python: el botón ya se oculta por
-        grupo en la vista, pero esto devuelve un dict dinámico (no un
-        ir.actions.act_window con id propio), así que un groups_id en
-        un registro XML no alcanzaría a protegerlo solo — hace falta
-        esta verificación para que el acceso quede cerrado también si
-        alguien llama al método directamente, no solo por UI.
-        """
-        self.ensure_one()
-        if not self.env.user.has_group(
-            'ist_preparation_day_picking.group_preparation_picking_operator'
-        ):
-            raise AccessError(
-                'No tienes acceso a la pantalla de Picking.'
-            )
-        return {
-            'name': 'Picking',
-            'type': 'ir.actions.act_window',
-            'res_model': 'guapante.preparation.day.line',
-            'view_mode': 'kanban',
-            'domain': [('wizard_id', '=', self.id)],
-            'target': 'fullscreen',
-            # Marca de origen para write() en ist_preparation_day — un
-            # pesaje que sale de Picking exige operario identificado activo;
-            # sin esta marca write() no puede distinguir este kanban de una
-            # edición inline en la pestaña Productos (Fase A, hallazgo de
-            # Tech Lead: con el cierre por inactividad, la sola presencia de
-            # un PIN en sesión ya no alcanza como señal confiable de
-            # origen — la sesión puede haber expirado justo mientras
-            # pesaba).
-            'context': {'guapante_picking_flow': True},
         }
 
     def action_open_picking_app(self) -> dict:
