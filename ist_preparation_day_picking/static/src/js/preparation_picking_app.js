@@ -80,19 +80,21 @@ export class GuapantePickingApp extends Component {
         this.installUrl = SCOPED_APP_INSTALL_URL;
 
         onWillStart(async () => {
-            // refresh=False (current_operator es consulta): si ya había un
-            // operario activo (ej. la pestaña se refrescó a mitad de
-            // turno, todavía dentro de los 5 minutos), se salta la
-            // pantalla de NIP y entra directo — el timeout es sobre
-            // inactividad real, no sobre refrescar la página.
+            // Solo carga datos acá (ensureOperatorLoaded es un RPC de
+            // consulta) — Owl espera a que onWillStart resuelva antes del
+            // primer render, así que para cuando se pinta la pantalla ya
+            // se sabe si hay operario activo o no, sin parpadeo. Lo que NO
+            // va acá es el handoff (doAction): hacerlo desde onWillStart es
+            // reentrante con el action service, que todavía está montando
+            // esta misma acción (hallazgo de Tech Lead) — el doAction real
+            // se dispara en onMounted, una vez el componente ya montó.
             await ensureOperatorLoaded();
-            if (operatorState.employeeName) {
-                this.idleWatcher.startWatching();
-                await this.handoff();
-            }
         });
         onMounted(() => {
-            if (!operatorState.employeeName && this.pinInputRef.el) {
+            if (operatorState.employeeName) {
+                this.idleWatcher.startWatching();
+                this.handoff();
+            } else if (this.pinInputRef.el) {
                 this.pinInputRef.el.focus();
             }
         });
@@ -123,11 +125,18 @@ export class GuapantePickingApp extends Component {
         // Resuelve a qué sesión entra: la del contexto (botón "Picking" del
         // form, sesión puntual) o la de hoy (ícono/menú de la app) — toda
         // la lógica vive en el método del modelo, acá solo se dispara.
+        //
+        // El contexto de un client action NO llega como this.props.context
+        // — los props de la acción son {...options.props, action, actionId}
+        // (action_service.js, _getActionInfo), así que el contexto vive en
+        // this.props.action.context (hallazgo de Tech Lead: con
+        // this.props.context, picking_session_id nunca llegaba al servidor
+        // y el botón del form siempre terminaba abriendo "hoy").
         const action = await this.orm.call(
             "guapante.preparation.day",
             "action_resolve_picking_handoff",
             [],
-            { context: this.props.context || {} },
+            { context: this.props.action?.context || {} },
         );
         await this.actionService.doAction(action, { clearBreadcrumbs: true });
     }

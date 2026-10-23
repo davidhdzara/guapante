@@ -55,7 +55,7 @@ class OperatorPinDialog extends Component {
     }
 }
 
-class OperatorIdentificationBadge extends Component {
+export class OperatorIdentificationBadge extends Component {
     static template = xml`
         <div class="o_guapante_operator_badge">
             <t t-if="operatorState.employeeName">

@@ -33,9 +33,19 @@ export const pickingIdleWatcherService = {
             // consulta es solo de lectura y no debe extender la ventana de
             // 5 minutos — si lo hiciera, el timeout nunca se cumpliría
             // mientras la pestaña siguiera preguntando.
-            const result = await rpc(
-                "/web/guapante/preparation_day/current_operator", {},
-            );
+            let result;
+            try {
+                result = await rpc(
+                    "/web/guapante/preparation_day/current_operator", {},
+                );
+            } catch {
+                // Wifi intermitente de bodega: un fallo de red acá no debe
+                // abrir un diálogo de error cada 30s sobre el tablet — el
+                // servidor sigue siendo la fuente de verdad del timeout,
+                // así que simplemente se reintenta en el próximo ciclo
+                // (hallazgo de Tech Lead).
+                return;
+            }
             if (!result.employee_id && operatorState.employeeId) {
                 operatorState.employeeId = false;
                 operatorState.employeeName = false;

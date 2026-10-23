@@ -25,6 +25,7 @@
         'web.assets_backend': [
             'ist_preparation_day_picking/static/src/js/preparation_picking_idle_watcher.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_badge_patch.js',
         ],
     },
     'installable': True,

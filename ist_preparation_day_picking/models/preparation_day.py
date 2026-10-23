@@ -58,12 +58,24 @@ class PreparationDay(models.Model):
         fecha del formulario que se está viendo — no fuerza "hoy": un
         supervisor revisando un PK/PICK histórico debe entrar a esa sesión,
         no a la de hoy.
+
+        El context se arma a mano (no se reemplaza entero) para no perder
+        'guapante_picking_flow' — sin esa marca el watcher de inactividad no
+        reconoce la pantalla de NIP como parte de Picking cuando se entra
+        por este botón. La clave es 'picking_session_id', no
+        'default_session_id': un prefijo 'default_' se propaga como valor
+        por defecto a cualquier create() hecho con este contexto, y hay
+        modelos con un campo session_id (POS, entre otros) — no vale la
+        pena el riesgo (hallazgo de Tech Lead).
         """
         self.ensure_one()
         action = self.env['ir.actions.actions']._for_xml_id(
             'ist_preparation_day_picking.action_picking_app'
         )
-        action['context'] = {'default_session_id': self.id}
+        action['context'] = {
+            'guapante_picking_flow': True,
+            'picking_session_id': self.id,
+        }
         return action
 
     @api.model
@@ -78,7 +90,7 @@ class PreparationDay(models.Model):
         sesión en borrador si todavía no existe, mismo comportamiento que ya
         dispara sale_order.action_confirm() para pedidos confirmados hoy.
         """
-        session_id = self.env.context.get('default_session_id')
+        session_id = self.env.context.get('picking_session_id')
         if session_id:
             Session = self.browse(session_id)
         else:
