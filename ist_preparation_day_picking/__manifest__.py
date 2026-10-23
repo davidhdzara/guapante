@@ -29,6 +29,8 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_badge_patch.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_claims_kanban.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_lines_kanban.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_scale_weight_patch.js',
         ],
     },
     'installable': True,

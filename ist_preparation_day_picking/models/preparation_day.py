@@ -42,6 +42,40 @@ class PreparationDay(models.Model):
         )
         if StaleClaims:
             StaleClaims.sudo().unlink()
+        Claim._refresh_expected_kg_per_unit(self, templates)
+
+    def action_save_line_weight(self, line_id: int) -> bool:
+        """Extiende action_save_line_weight() del padre con dos cosas de
+        Fase C:
+
+        1) Ownership (punto 3 de Tech Lead): este método es público y se
+           puede llamar por RPC directo sin pasar antes por write() (que
+           es donde vive el resto del chequeo de ownership, ver
+           PreparationDayLine) — sin esto, ese camino directo se
+           saltaba el control de "esta caja no es tuya".
+
+        2) Aviso de cierre de operación (punto 4): self.action_mark_done()
+           del padre, si corresponde, corre DENTRO de esta misma llamada
+           — nunca dentro de un write() de Line que envuelva todo el
+           ciclo (ver PreparationDayLine.write(): el write interno que
+           hace este mismo método es solo is_done=True, ANTES de que
+           action_mark_done() se ejecute). Por eso el aviso vive acá,
+           envolviendo la llamada completa, y no en write() — ahí nunca
+           ve la transición cuando este método se llama directo (el
+           mismo escenario de RPC del punto 1).
+        """
+        self.env['guapante.preparation.day.line'].browse(
+            line_id,
+        )._check_picking_ownership()
+        was_done_before = self.state == 'done'
+        res = super().action_save_line_weight(line_id)
+        if not was_done_before and self.state == 'done':
+            self.env['bus.bus']._sendone(
+                f'guapante_preparation_day-{self.id}',
+                'picking_operation_finished',
+                {},
+            )
+        return res
 
     def action_view_product_claims(self) -> dict:
         """Nivel 1 de Picking (Fase B): kanban de product.claim agrupado

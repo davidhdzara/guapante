@@ -40,7 +40,15 @@
                          template — nada de markup de dropdown propio (CRM,
                          hr_recruitment, etc. usan exactamente este patrón:
                          <a role="menuitem" type="object" .../> dentro de
-                         t-name="menu"). -->
+                         t-name="menu").
+
+                         Nota de Tech Lead (no bloqueante): como el template
+                         "menu" siempre existe, las tarjetas que no están
+                         in_progress+is_mine probablemente muestran el botón
+                         "..." con el menú vacío (sin ítems visibles). Queda
+                         anotado para revisar en la Fase C si David lo ve
+                         feo — no se le agregó una entrada informativa
+                         todavía para no asumir cuál. -->
                     <t t-name="menu">
                         <a t-if="record.status.raw_value === 'in_progress' and record.is_mine.raw_value"
                            role="menuitem" name="action_open_stop_wizard" type="object"

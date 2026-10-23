@@ -30,7 +30,7 @@ const FIRST_USE_HINT =
 const NOT_IDENTIFIED_MESSAGE =
     "Identifícate con tu PIN (arriba) antes de registrar un peso.";
 
-class ScaleWeightField extends Component {
+export class ScaleWeightField extends Component {
     static template = xml`
         <div class="o_field_scale_weight">
             <div class="d-flex align-items-center gap-1">

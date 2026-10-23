@@ -14,6 +14,14 @@ STOP_REASONS = [
     ('otro', 'Otro'),
 ]
 
+# Umbral de historia mínima para confiar en la mediana de kg/unidad de una
+# plantilla (Fase C, punto 1 de Tech Lead). Dato real de producción
+# (2026-10-22, 23,227 líneas needs_weighing=True terminadas): con >=10
+# líneas de historia, 91 de 140 plantillas quedan cubiertas y quedan
+# cubiertas el 99.4% de las líneas — por debajo de eso no hay alerta,
+# nunca un valor inventado.
+MIN_WEIGHT_HISTORY_LINES = 10
+
 
 class PreparationDayProductClaim(models.Model):
     """Nivel 1 de Picking (Fase B) — estado de trabajo por producto base
@@ -73,6 +81,19 @@ class PreparationDayProductClaim(models.Model):
     is_mine = fields.Boolean(compute='_compute_is_mine')
     pending_line_count = fields.Integer(compute='_compute_line_counts')
     total_line_count = fields.Integer(compute='_compute_line_counts')
+    expected_kg_per_unit = fields.Float(
+        string='Kg esperado por unidad',
+        digits=(10, 4),
+        readonly=True,
+        help=(
+            'Mediana histórica de actual_kg/estimated_kg de esta plantilla, '
+            'calculada solo con líneas Terminadas y con repesaje de OTRAS '
+            'sesiones (Fase C). En 0.0 cuando esa plantilla no llega a '
+            f'{MIN_WEIGHT_HISTORY_LINES} líneas de historia — en ese caso la '
+            'tarjeta de Nivel 2 no muestra alerta de peso, nunca un valor '
+            'inventado.'
+        ),
+    )
 
     def _get_lines(self):
         self.ensure_one()
@@ -355,12 +376,10 @@ class PreparationDayProductClaim(models.Model):
         }
 
     def action_open_lines_kanban(self) -> dict:
-        """Destino TEMPORAL de Asignarme/Continuar/Retomar mientras no
-        existe el Nivel 2 real (Fase C, decisión de David vía Tech Lead):
-        abre el kanban de líneas de siempre, acotado a esta plantilla en
-        vez de a toda la sesión. Se retira cuando la Fase C construya el
-        Nivel 2 real — picking_status/picking_operator_anchor en
-        PreparationDayLine se mantienen vivos hasta entonces a propósito.
+        """Nivel 2 real (Fase C): abre el kanban de líneas de la
+        plantilla de este claim — reutiliza el mismo xmlid que el
+        kanban temporal de la Fase B, reescrito con t-name="card",
+        botón Listo para needs_weighing=False y alerta de peso.
         """
         self.ensure_one()
         self._check_picking_access()
@@ -374,12 +393,70 @@ class PreparationDayProductClaim(models.Model):
                 ('product_id', '=', self.product_tmpl_id.id),
             ],
             'target': 'fullscreen',
-            'context': {'guapante_picking_flow': True},
+            # picking_wizard_id: igual que en action_view_product_claims,
+            # para que el controller del kanban de Nivel 2
+            # (preparation_picking_lines_kanban.js) pueda suscribirse al
+            # mismo canal de bus que Nivel 1 y enterarse de
+            # picking_operation_finished sin esperar al próximo poll del
+            # watchdog (Fase C, punto 4 de Tech Lead).
+            'context': {
+                'guapante_picking_flow': True,
+                'picking_wizard_id': self.wizard_id.id,
+            },
         }
 
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,
     #    no solo en action_load; nunca borrar un claim con líneas, aunque
     #    estén todas done — solo los que no tienen ninguna) ──
+
+    @api.model
+    def _refresh_expected_kg_per_unit(self, wizard, templates) -> None:
+        """Recalcula expected_kg_per_unit de los claims de `templates` en
+        `wizard` (Fase C, punto 1 de Tech Lead).
+
+        Una sola consulta agrupada, acotada a las plantillas de ESTA
+        sesión (10-30 típico, nunca las ~140 plantillas pesables del
+        catálogo completo) — evita 1 query por tarjeta. Excluye
+        explícitamente las líneas de `wizard` (wizard_id != %s): lo que se
+        está pesando HOY no puede colarse en su propia referencia
+        histórica (pedido explícito de Tech Lead) — si no, un operario
+        quedaría comparado contra pesos que él mismo acaba de teclear en
+        esta misma sesión.
+        """
+        if not templates:
+            return
+        # flush_model() sobre Line, no sobre self: lo que puede estar sin
+        # bajar a la tabla real es el write() de action_save_line_weight
+        # de otra línea en esta misma transacción (ej. action_load
+        # corriendo justo después de un pesaje), no un write de Claim.
+        self.env['guapante.preparation.day.line'].flush_model()
+        self.env.cr.execute(
+            '''
+            SELECT product_id,
+                   percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY actual_kg / estimated_kg
+                   ) AS median_kg_per_unit
+            FROM guapante_preparation_day_line
+            WHERE is_done = true
+              AND needs_weighing = true
+              AND estimated_kg > 0
+              AND actual_kg > 0
+              AND wizard_id != %s
+              AND product_id = ANY(%s)
+            GROUP BY product_id
+            HAVING count(*) >= %s
+            ''',
+            (wizard.id, templates.ids, MIN_WEIGHT_HISTORY_LINES),
+        )
+        medians = dict(self.env.cr.fetchall())
+        Claims = self.sudo().search([
+            ('wizard_id', '=', wizard.id),
+            ('product_tmpl_id', 'in', templates.ids),
+        ])
+        for claim in Claims:
+            claim.expected_kg_per_unit = medians.get(
+                claim.product_tmpl_id.id, 0.0,
+            )
 
     @api.model
     def _ensure_claims_for_templates(self, wizard, templates) -> None:
