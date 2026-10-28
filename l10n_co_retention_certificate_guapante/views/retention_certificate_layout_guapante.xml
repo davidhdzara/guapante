@@ -17,7 +17,9 @@
         <template id="external_layout_guapante_cert">
             <div t-attf-class="header o_company_#{company.id}_layout" style="padding: 10px 20px 0 20px;">
                 <div style="text-align: center;">
-                    <img src="/theme_guapante/static/src/img/logo_guapante.png"
+                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)"
+                         style="max-height: 110px; max-width: 260px;" alt="Logo"/>
+                    <img t-else="" src="/theme_guapante/static/src/img/logo_guapante.png"
                          style="max-height: 110px; max-width: 260px;" alt="Logo Guapante"/>
                 </div>
                 <div style="border-bottom: 2px solid #14532d; margin-top: 10px; width: 100%;"/>
