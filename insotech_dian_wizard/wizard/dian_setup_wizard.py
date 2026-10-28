@@ -127,9 +127,19 @@ class InsotechDianSetupWizard(models.TransientModel):
     # -----------------------------------------------------------------
     @api.model
     def default_get(self, fields_list):
-        """Precarga los valores actuales de la empresa."""
+        """Precarga los valores actuales de la empresa.
+
+        emitter_name/emitter_nit/emitter_city_code/emitter_dept_code
+        quedaban con default fijo a Guapante S.A.S. (901975355) sin
+        importar la empresa activa — error real detectado con la
+        Empresa 2 (Diana Cristina Gil Posada, cédula, no NIT): el
+        wizard seguía mandando el emisor de Guapante aunque se
+        firmara con las credenciales de Diana. Ahora se precargan
+        desde el partner real de la empresa activa.
+        """
         res = super().default_get(fields_list)
         company = self.env.company
+        partner = company.partner_id
         res.update({
             'software_id': company.insotech_dian_software_id or '',
             'software_pin': company.insotech_dian_software_pin or '',
@@ -138,8 +148,51 @@ class InsotechDianSetupWizard(models.TransientModel):
             'cert_file': company.insotech_dian_cert_file,
             'cert_filename': company.insotech_dian_cert_filename or '',
             'cert_password': company.insotech_dian_cert_password or '',
+
+            'emitter_name': partner.name or '',
+            # _get_vat_without_verification_code() solo recorta el DV
+            # cuando el tipo de identificación es 'rut' (NIT) — para
+            # cualquier otro tipo devuelve vat tal cual. El vat de la
+            # Empresa 2 (cédula) quedó guardado como '43927526-8' con
+            # guion aunque no es NIT, así que se recorta explícito acá
+            # para no mandarle un guion a la DIAN en el número de
+            # identificación.
+            'emitter_nit': (partner.vat or '').split('-')[0].strip(),
+            'emitter_city_code': (
+                str(partner.city_id.l10n_co_edi_code).rjust(5, '0')
+                if partner.city_id and partner.city_id.l10n_co_edi_code
+                else ''
+            ),
+            'emitter_dept_code': (
+                str(partner.state_id.l10n_co_edi_code).rjust(2, '0')
+                if partner.state_id and partner.state_id.l10n_co_edi_code
+                else ''
+            ),
         })
         return res
+
+    def _get_emitter_identity(self):
+        """Identidad real del emisor (NIT/cédula, DV, tipo de
+        documento y tipo de cuenta), derivada del partner de
+        company_id — mismos métodos que usa l10n_co_edi/l10n_co_dian
+        en facturación real, para no asumir NIT + persona jurídica
+        para toda empresa.
+
+        Antes esto estaba hardcodeado a document_type='31' (NIT) y
+        additional_account_id='1' (persona jurídica) con un DV
+        calculado como si siempre hubiera NIT — incorrecto para la
+        Empresa 2, que es persona natural identificada con cédula
+        (sin DV).
+        """
+        self.ensure_one()
+        partner = self.company_id.partner_id
+        return {
+            'dv': partner._get_vat_verification_code() or '',
+            'document_type': (
+                partner._l10n_co_edi_get_carvajal_code_for_identification_type()
+            ),
+            'additional_account_id': partner._l10n_co_edi_get_partner_type(),
+        }
 
     # -----------------------------------------------------------------
     # Acciones básicas (configuración)
@@ -362,27 +415,24 @@ class InsotechDianSetupWizard(models.TransientModel):
             start_number = td.DIAN_HAB_RANGE_FROM + offset
 
             # Construir dict EMISOR con los valores exactos definidos en DIAN Wizard
-            from ..services.test_data import _compute_dv
             emitter = {
                 'company_name': self.emitter_name,
                 'nit': self.emitter_nit,
-                'dv': str(_compute_dv(self.emitter_nit)), 
-                'document_type': '31', # NIT
-                'additional_account_id': '1', 
+                **self._get_emitter_identity(),
                 'tax_scheme_id': '01',
                 'tax_scheme_name': 'IVA',
                 'tax_level_code': 'O-48', # Estándar genérico responsable IVA
                 'address_line': 'CALLE 1 # 1 - 1', # Dummy
-                'city_name': 'Ciudad Oculta', 
+                'city_name': 'Ciudad Oculta',
                 'city_code': self.emitter_city_code, # DIAN sólo valida con código, no string
-                'department': 'Departamento Oculto', 
+                'department': 'Departamento Oculto',
                 'department_code': self.emitter_dept_code, # Clave para evitar CDG01
                 'country_code': 'CO',
                 'country_name': 'Colombia',
                 'postal_zone': '000000',
                 'phone': '3000000000',
                 'email': 'habilitacion@insotech.it',
-                'registration_name': self.emitter_name, 
+                'registration_name': self.emitter_name,
             }
             nit10 = emitter['nit'].rjust(10, '0')
 
@@ -896,13 +946,10 @@ class InsotechDianSetupWizard(models.TransientModel):
                 int(time.time()) % 4000000)
             doc_number = '%s%s' % (td.DIAN_HAB_PREFIX, num)
             # Construir dict EMISOR con los valores exactos del wizard
-            from ..services.test_data import _compute_dv
             emitter = {
                 'company_name': self.emitter_name,
                 'nit': self.emitter_nit,
-                'dv': str(_compute_dv(self.emitter_nit)),
-                'document_type': '31',
-                'additional_account_id': '1',
+                **self._get_emitter_identity(),
                 'tax_scheme_id': '01',
                 'tax_scheme_name': 'IVA',
                 'tax_level_code': 'O-48',
