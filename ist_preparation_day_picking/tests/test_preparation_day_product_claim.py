@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import uuid
 from unittest.mock import MagicMock, patch
 
 from odoo.exceptions import AccessError, UserError
@@ -255,12 +256,15 @@ class TestPreparationDayProductClaim(TestPreparationDay):
     def test_action_assign_checks_picking_group(self):
         session = self._load_session_with_product()
         claim = session.product_claim_ids
-        NonMember = self.env['res.users'].sudo().search([
-            ('share', '=', False),
-            ('id', 'not in', self.env.ref(
-                'ist_preparation_day_picking.group_preparation_picking_operator'
-            ).users.ids),
-        ], limit=1)
+        # Usuario propio sin ningún grupo (Tech Lead/QA, 2026-10-29): un
+        # search(limit=1) sobre usuarios reales de este staging corre el
+        # riesgo de levantar a un administrador real que bypasea ACLs y
+        # esconde una regresión real — se crea el no-miembro explícitamente.
+        NonMember = self.env['res.users'].sudo().create({
+            'name': 'Test No Picking Group',
+            'login': f'test.no.picking.group.{uuid.uuid4().hex}@example.com',
+            'groups_id': [(6, 0, [self.env.ref('base.group_user').id])],
+        })
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             with self.assertRaises(AccessError):
                 claim.with_user(NonMember).action_assign()

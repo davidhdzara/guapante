@@ -6,11 +6,19 @@ login (Tech Lead/QA, 2026-10-29). Prueba la función compartida
 post-migration.py` (actualización de un módulo ya instalado, ej.
 staging) — ambos caminos deben terminar en el mismo estado, sin
 duplicar ni reinstalar a quien se quite el grupo después."""
+import uuid
+from unittest.mock import patch
+
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.ist_preparation_day_picking.hooks import (
+    ADMIN_GRANT_DONE_PARAM,
     grant_admin_group_once,
     post_init_hook,
+)
+
+HOOKS_LOGINS_PATCH_TARGET = (
+    'odoo.addons.ist_preparation_day_picking.hooks.ADMIN_GRANT_LOGINS'
 )
 
 
@@ -22,11 +30,33 @@ class TestMigrationAdminGrant(TransactionCase):
         self.group = self.env.ref(
             'ist_preparation_day_picking.group_preparation_admin',
         )
+        # Logins únicos por corrida (Tech Lead, 2026-10-29): los reales de
+        # Diana/Mauricio ya existen en este staging — reutilizarlos choca
+        # con la restricción de login único aunque la transacción del test
+        # haga rollback al final, porque el choque es contra filas ya
+        # confirmadas en la base. Se generan logins de prueba y se parchea
+        # la lista que lee grant_admin_group_once para que los use.
+        diana_login = f'diana.test.{uuid.uuid4().hex}@example.com'
+        mauricio_login = f'mauricio.test.{uuid.uuid4().hex}@example.com'
+        self._logins_patcher = patch(
+            HOOKS_LOGINS_PATCH_TARGET, [diana_login, mauricio_login],
+        )
+        self._logins_patcher.start()
+        self.addCleanup(self._logins_patcher.stop)
+
+        # Este staging ya corrió la migración real alguna vez: el parámetro
+        # "once" queda en '1' en la base real. Dentro de la transacción del
+        # test (rollback al final) se borra para probar el comportamiento
+        # de "primera vez", sin afectar el estado real fuera del test.
+        self.env['ir.config_parameter'].sudo().search([
+            ('key', '=', ADMIN_GRANT_DONE_PARAM),
+        ]).unlink()
+
         self.diana = self.env['res.users'].create({
-            'name': 'Diana Test', 'login': 'tomatesguapante@gmail.com',
+            'name': 'Diana Test', 'login': diana_login,
         })
         self.mauricio = self.env['res.users'].create({
-            'name': 'Mauricio Test', 'login': 'mauriciobedoya2203@gmail.com',
+            'name': 'Mauricio Test', 'login': mauricio_login,
         })
 
     def test_grant_adds_known_users_by_login(self):
