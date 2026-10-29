@@ -291,19 +291,27 @@ class TestPreparationDayRelocation(TransactionCase):
             'El savepoint debe revertir también la sesión nueva creada a medias',
         )
 
+        # DEF-01 (Tech Lead, 2026-10-29): el fallo no debe quedar solo
+        # en el log técnico — nota visible en el chatter del picking,
+        # con el estado real (desincronizado) documentado ahí. Se
+        # verifica ACÁ, antes de cualquier otra escritura: una
+        # escritura normal de otro campo (ver más abajo) agrega su
+        # propio mensaje de tracking (body vacío) al chatter, que
+        # quedaría por encima del nuestro si se mirara después.
+        pick.invalidate_recordset()
+        new_messages = pick.message_ids.sorted('id', reverse=True)[
+            :len(pick.message_ids) - messages_before
+        ]
+        self.assertTrue(
+            any('no se pudo actualizar' in (m.body or '') for m in new_messages),
+            'Debe quedar una nota visible en el chatter del picking',
+        )
+
         # La transacción debe seguir viva tras el savepoint — una
         # escritura normal después no debe fallar con "current
         # transaction is aborted".
         pick.write({'origin': 'post-fallo'})
         self.assertEqual(pick.origin, 'post-fallo')
-
-        # DEF-01 (Tech Lead, 2026-10-29): el fallo no debe quedar solo
-        # en el log técnico — nota visible en el chatter del picking,
-        # con el estado real (desincronizado) documentado ahí.
-        pick.invalidate_recordset()
-        self.assertGreater(len(pick.message_ids), messages_before)
-        last_message = pick.message_ids.sorted('id', reverse=True)[0]
-        self.assertIn('no se pudo actualizar', last_message.body)
 
     # ── DEF-01: pedido de varias líneas/productos no debe reventar ──
 
