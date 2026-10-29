@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import fields, models
 
-from .preparation_day import _current_session_date, _utc_datetime_to_session_date
+from .preparation_day import _utc_datetime_to_session_date
 
 
 class StockPicking(models.Model):
@@ -21,14 +21,32 @@ class StockPicking(models.Model):
     )
 
     def write(self, vals):
-        """Al reprogramar scheduled_date, asegura la sesión de
-        Preparación del Día de 'hoy' si la nueva fecha cae en esa
-        ventana — no crea sesiones para fechas futuras.
+        """Al reprogramar scheduled_date de un picking interno
+        pendiente: bloquea si la orden ya tiene algo pesado SOLO
+        cuando el día calendario realmente cambia (hay dato real que
+        se perdería), y si no, asegura la sesión de la fecha nueva
+        (hoy o futura — Regla de la jornada, David 2026-10-29) y
+        reubica la línea existente de forma incremental.
+
+        Condición 1 (Tech Lead, 2026-10-29): NO basta con que
+        'scheduled_date' esté en vals — Odoo y otros módulos escriben
+        ese campo por muchas rutas (reservas, ajustes de hora) sin que
+        cambie el día, y un picking con algo pesado puede seguir en
+        uso normal de bodega el mismo día. El bloqueo y la reubicación
+        solo aplican si el día calendario (hora Bogotá) del valor
+        nuevo es distinto del que tenía antes.
+
+        El bloqueo corre ANTES de super().write() (así la escritura
+        de bodega ni se intenta si hay que pararla); la reubicación
+        corre DESPUÉS, y nunca puede tumbar la escritura ya guardada
+        — ver _guapante_relocate_picking.
         """
-        res = super().write(vals)
-        if 'scheduled_date' in vals:
-            today_session_date = _current_session_date(self.env)
-            Relevant = self.filtered(
+        scheduled_changing = 'scheduled_date' in vals
+        DayChanging = self.browse()
+        old_dates = {}
+        if scheduled_changing:
+            new_dt = fields.Datetime.to_datetime(vals['scheduled_date'])
+            PreWriteRelevant = self.filtered(
                 lambda p: (
                     p.picking_type_code == 'internal'
                     and p.sale_id
@@ -36,14 +54,29 @@ class StockPicking(models.Model):
                     and p.state not in ('done', 'cancel')
                 )
             )
-            for picking in Relevant:
-                date_val = _utc_datetime_to_session_date(
+            for picking in PreWriteRelevant:
+                if not new_dt:
+                    continue
+                old_date = _utc_datetime_to_session_date(
                     self.env, picking.scheduled_date,
                 )
-                if date_val == today_session_date:
-                    self.env['guapante.preparation.day']._ensure_session_for_date(
-                        date_val,
-                    )
+                new_date = _utc_datetime_to_session_date(self.env, new_dt)
+                if old_date != new_date:
+                    DayChanging |= picking
+            if DayChanging:
+                self.env['guapante.preparation.day']._guapante_check_no_weighed_lines(
+                    DayChanging,
+                )
+            old_dates = {p.id: p.scheduled_date for p in DayChanging}
+
+        res = super().write(vals)
+
+        if old_dates:
+            Session = self.env['guapante.preparation.day']
+            for picking in self.browse(list(old_dates.keys())):
+                Session._guapante_relocate_picking(
+                    picking, old_dates[picking.id],
+                )
         return res
 
     def action_reset_daily_sequence(self) -> dict:
@@ -91,13 +124,9 @@ class StockPicking(models.Model):
                 if seq:
                     seq.write({'number_next': 1})
 
-        # Limpiar líneas de preparación del día vinculadas.
-        PrepLines = self.env['guapante.preparation.day.line'].search([
-            ('sale_order_id', 'in', Orders.ids),
-            ('daily_sequence', '>', 0),
-        ])
-        if PrepLines:
-            PrepLines.write({'daily_sequence': 0})
+        # daily_sequence de la línea ya es related+store sobre la
+        # orden (R5, 2026-10-29) — al resetear Orders arriba, las
+        # líneas se sincronizan solas, no hace falta tocarlas.
 
         return {
             'type': 'ir.actions.client',

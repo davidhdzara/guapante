@@ -341,18 +341,22 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
         self.assertIn('<br', body)
 
     def test_action_add_note_falls_back_to_session_when_no_picking(self):
-        """Caso borde (Tech Lead): una línea creada directo (sin pasar
-        por una orden confirmada) no tiene stock_move_id — ver create()
-        en ist_preparation_day/models/preparation_day.py. La nota cae a
-        la sesión con el número de caja en el texto."""
+        """Caso borde (Tech Lead): una línea sin stock_move_id (p.ej.
+        creada a mano, sin picking asociado) cae a la sesión. El
+        número de caja ahora es related a sale_order_id.daily_sequence
+        (R5, 2026-10-29) — por eso se arma una orden real en vez de
+        forzar el valor directo en la línea, que ya es readonly."""
+        order = self._create_confirmed_order()
+        order.daily_sequence = 7
         session = self._create_session()
         line = self.Line.create({
             'wizard_id': session.id,
             'product_id': self.product_weight.product_tmpl_id.id,
             'product_product_id': self.product_weight.id,
-            'daily_sequence': 7,
+            'sale_order_id': order.id,
         })
         self.assertFalse(line.stock_move_id)
+        self.assertEqual(line.daily_sequence, 7)
         claim = session.product_claim_ids
         self._assign_to_operator_a(claim)
         mock_a = self._request_as(self.operator_a)

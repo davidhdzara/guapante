@@ -15,16 +15,26 @@ _logger = logging.getLogger(__name__)
 # Zona horaria por defecto para operaciones de Guapante.
 _DEFAULT_TZ = 'America/Bogota'
 
-# Hora de corte de la ventana de sesión — parámetro de sistema (no
-# hardcodeada) para poder cambiarla sin tocar código ni redesplegar.
-# Ajustes > Técnico > Parámetros del Sistema.
+# Hora de corte para decidir a qué día se programa una orden NUEVA al
+# confirmarse (parámetro de sistema, no hardcodeada, para poder
+# cambiarla sin tocar código ni redesplegar — Ajustes > Técnico >
+# Parámetros del Sistema). NO define el rango de una jornada ya creada
+# — Regla de la jornada (David, 2026-10-29): la jornada de la fecha D
+# es el día calendario D completo en hora Bogotá, sin corte; lo que
+# manda es scheduled_date del PICK, sin importar la hora. Por eso
+# _get_cutoff_time ya no la usan _date_to_utc_range ni
+# _utc_datetime_to_session_date — queda disponible para conectarla
+# más adelante en theme_guapante.action_confirm (que hoy decide el día
+# de una orden nueva con un 00:30 fijo, independiente de este
+# parámetro), en un cambio aparte y chico que Tech Lead dejó pendiente.
 _CUTOFF_PARAM_KEY = 'ist_preparation_day.cutoff_time'
 _CUTOFF_DEFAULT_TIME = '00:30'
 
 
 def _get_cutoff_time(env) -> tuple:
-    """Hora de corte configurable (hour, minute) que define el límite
-    de la ventana de sesión — ver _CUTOFF_PARAM_KEY."""
+    """Hora de corte configurable (hour, minute) para decidir a qué
+    día se programa una orden nueva al confirmarse — ver
+    _CUTOFF_PARAM_KEY. No define la ventana de una jornada."""
     raw = env['ir.config_parameter'].sudo().get_param(
         _CUTOFF_PARAM_KEY, default=_CUTOFF_DEFAULT_TIME,
     )
@@ -41,25 +51,26 @@ def _get_cutoff_time(env) -> tuple:
 
 
 def _date_to_utc_range(env, date_val):
-    """Convert a naive date into a UTC datetime range respecting
-    the user's (or default) timezone and la hora de corte configurable.
+    """Convert a naive date into a UTC datetime range for the full
+    calendar day *date_val* in the user's (or default) timezone.
 
     Returns (dt_start_utc, dt_end_utc) where:
-      - dt_start_utc = hora de corte de *date_val* en tz local → UTC
-      - dt_end_utc   = hora de corte de *date_val + 1 día* en tz local → UTC
+      - dt_start_utc = medianoche de *date_val* en tz local → UTC
+      - dt_end_utc   = medianoche de *date_val + 1 día* en tz local → UTC
 
-    Example for America/Bogota (UTC-5), corte 00:30:
+    Example for America/Bogota (UTC-5):
       date_val = 2026-04-04
-      → dt_start = 2026-04-04 05:30:00 UTC
-      → dt_end   = 2026-04-05 05:30:00 UTC
+      → dt_start = 2026-04-04 05:00:00 UTC
+      → dt_end   = 2026-04-05 05:00:00 UTC
+
+    Mismo criterio que theme_guapante._date_to_utc_range en producción
+    — Regla de la jornada (David, 2026-10-29): la jornada de la fecha
+    D es el día calendario D completo, sin corte.
     """
     tz_name = env.user.tz or _DEFAULT_TZ
     local_tz = pytz.timezone(tz_name)
-    hour, minute = _get_cutoff_time(env)
-    naive_start = datetime.combine(date_val, time(hour, minute))
-    naive_end = datetime.combine(
-        date_val + timedelta(days=1), time(hour, minute),
-    )
+    naive_start = datetime.combine(date_val, time(0, 0))
+    naive_end = datetime.combine(date_val + timedelta(days=1), time(0, 0))
     dt_start = local_tz.localize(naive_start).astimezone(pytz.utc).replace(tzinfo=None)
     dt_end = local_tz.localize(naive_end).astimezone(pytz.utc).replace(tzinfo=None)
     return dt_start, dt_end
@@ -67,25 +78,16 @@ def _date_to_utc_range(env, date_val):
 
 def _utc_datetime_to_session_date(env, utc_dt):
     """Inversa de _date_to_utc_range: dado un datetime naive en UTC,
-    determina a qué 'día de sesión' pertenece según la hora de corte
-    configurable (si cae antes del corte, pertenece al día anterior).
-    """
+    determina a qué día calendario (hora local) pertenece — esa es su
+    jornada, sin corte (Regla de la jornada, David 2026-10-29)."""
     tz_name = env.user.tz or _DEFAULT_TZ
     local_tz = pytz.timezone(tz_name)
     local_dt = pytz.utc.localize(utc_dt).astimezone(local_tz)
-    hour, minute = _get_cutoff_time(env)
-    cutoff_today = local_dt.replace(
-        hour=hour, minute=minute, second=0, microsecond=0,
-    )
-    if local_dt < cutoff_today:
-        return (local_dt - timedelta(days=1)).date()
     return local_dt.date()
 
 
 def _current_session_date(env):
-    """Fecha de sesión a la que pertenece 'ahora mismo', según la
-    ventana de corte configurable — usada para no auto-crear sesiones
-    de fechas futuras al confirmar pedidos programados más adelante."""
+    """Día calendario (hora local) al que pertenece 'ahora mismo'."""
     return _utc_datetime_to_session_date(env, fields.Datetime.now())
 
 
@@ -164,15 +166,23 @@ class PreparationDayLine(models.Model):
             'tienda online (ej. Paquete 200g).'
         ),
     )
-    daily_sequence = fields.Integer(
-        string='# del día',
-        readonly=True,
-    )
     order_name = fields.Char(string='Orden', readonly=True)
     sale_order_id = fields.Many2one(
         'sale.order',
         string='Pedido',
         readonly=True,
+    )
+    daily_sequence = fields.Integer(
+        string='# del día',
+        related='sale_order_id.daily_sequence',
+        store=True,
+        readonly=True,
+        help=(
+            'Sigue en vivo el de la orden — antes era una copia fija '
+            'tomada al crear la línea, y se quedaba en 0 si la orden '
+            'recibía su número después de que la línea ya existiera '
+            '(incidente Caja #0, 2026-10-28).'
+        ),
     )
     sale_line_id = fields.Many2one(
         'sale.order.line',
@@ -635,10 +645,12 @@ class PreparationDay(models.Model):
         date_val — la crea en borrador (Nueva Sesión) si falta, y
         avisa en vivo por bus.bus a quien la tenga abierta.
 
-        Pensado para dispararse desde sale.order.action_confirm() y
-        stock.picking.write() (reprogramación), ambos ya filtrando que
-        date_val caiga en la ventana de "hoy" antes de llamar esto —
-        no auto-crea sesiones de fechas futuras.
+        Se dispara desde sale.order.action_confirm() y
+        stock.picking.write() (reprogramación) para CUALQUIER fecha,
+        hoy o futura — Regla de la jornada (David, 2026-10-29): la
+        sesión de la fecha D existe en cuanto hay un PICK programado
+        para D, sin importar si D es hoy. Antes esto se filtraba a
+        solo "hoy"; ya no.
 
         Carrera entre dos confirmaciones casi simultáneas para la
         misma fecha: el create() va envuelto en un savepoint — si
@@ -661,6 +673,183 @@ class PreparationDay(models.Model):
                 f'guapante_preparation_day-{Session.id}', 'reload', {},
             )
         return Session
+
+    @api.model
+    def _guapante_check_no_weighed_lines(self, pickings):
+        """Bloquea reprogramar la fecha de pickings cuya orden ya
+        tiene algo pesado — a propósito (Tech Lead, 2026-10-29): hay
+        dato real ya registrado, dejarlo pasar lo perdería (ver caso
+        g de la reproducción: una línea pesada se quedaba huérfana en
+        la sesión vieja sin ningún aviso).
+
+        Se mira por ORDEN, no solo por el picking que se está
+        moviendo — una orden puede tener líneas repartidas en más de
+        un picking (backorders), y mover un picking distinto no debe
+        poder esquivar el bloqueo de una línea ya pesada de la misma
+        orden.
+        """
+        Orders = pickings.mapped('sale_id')
+        if not Orders:
+            return
+        WeighedLines = self.env['guapante.preparation.day.line'].sudo().search([
+            ('sale_order_id', 'in', Orders.ids),
+            ('is_done', '=', True),
+        ])
+        if WeighedLines:
+            names = ', '.join(sorted(set(WeighedLines.mapped('order_name'))))
+            raise UserError(
+                f'No se puede reprogramar — ya se pesó algo de {names} '
+                'en la jornada actual. Corrige esa línea desde la '
+                'pestaña Productos de la sesión antes de mover la '
+                'fecha programada.'
+            )
+
+    def _guapante_relocate_picking(self, picking, old_scheduled_date):
+        """Reubica, de forma incremental, la línea de preparación de
+        *picking* cuando su scheduled_date cambia de día calendario.
+
+        No reconstruye summaries completos ni toca otras líneas de la
+        sesión (regla de David: no se puede correr un action_load
+        completo a mitad del pesaje) — solo mueve la línea de ESTE
+        picking (conserva su id e historial, no unlink+create) y
+        parchea el summary de su producto en las dos sesiones
+        involucradas.
+
+        _guapante_check_no_weighed_lines ya garantiza, antes de
+        llegar acá, que ninguna línea de la orden está pesada — así
+        que siempre es seguro resetear y reasignar daily_sequence.
+
+        Pensado para no poder tumbar una escritura de bodega: cualquier
+        error acá se registra y se traga, nunca se propaga (la única
+        excepción deliberada es el UserError de arriba, que corre
+        ANTES del write real).
+        """
+        new_scheduled_date = picking.scheduled_date
+        if not new_scheduled_date:
+            return
+        old_date = _utc_datetime_to_session_date(self.env, old_scheduled_date)
+        new_date = _utc_datetime_to_session_date(self.env, new_scheduled_date)
+        if old_date == new_date:
+            return  # Solo cambió la hora dentro del mismo día — no tocar nada.
+
+        # Condición 2 (Tech Lead, 2026-10-29): savepoint alrededor de
+        # TODO el cuerpo, con el except AFUERA del with — si algo
+        # falla a mitad de camino (una restricción, un fallo de
+        # serialización), Postgres deja la transacción abortada y
+        # cualquier escritura posterior del picking fallaría con
+        # "current transaction is aborted" si no hay savepoint que
+        # revertir. El try/except solo (sin savepoint) no alcanza.
+        try:
+            with self.env.cr.savepoint():
+                NewSession = self._ensure_session_for_date(new_date)
+                Line = self.env['guapante.preparation.day.line'].sudo().search([
+                    ('stock_move_id.picking_id', '=', picking.id),
+                ])
+                if not Line:
+                    return  # Nunca se cargó — nada que reubicar, solo la sesión nueva.
+
+                OldSession = Line.wizard_id
+                Order = Line.sale_order_id
+
+                # Condición A (Tech Lead): _assign_daily_sequences salta
+                # las órdenes que ya tienen número — hay que resetear
+                # ANTES de pedirle uno nuevo para la fecha nueva, o se
+                # queda arrastrando el de la fecha vieja (caso d de la
+                # reproducción).
+                Order.sudo().write({'daily_sequence': 0})
+                self.env['sale.order']._assign_daily_sequences(new_date)
+                # daily_sequence de la línea es related+store sobre la
+                # orden — se sincroniza solo al cambiar el de la orden.
+
+                self._guapante_patch_summary(OldSession, Line, add=False)
+                Line.write({'wizard_id': NewSession.id})
+                self._guapante_patch_summary(NewSession, Line, add=True)
+
+                # Condición 3 (Tech Lead): gancho de extensión — el
+                # Nivel 1 de Picking (claims por producto) vive en
+                # ist_preparation_day_picking, que lo sobreescribe.
+                # Acá, en el módulo padre, es un no-op.
+                NewSession._guapante_after_relocate(OldSession, NewSession, Line)
+
+                user_name = self.env.user.name
+                note = (
+                    f'Pedido {Order.name} (Caja #{Order.daily_sequence}) '
+                    f'pasó de la jornada {old_date} a {new_date}, '
+                    f'por {user_name}.'
+                )
+                OldSession.sudo().message_post(body=note)
+                if NewSession.id != OldSession.id:
+                    NewSession.sudo().message_post(body=note)
+
+                self.env['bus.bus']._sendone(
+                    f'guapante_preparation_day-{OldSession.id}', 'reload', {},
+                )
+                self.env['bus.bus']._sendone(
+                    f'guapante_preparation_day-{NewSession.id}', 'reload', {},
+                )
+        except Exception:
+            _logger.exception(
+                'Guapante: no se pudo reubicar la línea de preparación '
+                'del picking %s (%s) al cambiar su fecha programada — '
+                'la reprogramación del picking ya se guardó, pero la '
+                'sesión de preparación puede haber quedado '
+                'desincronizada y necesita revisión manual.',
+                picking.id, picking.name,
+            )
+
+    def _guapante_after_relocate(self, old_session, new_session, line) -> None:
+        """Punto de extensión (Tech Lead, 2026-10-29): no hace nada en
+        este módulo — ist_preparation_day_picking lo sobreescribe para
+        sincronizar los claims del Nivel 1 de Picking (que viven en
+        ese módulo hijo y no se mueven solos con wizard_id). self es
+        new_session."""
+        return
+
+    def _guapante_patch_summary(self, session, line, add) -> None:
+        """Ajusta, de forma incremental, el summary de *session* para
+        el producto de *line* — suma o resta UNA línea, sin recorrer
+        ni recalcular el resto de la sesión (ver _rebuild_summary,
+        que sí hace un recálculo completo y no aplica acá)."""
+        Summary = self.env['guapante.preparation.day.summary'].sudo().search([
+            ('wizard_id', '=', session.id),
+            ('product_id', '=', line.product_product_id.id),
+        ], limit=1)
+        if add:
+            if Summary:
+                Summary.write({
+                    'order_count': Summary.order_count + 1,
+                    'total_estimated_kg': round(
+                        Summary.total_estimated_kg + line.estimated_kg, 3,
+                    ),
+                    'stock_ok': (
+                        Summary.available_qty
+                        >= Summary.total_estimated_kg + line.estimated_kg
+                    ),
+                })
+            else:
+                available_qty = line.product_product_id.qty_available
+                self.env['guapante.preparation.day.summary'].sudo().create({
+                    'wizard_id': session.id,
+                    'product_id': line.product_product_id.id,
+                    'total_estimated_kg': round(line.estimated_kg, 3),
+                    'total_done_kg': 0.0,
+                    'order_count': 1,
+                    'available_qty': available_qty,
+                    'stock_ok': available_qty >= line.estimated_kg,
+                })
+        else:
+            if not Summary:
+                return
+            remaining = Summary.order_count - 1
+            if remaining <= 0:
+                Summary.unlink()
+                return
+            new_est = round(Summary.total_estimated_kg - line.estimated_kg, 3)
+            Summary.write({
+                'order_count': remaining,
+                'total_estimated_kg': max(new_est, 0.0),
+                'stock_ok': Summary.available_qty >= max(new_est, 0.0),
+            })
 
     @api.depends('summary_ids')
     def _compute_summary_count(self) -> None:
@@ -929,7 +1118,6 @@ class PreparationDay(models.Model):
                     'product_product_id': line.product_id.id,
                     'product_description': line.name,
                     'packaging_name': packaging_name,
-                    'daily_sequence': order.daily_sequence,
                     'order_name': order.name,
                     'sale_order_id': order.id,
                     'sale_line_id': line.id,

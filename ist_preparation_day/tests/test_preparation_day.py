@@ -104,10 +104,16 @@ class TestPreparationDay(TransactionCase):
         return order
 
     def _create_session(self):
-        """Helper: create a preparation day session."""
-        return self.env['guapante.preparation.day'].create({
-            'date': self.delivery_date,
-        })
+        """Helper: ensure a preparation day session exists for
+        self.delivery_date. Idempotente (vía _ensure_session_for_date)
+        a propósito: con la Regla de la jornada (2026-10-29), fijar
+        scheduled_date de un picking ya puede haber creado la sesión
+        de esa fecha como efecto lateral — crear por duplicado
+        chocaría con _check_unique_date.
+        """
+        return self.env[
+            'guapante.preparation.day'
+        ]._ensure_session_for_date(self.delivery_date)
 
     # ── Tests de Creación de Sesión ──
 

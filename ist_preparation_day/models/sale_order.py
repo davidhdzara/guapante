@@ -7,7 +7,6 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 from .preparation_day import (
-    _current_session_date,
     _date_to_utc_range,
     _utc_datetime_to_session_date,
 )
@@ -201,11 +200,11 @@ class SaleOrder(models.Model):
 
     def action_confirm(self):
         """Al confirmar, asegura la sesión de Preparación del Día de
-        'hoy' si alguno de los pickings internos resultantes cae en
-        esa ventana — no crea sesiones para fechas futuras.
+        CADA fecha en la que caiga alguno de los pickings internos
+        resultantes — hoy o futura (Regla de la jornada, David
+        2026-10-29; antes solo se auto-creaba si la fecha era "hoy").
         """
         res = super().action_confirm()
-        today_session_date = _current_session_date(self.env)
         Pickings = self.mapped('picking_ids').filtered(
             lambda p: (
                 p.picking_type_code == 'internal'
@@ -217,8 +216,7 @@ class SaleOrder(models.Model):
             _utc_datetime_to_session_date(self.env, p.scheduled_date)
             for p in Pickings
         }
-        if today_session_date in session_dates:
-            self.env['guapante.preparation.day']._ensure_session_for_date(
-                today_session_date,
-            )
+        Session = self.env['guapante.preparation.day']
+        for date_val in session_dates:
+            Session._ensure_session_for_date(date_val)
         return res

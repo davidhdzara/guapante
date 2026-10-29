@@ -44,6 +44,46 @@ class PreparationDay(models.Model):
             StaleClaims.sudo().unlink()
         Claim._refresh_expected_kg_per_unit(self, templates)
 
+    def _guapante_after_relocate(self, old_session, new_session, line) -> None:
+        """Condición 3 (Tech Lead, 2026-10-29): los claims del Nivel 1
+        viven acá, se crean al cargar líneas o en action_load() — no
+        se mueven solos al cambiar wizard_id de una línea. Sin esto,
+        tras reubicar: el producto no aparece en el Nivel 1 de la
+        jornada nueva, y la sesión vieja puede quedar con un claim sin
+        ninguna línea (o asignado a un operario que ya no tiene nada
+        que hacer ahí).
+
+        Mismo criterio que _rebuild_product_claims(): create-if-missing
+        en la nueva (nunca duplica ni pisa dueño, ver
+        _ensure_claims_for_templates), y solo se borra el claim viejo
+        si de verdad no le queda NINGUNA línea — nunca uno con líneas,
+        aunque estén is_done.
+        """
+        super()._guapante_after_relocate(old_session, new_session, line)
+        if not line.product_id:
+            return
+        Claim = self.env['guapante.preparation.day.product.claim']
+        Claim._ensure_claims_for_templates(new_session, line.product_id)
+
+        remaining = old_session.line_ids.filtered(
+            lambda l: l.product_id == line.product_id
+        )
+        if not remaining:
+            StaleClaim = old_session.product_claim_ids.filtered(
+                lambda c: c.product_tmpl_id == line.product_id
+            )
+            if StaleClaim:
+                StaleClaim.sudo().unlink()
+
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{old_session.id}',
+            'picking_claim_updated', {},
+        )
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{new_session.id}',
+            'picking_claim_updated', {},
+        )
+
     def action_save_line_weight(self, line_id: int) -> bool:
         """Extiende action_save_line_weight() del padre con dos cosas de
         Fase C:
