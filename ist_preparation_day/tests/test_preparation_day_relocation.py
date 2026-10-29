@@ -42,6 +42,16 @@ class TestPreparationDayRelocation(TransactionCase):
             'type': 'consu',
             'list_price': 1000.0,
         })
+        cls.product_2 = cls.env['product.product'].create({
+            'name': 'Product Reloc Test 2',
+            'type': 'consu',
+            'list_price': 1000.0,
+        })
+        cls.product_3 = cls.env['product.product'].create({
+            'name': 'Product Reloc Test 3',
+            'type': 'consu',
+            'list_price': 1000.0,
+        })
         # Ventana lejana para no chocar con otros tests/datos reales.
         cls.day_a = fields.Date.add(
             fields.Date.context_today(cls.env['sale.order']), days=40,
@@ -247,7 +257,9 @@ class TestPreparationDayRelocation(TransactionCase):
 
     def test_relocation_failure_does_not_block_picking_write(self):
         order, pick = self._create_confirmed_order(self.day_a)
-        self._load_session(self.day_a)
+        session_a = self._load_session(self.day_a)
+        line = self._line_for(order)
+        messages_before = len(pick.message_ids)
 
         dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
         with patch.object(
@@ -257,9 +269,152 @@ class TestPreparationDayRelocation(TransactionCase):
             # No debe propagar — el error de la reubicación se traga.
             pick.write({'scheduled_date': dt_start_b})
 
+        # Estado documentado tras el fallo, no solo "no revienta":
+        # el picking SÍ tiene la fecha nueva (la escritura de bodega
+        # no se tumba)...
         self.assertEqual(pick.scheduled_date, dt_start_b)
+        # ...pero la línea de preparación se queda en la sesión VIEJA
+        # (el savepoint revirtió la reubicación completa, no quedó a
+        # medias)...
+        line.invalidate_recordset()
+        self.assertEqual(line.wizard_id.id, session_a.id)
+        self.assertIn(line, session_a.line_ids)
+        # ...y la base queda consistente con eso: el savepoint también
+        # revirtió la CREACIÓN de la sesión nueva (pasa antes, dentro
+        # del mismo bloque) — no debe quedar una sesión vacía para el
+        # día nuevo como residuo del intento fallido.
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        )
+        self.assertFalse(
+            session_b,
+            'El savepoint debe revertir también la sesión nueva creada a medias',
+        )
+
         # La transacción debe seguir viva tras el savepoint — una
         # escritura normal después no debe fallar con "current
         # transaction is aborted".
         pick.write({'origin': 'post-fallo'})
         self.assertEqual(pick.origin, 'post-fallo')
+
+        # DEF-01 (Tech Lead, 2026-10-29): el fallo no debe quedar solo
+        # en el log técnico — nota visible en el chatter del picking,
+        # con el estado real (desincronizado) documentado ahí.
+        pick.invalidate_recordset()
+        self.assertGreater(len(pick.message_ids), messages_before)
+        last_message = pick.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('no se pudo actualizar', last_message.body)
+
+    # ── DEF-01: pedido de varias líneas/productos no debe reventar ──
+
+    def _create_confirmed_order_multi(self, day, products):
+        """products: lista de product.product (se repite uno para
+        probar el caso de producto duplicado dentro del mismo pedido)."""
+        order = self.env['sale.order'].create({
+            'partner_id': self.partner.id,
+            'order_line': [
+                (0, 0, {'product_id': p.id, 'product_uom_qty': 1})
+                for p in products
+            ],
+        })
+        order.action_confirm()
+        dt_start, _dt_end = _date_to_utc_range(self.env, day)
+        pick = order.picking_ids.filtered(
+            lambda p: p.picking_type_code == 'internal'
+            and p.state not in ('done', 'cancel')
+        )
+        pick.scheduled_date = dt_start
+        return order, pick
+
+    def test_multiline_order_distinct_products_relocates_without_crashing(self):
+        order, pick = self._create_confirmed_order_multi(
+            self.day_a, [self.product, self.product_2, self.product_3],
+        )
+        session_a = self._load_session(self.day_a)
+        lines = self._line_for(order)
+        self.assertEqual(len(lines), 3)
+        old_seq = order.daily_sequence
+        self.assertTrue(old_seq > 0)
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        pick.scheduled_date = dt_start_b  # no debe lanzar ValueError: Expected singleton
+
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        )
+        lines.invalidate_recordset()
+        order.invalidate_recordset()
+        self.assertTrue(all(line.wizard_id.id == session_b.id for line in lines))
+        self.assertNotIn(lines[0], session_a.line_ids)
+        self.assertEqual(lines.mapped('daily_sequence'), [order.daily_sequence] * 3)
+
+        for product in (self.product, self.product_2, self.product_3):
+            summary_a = session_a.summary_ids.filtered(
+                lambda s, p=product: s.product_id == p,
+            )
+            self.assertFalse(
+                summary_a.exists(),
+                'Cada summary viejo debe desaparecer (quedó en 0 órdenes)',
+            )
+            summary_b = session_b.summary_ids.filtered(
+                lambda s, p=product: s.product_id == p,
+            )
+            self.assertEqual(summary_b.order_count, 1)
+
+        note = session_b.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(f'Caja #{order.daily_sequence}', note.body)
+
+    def test_multiline_order_repeated_product_sums_into_one_summary(self):
+        order, pick = self._create_confirmed_order_multi(
+            self.day_a, [self.product, self.product],
+        )
+        session_a = self._load_session(self.day_a)
+        lines = self._line_for(order)
+        self.assertEqual(len(lines), 2)
+        summary_a = session_a.summary_ids.filtered(
+            lambda s: s.product_id == self.product,
+        )
+        self.assertEqual(summary_a.order_count, 2)
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        pick.scheduled_date = dt_start_b
+
+        summary_a.invalidate_recordset()
+        self.assertFalse(summary_a.exists())
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        )
+        summary_b = session_b.summary_ids.filtered(
+            lambda s: s.product_id == self.product,
+        )
+        self.assertEqual(
+            summary_b.order_count, 2,
+            'Las 2 líneas del mismo producto deben sumar las 2, no colapsar en 1',
+        )
+        lines.invalidate_recordset()
+        self.assertTrue(all(line.wizard_id.id == session_b.id for line in lines))
+
+    def test_multiline_order_relocates_back_and_forth(self):
+        order, pick = self._create_confirmed_order_multi(
+            self.day_a, [self.product, self.product_2, self.product_3],
+        )
+        self._load_session(self.day_a)
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        pick.scheduled_date = dt_start_b  # ida
+
+        dt_start_a, _ = _date_to_utc_range(self.env, self.day_a)
+        pick.scheduled_date = dt_start_a  # vuelta — no debe lanzar ValueError
+
+        session_a = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_a)], limit=1,
+        )
+        lines = self._line_for(order)
+        self.assertTrue(all(line.wizard_id.id == session_a.id for line in lines))
+        for product in (self.product, self.product_2, self.product_3):
+            summary_a = session_a.summary_ids.filtered(
+                lambda s, p=product: s.product_id == p,
+            )
+            self.assertEqual(
+                summary_a.order_count, 1,
+                'Después de ida y vuelta, el summary original debe quedar igual que al principio',
+            )

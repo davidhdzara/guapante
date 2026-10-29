@@ -742,14 +742,22 @@ class PreparationDay(models.Model):
         try:
             with self.env.cr.savepoint():
                 NewSession = self._ensure_session_for_date(new_date)
-                Line = self.env['guapante.preparation.day.line'].sudo().search([
+                Lines = self.env['guapante.preparation.day.line'].sudo().search([
                     ('stock_move_id.picking_id', '=', picking.id),
                 ])
-                if not Line:
+                if not Lines:
                     return  # Nunca se cargó — nada que reubicar, solo la sesión nueva.
 
-                OldSession = Line.wizard_id
-                Order = Line.sale_order_id
+                # DEF-01 (Tech Lead/QA, 2026-10-29): un pedido con varias
+                # líneas/productos tiene VARIAS Lines acá — Order y
+                # OldSession siguen siendo singleton (todas las líneas
+                # de un mismo picking son del mismo pedido y ya están en
+                # la misma sesión), pero el producto de cada línea no,
+                # así que todo lo que dependa de product_product_id (el
+                # summary, el claim de Picking) se procesa línea por
+                # línea, nunca con el recordset completo de una.
+                OldSession = Lines.wizard_id
+                Order = Lines.sale_order_id
 
                 # Condición A (Tech Lead): _assign_daily_sequences salta
                 # las órdenes que ya tienen número — hay que resetear
@@ -761,15 +769,18 @@ class PreparationDay(models.Model):
                 # daily_sequence de la línea es related+store sobre la
                 # orden — se sincroniza solo al cambiar el de la orden.
 
-                self._guapante_patch_summary(OldSession, Line, add=False)
-                Line.write({'wizard_id': NewSession.id})
-                self._guapante_patch_summary(NewSession, Line, add=True)
+                for Line in Lines:
+                    self._guapante_patch_summary(OldSession, Line, add=False)
+                Lines.write({'wizard_id': NewSession.id})
+                for Line in Lines:
+                    self._guapante_patch_summary(NewSession, Line, add=True)
 
-                # Condición 3 (Tech Lead): gancho de extensión — el
-                # Nivel 1 de Picking (claims por producto) vive en
-                # ist_preparation_day_picking, que lo sobreescribe.
-                # Acá, en el módulo padre, es un no-op.
-                NewSession._guapante_after_relocate(OldSession, NewSession, Line)
+                    # Condición 3 (Tech Lead): gancho de extensión — el
+                    # Nivel 1 de Picking (claims por producto) vive en
+                    # ist_preparation_day_picking, que lo sobreescribe.
+                    # Acá, en el módulo padre, es un no-op. Una llamada
+                    # por línea — el gancho razona sobre UN producto.
+                    NewSession._guapante_after_relocate(OldSession, NewSession, Line)
 
                 user_name = self.env.user.name
                 note = (
@@ -796,6 +807,30 @@ class PreparationDay(models.Model):
                 'desincronizada y necesita revisión manual.',
                 picking.id, picking.name,
             )
+            # DEF-01 (Tech Lead, 2026-10-29): que no quede solo en el
+            # log técnico — nota visible en el chatter del propio
+            # picking, donde está mirando quien acaba de mover la
+            # fecha. Nunca debe tumbar la escritura ya guardada (por
+            # eso un savepoint propio, aparte del que ya revirtió la
+            # reubicación): si hasta esto falla, se registra y se
+            # sigue.
+            try:
+                with self.env.cr.savepoint():
+                    picking.sudo().message_post(
+                        body=(
+                            'La fecha programada cambió, pero la '
+                            'sesión de Preparación del Día no se pudo '
+                            'actualizar automáticamente — revísala '
+                            'manualmente (puede seguir mostrando este '
+                            'pedido en la jornada anterior).'
+                        ),
+                    )
+            except Exception:
+                _logger.exception(
+                    'Guapante: tampoco se pudo dejar la nota de aviso '
+                    'en el chatter del picking %s (%s).',
+                    picking.id, picking.name,
+                )
 
     def _guapante_after_relocate(self, old_session, new_session, line) -> None:
         """Punto de extensión (Tech Lead, 2026-10-29): no hace nada en
