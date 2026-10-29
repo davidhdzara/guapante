@@ -567,14 +567,9 @@ class PreparationDay(models.Model):
 
     # ── Conciliación Cajas: Ventas vs Inventario ──
     so_count = fields.Integer(
-        string='Órdenes de Venta',
+        string='Cajas',
         compute='_compute_box_reconciliation',
         help='Cantidad de órdenes de venta confirmadas para la fecha.',
-    )
-    pick_count = fields.Integer(
-        string='Pickings (Recolectar)',
-        compute='_compute_box_reconciliation',
-        help='Cantidad de pickings PICK programados para la fecha.',
     )
     box_diff = fields.Integer(
         string='Diferencia',
@@ -908,15 +903,12 @@ class PreparationDay(models.Model):
     def _compute_box_reconciliation(self) -> None:
         """Conciliación de cajas: confirmadas vs cotizaciones pendientes.
 
-        En Guapante, toda orden confirmada genera un PICK
-        inmediatamente, así que so_count == pick_count siempre.
         El valor real de este indicador es mostrar cotizaciones
         draft/sent que podrían convertirse en cajas adicionales.
         """
         for session in self:
             if not session.date:
                 session.so_count = 0
-                session.pick_count = 0
                 session.box_diff = 0
                 session.box_match = True
                 session.draft_count = 0
@@ -937,7 +929,6 @@ class PreparationDay(models.Model):
                 ('state', 'not in', ('cancel',)),
             ])
             pick_orders = Pickings.mapped('sale_id')
-            session.pick_count = len(pick_orders)
             session.so_count = len(pick_orders)
 
             session.box_diff = 0
@@ -958,26 +949,6 @@ class PreparationDay(models.Model):
                 ('date_order', '<', dt_end),
             ])
             session.draft_count = len(DraftOrders)
-
-    def action_view_confirmed_orders(self) -> dict:
-        """Abre las órdenes con picking PICK confirmado para self.date."""
-        self.ensure_one()
-        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
-        Pickings = self.env['stock.picking'].sudo().search([
-            ('scheduled_date', '>=', dt_start),
-            ('scheduled_date', '<', dt_end),
-            ('picking_type_code', '=', 'internal'),
-            ('sale_id', '!=', False),
-            ('sale_id.state', 'in', ('sale', 'done')),
-            ('state', 'not in', ('cancel',)),
-        ])
-        return {
-            'name': 'Cajas confirmadas',
-            'type': 'ir.actions.act_window',
-            'res_model': 'sale.order',
-            'view_mode': 'list,form',
-            'domain': [('id', 'in', Pickings.mapped('sale_id').ids)],
-        }
 
     def action_view_draft_orders(self) -> dict:
         """Abre las cotizaciones (draft/sent) pendientes para self.date."""

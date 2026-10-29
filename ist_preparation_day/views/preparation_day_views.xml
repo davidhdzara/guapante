@@ -48,15 +48,11 @@
                     <field name="total_lines" invisible="1"/>
                     <field name="done_lines" invisible="1"/>
                     <field name="pending_lines" invisible="1"/>
-                    <field name="so_count" invisible="1"/>
                     <field name="box_match" invisible="1"/>
 
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-th-large" invisible="state == 'draft' or summary_count == 0">
                             <field name="summary_count" widget="statinfo" string="Picking"/>
-                        </button>
-                        <button class="oe_stat_button" type="object" name="action_view_confirmed_orders" icon="fa-cubes" invisible="state == 'draft' or pick_count == 0">
-                            <field name="pick_count" widget="statinfo" string="Cajas confirmadas"/>
                         </button>
                     </div>
 
@@ -68,6 +64,10 @@
 
                     <group>
                         <group>
+                            <label for="so_count" string="Cajas" invisible="state == 'draft' or so_count == 0"/>
+                            <div class="o_row" invisible="state == 'draft' or so_count == 0">
+                                <field name="so_count" readonly="1" nolabel="1"/>
+                            </div>
                             <label for="total_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
                             <div class="o_row" invisible="state == 'draft' or total_lines == 0">
                                 <field name="total_lines" readonly="1" nolabel="1"/>
@@ -111,7 +111,7 @@
             <list string="Sesiones de Preparación">
                 <field name="name"/>
                 <field name="date" string="Fecha"/>
-                <field name="so_count" string="Cantidad órdenes"/>
+                <field name="so_count" string="Cajas"/>
                 <field name="state"
                        widget="badge"
                        decoration-muted="state == 'draft'"
