@@ -26,12 +26,18 @@
         <field name="view_mode">list</field>
     </record>
 
-    <menuitem
-        id="menu_preparation_day_note_template"
-        name="Modelos de notas"
-        parent="ist_preparation_day.menu_preparation_day_root"
-        action="action_preparation_day_note_template"
-        groups="group_preparation_admin"
-        sequence="60"
-    />
+    <!-- Se mueve a ser hijo de Configuración (David, 2026-10-29: orden
+         del menú Preparación) — record completo, no el atajo
+         <menuitem groups="...">, para poder fijar groups_id con (6,0,...)
+         y así reemplazar de verdad cualquier grupo viejo que una
+         actualización anterior haya dejado pegado (el atajo es aditivo,
+         nunca quita; QA lo detectó: el menú había quedado también con
+         stock.group_stock_manager, el préstamo de antes de la migración). -->
+    <record id="menu_preparation_day_note_template" model="ir.ui.menu">
+        <field name="name">Modelos de notas</field>
+        <field name="parent_id" ref="menu_preparation_day_config"/>
+        <field name="action" ref="action_preparation_day_note_template"/>
+        <field name="sequence">20</field>
+        <field name="groups_id" eval="[(6, 0, [ref('group_preparation_admin')])]"/>
+    </record>
 </odoo>

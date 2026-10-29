@@ -78,3 +78,15 @@ class TestMigrationAdminGrant(TransactionCase):
 
         self.assertNotIn(self.group, self.mauricio.groups_id)
         self.assertIn(self.group, self.diana.groups_id)
+
+    def test_note_template_menu_has_only_admin_group(self):
+        """QA (2026-10-29): el `groups` del <menuitem> es aditivo en una
+        actualización — una versión anterior dejó este menú con
+        stock.group_stock_manager (el préstamo de antes de la migración)
+        PEGADO junto al grupo nuevo. Se corrigió con un record completo
+        de ir.ui.menu + groups_id eval="[(6,0,...)]" — debe quedar con
+        group_preparation_admin y nada más."""
+        menu = self.env.ref(
+            'ist_preparation_day_picking.menu_preparation_day_note_template',
+        )
+        self.assertEqual(menu.groups_id, self.group)

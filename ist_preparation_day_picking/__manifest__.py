@@ -28,6 +28,7 @@
         'security/ir.model.access.csv',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
+        'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
         'views/preparation_day_note_template_views.xml',
     ],

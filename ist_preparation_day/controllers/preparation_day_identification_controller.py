@@ -28,11 +28,11 @@ class PreparationDayIdentificationController(http.Controller):
         mismo PIN, dato mal poblado) bloquea con error claro en vez de
         identificar en silencio al primero que matchee.
 
-        Tener PIN configurado es suficiente para identificarse (Tech
-        Lead/David, 2026-10-29) — ya no existe un marcador aparte
-        (is_guapante_prep_operator); por eso el chequeo de PIN duplicado
-        de abajo ahora cubre a CUALQUIER empleado con ese PIN, no solo a
-        los que antes estaban marcados.
+        David (2026-10-29, corrección sobre la decisión anterior):
+        "Operarios autorizados" se queda — is_guapante_prep_operator
+        sigue siendo obligatorio para identificarse, no basta con
+        tener PIN. active=True se agrega aparte (un empleado
+        archivado no debe poder identificarse aunque siga marcado).
         """
         pin = (pin or '').strip()
         if not pin:
@@ -40,6 +40,7 @@ class PreparationDayIdentificationController(http.Controller):
 
         Employees = request.env['hr.employee'].sudo().search([
             ('pin', '=', pin),
+            ('is_guapante_prep_operator', '=', True),
             ('active', '=', True),
         ])
         if not Employees:
