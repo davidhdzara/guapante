@@ -274,6 +274,51 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         self.assertTrue(line.is_done)
         self.assertEqual(line.actual_kg, 2.0)
 
+    def test_write_actual_kg_double_call_registers_once(self):
+        """Mismo caso que arriba pero por el camino REAL que usa la UI de
+        Nivel 2: `orm.write(..., {'actual_kg': value}, {guapante_picking_
+        flow: True})` — no action_save_line_weight() directo (Tech Lead,
+        2026-10-29, sobre el test anterior: ese pega al método, este
+        pega al write() real). PreparationDayLine.write() exige
+        ownership ANTES de escribir nada — con el claim ya liberado tras
+        la primera llamada, la segunda se bloquea con UserError sin
+        tocar el log ni total_done_kg."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        Summary = session.summary_ids.filtered(
+            lambda s: s.product_id == line.product_product_id
+        )
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.0})
+            logs_after_first = self.env['guapante.picking.log'].search_count([
+                ('wizard_id', '=', session.id),
+            ])
+            kg_after_first = Summary.total_done_kg
+            # Segunda llamada por el mismo camino real — simula el doble
+            # Enter/doble clic de la UI alcanzando al servidor.
+            with self.assertRaises(UserError):
+                line.with_context(
+                    guapante_picking_flow=True,
+                ).write({'actual_kg': 2.0})
+        self.assertEqual(
+            self.env['guapante.picking.log'].search_count([
+                ('wizard_id', '=', session.id),
+            ]),
+            logs_after_first,
+            'La segunda llamada no debe crear un segundo registro de log',
+        )
+        self.assertEqual(
+            Summary.total_done_kg, kg_after_first,
+            'La segunda llamada no debe sumar el peso dos veces',
+        )
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 2.0)
+
     def test_action_undo_line_blocks_non_owner(self):
         session = self._create_session()
         line_done = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
