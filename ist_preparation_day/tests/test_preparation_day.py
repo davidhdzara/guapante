@@ -468,15 +468,16 @@ class TestPreparationDay(TransactionCase):
         )
 
     def test_identify_operator_blocks_duplicate_pin(self):
-        """Gap #1: un PIN compartido por 2 empleados debe bloquear, no adivinar."""
+        """Gap #1: un PIN compartido por 2 empleados debe bloquear, no
+        adivinar — incluso sin ningún marcador (ya no existe
+        is_guapante_prep_operator, tener PIN alcanza para poder
+        identificarse; QA, 2026-10-29)."""
         self.env['hr.employee'].create({
             'name': 'Operario A', 'pin': '4321',
-            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
         self.env['hr.employee'].create({
             'name': 'Operario B', 'pin': '4321',
-            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
 
@@ -494,6 +495,62 @@ class TestPreparationDay(TransactionCase):
 
         self.assertFalse(result['success'])
         self.assertNotIn(PREP_OPERATOR_SESSION_KEY, mock_request.session)
+        self.assertNotIn(
+            'Operario A', result.get('error', ''),
+            'El mensaje de PIN duplicado no debe revelar quién lo tiene',
+        )
+        self.assertNotIn(
+            'Operario B', result.get('error', ''),
+            'El mensaje de PIN duplicado no debe revelar quién lo tiene',
+        )
+
+    def test_identify_operator_succeeds_with_pin_alone(self):
+        """Tener PIN ya alcanza para identificarse — sin ningún campo ni
+        grupo de por medio (Tech Lead/David, 2026-10-29)."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Solo PIN', 'pin': '5555',
+            'l10n_co_ne_payment_method': '10',
+        })
+
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        mock_request.session = {}
+        with patch(
+            'odoo.addons.ist_preparation_day.controllers'
+            '.preparation_day_identification_controller.request',
+            mock_request,
+        ):
+            result = PreparationDayIdentificationController().identify_operator(
+                pin='5555',
+            )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['employee_id'], employee.id)
+
+    def test_identify_operator_ignores_archived_employee_pin(self):
+        """Un empleado archivado no debe poder identificarse aunque su
+        PIN siga configurado (QA, 2026-10-29: "que siga filtrando solo
+        empleados activos")."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Archivado', 'pin': '6666',
+            'l10n_co_ne_payment_method': '10',
+        })
+        employee.active = False
+
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        mock_request.session = {}
+        with patch(
+            'odoo.addons.ist_preparation_day.controllers'
+            '.preparation_day_identification_controller.request',
+            mock_request,
+        ):
+            result = PreparationDayIdentificationController().identify_operator(
+                pin='6666',
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'PIN no reconocido.')
 
     # ── Tests de cierre por inactividad en Picking (Fase A, 2026-10-22) ──
 

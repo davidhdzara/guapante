@@ -49,12 +49,10 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         })
         self.operator_a = self.env['hr.employee'].create({
             'name': 'Operario Fase C A',
-            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
         self.operator_b = self.env['hr.employee'].create({
             'name': 'Operario Fase C B',
-            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
 

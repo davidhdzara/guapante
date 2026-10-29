@@ -1,6 +1,6 @@
 {
     'name': 'Picking (Guapante)',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.1.0',
     'category': 'Inventory/Inventory',
     'summary': 'Pantalla kanban a pantalla completa para pesaje de Picking',
     'description': """
@@ -28,7 +28,6 @@
         'security/ir.model.access.csv',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
-        'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
         'views/preparation_day_note_template_views.xml',
     ],

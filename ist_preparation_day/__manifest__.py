@@ -17,7 +17,6 @@
         'data/ir_sequence_data.xml',
         'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
-        'views/hr_employee_views.xml',
     ],
     'assets': {
         'web.assets_backend': [

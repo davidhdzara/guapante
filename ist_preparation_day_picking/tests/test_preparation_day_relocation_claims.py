@@ -93,7 +93,6 @@ class TestPreparationDayRelocationClaims(TestPreparationDay):
         self.assertEqual(len(claim_b_before), 1)
         operator = self.env['hr.employee'].create({
             'name': 'Operario Reloc Claims',
-            'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
         claim_b_before.sudo().write({

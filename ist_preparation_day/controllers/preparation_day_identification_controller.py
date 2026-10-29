@@ -27,17 +27,20 @@ class PreparationDayIdentificationController(http.Controller):
         Busca SIN limit=1: si el PIN es ambiguo (dos empleados con el
         mismo PIN, dato mal poblado) bloquea con error claro en vez de
         identificar en silencio al primero que matchee.
+
+        Tener PIN configurado es suficiente para identificarse (Tech
+        Lead/David, 2026-10-29) — ya no existe un marcador aparte
+        (is_guapante_prep_operator); por eso el chequeo de PIN duplicado
+        de abajo ahora cubre a CUALQUIER empleado con ese PIN, no solo a
+        los que antes estaban marcados.
         """
         pin = (pin or '').strip()
         if not pin:
             return {'success': False, 'error': 'Ingresa tu PIN.'}
 
-        # is_guapante_prep_operator: solo empleados habilitados explícitamente
-        # pueden identificarse acá — evita que cualquier empleado con PIN
-        # configurado (para otra cosa, ej. asistencia) quede como operario.
         Employees = request.env['hr.employee'].sudo().search([
             ('pin', '=', pin),
-            ('is_guapante_prep_operator', '=', True),
+            ('active', '=', True),
         ])
         if not Employees:
             return {'success': False, 'error': 'PIN no reconocido.'}
