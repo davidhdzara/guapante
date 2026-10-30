@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, time, timedelta
 
 import pytz
+from psycopg2 import errors as pg_errors
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -11,6 +12,18 @@ from odoo.http import request
 from .const_preparation import get_active_prep_operator_id
 
 _logger = logging.getLogger(__name__)
+
+# Errores transitorios de Postgres que Odoo reintenta a nivel de petición
+# completa (ver PG_CONCURRENCY_EXCEPTIONS_TO_RETRY en
+# odoo/service/model.py — mismo criterio, no inventado). Nunca deben
+# quedar atrapados por un `except Exception` propio: si lo hacen, el
+# reintento de Odoo nunca pasa y el lock de más abajo (FOR UPDATE) pierde
+# su efecto — justo el caso de concurrencia que debía resolver.
+_PG_CONCURRENCY_ERRORS = (
+    pg_errors.LockNotAvailable,
+    pg_errors.SerializationFailure,
+    pg_errors.DeadlockDetected,
+)
 
 # Zona horaria por defecto para operaciones de Guapante.
 _DEFAULT_TZ = 'America/Bogota'
@@ -801,6 +814,9 @@ class PreparationDay(models.Model):
                 self.env['bus.bus']._sendone(
                     f'guapante_preparation_day-{NewSession.id}', 'reload', {},
                 )
+        except _PG_CONCURRENCY_ERRORS:
+            # Nunca atrapar esto — ver _PG_CONCURRENCY_ERRORS arriba.
+            raise
         except Exception:
             _logger.exception(
                 'Guapante: no se pudo reubicar la línea de preparación '
@@ -888,6 +904,176 @@ class PreparationDay(models.Model):
                 'total_estimated_kg': max(new_est, 0.0),
                 'stock_ok': Summary.available_qty >= max(new_est, 0.0),
             })
+
+    def _guapante_add_confirmed_order(self, date_val, order) -> None:
+        """Resuelve (o crea) la sesión de *date_val* y agrega *order* —
+        plan de carga automática, paso e2 (2026-10-29).
+
+        self puede ser un recordset vacío — igual patrón que
+        _guapante_relocate_picking, llamado desde
+        sale.order.action_confirm() con
+        Session = self.env['guapante.preparation.day'].
+        _ensure_session_for_date resuelve/crea la sesión real.
+
+        TODO el cuerpo, INCLUIDA la resolución/creación de la sesión,
+        va dentro de un savepoint propio con el except AFUERA (mismo
+        patrón que _guapante_relocate_picking). Condición crítica de
+        Tech Lead: confirmar una venta nunca puede fallar por esto, en
+        NINGÚN punto — ni siquiera si _ensure_session_for_date explota
+        — cualquier fallo se registra y deja una nota visible en el
+        chatter de la orden, nunca se propaga a action_confirm().
+        """
+        try:
+            with self.env.cr.savepoint():
+                Day = self._ensure_session_for_date(date_val)
+                if not Day:
+                    return
+                Day.ensure_one()
+
+                # Condición §4 del plan (lock de concurrencia, Tech
+                # Lead 2026-10-29): dos confirmaciones casi simultáneas
+                # del PRIMER pedido de una fecha nueva verían ambas
+                # "draft sin líneas" y correrían action_load() dos
+                # veces → líneas duplicadas. El FOR UPDATE bloquea a
+                # la segunda transacción hasta que la primera comitee;
+                # como action_load() SIEMPRE escribe state/date_start
+                # en esta misma fila, Postgres (REPEATABLE READ) le da
+                # a la segunda un error de serialización al chocar con
+                # esa fila ya cambiada — Odoo atrapa eso y reintenta la
+                # petición completa desde cero, donde la segunda ya ve
+                # la sesión 'loaded' con líneas y toma la rama de alta
+                # incremental en vez de duplicar (mismo mecanismo ya
+                # documentado en
+                # PreparationDayProductClaim.action_assign). flush
+                # antes del SQL crudo por la misma razón que ahí: un
+                # create() reciente de _ensure_session_for_date podría
+                # no estar aún en la tabla real.
+                Day.flush_recordset()
+                self.env.cr.execute(
+                    'SELECT id FROM guapante_preparation_day '
+                    'WHERE id = %s FOR UPDATE',
+                    (Day.id,),
+                )
+                Day.invalidate_recordset()
+
+                if Day.state == 'done':
+                    # Condición de Tech Lead: no silencioso. No se
+                    # agrega nada, pero queda visible en los dos
+                    # chatters — a David se le decide después si esto
+                    # se reabre; hoy solo visibilidad.
+                    note = (
+                        f'Orden {order.name} confirmada después del '
+                        'cierre de la jornada; no se agregó '
+                        'automáticamente a esta sesión — usa '
+                        'Actualizar/Ver pedidos si hace falta '
+                        'incluirla.'
+                    )
+                    order.sudo().message_post(body=note)
+                    Day.sudo().message_post(body=note)
+                    _logger.warning(
+                        'Guapante: orden %s confirmada para una '
+                        'sesión ya cerrada (%s) — no se agregó '
+                        'automáticamente.',
+                        order.name, Day.date,
+                    )
+                    return
+
+                if not Day.line_ids and Day.state == 'draft':
+                    # Sesión recién creada por _ensure_session_for_date
+                    # (nunca se había cargado): autopuebla completo
+                    # con TODAS las órdenes ya confirmadas de la
+                    # fecha (no solo esta), igual que un action_load()
+                    # manual — reusa esa lógica en vez de duplicarla
+                    # (incluye _assign_daily_sequences, _rebuild_summary
+                    # y los claims del Nivel 1 vía el hook de Picking).
+                    Day.action_load()
+                    return
+
+                if Day.state != 'loaded':
+                    # 'draft' con líneas cargadas a medias a mano, o
+                    # cualquier estado no contemplado: no se toca —
+                    # mismo comportamiento que antes de e2, Ver
+                    # pedidos sigue resolviéndolo manualmente. Nivel
+                    # info (no warning): no es un error, solo un caso
+                    # fuera del alcance de la autocarga.
+                    _logger.info(
+                        'Guapante: sesión %s en estado %s al '
+                        'confirmar la orden %s — no se autopuebla '
+                        'automáticamente (solo una sesión draft '
+                        'recién creada o ya loaded reciben alta '
+                        'automática).',
+                        Day.date, Day.state, order.name,
+                    )
+                    return
+
+                # Sesión ya 'loaded': alta incremental de SOLO esta
+                # orden — nunca un action_load()/_rebuild_summary()
+                # completo (rompería claims/progreso en curso de
+                # otros productos, condición 1 de Tech Lead).
+                existing_sale_line_ids = Day.line_ids.mapped(
+                    'sale_line_id',
+                ).ids
+                weight_categ = self.env.ref(
+                    'uom.product_uom_categ_kgm',
+                    raise_if_not_found=False,
+                )
+                line_vals = Day._guapante_add_order_lines(
+                    order, existing_sale_line_ids, weight_categ,
+                )
+                if not line_vals:
+                    # Confirmación duplicada (idempotencia) o sin
+                    # líneas elegibles — nada que hacer.
+                    return
+
+                self.env['sale.order']._assign_daily_sequences(Day.date)
+                NewLines = self.env[
+                    'guapante.preparation.day.line'
+                ].create(line_vals)
+                for Line in NewLines:
+                    Day._guapante_patch_summary(Day, Line, add=True)
+                    Day._guapante_after_incremental_add(Line)
+                self.env['bus.bus']._sendone(
+                    f'guapante_preparation_day-{Day.id}', 'reload', {},
+                )
+        except _PG_CONCURRENCY_ERRORS:
+            # Nunca atrapar esto — ver _PG_CONCURRENCY_ERRORS arriba:
+            # es justo el error que el FOR UPDATE de más arriba está
+            # diseñado para producir en la segunda transacción; si lo
+            # tragáramos acá, Odoo nunca reintentaría la petición
+            # completa y la orden quedaría confirmada sin su línea de
+            # Preparación.
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: no se pudo agregar automáticamente la '
+                'orden %s a la Preparación del Día de %s — la '
+                'confirmación de la venta ya se guardó, pero la '
+                'sesión puede haber quedado desincronizada y '
+                'necesita revisión manual.',
+                order.name, date_val,
+            )
+            try:
+                with self.env.cr.savepoint():
+                    order.sudo().message_post(
+                        body=(
+                            'La orden no se pudo agregar '
+                            'automáticamente a la Preparación del '
+                            'Día — usa Actualizar/Ver pedidos para '
+                            'incluirla manualmente.'
+                        ),
+                    )
+            except Exception:
+                _logger.exception(
+                    'Guapante: tampoco se pudo dejar la nota de '
+                    'aviso en el chatter de la orden %s.', order.name,
+                )
+
+    def _guapante_after_incremental_add(self, line) -> None:
+        """Punto de extensión (plan de carga automática, e2): no hace
+        nada en este módulo — ist_preparation_day_picking lo
+        sobreescribe para crear el claim del Nivel 1 si el producto
+        es nuevo en la sesión."""
+        return
 
     @api.depends('summary_ids')
     def _compute_summary_count(self) -> None:

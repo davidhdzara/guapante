@@ -203,20 +203,31 @@ class SaleOrder(models.Model):
         CADA fecha en la que caiga alguno de los pickings internos
         resultantes — hoy o futura (Regla de la jornada, David
         2026-10-29; antes solo se auto-creaba si la fecha era "hoy").
+
+        Plan de carga automática, paso e2 (2026-10-29): además de
+        asegurar la sesión, la agrega a ella (alta incremental si ya
+        estaba cargada, autopoblación completa si recién se creó).
+        PreparationDay._guapante_add_confirmed_order() hace TODO esto
+        (resolver/crear la sesión y agregar la orden) dentro de su
+        propio savepoint — incluida la resolución de la sesión, nunca
+        suelta acá, porque ninguna parte de esto puede tumbar la
+        confirmación de la venta, ni siquiera si crear la sesión
+        fallara.
         """
         res = super().action_confirm()
-        Pickings = self.mapped('picking_ids').filtered(
-            lambda p: (
-                p.picking_type_code == 'internal'
-                and p.scheduled_date
-                and p.state not in ('done', 'cancel')
-            )
-        )
-        session_dates = {
-            _utc_datetime_to_session_date(self.env, p.scheduled_date)
-            for p in Pickings
-        }
         Session = self.env['guapante.preparation.day']
-        for date_val in session_dates:
-            Session._ensure_session_for_date(date_val)
+        for order in self:
+            Pickings = order.picking_ids.filtered(
+                lambda p: (
+                    p.picking_type_code == 'internal'
+                    and p.scheduled_date
+                    and p.state not in ('done', 'cancel')
+                )
+            )
+            session_dates = {
+                _utc_datetime_to_session_date(self.env, p.scheduled_date)
+                for p in Pickings
+            }
+            for date_val in session_dates:
+                Session._guapante_add_confirmed_order(date_val, order)
         return res

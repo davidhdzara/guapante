@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
+from datetime import datetime, time
+from unittest.mock import patch
+
+import pytz
+
+from odoo import fields
 from odoo.tests.common import tagged
 
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _utc_datetime_to_session_date,
+)
 from odoo.addons.ist_preparation_day.tests.test_preparation_day import (
     TestPreparationDay,
 )
@@ -122,3 +131,90 @@ class TestPreparationDayPickingFaseE1(TestPreparationDay):
         self.assertEqual(len(session.line_ids), 1)
         self.assertEqual(session.line_ids.id, original_line_id)
         self.assertEqual(session.line_ids.zone_name, 'Sucursal Nueva Test E1')
+
+
+@tagged('post_install', '-at_install')
+class TestPreparationDayPickingFaseE2(TestPreparationDay):
+    """Fase E2 del plan de carga automática (2026-10-29): alta
+    incremental al confirmar una orden — acá solo lo que toca al Nivel 1
+    de Picking (claims), que vive en este módulo hijo. El resto (sesión
+    nueva vs ya cargada, idempotencia, día cerrado, que nunca tumbe
+    action_confirm) está en ist_preparation_day/tests/test_sale_order_auto_load.py.
+    """
+
+    def _confirm_order(self, product=None, qty=5.0, partner=None):
+        """Fija fields.Datetime.now() a self.delivery_date (00:10 hora
+        Bogotá, antes del corte 00:30) en vez de dejar que
+        theme_guapante.action_confirm resuelva "hoy" — este staging
+        real puede tener (y tiene: 2026-10-30) una sesión YA CERRADA
+        para hoy, que tumbaría estos tests sin tener nada que ver con
+        el código (ver docstring de TestSaleOrderAutoLoad en
+        ist_preparation_day)."""
+        product = product or self.product_weight
+        partner = partner or self.child_partner
+        order = self.env['sale.order'].create({
+            'partner_id': partner.id,
+            'order_line': [(0, 0, {
+                'product_id': product.id,
+                'product_uom_qty': qty,
+            })],
+        })
+        bogota_tz = pytz.timezone('America/Bogota')
+        fixed_now = bogota_tz.localize(
+            datetime.combine(self.delivery_date, time(0, 10)),
+        ).astimezone(pytz.utc).replace(tzinfo=None)
+        with patch('odoo.fields.Datetime.now', return_value=fixed_now):
+            order.action_confirm()
+        Picking = order.picking_ids.filtered(
+            lambda p: (
+                p.picking_type_code == 'internal'
+                and p.state not in ('done', 'cancel')
+            )
+        )[:1]
+        date_val = _utc_datetime_to_session_date(
+            self.env, Picking.scheduled_date,
+        )
+        return order, date_val
+
+    def test_incremental_add_creates_claim_without_touching_others_in_progress(self):
+        order_a, date_val = self._confirm_order(
+            product=self.product_weight, qty=5.0,
+        )
+        Session = self.env['guapante.preparation.day'].search(
+            [('date', '=', date_val)], limit=1,
+        )
+        ClaimA = Session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        self.assertEqual(len(ClaimA), 1)
+        self.assertEqual(ClaimA.status, 'pending')
+
+        operator = self.env['hr.employee'].create({
+            'name': 'Operario Fase E2',
+            'is_guapante_prep_operator': True,
+            'l10n_co_ne_payment_method': '10',
+        })
+        ClaimA.sudo().write({
+            'assigned_employee_id': operator.id,
+            'assigned_date': fields.Datetime.now(),
+        })
+        self.assertEqual(ClaimA.status, 'in_progress')
+        claim_a_snapshot = (ClaimA.status, ClaimA.assigned_employee_id.id)
+
+        order_b, date_b = self._confirm_order(
+            product=self.product_unit, qty=3.0,
+        )
+        self.assertEqual(date_b, date_val)
+
+        ClaimB = Session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_unit.product_tmpl_id
+        )
+        self.assertEqual(len(ClaimB), 1)
+        self.assertEqual(ClaimB.status, 'pending')
+
+        self.assertEqual(
+            (ClaimA.status, ClaimA.assigned_employee_id.id),
+            claim_a_snapshot,
+            'el alta incremental de otro producto no debe tocar el '
+            'claim en curso de product_weight',
+        )

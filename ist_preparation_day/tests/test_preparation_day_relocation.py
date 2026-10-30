@@ -9,6 +9,8 @@ Caja #0 / reubicación — ver reporte en el hilo de sesiones.
 """
 from unittest.mock import patch
 
+from psycopg2 import errors as pg_errors
+
 from odoo import fields
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
@@ -312,6 +314,24 @@ class TestPreparationDayRelocation(TransactionCase):
         # transaction is aborted".
         pick.write({'origin': 'post-fallo'})
         self.assertEqual(pick.origin, 'post-fallo')
+
+    def test_relocation_serialization_failure_propagates_not_swallowed(self):
+        """Corrección de Tech Lead (2026-10-30), mismo defecto que en
+        _guapante_add_confirmed_order: un error transitorio de Postgres
+        (SerializationFailure/LockNotAvailable/DeadlockDetected) debe
+        propagarse tal cual para que Odoo reintente la petición
+        completa — nunca quedar atrapado por el except Exception
+        genérico de _guapante_relocate_picking."""
+        order, pick = self._create_confirmed_order(self.day_a)
+        self._load_session(self.day_a)
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        with patch.object(
+            type(self.env['guapante.preparation.day']),
+            '_guapante_patch_summary',
+            side_effect=pg_errors.SerializationFailure('simulado por test'),
+        ):
+            with self.assertRaises(pg_errors.SerializationFailure):
+                pick.write({'scheduled_date': dt_start_b})
 
     # ── DEF-01: pedido de varias líneas/productos no debe reventar ──
 

@@ -84,6 +84,19 @@ class PreparationDay(models.Model):
             'picking_claim_updated', {},
         )
 
+    def _guapante_after_incremental_add(self, line) -> None:
+        """Plan de carga automática, paso e2 (2026-10-29): mismo
+        criterio que _rebuild_product_claims()/_guapante_after_relocate
+        — create-if-missing, nunca duplica ni pisa dueño (ver
+        _ensure_claims_for_templates). El 'reload' ya lo manda una sola
+        vez _guapante_add_confirmed_order() por toda la operación — acá
+        solo se garantiza que el claim del Nivel 1 exista."""
+        super()._guapante_after_incremental_add(line)
+        if not line.product_id:
+            return
+        Claim = self.env['guapante.preparation.day.product.claim']
+        Claim._ensure_claims_for_templates(self, line.product_id)
+
     def action_save_line_weight(self, line_id: int) -> bool:
         """Extiende action_save_line_weight() del padre con dos cosas de
         Fase C:
