@@ -1,23 +1,30 @@
 import { Component, useState, useRef, xml } from "@odoo/owl";
 
-// Subcomponente aislado del peso de Nivel 2 (especificación visual,
-// punto 1 de Tech Lead): sin Record detrás (client action propio, no
-// kanban) — input numérico propio + botón "Confirmar" visible, Enter
-// dispara lo mismo. Acepta coma o punto como ÚNICO separador decimal
-// (regla clara, Tech Lead 2026-10-29: nunca los dos juntos, nunca
-// notación científica). El widget de báscula real (scale_weight) queda
-// para su propia fase — este input es el punto donde se enchufará
-// después, sin tocar el resto de la tarjeta.
-const WEIGHT_PATTERN = /^\d+([.,]\d+)?$/;
+// Subcomponente aislado de cantidad/peso de Nivel 2 (especificación
+// visual, punto 1 de Tech Lead; generalizado a unidades en el punto b,
+// 2026-10-29): sin Record detrás (client action propio, no kanban) —
+// input numérico propio + botón "Confirmar" visible, Enter dispara lo
+// mismo. Dos modos por prop `integer`:
+//   - false (default, kg): acepta coma o punto como ÚNICO separador
+//     decimal (regla clara: nunca los dos juntos, nunca notación
+//     científica).
+//   - true (unidades): solo entero, sin separador — datos reales de
+//     staging (2026-10-29) no muestran ninguna cantidad fraccionaria en
+//     productos por unidad, así que se exige entero sin excepción.
+// El widget de báscula real (scale_weight) queda para su propia fase —
+// este input es el punto donde se enchufará después, sin tocar el
+// resto de la tarjeta.
+const DECIMAL_PATTERN = /^\d+([.,]\d+)?$/;
+const INTEGER_PATTERN = /^\d+$/;
 
 export class PickingWeightInput extends Component {
     static template = xml`
         <div class="d-flex flex-column flex-grow-1 me-2">
             <div class="d-flex gap-1">
                 <input type="text"
-                       inputmode="decimal"
+                       t-att-inputmode="props.integer ? 'numeric' : 'decimal'"
                        class="form-control"
-                       placeholder="Peso (kg)"
+                       t-att-placeholder="props.placeholder || 'Peso (kg)'"
                        t-ref="weightInput"
                        t-model="state.text"
                        t-att-disabled="state.submitting"
@@ -33,6 +40,8 @@ export class PickingWeightInput extends Component {
     static props = {
         value: { type: Number, optional: true },
         onConfirm: Function,
+        integer: { type: Boolean, optional: true },
+        placeholder: { type: String, optional: true },
     };
 
     setup() {
@@ -54,22 +63,30 @@ export class PickingWeightInput extends Component {
     async confirm() {
         // Guarda contra doble Enter / doble clic (Tech Lead, 2026-10-29):
         // mientras un intento está en vuelo, cualquier otro disparo del
-        // mismo evento es un no-op — un solo registro de peso aunque el
-        // usuario dispare el evento dos veces.
+        // mismo evento es un no-op — un solo registro aunque el usuario
+        // dispare el evento dos veces.
         if (this.state.submitting) {
             return;
         }
-        const normalized = this.state.text.trim().replace(",", ".");
-        if (!WEIGHT_PATTERN.test(normalized)) {
-            this.state.error = "Ingresa un peso válido (ej. 2.5 o 2,5).";
+        const isInteger = Boolean(this.props.integer);
+        const normalized = isInteger
+            ? this.state.text.trim()
+            : this.state.text.trim().replace(",", ".");
+        const pattern = isInteger ? INTEGER_PATTERN : DECIMAL_PATTERN;
+        if (!pattern.test(normalized)) {
+            this.state.error = isInteger
+                ? "Ingresa un número entero de unidades."
+                : "Ingresa un peso válido (ej. 2.5 o 2,5).";
             if (this.weightInputRef.el) {
                 this.weightInputRef.el.focus();
             }
             return;
         }
-        const value = parseFloat(normalized);
+        const value = isInteger ? parseInt(normalized, 10) : parseFloat(normalized);
         if (value <= 0) {
-            this.state.error = "El peso debe ser mayor que cero.";
+            this.state.error = isInteger
+                ? "Ingresa al menos 1 unidad."
+                : "El peso debe ser mayor que cero.";
             if (this.weightInputRef.el) {
                 this.weightInputRef.el.focus();
             }

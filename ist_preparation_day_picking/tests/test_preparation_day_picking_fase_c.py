@@ -151,6 +151,11 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             line.with_context(guapante_picking_flow=True).action_mark_line_ready()
         self.assertTrue(line.is_done)
         self.assertEqual(line.actual_kg, 4.0)
+        self.assertTrue(
+            line.is_qty_estimated,
+            'action_mark_line_ready() acepta lo pedido sin verificar, '
+            'por definición — debe marcarlo (Tech Lead, punto b.3)',
+        )
 
     def test_action_mark_line_ready_raises_without_estimated_kg(self):
         session = self._create_session()
@@ -178,6 +183,222 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             with self.assertRaises(UserError):
                 line.with_context(guapante_picking_flow=True).action_mark_line_ready()
         self.assertFalse(line.is_done)
+
+    # ── Productos sin pesaje: kg directo y unidades (punto b, Tech
+    # Lead/David, 2026-10-29) ──
+
+    def test_qty_uom_label_kg_for_weight_product(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        self.assertEqual(line.qty_uom_label, 'kg')
+
+    def test_qty_uom_label_und_for_unit_product(self):
+        session = self._create_session()
+        line = self._create_line(
+            session, needs_weighing=False, estimated_kg=3.0,
+            product=self.product_unit,
+        )
+        self.assertEqual(line.qty_uom_label, 'und')
+
+    def test_qty_uom_label_false_for_unsupported_uom(self):
+        """Datos reales (staging y producción, 2026-10-29): no existe
+        hoy ningún producto vendible con UoM de peso/unidad NO-referencia
+        (ej. Docenas, factor 12) — pero si alguna vez aparece, no debe
+        asumirse kg ni unidades a ciegas (David: sin defaults
+        silenciosos)."""
+        session = self._create_session()
+        dozen_uom = self.env.ref('uom.product_uom_dozen')
+        product_dozen = self.env['product.product'].create({
+            'name': 'Producto Docena Test',
+            'type': 'consu',
+            'uom_id': dozen_uom.id,
+            'uom_po_id': dozen_uom.id,
+        })
+        line = self._create_line(
+            session, needs_weighing=False, estimated_kg=2.0,
+            product=product_dozen,
+        )
+        self.assertFalse(line.qty_uom_label)
+
+    def test_write_actual_kg_raises_for_unsupported_uom(self):
+        session = self._create_session()
+        dozen_uom = self.env.ref('uom.product_uom_dozen')
+        product_dozen = self.env['product.product'].create({
+            'name': 'Producto Docena Test 2',
+            'type': 'consu',
+            'uom_id': dozen_uom.id,
+            'uom_po_id': dozen_uom.id,
+        })
+        line = self._create_line(
+            session, needs_weighing=False, estimated_kg=2.0,
+            product=product_dozen,
+        )
+        claim = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == line.product_id
+        )
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(
+                    guapante_picking_flow=True, guapante_qty_estimated=True,
+                ).write({'actual_kg': 2.0})
+        self.assertFalse(line.is_done)
+
+    def test_write_actual_kg_unedited_marks_estimated_kg_direct(self):
+        """Kg pedido directo (is_weight=True, needs_weighing=False) — el
+        operario confirma sin editar el valor precargado."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 4.0})
+        self.assertTrue(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 4.0)
+        self.assertTrue(line.is_done)
+
+    def test_write_actual_kg_edited_marks_not_estimated_kg_direct(self):
+        """Mismo caso pero el operario edita el valor — debe quedar en
+        False y con el valor real, aunque sea MENOR que lo pedido (regla
+        de David: el servidor no bloquea despachar menos, solo la UI
+        pregunta antes de llegar aquí)."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=False,
+            ).write({'actual_kg': 3.2})
+        self.assertFalse(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 3.2)
+        self.assertTrue(line.is_done)
+
+    def test_write_actual_kg_unedited_marks_estimated_units(self):
+        """Mismo patrón, producto por unidad (is_weight=False)."""
+        session = self._create_session()
+        line = self._create_line(
+            session, needs_weighing=False, estimated_kg=3.0,
+            product=self.product_unit,
+        )
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 3.0})
+        self.assertTrue(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 3.0)
+
+    def test_write_actual_kg_edited_marks_not_estimated_units(self):
+        session = self._create_session()
+        line = self._create_line(
+            session, needs_weighing=False, estimated_kg=3.0,
+            product=self.product_unit,
+        )
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=False,
+            ).write({'actual_kg': 5.0})
+        self.assertFalse(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 5.0)
+
+    def test_needs_weighing_line_never_marks_estimated(self):
+        """Blindaje (Tech Lead, punto b.1/3): aunque llegue
+        guapante_qty_estimated=True por error en una línea que sí
+        necesita pesaje real, nunca debe marcarse — ese contexto es
+        solo para los casos sin pesaje."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 2.0})
+        self.assertFalse(
+            line.is_qty_estimated,
+            'needs_weighing=True nunca debe marcarse, sin importar el contexto',
+        )
+        self.assertTrue(line.is_done)
+
+    def test_action_undo_line_resets_is_qty_estimated(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        # Segunda línea pendiente del mismo producto (mismo patrón que
+        # test_action_undo_line_allowed_by_owner): sin ella, al terminar
+        # `line` el claim se libera (Fase B, última pendiente) y el
+        # undo posterior ya no pasaría el chequeo de ownership — lo que
+        # este test necesita aislar es el reset del campo, no ese otro
+        # comportamiento (ya cubierto en sus propios tests).
+        self._create_line(session, needs_weighing=False, estimated_kg=1.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 4.0})
+        self.assertTrue(line.is_qty_estimated)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
+            line.with_context(guapante_picking_flow=True).action_undo_line()
+        self.assertFalse(
+            line.is_qty_estimated,
+            'Sin caja despachada no hay "lo pedido aceptado" que señalar',
+        )
+        self.assertEqual(line.actual_kg, 0.0)
+
+    def test_write_actual_kg_unedited_double_call_registers_once(self):
+        """Doble Enter/doble clic del camino "confirmar sin editar" (kg
+        directo, sin pesaje) — mismo bloqueo por ownership que el camino
+        de pesaje real: tras la primera, el claim se libera y la segunda
+        se bloquea con UserError antes de tocar nada."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        Summary = session.summary_ids.filtered(
+            lambda s: s.product_id == line.product_product_id
+        )
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 4.0})
+            kg_after_first = Summary.total_done_kg
+            with self.assertRaises(UserError):
+                line.with_context(
+                    guapante_picking_flow=True, guapante_qty_estimated=True,
+                ).write({'actual_kg': 4.0})
+        self.assertEqual(Summary.total_done_kg, kg_after_first)
+        self.assertTrue(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 4.0)
 
     # ── ownership en métodos públicos (punto 3 de Tech Lead) ──
 

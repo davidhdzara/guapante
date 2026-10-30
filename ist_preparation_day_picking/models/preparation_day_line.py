@@ -45,6 +45,21 @@ class PreparationDayLine(models.Model):
             # Lead) — no-op si no viene guapante_picking_flow en contexto
             # (ej. edición inline desde la pestaña Productos).
             self._check_picking_ownership()
+            self._check_qty_uom_supported()
+            if self.env.context.get('guapante_picking_flow'):
+                # is_qty_estimated (Tech Lead, punto b — kg Y unidades): se
+                # fija SIEMPRE junto con actual_kg en este camino —
+                # explícito en los dos sentidos (True al aceptar lo
+                # precargado sin editar, False en cualquier edición real,
+                # incluida una corrección posterior) para que nunca quede
+                # un valor viejo pegado. Nunca True en una línea
+                # needs_weighing=True, sin importar qué contexto llegue —
+                # es solo para los casos sin pesaje (kg directo o unidades).
+                vals = dict(vals)
+                vals['is_qty_estimated'] = (
+                    bool(self.env.context.get('guapante_qty_estimated'))
+                    and not any(self.mapped('needs_weighing'))
+                )
         res = super().write(vals)
         if 'is_done' in vals or 'actual_kg' in vals:
             self._maybe_release_finished_claim()
@@ -125,20 +140,33 @@ class PreparationDayLine(models.Model):
         write() interno usa skip_auto_save, sin guapante_picking_flow en
         contexto, así que el chequeo de write() no lo cubre solo."""
         self._check_picking_ownership()
-        return super().action_undo_line()
+        res = super().action_undo_line()
+        # is_qty_estimated (Tech Lead, punto b): el padre ya resetea
+        # actual_kg a 0.0 — sin una caja despachada no hay "lo pedido
+        # aceptado sin verificar" que señalar. Write aparte porque el del
+        # padre usa skip_auto_save, sin 'actual_kg' en su propio vals (va
+        # directo a super().write() del ORM, no pasa por el bloque de
+        # arriba).
+        self.write({'is_qty_estimated': False})
+        return res
 
     def action_mark_line_ready(self) -> bool:
         """Botón "Listo" de Nivel 2 para líneas needs_weighing=False
-        (Fase C, punto 2 de Tech Lead): el padre no tiene un camino
-        separado para estas líneas — la pestaña Productos usa la misma
-        lista y el mismo widget scale_weight para TODAS las pendientes,
-        sin distinguir needs_weighing (confirmado leyendo el código, no
-        hay nada que reutilizar de ahí). En vez de inventar un cierre
-        propio, este método solo escribe estimated_kg en actual_kg bajo
-        contexto de Picking — eso entra por el write() YA existente
-        (is_picking_flow -> action_save_line_weight() del padre), con
-        todo su blindaje (ownership arriba, operario activo, propagación
-        a stock, auto-cierre de producto/sesión) sin duplicar nada.
+        (Fase C, punto 2 de Tech Lead) — reemplazado en la UI por
+        "confirmar sin editar" el valor precargado (punto b, kg directo o
+        unidades), pero se mantiene aquí: sigue siendo un camino válido
+        por RPC directo (Tech Lead, decisión del punto b, item 5). El
+        padre no tiene un camino separado para estas líneas — la pestaña
+        Productos usa la misma lista y el mismo widget scale_weight para
+        TODAS las pendientes, sin distinguir needs_weighing (confirmado
+        leyendo el código, no hay nada que reutilizar de ahí). En vez de
+        inventar un cierre propio, este método solo escribe estimated_kg
+        en actual_kg bajo contexto de Picking — eso entra por el write()
+        YA existente (is_picking_flow -> action_save_line_weight() del
+        padre), con todo su blindaje (ownership arriba, operario activo,
+        propagación a stock, auto-cierre de producto/sesión) sin
+        duplicar nada. guapante_qty_estimated=True: este camino SIEMPRE
+        acepta lo pedido sin verificar, por definición.
         """
         for line in self:
             if line.is_done:
@@ -149,7 +177,9 @@ class PreparationDayLine(models.Model):
                     'estimada — no se puede marcar Listo. Avisa a un '
                     'supervisor.'
                 )
-            line.with_context(guapante_picking_flow=True).write({
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({
                 'actual_kg': line.estimated_kg,
             })
         return True
@@ -246,6 +276,81 @@ class PreparationDayLine(models.Model):
     # mostrar el código interno (especificación visual, David
     # 2026-10-23) — mismo motivo que product_tmpl_name en el claim.
     product_name = fields.Char(related='product_id.name', string='Producto (sin código)')
+
+    # Informativo, para reportes de Fase 2 (Tech Lead, 2026-10-29, punto
+    # b): True solo cuando el operario aceptó el valor precargado (lo
+    # pedido) SIN verificar de verdad en una línea needs_weighing=False —
+    # cubre los dos casos sin pesaje real (kg/g pedido directo Y
+    # unidades), no solo kg. Kilos/hora y promedios necesitan distinguir
+    # esto de un valor real, y actual_kg == estimated_kg por sí solo es
+    # ambiguo (podría coincidir por casualidad) y no se puede reconstruir
+    # después. Lo escribe write() (arriba) y action_mark_line_ready();
+    # nunca True en una línea que sí necesita pesaje real (needs_weighing
+    # =True). Líneas que ya existían antes de este campo quedan en False
+    # — "desconocido", NO "valor real confirmado".
+    is_qty_estimated = fields.Boolean(
+        string='Cantidad = lo pedido (sin confirmar aparte)',
+        default=False,
+    )
+
+    # Unidad en la que la tarjeta de Nivel 2 debe capturar el valor real
+    # (Tech Lead, 2026-10-29, punto b) — NO es uom_mode (cómo el cliente
+    # vio la cantidad en la tienda: puede ser 'g' y esto seguir en kg,
+    # son preguntas distintas). "kg" cuando el producto usa la UoM de
+    # REFERENCIA de la categoría Weight (factor 1.0 — confirmado por
+    # datos reales de staging Y producción, 2026-10-29: ningún producto
+    # vendible usa hoy una UoM de peso no-referencia, ej. gramos reales
+    # con factor 0.001); "und" cuando usa la UoM de referencia de la
+    # categoría Unit (datos reales: 0 líneas con cantidad no entera en
+    # ese grupo — no hay evidencia de unidades fraccionarias). False/
+    # vacío en cualquier otro caso (otra categoría, ej. Hours, o una UoM
+    # de peso/unidad NO-referencia) — Preparación solo maneja kg y
+    # unidades hoy (David, vía Tech Lead): un default silencioso ahí
+    # sería un número en la unidad equivocada sin que nadie lo note, así
+    # que se trata como "no soportado" (ver _check_qty_uom_supported) en
+    # vez de asumir kg o unidades a ciegas. No almacenado: se deriva
+    # fresco de la UoM del producto, igual que expected_kg_per_unit
+    # arriba.
+    qty_uom_label = fields.Char(compute='_compute_qty_uom_label')
+
+    def _compute_qty_uom_label(self) -> None:
+        weight_categ = self.env.ref(
+            'uom.product_uom_categ_kgm', raise_if_not_found=False,
+        )
+        unit_categ = self.env.ref(
+            'uom.product_uom_categ_unit', raise_if_not_found=False,
+        )
+        for line in self:
+            uom = line.product_product_id.uom_id
+            if weight_categ and uom.category_id == weight_categ and uom.factor == 1.0:
+                line.qty_uom_label = 'kg'
+            elif unit_categ and uom.category_id == unit_categ and uom.factor == 1.0:
+                line.qty_uom_label = 'und'
+            else:
+                line.qty_uom_label = False
+
+    def _check_qty_uom_supported(self) -> None:
+        """Preparación solo maneja productos en kg o unidades (David,
+        vía Tech Lead 2026-10-29) — nunca un default silencioso: si la
+        UoM del producto no cae en ninguno de esos dos casos
+        (qty_uom_label vacío), error claro en vez de capturar/guardar un
+        número en la unidad equivocada sin que nadie lo note. No-op
+        fuera de Picking (sin guapante_picking_flow en contexto) — mismo
+        patrón que _check_picking_ownership."""
+        if not self.env.context.get('guapante_picking_flow'):
+            return
+        unsupported = self.filtered(lambda l: not l.qty_uom_label)
+        if unsupported:
+            names = ', '.join(
+                line.product_description or line.product_product_id.display_name
+                or 'Este producto'
+                for line in unsupported
+            )
+            raise UserError(
+                f'{names}: Preparación solo maneja productos en kg o '
+                'unidades — pide al administrador corregir la unidad '
+                'base del producto antes de continuar.'
+            )
 
     # Chips de grado de madurez y tamaño en la tarjeta de Nivel 2 —
     # widget nativo many2many_tags, cero CSS propio. Vienen de

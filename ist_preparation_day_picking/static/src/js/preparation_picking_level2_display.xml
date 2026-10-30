@@ -67,10 +67,14 @@
                                 </li>
                             </ul>
                             <div class="card-footer d-flex align-items-center justify-content-between">
-                                <PickingWeightInput t-if="line.needs_weighing"
-                                                     value="line.actual_kg"
-                                                     onConfirm="(value) => this.onConfirmWeight(line, value)"/>
-                                <button t-else="" type="button" class="btn btn-primary" t-on-click="() => this.onMarkReady(line)">Listo</button>
+                                <span t-if="!line.qty_uom_label" class="text-danger small">
+                                    Unidad no soportada — avisa a un administrador.
+                                </span>
+                                <PickingWeightInput t-else=""
+                                                     value="line.needs_weighing ? line.actual_kg : (line.actual_kg || line.estimated_kg)"
+                                                     onConfirm="(value) => this.onConfirmWeight(line, value)"
+                                                     integer="line.qty_uom_label === 'und'"
+                                                     placeholder="line.qty_uom_label === 'und' ? 'Unidades' : 'Peso (kg)'"/>
                                 <button type="button" class="btn btn-light fa fa-sticky-note-o"
                                         title="Agregar nota" t-on-click="() => this.onAddNote(line)"/>
                             </div>

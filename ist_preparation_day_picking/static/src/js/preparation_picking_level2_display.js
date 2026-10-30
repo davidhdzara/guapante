@@ -15,8 +15,13 @@ const LINE_FIELDS = [
     "daily_sequence", "is_done", "needs_weighing", "estimated_kg",
     "expected_kg_per_unit", "actual_kg", "main_customer_name", "zone_name",
     "customer_qty_display", "customer_uom_label", "claim_is_mine",
-    "no_variant_attribute_value_ids",
+    "no_variant_attribute_value_ids", "qty_uom_label",
 ];
+
+// Redondeo a 3 decimales antes de comparar (Tech Lead, 2026-10-29,
+// punto b.1): evita falsos avisos de "despachas menos" por residuos de
+// coma flotante (ej. 2.5 - 2.3 !== 0.2 exacto en JS).
+const round3 = (n) => Math.round(n * 1000) / 1000;
 
 // Nivel 2 de Picking como client action propio (especificación visual,
 // David 2026-10-23 — misma decisión final que Nivel 1, ver
@@ -199,13 +204,30 @@ export class PickingLinesDisplay extends Component {
         }
     }
 
-    // Alerta de peso fuera de lo usual (Fase C, punto 1 de Tech Lead) —
-    // mismo umbral y mismo texto que tenía el patch del widget
-    // scale_weight (preparation_picking_scale_weight_patch.js, retirado
-    // con el kanban): fuera de [20%, 500%] del peso esperado
-    // (estimated_kg * expected_kg_per_unit) pide confirmación explícita
-    // antes de guardar, nunca bloquea.
+    // Sin pesaje real (Tech Lead, 2026-10-29, punto b — kg directo Y
+    // unidades): el input se precarga con estimated_kg (ver template) —
+    // si el operario confirma SIN tocar ese valor, se guarda tal cual
+    // con guapante_qty_estimated=True (is_qty_estimated, informativo
+    // para reportes de Fase 2); si lo edita, llega distinto y se guarda
+    // en False. Nunca aplica a needs_weighing=True: ahí el valor nace en
+    // 0, cualquier número que llegue es necesariamente un pesaje real.
+    //
+    // Dos alertas independientes, cada una en su propio caso, sin
+    // tocarse entre sí:
+    // 1) needs_weighing=True (Fase C, punto 1 de Tech Lead, SIN cambios)
+    //    — mismo umbral y texto que tenía el patch del widget
+    //    scale_weight (preparation_picking_scale_weight_patch.js,
+    //    retirado con el kanban): fuera de [20%, 500%] del peso
+    //    esperado (estimated_kg * expected_kg_per_unit, promedio
+    //    histórico) pide confirmación, nunca bloquea.
+    // 2) needs_weighing=False — kg directo o unidades (punto b.1): regla
+    //    de David, lo normal es despachar >= lo pedido; solo pide
+    //    confirmación si despacha MENOS (nunca por despachar más — eso
+    //    reemplaza cualquier tope superior para este caso, no hay rango
+    //    aquí como en el 1). Comparación redondeada a 3 decimales para
+    //    no disparar por residuos de coma flotante.
     async onConfirmWeight(line, value) {
+        const wasUnedited = !line.needs_weighing && value === line.estimated_kg;
         if (line.needs_weighing && line.expected_kg_per_unit > 0) {
             const expectedWeight = line.estimated_kg * line.expected_kg_per_unit;
             const outOfRange = (
@@ -229,6 +251,22 @@ export class PickingLinesDisplay extends Component {
                     return;
                 }
             }
+        } else if (!line.needs_weighing && round3(value) < round3(line.estimated_kg)) {
+            const confirmed = await new Promise((resolve) => {
+                this.dialog.add(ConfirmationDialog, {
+                    title: "Despachas menos de lo pedido",
+                    body: (
+                        `Despachas menos de lo pedido: ${value} de ` +
+                        `${line.estimated_kg} ${line.qty_uom_label}. ` +
+                        `¿Confirmas?`
+                    ),
+                    confirm: () => resolve(true),
+                    cancel: () => resolve(false),
+                });
+            });
+            if (!confirmed) {
+                return;
+            }
         }
         try {
             // actual_kg bajo guapante_picking_flow dispara el pipeline
@@ -238,19 +276,12 @@ export class PickingLinesDisplay extends Component {
             // que disparaba el widget scale_weight al guardar.
             await this.orm.write(
                 "guapante.preparation.day.line", [line.id], { actual_kg: value },
-                { context: { guapante_picking_flow: true } },
-            );
-            await this.loadLines();
-        } catch (error) {
-            await this._handleError(error);
-        }
-    }
-
-    async onMarkReady(line) {
-        try {
-            await this.orm.call(
-                "guapante.preparation.day.line", "action_mark_line_ready", [[line.id]],
-                { context: { guapante_picking_flow: true } },
+                {
+                    context: {
+                        guapante_picking_flow: true,
+                        guapante_qty_estimated: wasUnedited,
+                    },
+                },
             );
             await this.loadLines();
         } catch (error) {

@@ -104,9 +104,13 @@ class PreparationDay(models.Model):
            ve la transición cuando este método se llama directo (el
            mismo escenario de RPC del punto 1).
         """
-        self.env['guapante.preparation.day.line'].browse(
-            line_id,
-        )._check_picking_ownership()
+        Line = self.env['guapante.preparation.day.line'].browse(line_id)
+        Line._check_picking_ownership()
+        # UoM soportada (punto b, Tech Lead/David, 2026-10-29) — mismo
+        # motivo que el ownership arriba: este método es público y
+        # puede saltarse write(), que es donde vive el resto de este
+        # chequeo (ver PreparationDayLine).
+        Line._check_qty_uom_supported()
         was_done_before = self.state == 'done'
         res = super().action_save_line_weight(line_id)
         if not was_done_before and self.state == 'done':
