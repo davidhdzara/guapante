@@ -1057,95 +1057,9 @@ class PreparationDay(models.Model):
         )
 
         for order in Orders:
-            # Desglose Cliente Principal y Zona.
-            # parent_id en vez de commercial_partner_id porque este
-            # último está corrupto para contactos tipo "Cocina"/"Bar".
-            partner = order.partner_id
-            main_cust_name = (
-                partner.parent_id.name
-                if partner.parent_id
-                else partner.name
+            line_vals += self._guapante_add_order_lines(
+                order, existing_sale_line_ids, weight_categ,
             )
-            shipping_name = order.partner_shipping_id.name or ''
-
-            ProductLines = order.order_line.filtered(
-                lambda l: (
-                    l.product_id
-                    and not l.display_type
-                    # Excluir servicios (delivery, shipping charges)
-                    and l.product_id.type != 'service'
-                )
-            )
-            for line in ProductLines:
-                if line.id in existing_sale_line_ids:
-                    # Actualizar nombre retroactivamente si cambió
-                    ExistingPrepLine = self.line_ids.filtered(
-                        lambda x: x.sale_line_id.id == line.id
-                    )
-                    if ExistingPrepLine and (
-                        ExistingPrepLine.main_customer_name != main_cust_name
-                        or ExistingPrepLine.zone_name != shipping_name
-                    ):
-                        ExistingPrepLine.write({
-                            'main_customer_name': main_cust_name,
-                            'zone_name': shipping_name,
-                        })
-                    continue
-
-                # Buscar stock.move del PICK (internal/Recolectar).
-                # En warehouse 2-step cada SO line genera 2 moves:
-                # uno para PICK y otro para OUT. Sin este filtro,
-                # limit=1 podía agarrar el OUT y el peso nunca
-                # llegaba al Recolectar.
-                Move = self.env['stock.move'].search([
-                    ('sale_line_id', '=', line.id),
-                    ('picking_type_id.code', '=', 'internal'),
-                    ('state', 'not in', ('done', 'cancel')),
-                ], limit=1)
-                if not Move:
-                    # No hay move pendiente → línea ya procesada
-                    # o cancelada. No cargar en la preparación.
-                    continue
-
-                mode = line.uom_mode or 'unit'
-                is_weight = (
-                    weight_categ
-                    and line.product_id.uom_id.category_id == weight_categ
-                )
-                needs_weighing = (mode == 'unit' and is_weight)
-
-                qty_str, uom_label = self.env[
-                    'guapante.preparation.day.line'
-                ]._get_display_qty(line)
-
-                # Packaging: solo mostrar si el cliente pidió por unidad
-                packaging_name = False
-                if (
-                    line.product_packaging_id
-                    and (line.uom_mode or 'unit') == 'unit'
-                ):
-                    packaging_name = line.product_packaging_id.name
-
-                line_vals.append({
-                    'wizard_id': self.id,
-                    'product_id': line.product_id.product_tmpl_id.id,
-                    'product_product_id': line.product_id.id,
-                    'product_description': line.name,
-                    'packaging_name': packaging_name,
-                    'order_name': order.name,
-                    'sale_order_id': order.id,
-                    'sale_line_id': line.id,
-                    'stock_move_id': Move.id if Move else False,
-                    'main_customer_name': main_cust_name,
-                    'zone_name': shipping_name,
-                    'uom_mode': mode,
-                    'customer_qty_display': qty_str,
-                    'customer_uom_label': uom_label,
-                    'estimated_kg': round(line.product_uom_qty, 3),
-                    'actual_kg': 0.0,
-                    'needs_weighing': needs_weighing,
-                    'is_done': False,
-                })
 
         added_count = len(line_vals)
         if added_count > 0:
@@ -1166,6 +1080,111 @@ class PreparationDay(models.Model):
             )
 
         return False
+
+    def _guapante_add_order_lines(
+        self, order, existing_sale_line_ids, weight_categ,
+    ) -> list:
+        """Construye los line_vals de una orden para action_load().
+
+        Extraído de action_load() (plan de carga automática, paso e1,
+        2026-10-29) sin cambio de comportamiento — reusable desde los
+        futuros disparadores incrementales (confirmación de orden,
+        reubicación) sin tener que reconstruir toda la sesión. No crea
+        las líneas: devuelve los dicts para que el llamador haga un
+        solo create() en bloque, igual que antes.
+        """
+        self.ensure_one()
+        # Desglose Cliente Principal y Zona.
+        # parent_id en vez de commercial_partner_id porque este
+        # último está corrupto para contactos tipo "Cocina"/"Bar".
+        partner = order.partner_id
+        main_cust_name = (
+            partner.parent_id.name
+            if partner.parent_id
+            else partner.name
+        )
+        shipping_name = order.partner_shipping_id.name or ''
+
+        ProductLines = order.order_line.filtered(
+            lambda l: (
+                l.product_id
+                and not l.display_type
+                # Excluir servicios (delivery, shipping charges)
+                and l.product_id.type != 'service'
+            )
+        )
+        line_vals = []
+        for line in ProductLines:
+            if line.id in existing_sale_line_ids:
+                # Actualizar nombre retroactivamente si cambió
+                ExistingPrepLine = self.line_ids.filtered(
+                    lambda x: x.sale_line_id.id == line.id
+                )
+                if ExistingPrepLine and (
+                    ExistingPrepLine.main_customer_name != main_cust_name
+                    or ExistingPrepLine.zone_name != shipping_name
+                ):
+                    ExistingPrepLine.write({
+                        'main_customer_name': main_cust_name,
+                        'zone_name': shipping_name,
+                    })
+                continue
+
+            # Buscar stock.move del PICK (internal/Recolectar).
+            # En warehouse 2-step cada SO line genera 2 moves:
+            # uno para PICK y otro para OUT. Sin este filtro,
+            # limit=1 podía agarrar el OUT y el peso nunca
+            # llegaba al Recolectar.
+            Move = self.env['stock.move'].search([
+                ('sale_line_id', '=', line.id),
+                ('picking_type_id.code', '=', 'internal'),
+                ('state', 'not in', ('done', 'cancel')),
+            ], limit=1)
+            if not Move:
+                # No hay move pendiente → línea ya procesada
+                # o cancelada. No cargar en la preparación.
+                continue
+
+            mode = line.uom_mode or 'unit'
+            is_weight = (
+                weight_categ
+                and line.product_id.uom_id.category_id == weight_categ
+            )
+            needs_weighing = (mode == 'unit' and is_weight)
+
+            qty_str, uom_label = self.env[
+                'guapante.preparation.day.line'
+            ]._get_display_qty(line)
+
+            # Packaging: solo mostrar si el cliente pidió por unidad
+            packaging_name = False
+            if (
+                line.product_packaging_id
+                and (line.uom_mode or 'unit') == 'unit'
+            ):
+                packaging_name = line.product_packaging_id.name
+
+            line_vals.append({
+                'wizard_id': self.id,
+                'product_id': line.product_id.product_tmpl_id.id,
+                'product_product_id': line.product_id.id,
+                'product_description': line.name,
+                'packaging_name': packaging_name,
+                'order_name': order.name,
+                'sale_order_id': order.id,
+                'sale_line_id': line.id,
+                'stock_move_id': Move.id if Move else False,
+                'main_customer_name': main_cust_name,
+                'zone_name': shipping_name,
+                'uom_mode': mode,
+                'customer_qty_display': qty_str,
+                'customer_uom_label': uom_label,
+                'estimated_kg': round(line.product_uom_qty, 3),
+                'actual_kg': 0.0,
+                'needs_weighing': needs_weighing,
+                'is_done': False,
+            })
+        return line_vals
 
     def _rebuild_summary(self) -> None:
         """Build per-product summary aggregating all lines.
