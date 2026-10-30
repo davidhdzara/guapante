@@ -63,6 +63,39 @@ def _get_cutoff_time(env) -> tuple:
         return int(hour_str), int(minute_str)
 
 
+# Cotas configurables (parámetro de sistema) de cuántas sesiones y
+# órdenes puede tocar el cron de respaldo en una sola corrida — plan de
+# carga automática, paso e4 (2026-10-30). Para que nunca monopolice el
+# worker aunque haya mucho atrasado; si hay más, queda para la próxima
+# corrida (cada 10 min, ver data/ir_cron_repair_sessions.xml).
+_CRON_MAX_SESSIONS_PARAM_KEY = 'ist_preparation_day.cron_repair_max_sessions'
+_CRON_MAX_SESSIONS_DEFAULT = 20
+_CRON_MAX_ORDERS_PARAM_KEY = 'ist_preparation_day.cron_repair_max_orders'
+_CRON_MAX_ORDERS_DEFAULT = 200
+
+
+def _get_cron_repair_limits(env) -> tuple:
+    """(max_sesiones, max_órdenes) por corrida del cron de respaldo —
+    ver las constantes _CRON_MAX_*_PARAM_KEY arriba."""
+    IrConfigParameter = env['ir.config_parameter'].sudo()
+
+    def _parse(key, default):
+        raw = IrConfigParameter.get_param(key, default=str(default))
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            _logger.warning(
+                'Guapante: parámetro %s inválido (%r), usando '
+                'default %s', key, raw, default,
+            )
+            return default
+
+    return (
+        _parse(_CRON_MAX_SESSIONS_PARAM_KEY, _CRON_MAX_SESSIONS_DEFAULT),
+        _parse(_CRON_MAX_ORDERS_PARAM_KEY, _CRON_MAX_ORDERS_DEFAULT),
+    )
+
+
 def _date_to_utc_range(env, date_val):
     """Convert a naive date into a UTC datetime range for the full
     calendar day *date_val* in the user's (or default) timezone.
@@ -1079,6 +1112,202 @@ class PreparationDay(models.Model):
                 f'{summary_text}.'
             ),
         )
+
+    @api.model
+    def _cron_repair_missing_orders(self) -> None:
+        """Cron de respaldo del plan de carga automática, paso e4
+        (2026-10-30) — RED DE SEGURIDAD para cuando un disparador (e2
+        al confirmar, reubicación) falla silenciosamente a mitad de
+        camino; nunca es el mecanismo principal. Agrega las órdenes
+        confirmadas que debían tener línea en una sesión draft/loaded
+        de hoy o futura y no la tienen, y renumera. Nunca toca una
+        sesión 'done' ni crea sesiones nuevas para fechas sin sesión
+        todavía (eso es trabajo de action_confirm()/
+        _ensure_session_for_date, no de este cron).
+
+        Corre en UNA sola transacción — a diferencia de e2/e3, acá un
+        error de concurrencia NO se relanza (Tech Lead, 2026-10-30):
+        cada sesión va en su propio savepoint, y si choca con el lock
+        de otra transacción, se revierte SOLO esa sesión (log info,
+        se repara en la próxima corrida 10 min después) sin abortar
+        el trabajo ya hecho en las demás sesiones de esta corrida —
+        relanzar tumbaría TODO lo reparado hasta ese punto.
+        """
+        max_sessions, max_orders = _get_cron_repair_limits(self.env)
+        today = _current_session_date(self.env)
+        Sessions = self.sudo().search([
+            ('state', 'in', ('draft', 'loaded')),
+            ('date', '>=', today),
+        ], order='date', limit=max_sessions)
+
+        orders_budget = max_orders
+        for Session in Sessions:
+            try:
+                with self.env.cr.savepoint():
+                    self._guapante_lock_sessions(Session)
+
+                    if Session.state == 'done':
+                        # Cambió entre el search y el lock (p. ej. se
+                        # cerró la jornada mientras esta sesión
+                        # esperaba su turno en esta misma corrida) —
+                        # 'done' nunca se repara, ya se cerró.
+                        continue
+
+                    # Mismo dominio de pickings que usa action_load():
+                    # se calcula una sola vez y se reutiliza tanto para
+                    # decidir si hay algo que cargar como para la rama
+                    # de alta incremental de más abajo.
+                    dt_start, dt_end = _date_to_utc_range(
+                        self.env, Session.date,
+                    )
+                    Pickings = self.env['stock.picking'].sudo().search([
+                        ('scheduled_date', '>=', dt_start),
+                        ('scheduled_date', '<', dt_end),
+                        ('picking_type_code', '=', 'internal'),
+                        ('state', 'not in', ('done', 'cancel')),
+                        ('sale_id', '!=', False),
+                        ('sale_id.state', 'in', ('sale', 'done')),
+                    ])
+                    Orders = Pickings.mapped('sale_id')
+
+                    if not Session.line_ids and Session.state == 'draft':
+                        if not Orders:
+                            # Sesión draft sin pedidos elegibles todavía
+                            # (p. ej. quedó vacía tras una reubicación, o
+                            # es una fecha futura sin pedidos aún) — NO
+                            # es un fallo, action_load() lanzaría
+                            # UserError por diseño. Corre cada 10 min;
+                            # sin este corte dejaría una nota de fallo
+                            # en el chatter para siempre.
+                            _logger.debug(
+                                'Guapante: cron de respaldo — sesión '
+                                '%s draft sin pedidos elegibles aún, '
+                                'nada que cargar.', Session.date,
+                            )
+                            continue
+                        Session.action_load()
+                        continue
+
+                    if Session.state != 'loaded':
+                        _logger.info(
+                            'Guapante: cron de respaldo — sesión %s '
+                            'en estado %s con líneas a medias, no se '
+                            'toca.', Session.date, Session.state,
+                        )
+                        continue
+
+                    if orders_budget <= 0:
+                        continue
+
+                    existing_sale_line_ids = Session.line_ids.mapped(
+                        'sale_line_id',
+                    ).ids
+                    weight_categ = self.env.ref(
+                        'uom.product_uom_categ_kgm',
+                        raise_if_not_found=False,
+                    )
+
+                    all_line_vals = []
+                    RepairedOrders = self.env['sale.order']
+                    for order in Orders:
+                        if orders_budget <= 0:
+                            break
+                        line_vals = Session._guapante_add_order_lines(
+                            order, existing_sale_line_ids, weight_categ,
+                        )
+                        if not line_vals:
+                            continue
+                        all_line_vals += line_vals
+                        RepairedOrders |= order
+                        orders_budget -= 1
+
+                    if not all_line_vals:
+                        continue
+
+                    self.env['sale.order']._assign_daily_sequences(
+                        Session.date,
+                    )
+                    NewLines = self.env[
+                        'guapante.preparation.day.line'
+                    ].create(all_line_vals)
+                    for Line in NewLines:
+                        Session._guapante_patch_summary(
+                            Session, Line, add=True,
+                        )
+                        Session._guapante_after_incremental_add(Line)
+                    Session._guapante_renumber_session()
+                    self.env['bus.bus']._sendone(
+                        f'guapante_preparation_day-{Session.id}',
+                        'reload', {},
+                    )
+
+                    # Una reparación significa que un disparador
+                    # falló — visible y auditable (Tech Lead), no
+                    # silenciosa como el resto del log de este cron.
+                    max_listed = 10
+                    names = RepairedOrders.mapped('name')
+                    listed_text = ', '.join(names[:max_listed])
+                    extra = len(names) - max_listed
+                    if extra > 0:
+                        listed_text += f'… y {extra} más'
+                    Session.sudo().message_post(
+                        body=(
+                            f'El respaldo automático agregó '
+                            f'{len(names)} orden(es) que no habían '
+                            f'entrado: {listed_text}.'
+                        ),
+                    )
+                    _logger.info(
+                        'Guapante: cron de respaldo agregó %d '
+                        'orden(es) a la sesión %s: %s',
+                        len(names), Session.date, listed_text,
+                    )
+            except _PG_CONCURRENCY_ERRORS as exc:
+                # Deliberadamente NO se relanza (a diferencia de e2/
+                # e3): esto corre en una sola transacción de cron, y
+                # relanzar abortaría también el trabajo ya reparado
+                # en las demás sesiones de esta misma corrida.
+                _logger.info(
+                    'Guapante: cron de respaldo — sesión %s ocupada '
+                    '(%s), se reintenta en la próxima corrida.',
+                    Session.date, exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: cron de respaldo no pudo reparar la '
+                    'sesión %s — se reintenta en la próxima corrida.',
+                    Session.date,
+                )
+                # El log de arriba SIEMPRE queda (no molesta a nadie),
+                # pero el cron corre cada 10 min: si ya se dejó esta
+                # misma nota de fallo la corrida anterior y nada la
+                # resolvió desde entonces, no se repite — evita
+                # spamear el chatter ×144/día (Tech Lead, 2026-10-30).
+                LastMessage = Session.message_ids.sorted(
+                    'id', reverse=True,
+                )[:1]
+                already_noted = bool(LastMessage) and (
+                    'revísala manualmente o espera la próxima corrida'
+                    in (LastMessage.body or '')
+                )
+                if already_noted:
+                    continue
+                try:
+                    with self.env.cr.savepoint():
+                        Session.sudo().message_post(
+                            body=(
+                                'El respaldo automático intentó '
+                                'revisar esta sesión y falló — '
+                                'revísala manualmente o espera la '
+                                'próxima corrida.'
+                            ),
+                        )
+                except Exception:
+                    _logger.exception(
+                        'Guapante: tampoco se pudo dejar la nota de '
+                        'aviso en el chatter de la sesión %s.',
+                        Session.date,
+                    )
 
     def _guapante_add_confirmed_order(self, date_val, order) -> None:
         """Resuelve (o crea) la sesión de *date_val* y agrega *order* —
