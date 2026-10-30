@@ -85,6 +85,18 @@ class StockPicking(models.Model):
         Pone daily_sequence = 0 en las sale.order vinculadas,
         reinicia la ir.sequence del día correspondiente y limpia
         las líneas de preparación del día asociadas.
+
+        Revisado contra el algoritmo de renumeración de e3
+        (PreparationDay._guapante_renumber_session, 2026-10-30): no
+        hay conflicto, es una excepción DELIBERADA. e3 trata los
+        números de órdenes canceladas como ocupados para siempre
+        (nunca se reutilizan) consultando directamente
+        daily_sequence > 0 — un pedido reseteado acá queda en 0 y por
+        lo tanto deja de contar como ocupado, liberando ese número
+        para que una flexible lo tome en la próxima renumeración. Es
+        lo esperado: esta acción es un reinicio administrativo total
+        del día (reinicia también el ir.sequence a 1), no el camino
+        normal — se mantiene tal cual, sin cambios por e3.
         """
         Orders = self.mapped('sale_id').filtered(
             lambda o: o.daily_sequence > 0

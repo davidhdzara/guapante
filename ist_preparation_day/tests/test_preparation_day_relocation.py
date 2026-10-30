@@ -7,8 +7,10 @@ reubica su línea de preparación de forma incremental.
 Cubre el plan aprobado por Tech Lead (2026-10-29) sobre el hallazgo de
 Caja #0 / reubicación — ver reporte en el hilo de sesiones.
 """
+from datetime import datetime, time
 from unittest.mock import patch
 
+import pytz
 from psycopg2 import errors as pg_errors
 
 from odoo import fields
@@ -140,9 +142,48 @@ class TestPreparationDayRelocation(TransactionCase):
 
     # ── Mover un pendiente nunca cargado crea la sesión destino vacía ──
 
-    def test_moving_never_loaded_picking_creates_draft_session(self):
-        order, pick = self._create_confirmed_order(self.day_a)
-        # Nunca se llama action_load() para day_a.
+    def test_moving_picking_from_a_closed_session_creates_draft_destination(self):
+        """Renombrado (Tech Lead, 2026-10-30) — antes se llamaba
+        test_moving_never_loaded_picking_creates_draft_session y
+        probaba "nunca se llama action_load() para day_a, por eso no
+        hay línea". Desde e2 (2026-10-29) eso ya no describe ningún
+        escenario real: confirmar SIEMPRE intenta autopoblar la sesión
+        de la fecha natural del PICK, llame o no alguien a
+        action_load() a mano. El ÚNICO camino real hoy en que e2
+        deja una sesión sin su línea es que esa sesión ya esté
+        'done' — se fuerza la de self.day_a a 'done' ANTES de
+        confirmar (vía fields.Datetime.now() fijo, no se deja a la
+        suerte de qué sesión real sea 'hoy' en el servidor) para
+        replicar ese único caso de forma controlada."""
+        SessionA = self.env[
+            'guapante.preparation.day'
+        ]._ensure_session_for_date(self.day_a)
+        SessionA.action_mark_done()
+
+        order = self.env['sale.order'].create({
+            'partner_id': self.partner.id,
+            'order_line': [(0, 0, {
+                'product_id': self.product.id,
+                'product_uom_qty': 1,
+            })],
+        })
+        bogota_tz = pytz.timezone('America/Bogota')
+        fixed_now = bogota_tz.localize(
+            datetime.combine(self.day_a, time(0, 10)),
+        ).astimezone(pytz.utc).replace(tzinfo=None)
+        with patch('odoo.fields.Datetime.now', return_value=fixed_now):
+            order.action_confirm()
+        pick = order.picking_ids.filtered(
+            lambda p: (
+                p.picking_type_code == 'internal'
+                and p.state not in ('done', 'cancel')
+            )
+        )
+        self.assertFalse(
+            SessionA.line_ids,
+            'e2 no debía agregar nada — la sesión ya estaba done',
+        )
+
         dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
         pick.scheduled_date = dt_start_b
 
@@ -332,6 +373,84 @@ class TestPreparationDayRelocation(TransactionCase):
         ):
             with self.assertRaises(pg_errors.SerializationFailure):
                 pick.write({'scheduled_date': dt_start_b})
+
+    def test_relocation_lock_for_update_covers_both_sessions_ascending(self):
+        """Corrección BLOQUEANTE de Tech Lead (2026-10-30):
+        _guapante_relocate_picking no tomaba ningún lock real a pesar
+        de que su docstring lo daba por hecho — ahora bloquea origen
+        Y destino en una sola consulta con ORDER BY id (para que dos
+        reubicaciones cruzadas nunca se bloqueen en orden distinto)."""
+        order, pick = self._create_confirmed_order(self.day_a)
+        session_a = self._load_session(self.day_a)
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+
+        original_execute = type(self.env.cr).execute
+        calls = []
+
+        def _spy_execute(cr_self, query, params=None, *args, **kwargs):
+            calls.append((query, params))
+            return original_execute(cr_self, query, params, *args, **kwargs)
+
+        with patch.object(type(self.env.cr), 'execute', _spy_execute):
+            pick.write({'scheduled_date': dt_start_b})
+
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        )
+        lock_calls = [
+            (q, p) for q, p in calls
+            if 'FOR UPDATE' in q and 'guapante_preparation_day' in q
+        ]
+        self.assertTrue(
+            lock_calls, 'no se ejecutó ningún SELECT ... FOR UPDATE',
+        )
+        query, params = lock_calls[0]
+        self.assertIn(
+            'ORDER BY id', query,
+            'sin ORDER BY, dos reubicaciones cruzadas podrían '
+            'bloquear en orden distinto y causar un deadlock real',
+        )
+        ids_param = set(params[0]) if params else set()
+        self.assertEqual(ids_param, {session_a.id, session_b.id})
+
+    def test_relocation_recompacts_origin_flexible_boxes(self):
+        """e3, ajuste 1 de Tech Lead (2026-10-30): la reubicación
+        renumera TAMBIÉN el origen — las flexibles que quedan se
+        recompactan al número que deja libre la orden que se fue; la
+        fija de la sesión origen no se toca; el destino recibe su
+        propio número correcto."""
+        order_1, pick_1 = self._create_confirmed_order(self.day_a)
+        order_2, _pick_2 = self._create_confirmed_order(self.day_a)
+        order_3, _pick_3 = self._create_confirmed_order(self.day_a)
+        session_a = self._load_session(self.day_a)
+
+        self.assertEqual(order_1.daily_sequence, 1)
+        self.assertEqual(order_2.daily_sequence, 2)
+        self.assertEqual(order_3.daily_sequence, 3)
+
+        line_2 = self._line_for(order_2)
+        line_2.sudo().write({'is_done': True})  # Caja #2 ya pesada — FIJA.
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        pick_1.write({'scheduled_date': dt_start_b})  # order_1 se va.
+
+        session_a.invalidate_recordset()
+        order_1.invalidate_recordset()
+        order_2.invalidate_recordset()
+        order_3.invalidate_recordset()
+
+        self.assertEqual(
+            order_2.daily_sequence, 2, 'la fija del origen no se toca',
+        )
+        self.assertEqual(
+            order_3.daily_sequence, 1,
+            'la flexible que queda en el origen se recompacta al '
+            'número que deja libre la que se fue',
+        )
+        self.assertEqual(
+            order_1.daily_sequence, 1,
+            'en el destino, order_1 es la única orden — le toca #1',
+        )
 
     # ── DEF-01: pedido de varias líneas/productos no debe reventar ──
 

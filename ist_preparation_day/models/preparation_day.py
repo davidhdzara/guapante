@@ -775,6 +775,13 @@ class PreparationDay(models.Model):
                 OldSession = Lines.wizard_id
                 Order = Lines.sale_order_id
 
+                # Corrección de Tech Lead (2026-10-30): origen y
+                # destino son SIEMPRE sesiones distintas acá (el
+                # método ya retornó arriba si old_date == new_date) —
+                # se bloquean las DOS, en una sola consulta ordenada
+                # por id, antes de tocar nada (ver _guapante_lock_sessions).
+                self._guapante_lock_sessions(OldSession | NewSession)
+
                 # Condición A (Tech Lead): _assign_daily_sequences salta
                 # las órdenes que ya tienen número — hay que resetear
                 # ANTES de pedirle uno nuevo para la fecha nueva, o se
@@ -807,6 +814,15 @@ class PreparationDay(models.Model):
                 OldSession.sudo().message_post(body=note)
                 if NewSession.id != OldSession.id:
                     NewSession.sudo().message_post(body=note)
+
+                # e3 (Tech Lead, ajuste 1): la reubicación renumera en
+                # AMBAS sesiones — el destino, porque ganó una
+                # flexible, y el origen, porque perdió una y sus
+                # flexibles restantes se recompactan a los números
+                # libres que deja.
+                OldSession._guapante_renumber_session()
+                if NewSession.id != OldSession.id:
+                    NewSession._guapante_renumber_session()
 
                 self.env['bus.bus']._sendone(
                     f'guapante_preparation_day-{OldSession.id}', 'reload', {},
@@ -905,6 +921,165 @@ class PreparationDay(models.Model):
                 'stock_ok': Summary.available_qty >= max(new_est, 0.0),
             })
 
+    def _guapante_lock_sessions(self, sessions) -> None:
+        """Toma el lock (FOR UPDATE) de una o varias sesiones antes de
+        leer/renumerar — corrección de Tech Lead (2026-10-30): antes
+        había dos candados independientes (uno en
+        _guapante_add_confirmed_order, ninguno real en
+        _guapante_relocate_picking, aunque su docstring decía lo
+        contrario). Único punto de entrada para ambos, SIEMPRE en el
+        mismo orden (ORDER BY id) — si se bloqueara origen y destino
+        en órdenes distintos entre dos reubicaciones cruzadas (A→B en
+        una transacción, B→A en otra), Postgres podría dar un
+        deadlock real en vez de la serialización limpia que
+        _PG_CONCURRENCY_ERRORS espera poder relanzar.
+
+        flush_recordset() antes del SQL crudo (mismo criterio que
+        PreparationDayProductClaim.action_assign): una sesión recién
+        creada por _ensure_session_for_date podría no estar aún en la
+        tabla real. invalidate_recordset() después — ver la nota de
+        REPEATABLE READ en _guapante_add_confirmed_order sobre qué
+        garantiza esto realmente (serialización + reintento de Odoo,
+        no una lectura fresca dentro de la misma transacción).
+        """
+        ids = sessions.ids
+        if not ids:
+            return
+        sessions.flush_recordset()
+        self.env.cr.execute(
+            'SELECT id FROM guapante_preparation_day '
+            'WHERE id IN %s ORDER BY id FOR UPDATE',
+            (tuple(ids),),
+        )
+        sessions.invalidate_recordset()
+
+    def _guapante_renumber_session(self) -> None:
+        """Renumera las cajas FLEXIBLES de self — plan de carga
+        automática, paso e3 (2026-10-29).
+
+        FIJAS = órdenes con alguna línea is_done=True en esta sesión:
+        conservan su daily_sequence para siempre, nunca se reasignan.
+        Una orden entrante nunca puede llegar ya pesada
+        (_guapante_check_no_weighed_lines lo garantiza antes de
+        reubicar), así que toda FIJA es necesariamente una que ya
+        estaba en la sesión.
+
+        CANCELADAS (Tech Lead, 2026-10-30) también cuentan como
+        ocupadas para siempre, igual que las FIJAS — el diseño del
+        sistema (ver _guapante_max_daily_sequence_on_date) es que un
+        número de caja NUNCA se reutiliza, ni el de una orden
+        cancelada; sin esto, cancelar un pedido liberaría su número
+        para que otro lo tomara, dejando dos caja. Se buscan aparte
+        porque una orden cancelada normalmente ya NO tiene líneas en
+        self.line_ids (se limpian en el próximo action_load) — no
+        aparecen en Orders de abajo.
+
+        FLEXIBLES = el resto: se reparten los números libres
+        (1..N menos los ocupados, con N = fijas + canceladas +
+        flexibles) en orden de sale_id ascendente — mismo criterio
+        que _assign_daily_sequences. Si un número ocupado alto deja
+        huecos bajos sin cubrir, el hueco queda — no se comprime.
+
+        self debe llegar con el lock (FOR UPDATE) ya tomado por el
+        llamador (_guapante_add_confirmed_order o
+        _guapante_relocate_picking) — este método no lo toma de nuevo,
+        corre dentro del mismo savepoint.
+
+        Excepción deliberada al "nunca se reutiliza": el server action
+        action_reset_daily_sequence (stock_picking.py) pone
+        daily_sequence=0 a propósito — un pedido reseteado así deja de
+        contar como ocupado acá (es una herramienta administrativa de
+        reinicio total del día, no un camino normal).
+        """
+        self.ensure_one()
+        Orders = self.line_ids.mapped('sale_order_id')
+        if not Orders:
+            return
+
+        DoneLines = self.line_ids.filtered('is_done')
+        fixed_order_ids = set(DoneLines.mapped('sale_order_id').ids)
+        FixedOrders = Orders.filtered(lambda o: o.id in fixed_order_ids)
+        # Una orden cancelada puede seguir teniendo una línea viva en
+        # self.line_ids hasta el próximo action_load() (la limpieza es
+        # perezosa, no reactiva al cancelar) — se excluye acá para no
+        # contarla dos veces: ya cuenta como ocupada más abajo vía
+        # cancelled_numbers, nunca como flexible.
+        FlexibleOrders = (Orders - FixedOrders).filtered(
+            lambda o: o.state != 'cancel'
+        ).sorted('id')
+        if not FlexibleOrders:
+            return
+
+        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
+        CancelledPickings = self.env['stock.picking'].sudo().search([
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('picking_type_code', '=', 'internal'),
+            ('sale_id', '!=', False),
+            ('sale_id.daily_sequence', '>', 0),
+            ('sale_id.state', '=', 'cancel'),
+        ])
+        cancelled_numbers = {
+            n for n in CancelledPickings.mapped('sale_id.daily_sequence') if n
+        }
+
+        # Unión de conjuntos, no suma de conteos (Tech Lead,
+        # 2026-10-30): una orden cancelada que YA estaba pesada antes
+        # de cancelarse cae en FixedOrders Y en cancelled_numbers a la
+        # vez (mismo número) — sumar len(FixedOrders) + len(cancelled_
+        # numbers) la contaría dos veces e inflaría total, repartiendo
+        # un número de más a alguna flexible. occupied ya deduplica
+        # por valor; total se calcula sobre ESE conjunto, no sobre los
+        # conteos de origen.
+        occupied = set(FixedOrders.mapped('daily_sequence')) | cancelled_numbers
+        total = len(occupied) + len(FlexibleOrders)
+        available = sorted(
+            n for n in range(1, total + 1) if n not in occupied
+        )
+
+        changes = []
+        for order, new_number in zip(FlexibleOrders, available):
+            old_number = order.daily_sequence
+            if old_number != new_number:
+                changes.append((order, old_number, new_number))
+        if not changes:
+            return
+
+        for order, _old_number, new_number in changes:
+            order.sudo().daily_sequence = new_number
+
+        # Nota corta individual en el picking de cada caja renumerada
+        # (Tech Lead, condición 6 del plan) — la consulta quien tiene
+        # la caja física en mano. La nota-resumen de la sesión va
+        # aparte, una sola, con tope de lista.
+        for order, old_number, new_number in changes:
+            Picking = order.picking_ids.filtered(
+                lambda p: (
+                    p.picking_type_code == 'internal'
+                    and p.state not in ('done', 'cancel')
+                )
+            )
+            if Picking:
+                Picking.sudo().message_post(
+                    body=f'Caja #{old_number} pasó a #{new_number}.',
+                )
+
+        max_listed = 10
+        listed = [
+            f'#{old_number}→#{new_number} ({order.name})'
+            for order, old_number, new_number in changes[:max_listed]
+        ]
+        summary_text = ', '.join(listed)
+        extra = len(changes) - len(listed)
+        if extra > 0:
+            summary_text += f'… y {extra} más'
+        self.sudo().message_post(
+            body=(
+                f'Cajas renumeradas por llegada o salida de un pedido: '
+                f'{summary_text}.'
+            ),
+        )
+
     def _guapante_add_confirmed_order(self, date_val, order) -> None:
         """Resuelve (o crea) la sesión de *date_val* y agrega *order* —
         plan de carga automática, paso e2 (2026-10-29).
@@ -943,18 +1118,8 @@ class PreparationDay(models.Model):
                 # petición completa desde cero, donde la segunda ya ve
                 # la sesión 'loaded' con líneas y toma la rama de alta
                 # incremental en vez de duplicar (mismo mecanismo ya
-                # documentado en
-                # PreparationDayProductClaim.action_assign). flush
-                # antes del SQL crudo por la misma razón que ahí: un
-                # create() reciente de _ensure_session_for_date podría
-                # no estar aún en la tabla real.
-                Day.flush_recordset()
-                self.env.cr.execute(
-                    'SELECT id FROM guapante_preparation_day '
-                    'WHERE id = %s FOR UPDATE',
-                    (Day.id,),
-                )
-                Day.invalidate_recordset()
+                # documentado en PreparationDayProductClaim.action_assign).
+                self._guapante_lock_sessions(Day)
 
                 if Day.state == 'done':
                     # Condición de Tech Lead: no silencioso. No se
@@ -1032,6 +1197,10 @@ class PreparationDay(models.Model):
                 for Line in NewLines:
                     Day._guapante_patch_summary(Day, Line, add=True)
                     Day._guapante_after_incremental_add(Line)
+                # e3: la orden entrante recibió un número append-only
+                # arriba — ahora se reparte el lugar FLEXIBLE que le
+                # corresponde de verdad entre todas las no pesadas.
+                Day._guapante_renumber_session()
                 self.env['bus.bus']._sendone(
                     f'guapante_preparation_day-{Day.id}', 'reload', {},
                 )

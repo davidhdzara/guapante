@@ -48,6 +48,16 @@ class TestPreparationDayPickingFaseE1(TestPreparationDay):
         # uom_mode='unit' explícitamente después de crear la línea.
         order_a.order_line.uom_mode = 'unit'
         order_b.order_line.uom_mode = 'unit'
+        # Desde e2 (2026-10-29), confirmar ya puede haber creado una
+        # línea de Preparación para order_a/order_b ANTES de este
+        # override (con el uom_mode por default de ese momento) —
+        # action_load() no recalcula needs_weighing de una línea que
+        # ya existe, solo actualiza cliente/zona (ver
+        # _guapante_add_order_lines). Se borra esa línea vieja para
+        # que la recree fresca, ya con el uom_mode correcto.
+        self.env['guapante.preparation.day.line'].sudo().search([
+            ('sale_order_id', 'in', (order_a | order_b).ids),
+        ]).unlink()
 
         session = self._create_session()
         session.action_load()
@@ -142,7 +152,21 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
     action_confirm) está en ist_preparation_day/tests/test_sale_order_auto_load.py.
     """
 
-    def _confirm_order(self, product=None, qty=5.0, partner=None):
+    def _create_order(self, product=None, qty=5.0, partner=None):
+        """Crea la orden SIN confirmar — separado de _confirm() para
+        poder controlar el id (orden de sale_id) independientemente
+        del orden real de confirmación en el test de renumeración."""
+        product = product or self.product_weight
+        partner = partner or self.child_partner
+        return self.env['sale.order'].create({
+            'partner_id': partner.id,
+            'order_line': [(0, 0, {
+                'product_id': product.id,
+                'product_uom_qty': qty,
+            })],
+        })
+
+    def _confirm(self, order):
         """Fija fields.Datetime.now() a self.delivery_date (00:10 hora
         Bogotá, antes del corte 00:30) en vez de dejar que
         theme_guapante.action_confirm resuelva "hoy" — este staging
@@ -150,15 +174,6 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
         para hoy, que tumbaría estos tests sin tener nada que ver con
         el código (ver docstring de TestSaleOrderAutoLoad en
         ist_preparation_day)."""
-        product = product or self.product_weight
-        partner = partner or self.child_partner
-        order = self.env['sale.order'].create({
-            'partner_id': partner.id,
-            'order_line': [(0, 0, {
-                'product_id': product.id,
-                'product_uom_qty': qty,
-            })],
-        })
         bogota_tz = pytz.timezone('America/Bogota')
         fixed_now = bogota_tz.localize(
             datetime.combine(self.delivery_date, time(0, 10)),
@@ -174,6 +189,11 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
         date_val = _utc_datetime_to_session_date(
             self.env, Picking.scheduled_date,
         )
+        return date_val
+
+    def _confirm_order(self, product=None, qty=5.0, partner=None):
+        order = self._create_order(product=product, qty=qty, partner=partner)
+        date_val = self._confirm(order)
         return order, date_val
 
     def test_incremental_add_creates_claim_without_touching_others_in_progress(self):
@@ -217,4 +237,57 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
             claim_a_snapshot,
             'el alta incremental de otro producto no debe tocar el '
             'claim en curso de product_weight',
+        )
+
+    def test_renumbering_changes_number_but_never_touches_claim_in_progress(self):
+        """e3 + condición 3 del plan (Tech Lead, 2026-10-29/30): una
+        caja con claim EN CURSO pero sin línea pesada es FLEXIBLE —
+        puede cambiar de número mientras el operario trabaja. El
+        algoritmo solo debe tocar daily_sequence, nunca el claim."""
+        # order_a se CREA primero (id más bajo) pero se confirma AL
+        # FINAL — las flexibles se ordenan por sale_id, así que al
+        # llegar desplaza a order_b (creado y confirmado antes, con
+        # id más alto) de su lugar #1.
+        order_a = self._create_order(product=self.product_unit, qty=1.0)
+
+        order_b, date_val = self._confirm_order(
+            product=self.product_weight, qty=5.0,
+        )
+        Session = self.env['guapante.preparation.day'].search(
+            [('date', '=', date_val)], limit=1,
+        )
+        self.assertEqual(order_b.daily_sequence, 1)
+
+        ClaimB = Session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        operator = self.env['hr.employee'].create({
+            'name': 'Operario Fase E3',
+            'is_guapante_prep_operator': True,
+            'l10n_co_ne_payment_method': '10',
+        })
+        ClaimB.sudo().write({
+            'assigned_employee_id': operator.id,
+            'assigned_date': fields.Datetime.now(),
+        })
+        self.assertEqual(ClaimB.status, 'in_progress')
+        claim_b_snapshot = (ClaimB.status, ClaimB.assigned_employee_id.id)
+
+        date_a = self._confirm(order_a)
+        self.assertEqual(date_a, date_val)
+
+        Session.invalidate_recordset()
+        order_b.invalidate_recordset()
+        order_a.invalidate_recordset()
+
+        self.assertEqual(order_a.daily_sequence, 1)
+        self.assertEqual(
+            order_b.daily_sequence, 2,
+            'order_b debía bajar al #2 — el número SÍ cambia',
+        )
+        self.assertEqual(
+            (ClaimB.status, ClaimB.assigned_employee_id.id),
+            claim_b_snapshot,
+            'el claim en curso no debe tocarse aunque el número de '
+            'su caja sí cambie',
         )
