@@ -24,6 +24,9 @@ REQUEST_PATCH_TARGET_CLAIM = (
     'odoo.addons.ist_preparation_day_picking.models'
     '.preparation_day_product_claim.request'
 )
+REQUEST_PATCH_TARGET_PARENT = (
+    'odoo.addons.ist_preparation_day.models.preparation_day.request'
+)
 
 
 @tagged('post_install', '-at_install')
@@ -280,15 +283,60 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
             with self.assertRaises(UserError):
                 line.with_context(guapante_picking_flow=True).action_add_note('Nota de prueba')
 
-    def test_action_add_note_blocks_non_owner(self):
+    def test_action_add_note_allowed_by_non_owner(self):
+        """David, vía Tech Lead 2026-10-29 (punto c.1): dejar una nota no
+        exige ser el dueño del claim — operator_b, identificado pero sin
+        asignarse nada, puede dejarla igual. Antes esto se bloqueaba con
+        UserError (ownership); ahora debe tener éxito."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         self._assign_to_operator_a(claim)
         line = session.line_ids[0]
         mock_b = self._request_as(self.operator_b)
         with patch(REQUEST_PATCH_TARGET_LINE, mock_b):
+            line.with_context(guapante_picking_flow=True).action_add_note('Nota de prueba')
+        session_messages = session.message_ids.mapped('body')
+        self.assertTrue(
+            any('Nota de prueba' in m and 'Operario Fase D B' in m for m in session_messages)
+        )
+
+    def test_action_add_note_rejects_unauthorized_operator(self):
+        """Punto c.1: "autorizado", no solo "identificado" — un empleado
+        que se identificó con su PIN pero ya NO está marcado como
+        operario (is_guapante_prep_operator=False) no puede dejar nota,
+        aunque su sesión de PIN siga técnicamente activa."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        self._assign_to_operator_a(claim)
+        line = session.line_ids[0]
+        unauthorized = self.env['hr.employee'].create({
+            'name': 'Operario Desautorizado',
+            'is_guapante_prep_operator': False,
+            'l10n_co_ne_payment_method': '10',
+        })
+        mock_unauth = self._request_as(unauthorized)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_unauth):
             with self.assertRaises(UserError):
                 line.with_context(guapante_picking_flow=True).action_add_note('Nota de prueba')
+
+    def test_action_add_note_allowed_on_done_line(self):
+        """Punto c.3: una caja ya Terminada (o un producto cuyo claim ya
+        se liberó) igual puede recibir una nota — sin chequeo de
+        ownership ni de is_done."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        self._assign_to_operator_a(claim)
+        line = session.line_ids[0]
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertFalse(claim.assigned_employee_id, 'Última pendiente: el claim se liberó')
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
+            line.with_context(guapante_picking_flow=True).action_add_note('Nota post-cierre')
+        self.assertTrue(
+            any('Nota post-cierre' in m for m in session.message_ids.mapped('body'))
+        )
 
     def test_action_add_note_rejects_empty_text(self):
         session = self._load_session_with_product()
@@ -301,8 +349,12 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
                 line.with_context(guapante_picking_flow=True).action_add_note('   ')
 
     def test_action_add_note_posts_to_picking_when_present(self):
-        """_load_session_with_product() pasa por una orden confirmada de
-        verdad — las líneas quedan con stock_move_id.picking_id real."""
+        """Punto c.2 (David, vía Tech Lead): con picking real, la nota
+        aparece en AMBOS chatters (sesión y picking), con el mismo
+        texto "Caja #N — texto (por operario)" — un solo post en cada
+        uno, sin duplicar dentro del mismo. _load_session_with_product()
+        pasa por una orden confirmada de verdad — las líneas quedan con
+        stock_move_id.picking_id real."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         self._assign_to_operator_a(claim)
@@ -312,8 +364,19 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
         with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
             line.with_context(guapante_picking_flow=True).action_add_note('Caja golpeada en el camino')
         picking_messages = line.stock_move_id.picking_id.message_ids.mapped('body')
-        self.assertTrue(any('Caja golpeada en el camino' in m for m in picking_messages))
-        self.assertTrue(any('Operario Fase D A' in m for m in picking_messages))
+        session_messages = session.message_ids.mapped('body')
+        matching_picking = [
+            m for m in picking_messages
+            if 'Caja golpeada en el camino' in m and 'Operario Fase D A' in m
+        ]
+        matching_session = [
+            m for m in session_messages
+            if 'Caja golpeada en el camino' in m and 'Operario Fase D A' in m
+        ]
+        self.assertEqual(len(matching_picking), 1, 'Un solo post en el picking, sin duplicar')
+        self.assertEqual(len(matching_session), 1, 'Un solo post en la sesión, sin duplicar')
+        self.assertIn(f'Caja #{line.daily_sequence} —', matching_picking[0])
+        self.assertIn(f'Caja #{line.daily_sequence} —', matching_session[0])
 
     def test_action_add_note_escapes_html(self):
         """Tech Lead: texto libre de un operario tratado como HTML
@@ -330,19 +393,25 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
             line.with_context(guapante_picking_flow=True).action_add_note(
                 '<b>hola</b> & chao\nlinea 2'
             )
-        Message = line.stock_move_id.picking_id.message_ids.filtered(
-            lambda m: 'hola' in (m.body or '')
-        )
-        self.assertTrue(Message)
-        body = Message[0].body
-        self.assertNotIn('<b>hola</b>', body)
-        self.assertIn('&lt;b&gt;hola&lt;/b&gt;', body)
-        self.assertIn('&amp; chao', body)
-        self.assertIn('<br', body)
+        for Recordset, label in (
+            (line.stock_move_id.picking_id, 'picking'),
+            (session, 'sesión'),
+        ):
+            Message = Recordset.message_ids.filtered(
+                lambda m: 'hola' in (m.body or '')
+            )
+            self.assertTrue(Message, f'Debe existir el mensaje en el chatter de {label}')
+            body = Message[0].body
+            self.assertNotIn('<b>hola</b>', body, f'En {label}')
+            self.assertIn('&lt;b&gt;hola&lt;/b&gt;', body, f'En {label}')
+            self.assertIn('&amp; chao', body, f'En {label}')
+            self.assertIn('<br', body, f'En {label}')
 
     def test_action_add_note_falls_back_to_session_when_no_picking(self):
         """Caso borde (Tech Lead): una línea sin stock_move_id (p.ej.
-        creada a mano, sin picking asociado) cae a la sesión. El
+        creada a mano, sin picking asociado) — la sesión SIEMPRE recibe
+        la nota (punto c.2, ya no es un "fallback" condicional), y como
+        no hay picking, no hay un segundo lugar donde publicarla. El
         número de caja ahora es related a sale_order_id.daily_sequence
         (R5, 2026-10-29) — por eso se arma una orden real en vez de
         forzar el valor directo en la línea, que ya es readonly."""
@@ -364,3 +433,60 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
             line.with_context(guapante_picking_flow=True).action_add_note('Sin stock suficiente')
         session_messages = session.message_ids.mapped('body')
         self.assertTrue(any('Caja #7' in m and 'Sin stock suficiente' in m for m in session_messages))
+
+    # ── Regresión b): productos nuevos cargados por el camino real ──
+
+    def test_qty_uom_label_and_weight_save_for_new_products(self):
+        """Tech Lead, punto c: producto nuevo en kg y producto nuevo en
+        unidades, cargados por orden confirmada -> action_load() (no
+        _create_line() directo, como el resto de Fase C) — confirma
+        qty_uom_label y que el guardado de peso funciona para ambos.
+        Todo en la transacción del test, nada persiste."""
+        kg_product = self.env['product.product'].create({
+            'name': 'Producto Kg Nuevo Test',
+            'type': 'consu',
+            'uom_id': self.uom_kg.id,
+            'uom_po_id': self.uom_kg.id,
+        })
+        unit_product = self.env['product.product'].create({
+            'name': 'Producto Unidad Nuevo Test',
+            'type': 'consu',
+        })
+        self._create_confirmed_order(product=kg_product, qty=3.0)
+        self._create_confirmed_order(product=unit_product, qty=5.0)
+        session = self._create_session()
+        session.action_load()
+
+        kg_line = session.line_ids.filtered(
+            lambda l: l.product_product_id == kg_product
+        )
+        unit_line = session.line_ids.filtered(
+            lambda l: l.product_product_id == unit_product
+        )
+        self.assertTrue(kg_line)
+        self.assertTrue(unit_line)
+        self.assertEqual(kg_line.qty_uom_label, 'kg')
+        self.assertEqual(unit_line.qty_uom_label, 'und')
+
+        kg_claim = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == kg_line.product_id
+        )
+        unit_claim = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == unit_line.product_id
+        )
+        # Un operario = un claim a la vez (_check_single_claim_per_
+        # operator) — dos operarios distintos, uno por producto.
+        mock_a = self._request_as(self.operator_a)
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            kg_claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_b):
+            unit_claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            kg_line.with_context(guapante_picking_flow=True).write({'actual_kg': 3.0})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_b), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_b):
+            unit_line.with_context(guapante_picking_flow=True).write({'actual_kg': 5.0})
+        self.assertTrue(kg_line.is_done)
+        self.assertTrue(unit_line.is_done)
