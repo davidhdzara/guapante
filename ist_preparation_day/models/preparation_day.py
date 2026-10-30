@@ -502,12 +502,20 @@ class PreparationDay(models.Model):
         default='Nueva Sesión',
     )
     date = fields.Date(
-        string='Fecha de entrega a preparar',
+        # "Fecha programada" (David, observación #5, 2026-10-29): es la
+        # jornada — la misma fecha programada del PICK (Regla de la
+        # jornada) — no "cuándo se cargó la sesión", que es date_start.
+        # El rótulo anterior ("Fecha de entrega a preparar") y el de
+        # date_start ("Fecha programada") estaban cruzados y confundían.
+        string='Fecha programada',
         required=True,
         default=fields.Date.context_today,
     )
     date_start = fields.Datetime(
-        string='Fecha programada',
+        # "Cargada el" (David, observación #5): momento en que la
+        # sesión pasó a En Progreso por primera vez — NO es la fecha
+        # programada (eso es `date`, arriba).
+        string='Cargada el',
         readonly=True,
         copy=False,
         help='Momento en que la sesión pasó a En Progreso por primera vez.',

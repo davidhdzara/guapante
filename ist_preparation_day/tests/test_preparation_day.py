@@ -126,6 +126,15 @@ class TestPreparationDay(TransactionCase):
         self.assertRegex(session.name, r'^PK/PICK/\d+$')
         self.assertEqual(session.state, 'draft')
 
+    def test_date_field_labels_match_their_real_meaning(self):
+        """David, observación #5 (2026-10-29): `date` es la jornada (la
+        fecha programada del PICK) y `date_start` es cuándo se cargó la
+        sesión — estaban rotulados al revés en el formulario. Guarda de
+        regresión barata contra un revert accidental del rótulo."""
+        Fields = self.env['guapante.preparation.day']._fields
+        self.assertEqual(Fields['date'].string, 'Fecha programada')
+        self.assertEqual(Fields['date_start'].string, 'Cargada el')
+
     # ── Tests de action_load() ──
 
     def test_action_load_creates_lines(self):

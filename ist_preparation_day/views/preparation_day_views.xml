@@ -110,7 +110,7 @@
         <field name="arch" type="xml">
             <list string="Sesiones de Preparación">
                 <field name="name"/>
-                <field name="date" string="Fecha"/>
+                <field name="date"/>
                 <field name="so_count" string="Cajas"/>
                 <field name="state"
                        widget="badge"
@@ -166,16 +166,16 @@
         <field name="arch" type="xml">
             <search string="Buscar sesiones">
                 <field name="name" string="Referencia"/>
-                <field name="date" string="Fecha"/>
+                <field name="date"/>
                 <separator/>
                 <filter string="Nueva Sesión" name="filter_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="En Progreso" name="filter_loaded" domain="[('state', '=', 'loaded')]"/>
                 <filter string="Finalizada" name="filter_done" domain="[('state', '=', 'done')]"/>
                 <separator/>
-                <filter name="filter_date" string="Fecha" date="date"/>
+                <filter name="filter_date" string="Fecha programada" date="date"/>
                 <group expand="0" string="Agrupar Por">
                     <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
-                    <filter string="Fecha" name="group_by_date" context="{'group_by': 'date'}"/>
+                    <filter string="Fecha programada" name="group_by_date" context="{'group_by': 'date'}"/>
                 </group>
             </search>
         </field>
