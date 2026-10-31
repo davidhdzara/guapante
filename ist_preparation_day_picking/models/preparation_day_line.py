@@ -133,6 +133,11 @@ class PreparationDayLine(models.Model):
                     f'{line.product_description or "Esta caja"} no está '
                     'asignada a ti — actualiza la pantalla.'
                 )
+            # Plan f1 (Tech Lead, 2026-10-31): pesar/Corregir es actividad
+            # real sobre ESTE producto — refresca last_activity del claim
+            # para que no quede marcado como abandonado mientras el
+            # operario sigue trabajando en él.
+            Claim.sudo().write({'last_activity': fields.Datetime.now()})
 
     def action_undo_line(self) -> bool:
         """Mismo ownership que write() con actual_kg (Fase C, punto 3 de
@@ -203,6 +208,14 @@ class PreparationDayLine(models.Model):
         del mismo. Antes era uno u otro (picking si existía, sesión como
         fallback); ahora la sesión es incondicional y el picking es un
         extra cuando existe.
+
+        Deliberadamente NO refresca last_activity del claim (plan f1,
+        Tech Lead 2026-10-31) — mismo motivo de arriba, "sin tocar el
+        claim para nada". Efecto secundario aceptado: un operario que
+        solo deja notas sin pesar nada por más de PREP_OPERATOR_IDLE_
+        TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS puede ver su
+        producto liberado igual — una nota no cuenta como "sigo
+        trabajando en esto" para efectos de abandono.
         """
         self.ensure_one()
         clean_text = (text or '').strip()

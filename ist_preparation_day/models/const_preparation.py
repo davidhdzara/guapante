@@ -15,6 +15,14 @@ PREP_OPERATOR_LAST_ACTIVITY_KEY = 'guapante_prep_employee_last_activity'
 # pantalla de NIP si nadie confirma una acción real en ese lapso.
 PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300
 
+# Margen extra (Tech Lead, 2026-10-31, plan f1) sobre PREP_OPERATOR_IDLE_TIMEOUT_SECONDS
+# antes de tratar un claim "En progreso" como abandonado (visible para otros
+# operarios en Nivel 1, liberable por el cron). Son dos relojes distintos — el
+# timeout de sesión del operario (por request) y la última actividad del claim
+# (por acción sobre ESE producto) — este margen evita que un claim parpadee
+# oculto/visible justo en el borde por esa diferencia de granularidad.
+CLAIM_STALE_MARGIN_SECONDS = 60
+
 
 def get_active_prep_operator_id(env, session, refresh=True):
     """Devuelve el employee_id identificado en esta sesión de navegador, o False si

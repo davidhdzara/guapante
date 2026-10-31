@@ -92,6 +92,27 @@ class PreparationDayIdentificationController(http.Controller):
     )
     def clear_operator(self, **kwargs):
         """Cierra la identificación del operario en esta estación (gap #2 de la Fase 1:
-        antes solo se podía re-identificar, no había una salida explícita)."""
+        antes solo se podía re-identificar, no había una salida explícita).
+
+        Libera primero (plan f1, Tech Lead 2026-10-31) cualquier claim de
+        Nivel 1 que este operario tuviera En progreso — propia petición,
+        propio commit, nunca desde get_active_prep_operator_id (ese helper
+        corre DENTRO de acciones de escritura que pueden fallar después y
+        hacer rollback; si liberara ahí, un rollback dejaría el claim
+        huérfano e invisible para todos, por la regla de visibilidad).
+
+        'guapante.preparation.day.product.claim' en request.env: Nivel 1
+        vive en ist_preparation_day_picking, que depende de este módulo,
+        no al revés — este controlador no puede asumir que ese modelo
+        existe (aunque en Guapante hoy los dos módulos siempre van
+        instalados juntos).
+        """
+        employee_id = get_active_prep_operator_id(
+            request.env, request.session, refresh=False,
+        )
+        if employee_id and 'guapante.preparation.day.product.claim' in request.env:
+            request.env[
+                'guapante.preparation.day.product.claim'
+            ].sudo()._release_claims_for_employee(employee_id)
         clear_active_prep_operator(request.session)
         return {'success': True}

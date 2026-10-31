@@ -26,6 +26,7 @@
     'data': [
         'security/security.xml',
         'security/ir.model.access.csv',
+        'data/ir_cron_release_claims.xml',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',

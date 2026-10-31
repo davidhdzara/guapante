@@ -1,17 +1,37 @@
 # -*- coding: utf-8 -*-
+import logging
+from datetime import timedelta
+
 from odoo import api, fields, models
 from odoo.exceptions import AccessError, UserError
 from odoo.http import request
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
+    CLAIM_STALE_MARGIN_SECONDS,
+    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     get_active_prep_operator_id,
 )
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _PG_CONCURRENCY_ERRORS,
+)
+
+_logger = logging.getLogger(__name__)
 
 STOP_REASONS = [
     ('sin_stock', 'Sin stock'),
     ('mal_estado', 'Producto en mal estado'),
     ('esperando_proveedor', 'Esperando proveedor'),
     ('otro', 'Otro'),
+]
+
+# Mismos campos que CLAIM_FIELDS en preparation_picking_level1_display.js —
+# duplicado a propósito (un archivo Python, uno JS, no hay forma limpia de
+# compartir la constante entre los dos) — si se agrega un campo a la
+# tarjeta de Nivel 1, hay que agregarlo en AMBOS lados.
+CLAIM_DISPLAY_FIELDS = [
+    'product_tmpl_id', 'product_tmpl_name', 'status', 'assigned_employee_id',
+    'stop_reason', 'stopped_by_employee_id', 'is_mine',
+    'pending_line_count', 'total_line_count',
 ]
 
 # Umbral de historia mínima para confiar en la mediana de kg/unidad de una
@@ -67,6 +87,20 @@ class PreparationDayProductClaim(models.Model):
         'hr.employee', string='Asignado a',
     )
     assigned_date = fields.Datetime(string='Asignado el')
+    last_activity = fields.Datetime(
+        string='Última actividad',
+        help=(
+            'Cuándo se registró la última acción real sobre este producto '
+            '(asignarse, retomar, pesar) mientras está En progreso — base '
+            'del plan f1 (Tech Lead, 2026-10-31) para distinguir un claim '
+            'realmente activo de uno abandonado (operario que se fue sin '
+            'cerrar sesión o cuyo tablet se quedó sin conexión). Un reloj '
+            'distinto del timeout de sesión del operario (ese es por '
+            'request; este es por producto) — por eso necesita su propio '
+            'campo, no basta con assigned_date (se fija una sola vez al '
+            'asignar/retomar, nunca se actualiza después).'
+        ),
+    )
     stop_reason = fields.Selection(STOP_REASONS, string='Motivo de detención')
     stopped_by_employee_id = fields.Many2one(
         'hr.employee', string='Detenido por',
@@ -189,6 +223,62 @@ class PreparationDayProductClaim(models.Model):
             {'claim_id': self.id},
         )
 
+    @api.model
+    def get_claims_for_level1_display(self, wizard_id) -> list:
+        """Reemplaza el orm.searchRead directo de Nivel 1 (plan f1, Tech
+        Lead 2026-10-31, puntos 1-3) — filtro en SERVIDOR, método propio y
+        explícito, NUNCA un _search()/search_read() genérico: _check_
+        single_claim_per_operator y action_assign necesitan ver TODOS los
+        claims sin filtrar para detectar conflictos; filtrar ahí los
+        dejaría ciegos.
+
+        Regla: Administrador ve todo (con el nombre de quien lo tiene,
+        igual que siempre). Pendiente/Detenido/Terminado SIEMPRE visibles
+        para todos — la regla de ocultar solo aplica a En progreso (Tech
+        Lead, corrección 2: Detenido es una pausa JUSTIFICADA por un
+        operario, no abandono; se verifica por `status`, no solo por
+        `assigned_employee_id`, para no depender de que action_stop()
+        siga limpiándolo — defensa en profundidad). Un operario normal
+        no ve en absoluto un claim En progreso de OTRO operario — ni el
+        nombre ni la tarjeta — salvo que ya quedó abandonado (instante
+        efectivo, ver _effective_last_activity, más viejo que
+        PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS):
+        ese caso se trata como visible para todos, aunque la liberación
+        real en base de datos la haga el cron por separado (ventana corta
+        de hasta 5 minutos entre que se ve "libre" y se puede tomar de
+        verdad — aceptado por Tech Lead). Su propio claim en progreso
+        siempre se ve.
+
+        El refresco por bus NO cambia (picking_claim_updated /
+        onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
+        cambia QUÉ devuelve este método, nunca el mecanismo.
+        """
+        self._check_picking_access()
+        Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
+        is_admin = self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        my_employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
+            if request else False
+        )
+        stale_cutoff = fields.Datetime.now() - timedelta(
+            seconds=(
+                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
+            ),
+        )
+        Visible = self.env['guapante.preparation.day.product.claim']
+        for claim in Claims:
+            effective = claim._effective_last_activity()
+            if (
+                is_admin
+                or claim.status != 'in_progress'
+                or claim.assigned_employee_id.id == my_employee_id
+                or (effective and effective < stale_cutoff)
+            ):
+                Visible |= claim
+        return Visible.read(CLAIM_DISPLAY_FIELDS)
+
     # ── Acciones ──
 
     def action_assign(self) -> dict:
@@ -251,9 +341,11 @@ class PreparationDayProductClaim(models.Model):
                 f'{self.product_tmpl_id.name} ya está terminado — '
                 'actualiza la pantalla.'
             )
+        now = fields.Datetime.now()
         self.write({
             'assigned_employee_id': employee_id,
-            'assigned_date': fields.Datetime.now(),
+            'assigned_date': now,
+            'last_activity': now,
         })
         self._notify_bus()
         return self.action_open_lines_kanban()
@@ -290,9 +382,11 @@ class PreparationDayProductClaim(models.Model):
                 'actualiza la pantalla.'
             )
         Employee = self.env['hr.employee'].sudo().browse(employee_id)
+        now = fields.Datetime.now()
         self.write({
             'assigned_employee_id': employee_id,
-            'assigned_date': fields.Datetime.now(),
+            'assigned_date': now,
+            'last_activity': now,
             'stop_reason': False,
             'stopped_by_employee_id': False,
         })
@@ -325,9 +419,51 @@ class PreparationDayProductClaim(models.Model):
                 f'No puedes liberar {self.product_tmpl_id.name} — '
                 f'lo tiene {owner_name}.'
             )
-        self.write({'assigned_employee_id': False, 'assigned_date': False})
-        self._notify_bus()
+        self._release_claim()
         return True
+
+    def _release_claim(self) -> None:
+        """Núcleo de la liberación — SIN `request`, sin validar ownership
+        (eso ya lo hizo el llamador, que sabe POR QUÉ libera): comparte el
+        mismo invariante (estado limpio + aviso de bus) entre action_release()
+        (el propio operario), _release_claims_for_employee() ("Cerrar") y el
+        cron de abandono (plan f1, Tech Lead 2026-10-31) — un solo lugar
+        que mantener si algún día esto necesita tocar algo más (ej. Fase 2
+        de tiempos)."""
+        self.ensure_one()
+        self.write({
+            'assigned_employee_id': False,
+            'assigned_date': False,
+            'last_activity': False,
+        })
+        self._notify_bus()
+
+    def _effective_last_activity(self):
+        """Corrección de Tech Lead (2026-10-31, defecto bloqueante del
+        primer diff): un claim En progreso HEREDADO de antes de que
+        existiera `last_activity` (los que ya hay hoy en producción y
+        staging) tiene ese campo en False — tratarlo como "sin
+        actividad nunca" lo dejaba OCULTO para todos los no-admin Y
+        fuera del dominio del cron (`last_activity != False`): huérfano
+        invisible para siempre. COALESCE con assigned_date y, si
+        tampoco hay, write_date — ambos son una fecha real de cuándo se
+        tocó el claim por última vez, aunque menos precisa que
+        last_activity."""
+        self.ensure_one()
+        return self.last_activity or self.assigned_date or self.write_date
+
+    @api.model
+    def _release_claims_for_employee(self, employee_id) -> None:
+        """Libera TODOS los claims En progreso de este operario — llamada
+        desde /clear_operator ("Cerrar" explícito, plan f1): propia
+        petición, propio commit, nunca desde get_active_prep_operator_id
+        (ver docstring del controlador)."""
+        Claims = self.sudo().search([
+            ('assigned_employee_id', '=', employee_id),
+            ('status', '=', 'in_progress'),
+        ])
+        for claim in Claims:
+            claim._release_claim()
 
     def action_stop(self, reason: str) -> bool:
         self.ensure_one()
@@ -534,3 +670,82 @@ class PreparationDayProductClaim(models.Model):
                 {'wizard_id': wizard.id, 'product_tmpl_id': tmpl.id}
                 for tmpl in Missing
             ])
+
+    @api.model
+    def _cron_release_abandoned_claims(self) -> None:
+        """Plan f1 (Tech Lead, 2026-10-31) — libera de verdad en base de
+        datos los claims En progreso que get_claims_for_level1_display ya
+        trata como abandonados (mismo umbral: PREP_OPERATOR_IDLE_TIMEOUT_
+        SECONDS + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
+        efectivo — ver _effective_last_activity). Corre cada 5 minutos,
+        no es el mecanismo de visibilidad (eso ya lo cubre el método de
+        lectura) — es la red de seguridad que de verdad libera el
+        producto para que otro pueda tomarlo con Asignarme, no solo
+        verlo.
+
+        Dominio por `status`, no por `assigned_employee_id` a secas
+        (Tech Lead, corrección 2): un Detenido es una pausa JUSTIFICADA,
+        nunca abandono — y aunque hoy action_stop() ya limpia
+        assigned_employee_id (así que nunca calificaría de todas formas),
+        filtrar por status es la verificación explícita, no un supuesto
+        sobre cómo se comporta otro método.
+
+        Mismo patrón que _cron_repair_missing_orders (e4, preparation_day.py):
+        savepoint por claim, un error de concurrencia se atrapa LOCAL
+        (nunca se relanza — no debe tumbar el trabajo ya hecho en otros
+        claims de esta misma corrida)."""
+        stale_cutoff = fields.Datetime.now() - timedelta(
+            seconds=(
+                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
+            ),
+        )
+        Claims = self.sudo().search([('status', '=', 'in_progress')])
+        Claims = Claims.filtered(
+            lambda c: (
+                c._effective_last_activity()
+                and c._effective_last_activity() < stale_cutoff
+            )
+        )
+        for claim in Claims:
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        'SELECT assigned_employee_id, stop_reason, '
+                        'last_activity, assigned_date, write_date FROM '
+                        'guapante_preparation_day_product_claim WHERE id = %s '
+                        'FOR UPDATE',
+                        (claim.id,),
+                    )
+                    row = self.env.cr.fetchone()
+                    if not row or not row[0] or row[1]:
+                        # Ya se liberó, o pasó a Detenido, entre el search
+                        # y el lock — en ambos casos, nada que hacer.
+                        continue
+                    locked_effective = row[2] or row[3] or row[4]
+                    if locked_effective and locked_effective >= stale_cutoff:
+                        continue  # hubo actividad real entre el search y el lock.
+                    claim.invalidate_recordset([
+                        'assigned_employee_id', 'stop_reason',
+                        'last_activity', 'assigned_date',
+                    ])
+                    employee_name = claim.assigned_employee_id.name
+                    product_name = claim.product_tmpl_id.name
+                    claim._release_claim()
+                    claim.wizard_id.sudo().message_post(
+                        body=(
+                            f'Producto {product_name} liberado '
+                            f'automáticamente por inactividad de '
+                            f'{employee_name}.'
+                        ),
+                    )
+            except _PG_CONCURRENCY_ERRORS as exc:
+                _logger.info(
+                    'Guapante: liberación automática de claims — claim '
+                    '%s ocupado (%s), se reintenta en la próxima corrida.',
+                    claim.id, exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: liberación automática de claims — no se '
+                    'pudo liberar el claim %s.', claim.id,
+                )

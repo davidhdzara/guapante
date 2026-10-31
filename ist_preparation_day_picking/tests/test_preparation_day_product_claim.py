@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 import uuid
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 
+from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_controller import (
+    PreparationDayIdentificationController,
+)
 from odoo.addons.ist_preparation_day.models.const_preparation import (
+    CLAIM_STALE_MARGIN_SECONDS,
+    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     set_active_prep_operator,
 )
 from odoo.addons.ist_preparation_day.tests.test_preparation_day import (
@@ -16,6 +23,13 @@ REQUEST_PATCH_TARGET = (
     'odoo.addons.ist_preparation_day_picking.models'
     '.preparation_day_product_claim.request'
 )
+IDENTIFICATION_REQUEST_PATCH_TARGET = (
+    'odoo.addons.ist_preparation_day.controllers'
+    '.preparation_day_identification_controller.request'
+)
+# Más allá del umbral de abandono (plan f1) — margen amplio para que el
+# test no dependa de cuán rápido corre.
+STALE_SECONDS = PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS + 30
 
 
 @tagged('post_install', '-at_install')
@@ -415,3 +429,274 @@ class TestPreparationDayProductClaim(TestPreparationDay):
                 'is_done': True, 'actual_kg': 1.0,
             })
         mock_sendone.assert_called_once()
+
+    # ── Visibilidad entre operarios y abandono (plan f1, 2026-10-31) ──
+
+    def _run_cron(self):
+        self.Claim._cron_release_abandoned_claims()
+
+    def test_f1_active_claim_hidden_from_other_operator(self):
+        """Un claim En progreso con actividad reciente NO debe aparecer
+        en absoluto para otro operario — ni la tarjeta ni el nombre."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertNotIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_stale_claim_visible_to_other_operator_before_cron(self):
+        """Un claim En progreso sin actividad real desde hace más del
+        umbral (operario que se fue sin cerrar sesión o perdió
+        conexión) se trata como visible para TODOS, aunque la
+        liberación real en base de datos todavía no haya corrido."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        claim.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_admin_sees_all_claims_with_names(self):
+        """Administrador ve TODO, activo o abandonado, con el nombre de
+        quien lo tiene — nunca aplica la regla de ocultamiento."""
+        self.env.user.sudo().write({
+            'groups_id': [(4, self.env.ref(
+                'ist_preparation_day_picking.group_preparation_admin'
+            ).id)],
+        })
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Claim Admin B', 'type': 'consu',
+        })
+        self._create_confirmed_order(qty=1.0, product=product_b)
+        session = self._load_session_with_product()
+        claim_active, claim_stale = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim_active.action_assign()
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            claim_stale.action_assign()
+        claim_stale.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        visible_ids = {c['id'] for c in visible}
+        self.assertIn(claim_active.id, visible_ids)
+        self.assertIn(claim_stale.id, visible_ids)
+        by_id = {c['id']: c for c in visible}
+        self.assertEqual(
+            by_id[claim_active.id]['assigned_employee_id'][0],
+            self.operator_a.id,
+        )
+        self.assertEqual(
+            by_id[claim_stale.id]['assigned_employee_id'][0],
+            self.operator_b.id,
+        )
+
+    def test_f1_cerrar_releases_claim_and_reappears_for_other_operator(self):
+        """"Cerrar" (controlador /clear_operator) libera los claims En
+        progreso del operario — propia petición, propio commit — y el
+        producto reaparece de inmediato para otro operario, sin esperar
+        al cron."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
+
+        close_request = MagicMock()
+        close_request.env = self.env
+        close_request.session = dict(mock_a.session)
+        with patch(IDENTIFICATION_REQUEST_PATCH_TARGET, close_request):
+            PreparationDayIdentificationController().clear_operator()
+
+        claim.invalidate_recordset()
+        self.assertFalse(claim.assigned_employee_id)
+        self.assertEqual(claim.status, 'pending')
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_identification_failure_does_not_orphan_claim(self):
+        """Corrección de Tech Lead sobre el primer diseño (punto A): una
+        acción de escritura que falla por identificación (operario
+        desactivado a mitad de turno) NO debe dejar el claim huérfano —
+        la liberación nunca vive dentro de get_active_prep_operator_id,
+        que corre DENTRO de la transacción de esa misma acción y puede
+        verse revertida por el rollback."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+
+        line = session.line_ids[:1]
+        self.operator_a.active = False
+        LINE_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day_picking.models'
+            '.preparation_day_line.request'
+        )
+        PARENT_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day.models.preparation_day.request'
+        )
+        with patch(LINE_REQUEST_PATCH_TARGET, mock_a), \
+                patch(PARENT_REQUEST_PATCH_TARGET, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).write(
+                    {'actual_kg': 1.5},
+                )
+
+        claim.invalidate_recordset()
+        self.assertEqual(
+            claim.assigned_employee_id.id, self.operator_a.id,
+            'una escritura fallida por identificación no debe liberar '
+            'el claim — seguiría asignado, solo que a un operario ya '
+            'inválido, nunca invisible/huérfano',
+        )
+
+    def test_f1_cron_releases_only_stale_claims_not_active_ones(self):
+        """El cron libera de verdad (en base de datos) el claim
+        abandonado y deja una nota en el chatter de la sesión — pero no
+        toca el que sigue con actividad reciente."""
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Claim Cron B', 'type': 'consu',
+        })
+        self._create_confirmed_order(qty=1.0, product=product_b)
+        session = self._load_session_with_product()
+        claim_active, claim_stale = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim_active.action_assign()
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            claim_stale.action_assign()
+        claim_stale.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+        messages_before = len(session.message_ids)
+
+        self._run_cron()
+
+        claim_active.invalidate_recordset()
+        claim_stale.invalidate_recordset()
+        self.assertEqual(
+            claim_active.assigned_employee_id, self.operator_a,
+            'un claim con actividad reciente no debe liberarse',
+        )
+        self.assertFalse(
+            claim_stale.assigned_employee_id,
+            'un claim abandonado sí debe liberarse de verdad',
+        )
+        self.assertEqual(claim_stale.status, 'pending')
+        self.assertGreater(len(session.message_ids), messages_before)
+        self.assertTrue(
+            any(
+                'liberado automáticamente' in (m or '')
+                for m in session.message_ids.mapped('body')
+            )
+        )
+
+    def test_f1_inherited_claim_without_last_activity_visible_and_released(self):
+        """Corrección de Tech Lead (2026-10-31, defecto bloqueante): un
+        claim En progreso HEREDADO de antes de que existiera
+        last_activity (last_activity=False, assigned_date vieja — los
+        que ya hay hoy en producción/staging) NO debe quedar huérfano
+        invisible para siempre. _effective_last_activity hace COALESCE
+        con assigned_date — debe verse como abandonado para otros
+        operarios y el cron debe liberarlo de verdad."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        # Simula el estado heredado: sin last_activity, solo la fecha
+        # vieja de asignación que ya existía antes de este plan.
+        claim.sudo().write({
+            'last_activity': False,
+            'assigned_date': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertIn(
+            claim.id, [c['id'] for c in visible],
+            'un claim heredado sin last_activity debe verse como '
+            'abandonado (COALESCE con assigned_date), no quedar oculto',
+        )
+
+        self._run_cron()
+        claim.invalidate_recordset()
+        self.assertFalse(
+            claim.assigned_employee_id,
+            'el cron debe liberar un claim heredado sin last_activity '
+            'igual que uno con last_activity viejo',
+        )
+
+    def test_f1_stopped_claim_never_hidden_or_released_by_cron(self):
+        """Corrección de Tech Lead (2026-10-31, punto 2): un claim
+        Detenido es una pausa JUSTIFICADA, no abandono — nunca se
+        oculta (se ve para todos, con su motivo) y el cron NUNCA lo
+        libera por inactividad, ni siquiera si su write_date queda
+        artificialmente viejo (defensa en profundidad: el dominio del
+        cron filtra por status, no solo por assigned_employee_id)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        self.assertEqual(claim.status, 'stopped')
+        self.assertFalse(claim.assigned_employee_id)
+
+        # Envejece write_date a mano (muy anterior al umbral) — ni
+        # last_activity ni assigned_date alcanzan a esto porque
+        # action_stop() ya los limpió; solo queda write_date.
+        very_old = fields.Datetime.now() - timedelta(seconds=STALE_SECONDS * 10)
+        self.env.cr.execute(
+            'UPDATE guapante_preparation_day_product_claim '
+            'SET write_date = %s WHERE id = %s',
+            (very_old, claim.id),
+        )
+        claim.invalidate_recordset()
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertIn(
+            claim.id, [c['id'] for c in visible],
+            'un claim Detenido siempre es visible, para cualquiera',
+        )
+
+        self._run_cron()
+        claim.invalidate_recordset()
+        self.assertEqual(
+            claim.status, 'stopped',
+            'el cron nunca debe tocar un claim Detenido, sin importar '
+            'cuán viejo sea su write_date',
+        )
+        self.assertEqual(claim.stop_reason, 'sin_stock')

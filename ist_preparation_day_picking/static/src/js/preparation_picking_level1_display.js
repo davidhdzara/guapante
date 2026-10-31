@@ -33,11 +33,6 @@ const STOP_REASON_LABELS = {
     esperando_proveedor: "Esperando proveedor",
     otro: "Otro",
 };
-const CLAIM_FIELDS = [
-    "product_tmpl_id", "product_tmpl_name", "status", "assigned_employee_id",
-    "stop_reason", "stopped_by_employee_id", "is_mine",
-    "pending_line_count", "total_line_count",
-];
 
 // Nivel 1 de Picking como client action propio (especificación visual,
 // David 2026-10-23 — decisión final tras dos rondas con un kanban
@@ -145,10 +140,14 @@ export class PickingClaimsDisplay extends Component {
             "guapante.preparation.day.line", [["wizard_id", "=", this.state.wizardId]],
         );
         this.state.hasLines = lineCount > 0;
-        const claims = await this.orm.searchRead(
+        // Plan f1 (Tech Lead, 2026-10-31): get_claims_for_level1_display
+        // en vez de orm.searchRead directo — el filtro de "no ves lo que
+        // tomó otro operario" vive en el servidor (ver su docstring en
+        // preparation_day_product_claim.py), nunca acá.
+        const claims = await this.orm.call(
             "guapante.preparation.day.product.claim",
-            [["wizard_id", "=", this.state.wizardId]],
-            CLAIM_FIELDS,
+            "get_claims_for_level1_display",
+            [this.state.wizardId],
         );
         for (const claim of claims) {
             claim.assigned_employee_name = claim.assigned_employee_id
