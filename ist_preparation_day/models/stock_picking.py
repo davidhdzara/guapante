@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import fields, models
+from odoo.exceptions import UserError
 
 from .preparation_day import _utc_datetime_to_session_date
 
@@ -36,6 +37,15 @@ class StockPicking(models.Model):
         solo aplican si el día calendario (hora Bogotá) del valor
         nuevo es distinto del que tenía antes.
 
+        Corrección (b), Tech Lead 2026-10-31: además bloquea si la
+        sesión del día NUEVO (destino) ya está 'done' — NUNCA por la
+        del día viejo (origen). Si el origen está done y la orden ya
+        tiene algo pesado, el bloqueo de líneas pesadas de abajo ya lo
+        cubre; si el origen está done pero la orden entró después del
+        cierre (sin líneas, solo una nota de e2), moverla a un día
+        abierto es justo lo que necesita operación — bloquearla la
+        dejaría atrapada en una jornada cerrada.
+
         El bloqueo corre ANTES de super().write() (así la escritura
         de bodega ni se intenta si hay que pararla); la reubicación
         corre DESPUÉS, y nunca puede tumbar la escritura ya guardada
@@ -54,6 +64,7 @@ class StockPicking(models.Model):
                     and p.state not in ('done', 'cancel')
                 )
             )
+            new_dates_by_picking = {}
             for picking in PreWriteRelevant:
                 if not new_dt:
                     continue
@@ -63,10 +74,27 @@ class StockPicking(models.Model):
                 new_date = _utc_datetime_to_session_date(self.env, new_dt)
                 if old_date != new_date:
                     DayChanging |= picking
+                    new_dates_by_picking[picking.id] = new_date
+
             if DayChanging:
-                self.env['guapante.preparation.day']._guapante_check_no_weighed_lines(
-                    DayChanging,
-                )
+                Session = self.env['guapante.preparation.day']
+                blocked_descriptions = []
+                for picking in DayChanging:
+                    dest_date = new_dates_by_picking[picking.id]
+                    DestSession = Session.sudo().search([
+                        ('date', '=', dest_date),
+                    ], limit=1)
+                    if DestSession.state == 'done':
+                        blocked_descriptions.append(
+                            f'{picking.sale_id.name} ({dest_date})',
+                        )
+                if blocked_descriptions:
+                    listed = ', '.join(sorted(set(blocked_descriptions)))
+                    raise UserError(
+                        f'No se puede reprogramar {listed}: la jornada '
+                        'de ese día ya está cerrada (Terminada).'
+                    )
+                Session._guapante_check_no_weighed_lines(DayChanging)
             old_dates = {p.id: p.scheduled_date for p in DayChanging}
 
         res = super().write(vals)
