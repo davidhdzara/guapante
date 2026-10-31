@@ -176,6 +176,11 @@ export class PickingLinesDisplay extends Component {
                 const attr = attrById[id];
                 const fullText = attr?.display_name || "";
                 return {
+                    // id del valor como key (Tech Lead, 2026-10-31): dos
+                    // chips con el mismo texto (p.ej. un valor "Grande"
+                    // de dos atributos distintos) colisionarían con el
+                    // texto como t-key.
+                    id,
                     name: (
                         fullText && fullText.length <= MAX_CHIP_TEXT_LENGTH
                     ) ? fullText : (attr?.name || ""),

@@ -55,7 +55,7 @@
                             </div>
                             <ul class="list-group list-group-flush">
                                 <li t-if="line.attribute_chips.length" class="list-group-item d-flex gap-1 flex-wrap">
-                                    <t t-foreach="line.attribute_chips" t-as="chip" t-key="chip.name">
+                                    <t t-foreach="line.attribute_chips" t-as="chip" t-key="chip.id">
                                         <span t-attf-class="o_tag position-relative d-inline-flex align-items-center user-select-none mw-100 o_badge badge rounded-pill lh-1 o_tag_color_#{chip.color}">
                                             <div class="o_tag_badge_text text-truncate" t-esc="chip.name"/>
                                         </span>
@@ -104,7 +104,7 @@
                                 </div>
                                 <ul class="list-group list-group-flush">
                                     <li t-if="line.attribute_chips.length" class="list-group-item d-flex gap-1 flex-wrap">
-                                        <t t-foreach="line.attribute_chips" t-as="chip" t-key="chip.name">
+                                        <t t-foreach="line.attribute_chips" t-as="chip" t-key="chip.id">
                                             <span t-attf-class="o_tag position-relative d-inline-flex align-items-center user-select-none mw-100 o_badge badge rounded-pill lh-1 o_tag_color_#{chip.color}">
                                                 <div class="o_tag_badge_text text-truncate" t-esc="chip.name"/>
                                             </span>
