@@ -1359,7 +1359,7 @@ class PreparationDay(models.Model):
                         f'Orden {order.name} confirmada después del '
                         'cierre de la jornada; no se agregó '
                         'automáticamente a esta sesión — usa '
-                        'Actualizar/Ver pedidos si hace falta '
+                        'Actualizar pedidos si hace falta '
                         'incluirla.'
                     )
                     order.sudo().message_post(body=note)
@@ -1456,7 +1456,7 @@ class PreparationDay(models.Model):
                         body=(
                             'La orden no se pudo agregar '
                             'automáticamente a la Preparación del '
-                            'Día — usa Actualizar/Ver pedidos para '
+                            'Día — usa Actualizar pedidos para '
                             'incluirla manualmente.'
                         ),
                     )

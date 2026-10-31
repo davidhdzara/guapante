@@ -9,7 +9,7 @@
                     <button
                         name="action_load"
                         type="object"
-                        string="Ver pedidos"
+                        string="Actualizar pedidos"
                         class="btn-primary"
                         invisible="state != 'draft'"
                     />

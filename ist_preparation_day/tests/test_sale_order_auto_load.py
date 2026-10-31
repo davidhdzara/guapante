@@ -32,7 +32,7 @@ ENSURE_SESSION_TARGET = (
 class TestSaleOrderAutoLoad(TestPreparationDay):
     """Plan de carga automática, paso e2 (2026-10-29): al confirmar una
     orden, su línea entra sola a la sesión de Preparación del Día de la
-    fecha de su PICK — sin pasar por el botón "Ver pedidos".
+    fecha de su PICK — sin pasar por el botón "Actualizar pedidos".
 
     A propósito NO usa _create_confirmed_order() (que fuerza
     picking.scheduled_date a self.delivery_date DESPUÉS de confirmar,

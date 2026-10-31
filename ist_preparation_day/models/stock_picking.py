@@ -147,7 +147,7 @@ class StockPicking(models.Model):
                 'title': 'Reset de Cajas',
                 'message': (
                     f'{count} órdenes reseteadas. '
-                    'Ejecuta "Ver pedidos" en Preparación '
+                    'Ejecuta "Actualizar pedidos" en Preparación '
                     'del Día para reasignar desde #1.'
                 ),
                 'type': 'success',
