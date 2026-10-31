@@ -198,9 +198,12 @@ class PreparationDayProductClaim(models.Model):
             )
         return employee_id
 
-    def _check_single_claim_per_operator(self, employee_id, exclude_self=True) -> None:
-        """Un operario no puede tener dos productos "En progreso" al mismo
-        tiempo (decisión de David, vía Tech Lead, Fase B)."""
+    def _find_other_in_progress_claim(self, employee_id, exclude_self=True):
+        """Mismo claim En progreso de este operario, si existe —
+        extraído de _check_single_claim_per_operator (plan f2, Tech
+        Lead 2026-10-31) para que action_assign()/action_resume()
+        puedan recuperar el REGISTRO y armar el wizard de conflicto,
+        no solo recibir un mensaje de texto."""
         domain = [
             ('wizard_id', '=', self.wizard_id.id),
             ('assigned_employee_id', '=', employee_id),
@@ -208,12 +211,43 @@ class PreparationDayProductClaim(models.Model):
         ]
         if exclude_self:
             domain.append(('id', '!=', self.id))
-        Other = self.search(domain, limit=1)
+        return self.search(domain, limit=1)
+
+    def _check_single_claim_per_operator(self, employee_id, exclude_self=True) -> None:
+        """Un operario no puede tener dos productos "En progreso" al mismo
+        tiempo (decisión de David, vía Tech Lead, Fase B).
+
+        Sigue levantando UserError tal cual (Tech Lead, plan f2,
+        condición 1) — NO se toca este comportamiento. action_assign()/
+        action_resume() atrapan ESTE error puntual para ofrecer el
+        wizard de conflicto en vez de dejarlo como mensaje seco;
+        cualquier otro llamador (o un test que pruebe este helper en
+        aislamiento) sigue viendo exactamente el comportamiento de
+        siempre."""
+        Other = self._find_other_in_progress_claim(employee_id, exclude_self)
         if Other:
             raise UserError(
                 f'Ya tienes asignado {Other.product_tmpl_id.name} — '
                 'termínalo o libéralo primero.'
             )
+
+    def _open_claim_conflict_wizard(self, other_claim) -> dict:
+        self.ensure_one()
+        Wizard = self.env[
+            'guapante.preparation.day.product.claim.conflict.wizard'
+        ].create({
+            'claim_id': self.id,
+            'other_claim_id': other_claim.id,
+        })
+        return {
+            'name': 'Ya tienes un producto en proceso',
+            'type': 'ir.actions.act_window',
+            'res_model': Wizard._name,
+            'res_id': Wizard.id,
+            'view_mode': 'form',
+            'views': [(False, 'form')],
+            'target': 'new',
+        }
 
     def _notify_bus(self) -> None:
         self.ensure_one()
@@ -285,7 +319,16 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        self._check_single_claim_per_operator(employee_id)
+        try:
+            self._check_single_claim_per_operator(employee_id)
+        except UserError:
+            # Plan f2 (Tech Lead, 2026-10-31): SOLO este conflicto puntual
+            # (el operario ya tiene otro En progreso) abre el wizard — el
+            # UserError de más abajo (OTRO operario ya se asignó ESTE
+            # mismo claim, o está Detenido/Terminado) sigue siendo un
+            # mensaje seco normal, nunca pasa por acá.
+            Other = self._find_other_in_progress_claim(employee_id)
+            return self._open_claim_conflict_wizard(Other)
 
         # Postgres corre en REPEATABLE READ: este SELECT ... FOR UPDATE no
         # hace que un segundo tablet "vea" el valor recién escrito por el
@@ -354,7 +397,13 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        self._check_single_claim_per_operator(employee_id)
+        try:
+            self._check_single_claim_per_operator(employee_id)
+        except UserError:
+            # Mismo wizard de conflicto que action_assign() — ver su
+            # comentario (plan f2, Tech Lead 2026-10-31).
+            Other = self._find_other_in_progress_claim(employee_id)
+            return self._open_claim_conflict_wizard(Other)
 
         # Misma protección, misma explicación y mismo flush_recordset()
         # previo que action_assign.

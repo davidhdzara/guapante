@@ -247,9 +247,12 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertIn(self.operator_a.name, str(ctx.exception))
         self.assertEqual(claim.assigned_employee_id, self.operator_a)
 
-    def test_action_assign_rejects_second_claim_for_same_operator(self):
-        """Tech Lead, punto 3: un operario no puede tener dos productos En
-        progreso a la vez."""
+    def test_action_assign_second_claim_for_same_operator_opens_conflict_wizard(self):
+        """Tech Lead, punto 3 (Fase B) + plan f2 (2026-10-31): un operario
+        no puede tener dos productos En progreso a la vez — desde f2, en
+        vez de un UserError seco, action_assign() devuelve el wizard de
+        conflicto (condición 1: SOLO este caso puntual, nunca el de que
+        OTRO operario ya tenga el claim)."""
         product_b = self.env['product.product'].create({
             'name': 'Producto Claim Dos',
             'type': 'consu',
@@ -264,8 +267,24 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         )
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             claim_a.action_assign()
-            with self.assertRaises(UserError):
-                claim_b.action_assign()
+            result = claim_b.action_assign()
+
+        self.assertEqual(result['type'], 'ir.actions.act_window')
+        self.assertEqual(
+            result['res_model'],
+            'guapante.preparation.day.product.claim.conflict.wizard',
+        )
+        self.assertEqual(result['target'], 'new')
+        Wizard = self.env[
+            'guapante.preparation.day.product.claim.conflict.wizard'
+        ].browse(result['res_id'])
+        self.assertEqual(Wizard.claim_id, claim_b)
+        self.assertEqual(Wizard.other_claim_id, claim_a)
+        self.assertFalse(
+            claim_b.assigned_employee_id,
+            'el wizard no debe haber asignado nada todavía — solo ofrece '
+            'las 3 salidas',
+        )
 
     def test_action_assign_checks_picking_group(self):
         session = self._load_session_with_product()
