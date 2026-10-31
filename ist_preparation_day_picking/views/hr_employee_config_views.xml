@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Gestión en lote de is_guapante_prep_operator (el campo que ya
+         existe en hr.employee, ist_preparation_day) — equivalente
+         funcional a la lista de "Empleados" de Punto de Venta, sin migrar
+         a un modelo/relación nueva: Preparación no tiene un objeto de
+         configuración por estación como pos.config, así que el booleano
+         global sigue siendo el fit nativo más simple. Se restaura
+         2026-10-29 — David: "Operarios autorizados" se queda, le gustó
+         tenerlo a un clic. -->
+    <record id="view_hr_employee_list_prep_operators" model="ir.ui.view">
+        <field name="name">hr.employee.list.prep.operators</field>
+        <field name="model">hr.employee</field>
+        <field name="arch" type="xml">
+            <list string="Operarios autorizados" editable="bottom" create="0" delete="0">
+                <field name="name" readonly="1"/>
+                <field name="department_id" readonly="1" optional="show"/>
+                <field name="is_guapante_prep_operator"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_prep_operators_config" model="ir.actions.act_window">
+        <field name="name">Operarios autorizados</field>
+        <field name="res_model">hr.employee</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_hr_employee_list_prep_operators"/>
+    </record>
+
+    <!-- "Reportes" (David/Tech Lead, 2026-10-29): vacío por ahora, lo
+         llena la Fase 2 — se deja el lugar ya ordenado en el menú para
+         no reordenar otra vez cuando llegue ese contenido. -->
+    <menuitem
+        id="menu_preparation_day_reports"
+        name="Reportes"
+        parent="ist_preparation_day.menu_preparation_day_root"
+        sequence="50"
+    />
+
+    <!-- Configuración al final del menú Preparación (David, 2026-10-29),
+         con "Operarios autorizados" y "Modelos de notas" (este último
+         se traslada de ser un hijo suelto de la raíz a serlo de acá —
+         ver preparation_day_note_template_views.xml) como hijos.
+         Gestionada por Administrador de Preparación, no por
+         base.group_system genérico — ya existe el grupo propio. -->
+    <menuitem
+        id="menu_preparation_day_config"
+        name="Configuración"
+        parent="ist_preparation_day.menu_preparation_day_root"
+        groups="group_preparation_admin"
+        sequence="100"
+    />
+    <menuitem
+        id="menu_prep_operators_config"
+        name="Operarios autorizados"
+        parent="menu_preparation_day_config"
+        action="action_prep_operators_config"
+        groups="group_preparation_admin"
+        sequence="10"
+    />
+</odoo>

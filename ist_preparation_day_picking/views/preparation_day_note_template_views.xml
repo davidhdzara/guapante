@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Fase D — Modelos de notas (replica pos.note): lista editable
+         simple, sin formulario aparte (nombre + secuencia, nada más que
+         configurar). Grupo de permisos: group_preparation_admin
+         (categoría "Preparación", Tech Lead/QA 2026-10-29) para
+         crear/editar/borrar, y base.group_user para leer (el diálogo de
+         notas de Nivel 2 necesita leer los chips). Antes se reutilizaba
+         stock.group_stock_manager como préstamo provisional; la
+         migración de Diana y Mauricio al grupo nuevo vive en
+         migrations/18.0.1.1.0/post-migration.py. -->
+    <record id="view_preparation_day_note_template_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.note.template.list</field>
+        <field name="model">guapante.preparation.day.note.template</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_preparation_day_note_template" model="ir.actions.act_window">
+        <field name="name">Modelos de notas</field>
+        <field name="res_model">guapante.preparation.day.note.template</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <!-- Se mueve a ser hijo de Configuración (David, 2026-10-29: orden
+         del menú Preparación) — record completo, no el atajo
+         <menuitem groups="...">, para poder fijar groups_id con (6,0,...)
+         y así reemplazar de verdad cualquier grupo viejo que una
+         actualización anterior haya dejado pegado (el atajo es aditivo,
+         nunca quita; QA lo detectó: el menú había quedado también con
+         stock.group_stock_manager, el préstamo de antes de la migración). -->
+    <record id="menu_preparation_day_note_template" model="ir.ui.menu">
+        <field name="name">Modelos de notas</field>
+        <field name="parent_id" ref="menu_preparation_day_config"/>
+        <field name="action" ref="action_preparation_day_note_template"/>
+        <field name="sequence">20</field>
+        <field name="groups_id" eval="[(6, 0, [ref('group_preparation_admin')])]"/>
+    </record>
+</odoo>

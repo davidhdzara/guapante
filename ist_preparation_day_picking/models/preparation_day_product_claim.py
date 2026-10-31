@@ -1,0 +1,800 @@
+# -*- coding: utf-8 -*-
+import logging
+from datetime import timedelta
+
+from odoo import api, fields, models
+from odoo.exceptions import AccessError, UserError
+from odoo.http import request
+
+from odoo.addons.ist_preparation_day.models.const_preparation import (
+    CLAIM_STALE_MARGIN_SECONDS,
+    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+    get_active_prep_operator_id,
+)
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _PG_CONCURRENCY_ERRORS,
+)
+
+_logger = logging.getLogger(__name__)
+
+STOP_REASONS = [
+    ('sin_stock', 'Sin stock'),
+    ('mal_estado', 'Producto en mal estado'),
+    ('esperando_proveedor', 'Esperando proveedor'),
+    ('otro', 'Otro'),
+]
+
+# Mismos campos que CLAIM_FIELDS en preparation_picking_level1_display.js —
+# duplicado a propósito (un archivo Python, uno JS, no hay forma limpia de
+# compartir la constante entre los dos) — si se agrega un campo a la
+# tarjeta de Nivel 1, hay que agregarlo en AMBOS lados.
+CLAIM_DISPLAY_FIELDS = [
+    'product_tmpl_id', 'product_tmpl_name', 'status', 'assigned_employee_id',
+    'stop_reason', 'stopped_by_employee_id', 'is_mine',
+    'pending_line_count', 'total_line_count',
+]
+
+# Umbral de historia mínima para confiar en la mediana de kg/unidad de una
+# plantilla (Fase C, punto 1 de Tech Lead). Dato real de producción
+# (2026-10-22, 23,227 líneas needs_weighing=True terminadas): con >=10
+# líneas de historia, 91 de 140 plantillas quedan cubiertas y quedan
+# cubiertas el 99.4% de las líneas — por debajo de eso no hay alerta,
+# nunca un valor inventado.
+MIN_WEIGHT_HISTORY_LINES = 10
+
+
+class PreparationDayProductClaim(models.Model):
+    """Nivel 1 de Picking (Fase B) — estado de trabajo por producto base
+    (plantilla), una fila por (wizard_id, product_tmpl_id).
+
+    Separado de guapante.preparation.day.summary (que es por VARIANTE, para
+    la pestaña Productos) a propósito: asignar/detener/liberar es una
+    operación sobre la unidad de trabajo del Nivel 1 — la plantilla, no la
+    variante — y Summary ya tiene su propio ciclo de vida (se recrea en
+    cada action_load) que no es el dueño natural de "quién lo tiene tomado
+    ahora mismo".
+    """
+    _name = 'guapante.preparation.day.product.claim'
+    _description = 'Nivel 1 de Picking — estado por producto base'
+    _order = 'status, product_tmpl_id'
+    _sql_constraints = [
+        (
+            'wizard_product_tmpl_uniq',
+            'unique(wizard_id, product_tmpl_id)',
+            'Ya existe un registro de Nivel 1 para este producto en esta sesión.',
+        ),
+    ]
+
+    wizard_id = fields.Many2one(
+        'guapante.preparation.day',
+        string='Sesión',
+        required=True,
+        ondelete='cascade',
+    )
+    product_tmpl_id = fields.Many2one(
+        'product.template',
+        string='Producto',
+        required=True,
+    )
+    # .name (no .display_name): la tarjeta de Nivel 1 no debe mostrar el
+    # código interno [XXX-0000] (especificación visual, David 2026-10-23)
+    # — <field name="product_tmpl_id"/> en kanban renderiza display_name,
+    # que sí lo trae.
+    product_tmpl_name = fields.Char(
+        related='product_tmpl_id.name', string='Producto (sin código)',
+    )
+    assigned_employee_id = fields.Many2one(
+        'hr.employee', string='Asignado a',
+    )
+    assigned_date = fields.Datetime(string='Asignado el')
+    last_activity = fields.Datetime(
+        string='Última actividad',
+        help=(
+            'Cuándo se registró la última acción real sobre este producto '
+            '(asignarse, retomar, pesar) mientras está En progreso — base '
+            'del plan f1 (Tech Lead, 2026-10-31) para distinguir un claim '
+            'realmente activo de uno abandonado (operario que se fue sin '
+            'cerrar sesión o cuyo tablet se quedó sin conexión). Un reloj '
+            'distinto del timeout de sesión del operario (ese es por '
+            'request; este es por producto) — por eso necesita su propio '
+            'campo, no basta con assigned_date (se fija una sola vez al '
+            'asignar/retomar, nunca se actualiza después).'
+        ),
+    )
+    stop_reason = fields.Selection(STOP_REASONS, string='Motivo de detención')
+    stopped_by_employee_id = fields.Many2one(
+        'hr.employee', string='Detenido por',
+    )
+    status = fields.Selection(
+        selection=[
+            ('pending', 'Pendiente'),
+            ('in_progress', 'En progreso'),
+            ('stopped', 'Detenido'),
+            ('done', 'Terminado'),
+        ],
+        compute='_compute_status',
+        store=True,
+    )
+    # No almacenado: depende de quién está identificado AHORA en esta
+    # sesión de navegador (request.session), no de un dato del registro —
+    # tiene que recalcularse en cada lectura, igual que el resto de la
+    # identificación por PIN en este proyecto.
+    is_mine = fields.Boolean(compute='_compute_is_mine')
+    pending_line_count = fields.Integer(compute='_compute_line_counts')
+    total_line_count = fields.Integer(compute='_compute_line_counts')
+    expected_kg_per_unit = fields.Float(
+        string='Kg esperado por unidad',
+        digits=(10, 4),
+        readonly=True,
+        help=(
+            'Mediana histórica de actual_kg/estimated_kg de esta plantilla, '
+            'calculada solo con líneas Terminadas y con repesaje de OTRAS '
+            'sesiones (Fase C). En 0.0 cuando esa plantilla no llega a '
+            f'{MIN_WEIGHT_HISTORY_LINES} líneas de historia — en ese caso la '
+            'tarjeta de Nivel 2 no muestra alerta de peso, nunca un valor '
+            'inventado.'
+        ),
+    )
+
+    def _get_lines(self):
+        self.ensure_one()
+        return self.wizard_id.line_ids.filtered(
+            lambda l: l.product_id == self.product_tmpl_id
+        )
+
+    @api.depends(
+        'wizard_id.line_ids.is_done',
+        'wizard_id.line_ids.product_id',
+        'assigned_employee_id',
+        'stop_reason',
+    )
+    def _compute_status(self) -> None:
+        for claim in self:
+            Lines = claim._get_lines()
+            if Lines and all(line.is_done for line in Lines):
+                claim.status = 'done'
+            elif claim.stop_reason:
+                claim.status = 'stopped'
+            elif claim.assigned_employee_id:
+                claim.status = 'in_progress'
+            else:
+                claim.status = 'pending'
+
+    @api.depends('wizard_id.line_ids.is_done', 'wizard_id.line_ids.product_id')
+    def _compute_line_counts(self) -> None:
+        for claim in self:
+            Lines = claim._get_lines()
+            claim.total_line_count = len(Lines)
+            claim.pending_line_count = len(Lines.filtered(lambda l: not l.is_done))
+
+    def _compute_is_mine(self) -> None:
+        current_employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
+            if request else False
+        )
+        for claim in self:
+            claim.is_mine = bool(
+                current_employee_id
+                and claim.assigned_employee_id.id == current_employee_id
+            )
+
+    # ── Infraestructura compartida ──
+
+    def _check_picking_access(self) -> None:
+        if not self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_picking_operator'
+        ):
+            raise AccessError('No tienes acceso a la pantalla de Picking.')
+
+    def _require_active_operator(self) -> int:
+        employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=True)
+            if request else False
+        )
+        if not employee_id:
+            raise UserError(
+                'Tu sesión de operario expiró por inactividad. '
+                'Ingresa tu NIP de nuevo.'
+            )
+        return employee_id
+
+    def _find_other_in_progress_claim(self, employee_id, exclude_self=True):
+        """Mismo claim En progreso de este operario, si existe —
+        extraído de _check_single_claim_per_operator (plan f2, Tech
+        Lead 2026-10-31) para que action_assign()/action_resume()
+        puedan recuperar el REGISTRO y armar el wizard de conflicto,
+        no solo recibir un mensaje de texto."""
+        domain = [
+            ('wizard_id', '=', self.wizard_id.id),
+            ('assigned_employee_id', '=', employee_id),
+            ('status', '=', 'in_progress'),
+        ]
+        if exclude_self:
+            domain.append(('id', '!=', self.id))
+        return self.search(domain, limit=1)
+
+    def _check_single_claim_per_operator(self, employee_id, exclude_self=True) -> None:
+        """Un operario no puede tener dos productos "En progreso" al mismo
+        tiempo (decisión de David, vía Tech Lead, Fase B).
+
+        Sigue levantando UserError tal cual (Tech Lead, plan f2,
+        condición 1) — NO se toca este comportamiento. action_assign()/
+        action_resume() atrapan ESTE error puntual para ofrecer el
+        wizard de conflicto en vez de dejarlo como mensaje seco;
+        cualquier otro llamador (o un test que pruebe este helper en
+        aislamiento) sigue viendo exactamente el comportamiento de
+        siempre."""
+        Other = self._find_other_in_progress_claim(employee_id, exclude_self)
+        if Other:
+            raise UserError(
+                f'Ya tienes asignado {Other.product_tmpl_id.name} — '
+                'termínalo o libéralo primero.'
+            )
+
+    def _open_claim_conflict_wizard(self, other_claim) -> dict:
+        self.ensure_one()
+        Wizard = self.env[
+            'guapante.preparation.day.product.claim.conflict.wizard'
+        ].create({
+            'claim_id': self.id,
+            'other_claim_id': other_claim.id,
+        })
+        return {
+            'name': 'Ya tienes un producto en proceso',
+            'type': 'ir.actions.act_window',
+            'res_model': Wizard._name,
+            'res_id': Wizard.id,
+            'view_mode': 'form',
+            'views': [(False, 'form')],
+            'target': 'new',
+        }
+
+    def _notify_bus(self) -> None:
+        self.ensure_one()
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{self.wizard_id.id}',
+            'picking_claim_updated',
+            {'claim_id': self.id},
+        )
+
+    @api.model
+    def get_claims_for_level1_display(self, wizard_id) -> list:
+        """Reemplaza el orm.searchRead directo de Nivel 1 (plan f1, Tech
+        Lead 2026-10-31, puntos 1-3) — filtro en SERVIDOR, método propio y
+        explícito, NUNCA un _search()/search_read() genérico: _check_
+        single_claim_per_operator y action_assign necesitan ver TODOS los
+        claims sin filtrar para detectar conflictos; filtrar ahí los
+        dejaría ciegos.
+
+        Regla: Administrador ve todo (con el nombre de quien lo tiene,
+        igual que siempre). Pendiente/Detenido/Terminado SIEMPRE visibles
+        para todos — la regla de ocultar solo aplica a En progreso (Tech
+        Lead, corrección 2: Detenido es una pausa JUSTIFICADA por un
+        operario, no abandono; se verifica por `status`, no solo por
+        `assigned_employee_id`, para no depender de que action_stop()
+        siga limpiándolo — defensa en profundidad). Un operario normal
+        no ve en absoluto un claim En progreso de OTRO operario — ni el
+        nombre ni la tarjeta — salvo que ya quedó abandonado (instante
+        efectivo, ver _effective_last_activity, más viejo que
+        PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS):
+        ese caso se trata como visible para todos, aunque la liberación
+        real en base de datos la haga el cron por separado (ventana corta
+        de hasta 5 minutos entre que se ve "libre" y se puede tomar de
+        verdad — aceptado por Tech Lead). Su propio claim en progreso
+        siempre se ve.
+
+        El refresco por bus NO cambia (picking_claim_updated /
+        onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
+        cambia QUÉ devuelve este método, nunca el mecanismo.
+        """
+        self._check_picking_access()
+        Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
+        is_admin = self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        my_employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
+            if request else False
+        )
+        stale_cutoff = fields.Datetime.now() - timedelta(
+            seconds=(
+                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
+            ),
+        )
+        Visible = self.env['guapante.preparation.day.product.claim']
+        for claim in Claims:
+            effective = claim._effective_last_activity()
+            if (
+                is_admin
+                or claim.status != 'in_progress'
+                or claim.assigned_employee_id.id == my_employee_id
+                or (effective and effective < stale_cutoff)
+            ):
+                Visible |= claim
+        return Visible.read(CLAIM_DISPLAY_FIELDS)
+
+    # ── Acciones ──
+
+    def action_assign(self) -> dict:
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+        try:
+            self._check_single_claim_per_operator(employee_id)
+        except UserError:
+            # Plan f2 (Tech Lead, 2026-10-31): SOLO este conflicto puntual
+            # (el operario ya tiene otro En progreso) abre el wizard — el
+            # UserError de más abajo (OTRO operario ya se asignó ESTE
+            # mismo claim, o está Detenido/Terminado) sigue siendo un
+            # mensaje seco normal, nunca pasa por acá.
+            Other = self._find_other_in_progress_claim(employee_id)
+            return self._open_claim_conflict_wizard(Other)
+
+        # Postgres corre en REPEATABLE READ: este SELECT ... FOR UPDATE no
+        # hace que un segundo tablet "vea" el valor recién escrito por el
+        # primero en cuanto se libera el lock dentro de su misma
+        # transacción — a ese nivel de aislamiento, Postgres le devuelve un
+        # error de serialización ("could not serialize access due to
+        # concurrent update"), que Odoo captura y reintenta el request
+        # completo. Es en ESE reintento (una ejecución nueva de este mismo
+        # método, con una transacción nueva) donde la lectura de abajo ya
+        # ve assigned_employee_id puesto y lanza el UserError — no es que
+        # este SELECT vea el dato fresco dentro de la transacción actual.
+        # El resultado neto es el mismo (el segundo tablet nunca pisa al
+        # primero), pero el mecanismo real es "falla y reintenta", no
+        # "espera y lee fresco".
+        #
+        # flush_recordset() antes del SQL crudo: el write() del ORM no
+        # manda el UPDATE a la base de inmediato, lo deja en el caché en
+        # memoria hasta el próximo flush — sin esto, un SELECT crudo justo
+        # después de otra acción de este mismo método (ej. la propia
+        # action_assign() de un test, dentro de la misma transacción)
+        # puede leer el valor viejo de la tabla real y dar un falso
+        # negativo (bug encontrado por los tests de la Fase B).
+        #
+        # El SELECT bloqueado tiene que leer TODO lo que decide si este
+        # claim es tomable — no solo assigned_employee_id (hallazgo de
+        # Tech Lead): un claim Detenido queda sin dueño, así que mirar
+        # solo assigned_employee_id dejaba que "Asignarme" tomara un
+        # producto detenido (saltándose Retomar y su chatter) o uno ya
+        # Terminado.
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT assigned_employee_id, stop_reason FROM '
+            'guapante_preparation_day_product_claim WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        locked_assigned_id, locked_stop_reason = row if row else (False, False)
+        Lines = self._get_lines()
+        is_done = bool(Lines) and all(line.is_done for line in Lines)
+        if locked_assigned_id:
+            self.invalidate_recordset(['assigned_employee_id'])
+            raise UserError(
+                f'{self.assigned_employee_id.name} ya se asignó '
+                f'{self.product_tmpl_id.name} — actualiza la pantalla.'
+            )
+        if locked_stop_reason:
+            raise UserError(
+                f'{self.product_tmpl_id.name} está detenido — usa Retomar. '
+                'Actualiza la pantalla.'
+            )
+        if is_done:
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
+                'actualiza la pantalla.'
+            )
+        now = fields.Datetime.now()
+        self.write({
+            'assigned_employee_id': employee_id,
+            'assigned_date': now,
+            'last_activity': now,
+        })
+        self._notify_bus()
+        return self.action_open_lines_kanban()
+
+    def action_resume(self) -> dict:
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+        try:
+            self._check_single_claim_per_operator(employee_id)
+        except UserError:
+            # Mismo wizard de conflicto que action_assign() — ver su
+            # comentario (plan f2, Tech Lead 2026-10-31).
+            Other = self._find_other_in_progress_claim(employee_id)
+            return self._open_claim_conflict_wizard(Other)
+
+        # Misma protección, misma explicación y mismo flush_recordset()
+        # previo que action_assign.
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT stop_reason FROM guapante_preparation_day_product_claim '
+            'WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        if not row or not row[0]:
+            self.invalidate_recordset(['stop_reason'])
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya no está detenido — '
+                'actualiza la pantalla.'
+            )
+        # Caso borde (Tech Lead): si todas las líneas quedaron is_done por
+        # otra vía (ej. edición directa en la pestaña Productos) mientras
+        # el claim seguía con stop_reason puesto, el status computado ya
+        # muestra 'done' — Retomar no debe revivirlo.
+        Lines = self._get_lines()
+        if Lines and all(line.is_done for line in Lines):
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
+                'actualiza la pantalla.'
+            )
+        Employee = self.env['hr.employee'].sudo().browse(employee_id)
+        now = fields.Datetime.now()
+        self.write({
+            'assigned_employee_id': employee_id,
+            'assigned_date': now,
+            'last_activity': now,
+            'stop_reason': False,
+            'stopped_by_employee_id': False,
+        })
+        self.wizard_id.sudo().message_post(
+            body=f"Retomado — {self.product_tmpl_id.name}: por {Employee.name}.",
+        )
+        self._notify_bus()
+        return self.action_open_lines_kanban()
+
+    def action_release(self) -> bool:
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT assigned_employee_id FROM guapante_preparation_day_product_claim '
+            'WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        current_owner_id = row[0] if row else False
+        if current_owner_id != employee_id:
+            self.invalidate_recordset(['assigned_employee_id'])
+            owner_name = (
+                self.assigned_employee_id.name
+                if self.assigned_employee_id else 'nadie'
+            )
+            raise UserError(
+                f'No puedes liberar {self.product_tmpl_id.name} — '
+                f'lo tiene {owner_name}.'
+            )
+        self._release_claim()
+        return True
+
+    def _release_claim(self) -> None:
+        """Núcleo de la liberación — SIN `request`, sin validar ownership
+        (eso ya lo hizo el llamador, que sabe POR QUÉ libera): comparte el
+        mismo invariante (estado limpio + aviso de bus) entre action_release()
+        (el propio operario), _release_claims_for_employee() ("Cerrar") y el
+        cron de abandono (plan f1, Tech Lead 2026-10-31) — un solo lugar
+        que mantener si algún día esto necesita tocar algo más (ej. Fase 2
+        de tiempos)."""
+        self.ensure_one()
+        self.write({
+            'assigned_employee_id': False,
+            'assigned_date': False,
+            'last_activity': False,
+        })
+        self._notify_bus()
+
+    def _effective_last_activity(self):
+        """Corrección de Tech Lead (2026-10-31, defecto bloqueante del
+        primer diff): un claim En progreso HEREDADO de antes de que
+        existiera `last_activity` (los que ya hay hoy en producción y
+        staging) tiene ese campo en False — tratarlo como "sin
+        actividad nunca" lo dejaba OCULTO para todos los no-admin Y
+        fuera del dominio del cron (`last_activity != False`): huérfano
+        invisible para siempre. COALESCE con assigned_date y, si
+        tampoco hay, write_date — ambos son una fecha real de cuándo se
+        tocó el claim por última vez, aunque menos precisa que
+        last_activity."""
+        self.ensure_one()
+        return self.last_activity or self.assigned_date or self.write_date
+
+    @api.model
+    def _release_claims_for_employee(self, employee_id) -> None:
+        """Libera TODOS los claims En progreso de este operario — llamada
+        desde /clear_operator ("Cerrar" explícito, plan f1): propia
+        petición, propio commit, nunca desde get_active_prep_operator_id
+        (ver docstring del controlador)."""
+        Claims = self.sudo().search([
+            ('assigned_employee_id', '=', employee_id),
+            ('status', '=', 'in_progress'),
+        ])
+        for claim in Claims:
+            claim._release_claim()
+
+    def action_stop(self, reason: str) -> bool:
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+        if reason not in dict(STOP_REASONS):
+            raise UserError('Motivo de detención inválido.')
+
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT assigned_employee_id FROM guapante_preparation_day_product_claim '
+            'WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        current_owner_id = row[0] if row else False
+        if current_owner_id != employee_id:
+            self.invalidate_recordset(['assigned_employee_id'])
+            owner_name = (
+                self.assigned_employee_id.name
+                if self.assigned_employee_id else 'nadie'
+            )
+            raise UserError(
+                f'No puedes detener {self.product_tmpl_id.name} — '
+                f'lo tiene {owner_name}.'
+            )
+        Employee = self.env['hr.employee'].sudo().browse(employee_id)
+        self.write({
+            'assigned_employee_id': False,
+            'assigned_date': False,
+            'stop_reason': reason,
+            'stopped_by_employee_id': employee_id,
+        })
+        self.wizard_id.sudo().message_post(
+            body=(
+                f"Detenido — {self.product_tmpl_id.name}: "
+                f"{dict(STOP_REASONS)[reason]} (por {Employee.name})."
+            ),
+        )
+        self._notify_bus()
+        return True
+
+    def action_open_stop_wizard(self) -> dict:
+        self.ensure_one()
+        self._check_picking_access()
+        return {
+            'name': f'¿Por qué se detiene {self.product_tmpl_id.name}?',
+            'type': 'ir.actions.act_window',
+            'res_model': 'guapante.preparation.day.product.claim.stop.wizard',
+            'view_mode': 'form',
+            # 'views' explícito — ver nota en action_view_product_claims
+            # (preparation_day.py): _preprocessAction del cliente web
+            # hace action.views.map(...) sin validar que exista.
+            'views': [(False, 'form')],
+            'target': 'new',
+            'context': {'default_claim_id': self.id},
+        }
+
+    def action_open_scrap_wizard(self) -> dict:
+        """Fase D — engrane de Nivel 1, "Desechar": abre el MISMO diálogo
+        nativo que stock.picking.button_scrap (stock_scrap_form_view2,
+        target=new), sin formulario propio. Sin default_origin (Tech
+        Lead, corrección 1: ese campo no está en la vista form2 — los
+        default_* solo aplican a campos que la vista pide en
+        default_get — el Documento origen quedaría vacío; se escribe en
+        preparation_day_scrap.py:StockScrap.do_scrap(), el único punto
+        por el que pasan tanto el camino feliz como el del asistente de
+        cantidad insuficiente).
+
+        picking_wizard_id/picking_claim_id en contexto (no
+        default_picking_id — Tech Lead: "un producto abarca varios
+        pedidos"): do_scrap() los exige cuando ve guapante_picking_flow,
+        nunca cae al flujo sin chequeo (corrección 2 de Tech Lead).
+        """
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+        if self.assigned_employee_id.id != employee_id:
+            raise UserError(
+                f'No puedes desechar {self.product_tmpl_id.name} — '
+                'no está asignado a ti.'
+            )
+        View = self.env.ref('stock.stock_scrap_form_view2')
+        return {
+            'name': 'Desechar productos',
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.scrap',
+            'view_mode': 'form',
+            'view_id': View.id,
+            'views': [(View.id, 'form')],
+            'target': 'new',
+            'context': {
+                'product_ids': self.product_tmpl_id.product_variant_ids.ids,
+                # guapante.preparation.day no tiene company_id propio
+                # (bug real encontrado en navegador: "object has no
+                # attribute 'company_id'") — la compañía activa del
+                # entorno es la correcta acá, igual que para cualquier
+                # otro flujo de Picking (single-company en Guapante).
+                'default_company_id': self.env.company.id,
+                'guapante_picking_flow': True,
+                'picking_wizard_id': self.wizard_id.id,
+                'picking_claim_id': self.id,
+            },
+        }
+
+    def action_open_lines_kanban(self) -> dict:
+        """Nivel 2 real (Fase C) como client action propio
+        (especificación visual, 2026-10-23 — decisión final de Tech
+        Lead tras dos rondas de kanban nativo + t-inherit que nunca
+        igualaron la tarjeta de Taller real). El componente OWL
+        (preparation_picking_level2_display.js) resuelve este claim por
+        su id (orm.read) y carga las líneas con orm.searchRead — ya no
+        hace falta 'views'/'help' ni domain armado acá (eso era
+        específico de un ir.actions.act_window), ni picking_wizard_id en
+        contexto: el componente lo obtiene leyendo el propio claim.
+
+        context: 'guapante_picking_flow' vive en la ACCIÓN (no solo en
+        llamadas RPC sueltas) porque el watcher de inactividad lo lee de
+        action.currentController.action.context
+        (preparation_picking_idle_watcher.js) — mismo motivo que en
+        action_view_product_claims (preparation_day.py).
+        """
+        self.ensure_one()
+        self._check_picking_access()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'guapante_picking_level2',
+            'name': self.product_tmpl_id.name,
+            'target': 'fullscreen',
+            'context': {
+                'guapante_picking_flow': True,
+                'claim_id': self.id,
+            },
+        }
+
+    # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,
+    #    no solo en action_load; nunca borrar un claim con líneas, aunque
+    #    estén todas done — solo los que no tienen ninguna) ──
+
+    @api.model
+    def _refresh_expected_kg_per_unit(self, wizard, templates) -> None:
+        """Recalcula expected_kg_per_unit de los claims de `templates` en
+        `wizard` (Fase C, punto 1 de Tech Lead).
+
+        Una sola consulta agrupada, acotada a las plantillas de ESTA
+        sesión (10-30 típico, nunca las ~140 plantillas pesables del
+        catálogo completo) — evita 1 query por tarjeta. Excluye
+        explícitamente las líneas de `wizard` (wizard_id != %s): lo que se
+        está pesando HOY no puede colarse en su propia referencia
+        histórica (pedido explícito de Tech Lead) — si no, un operario
+        quedaría comparado contra pesos que él mismo acaba de teclear en
+        esta misma sesión.
+        """
+        if not templates:
+            return
+        # flush_model() sobre Line, no sobre self: lo que puede estar sin
+        # bajar a la tabla real es el write() de action_save_line_weight
+        # de otra línea en esta misma transacción (ej. action_load
+        # corriendo justo después de un pesaje), no un write de Claim.
+        self.env['guapante.preparation.day.line'].flush_model()
+        self.env.cr.execute(
+            '''
+            SELECT product_id,
+                   percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY actual_kg / estimated_kg
+                   ) AS median_kg_per_unit
+            FROM guapante_preparation_day_line
+            WHERE is_done = true
+              AND needs_weighing = true
+              AND estimated_kg > 0
+              AND actual_kg > 0
+              AND wizard_id != %s
+              AND product_id = ANY(%s)
+            GROUP BY product_id
+            HAVING count(*) >= %s
+            ''',
+            (wizard.id, templates.ids, MIN_WEIGHT_HISTORY_LINES),
+        )
+        medians = dict(self.env.cr.fetchall())
+        Claims = self.sudo().search([
+            ('wizard_id', '=', wizard.id),
+            ('product_tmpl_id', 'in', templates.ids),
+        ])
+        for claim in Claims:
+            claim.expected_kg_per_unit = medians.get(
+                claim.product_tmpl_id.id, 0.0,
+            )
+
+    @api.model
+    def _ensure_claims_for_templates(self, wizard, templates) -> None:
+        if not templates:
+            return
+        # sudo(): la creación de claims es mantenimiento interno, no una
+        # acción de UI — el ACL del grupo de Picking no da create (Tech
+        # Lead, punto 10), a propósito, para que nadie cree uno a mano.
+        Existing = self.sudo().search([
+            ('wizard_id', '=', wizard.id),
+            ('product_tmpl_id', 'in', templates.ids),
+        ])
+        existing_tmpl_ids = set(Existing.mapped('product_tmpl_id').ids)
+        Missing = templates.filtered(lambda t: t.id not in existing_tmpl_ids)
+        if Missing:
+            self.sudo().create([
+                {'wizard_id': wizard.id, 'product_tmpl_id': tmpl.id}
+                for tmpl in Missing
+            ])
+
+    @api.model
+    def _cron_release_abandoned_claims(self) -> None:
+        """Plan f1 (Tech Lead, 2026-10-31) — libera de verdad en base de
+        datos los claims En progreso que get_claims_for_level1_display ya
+        trata como abandonados (mismo umbral: PREP_OPERATOR_IDLE_TIMEOUT_
+        SECONDS + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
+        efectivo — ver _effective_last_activity). Corre cada 5 minutos,
+        no es el mecanismo de visibilidad (eso ya lo cubre el método de
+        lectura) — es la red de seguridad que de verdad libera el
+        producto para que otro pueda tomarlo con Asignarme, no solo
+        verlo.
+
+        Dominio por `status`, no por `assigned_employee_id` a secas
+        (Tech Lead, corrección 2): un Detenido es una pausa JUSTIFICADA,
+        nunca abandono — y aunque hoy action_stop() ya limpia
+        assigned_employee_id (así que nunca calificaría de todas formas),
+        filtrar por status es la verificación explícita, no un supuesto
+        sobre cómo se comporta otro método.
+
+        Mismo patrón que _cron_repair_missing_orders (e4, preparation_day.py):
+        savepoint por claim, un error de concurrencia se atrapa LOCAL
+        (nunca se relanza — no debe tumbar el trabajo ya hecho en otros
+        claims de esta misma corrida)."""
+        stale_cutoff = fields.Datetime.now() - timedelta(
+            seconds=(
+                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
+            ),
+        )
+        Claims = self.sudo().search([('status', '=', 'in_progress')])
+        Claims = Claims.filtered(
+            lambda c: (
+                c._effective_last_activity()
+                and c._effective_last_activity() < stale_cutoff
+            )
+        )
+        for claim in Claims:
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        'SELECT assigned_employee_id, stop_reason, '
+                        'last_activity, assigned_date, write_date FROM '
+                        'guapante_preparation_day_product_claim WHERE id = %s '
+                        'FOR UPDATE',
+                        (claim.id,),
+                    )
+                    row = self.env.cr.fetchone()
+                    if not row or not row[0] or row[1]:
+                        # Ya se liberó, o pasó a Detenido, entre el search
+                        # y el lock — en ambos casos, nada que hacer.
+                        continue
+                    locked_effective = row[2] or row[3] or row[4]
+                    if locked_effective and locked_effective >= stale_cutoff:
+                        continue  # hubo actividad real entre el search y el lock.
+                    claim.invalidate_recordset([
+                        'assigned_employee_id', 'stop_reason',
+                        'last_activity', 'assigned_date',
+                    ])
+                    employee_name = claim.assigned_employee_id.name
+                    product_name = claim.product_tmpl_id.name
+                    claim._release_claim()
+                    claim.wizard_id.sudo().message_post(
+                        body=(
+                            f'Producto {product_name} liberado '
+                            f'automáticamente por inactividad de '
+                            f'{employee_name}.'
+                        ),
+                    )
+            except _PG_CONCURRENCY_ERRORS as exc:
+                _logger.info(
+                    'Guapante: liberación automática de claims — claim '
+                    '%s ocupado (%s), se reintenta en la próxima corrida.',
+                    claim.id, exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: liberación automática de claims — no se '
+                    'pudo liberar el claim %s.', claim.id,
+                )

@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_preparation_day_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.form</field>
+        <field name="model">guapante.preparation.day</field>
+        <field name="arch" type="xml">
+            <form string="Preparación del Día">
+                <header>
+                    <button
+                        name="action_load"
+                        type="object"
+                        string="Actualizar pedidos"
+                        class="btn-primary"
+                        invisible="state != 'draft'"
+                    />
+                    <button
+                        name="action_load"
+                        type="object"
+                        string="Actualizar pedidos"
+                        invisible="state == 'draft' or state == 'done'"
+                    />
+                    <button
+                        name="action_mark_done"
+                        type="object"
+                        string="Finalizar Operación"
+                        class="btn-success"
+                        invisible="state == 'draft' or state == 'done'"
+                        confirm="¿Estás seguro que deseas finalizar esta sesión?"
+                    />
+                    <button
+                        name="action_reopen"
+                        type="object"
+                        string="Reabrir Sesión"
+                        invisible="state != 'done'"
+                    />
+                    <button
+                        name="action_export_excel"
+                        type="object"
+                        string="Exportar Excel Compras"
+                        invisible="state == 'draft'"
+                        icon="fa-file-excel-o"
+                    />
+                    <field name="state" widget="statusbar" statusbar_visible="draft,loaded,done"/>
+                </header>
+
+                <sheet>
+                    <field name="live_refresh_anchor" invisible="1" widget="guapante_live_refresh"/>
+                    <field name="total_lines" invisible="1"/>
+                    <field name="done_lines" invisible="1"/>
+                    <field name="pending_lines" invisible="1"/>
+                    <field name="box_match" invisible="1"/>
+
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" type="object" name="action_view_summaries" icon="fa-th-large" invisible="state == 'draft' or summary_count == 0">
+                            <field name="summary_count" widget="statinfo" string="Picking"/>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <h1 invisible="state == 'draft'">
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group>
+                            <label for="so_count" string="Cajas" invisible="state == 'draft' or so_count == 0"/>
+                            <div class="o_row" invisible="state == 'draft' or so_count == 0">
+                                <field name="so_count" readonly="1" nolabel="1"/>
+                            </div>
+                            <label for="total_lines" string="Líneas de picking" invisible="state == 'draft' or total_lines == 0"/>
+                            <div class="o_row" invisible="state == 'draft' or total_lines == 0">
+                                <field name="total_lines" readonly="1" nolabel="1"/>
+                            </div>
+                        </group>
+                        <group>
+                            <field name="date_start" invisible="not date_start"/>
+                            <field name="date_done" invisible="not date_done"/>
+                            <field name="responsible_employee_id"/>
+                        </group>
+                    </group>
+
+                    <notebook invisible="state == 'draft'">
+                        <page string="Productos" name="componentes">
+                            <field name="line_ids">
+                                <list create="0" delete="0" editable="bottom" decoration-muted="is_done">
+                                    <field name="daily_sequence" string="Caja #" readonly="1"/>
+                                    <field name="order_name" string="Orden" readonly="1" optional="show"/>
+                                    <field name="product_description" string="Producto" readonly="1"/>
+                                    <field name="main_customer_name" string="Cliente Principal" readonly="1" optional="show"/>
+                                    <field name="zone_name" string="Zona" readonly="1" optional="show"/>
+                                    <field name="customer_qty_display" string="Pidió" readonly="1" optional="show"/>
+                                    <field name="customer_uom_label" string="En" readonly="1" optional="show"/>
+                                    <field name="actual_kg" string="Peso" digits="[10,3]"/>
+                                    <field name="is_done" string="Terminado" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Árbol principal de Sesiones -->
+    <record id="view_preparation_day_tree" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.tree</field>
+        <field name="model">guapante.preparation.day</field>
+        <field name="arch" type="xml">
+            <list string="Sesiones de Preparación">
+                <field name="name"/>
+                <field name="date"/>
+                <field name="so_count" string="Cajas"/>
+                <field name="state"
+                       widget="badge"
+                       decoration-muted="state == 'draft'"
+                       decoration-warning="state == 'loaded'"
+                       decoration-success="state == 'done'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Kanban de Sesiones (NO confundir con view_preparation_day_summary_kanban,
+         que es del modelo guapante.preparation.day.summary — esta es la lista de
+         sesiones agrupada por estado, columnas Nueva Sesión/En Progreso/Finalizada). -->
+    <record id="view_preparation_day_kanban" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.kanban</field>
+        <field name="model">guapante.preparation.day</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_small_column">
+                <field name="name"/>
+                <field name="date"/>
+                <field name="state"/>
+                <field name="so_count"/>
+                <field name="global_progress_pct"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click oe_kanban_card">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="name"/>
+                                    </strong>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div>
+                                    <field name="date"/> — <field name="so_count"/> órdenes
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar" role="progressbar"
+                                        t-attf-style="width: #{record.global_progress_pct.raw_value}%;"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_preparation_day_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.search</field>
+        <field name="model">guapante.preparation.day</field>
+        <field name="arch" type="xml">
+            <search string="Buscar sesiones">
+                <field name="name" string="Referencia"/>
+                <field name="date"/>
+                <separator/>
+                <filter string="Nueva Sesión" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="En Progreso" name="filter_loaded" domain="[('state', '=', 'loaded')]"/>
+                <filter string="Finalizada" name="filter_done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter name="filter_date" string="Fecha programada" date="date"/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
+                    <filter string="Fecha programada" name="group_by_date" context="{'group_by': 'date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_preparation_day" model="ir.actions.act_window">
+        <field name="name">Preparación del Día</field>
+        <field name="res_model">guapante.preparation.day</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="view_preparation_day_search"/>
+        <field name="context">{'search_default_filter_draft': 1, 'search_default_filter_loaded': 1}</field>
+        <field name="help" type="html">
+          <p class="o_view_nocontent_smiling_face">
+            Crea una nueva Sesión de Preparación
+          </p><p>
+            Agrupa los pedidos confirmados del día por producto, para acelerar el empaque en bodega y llevar métricas de rendimiento por operario.
+          </p>
+        </field>
+    </record>
+
+    <!-- Vista principal operativa: kanban agrupado por estado de empaque, inspirado en la
+         vista de Taller (Shop Floor) de Manufactura — tarjetas por producto, no un dashboard
+         OWL a medida. Es la pantalla donde el operario pasa el día. -->
+    <record id="view_preparation_day_summary_kanban" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.summary.kanban</field>
+        <field name="model">guapante.preparation.day.summary</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_small_column" group_create="0" group_delete="0" group_edit="0" quick_create="0">
+                <field name="packing_status"/>
+                <field name="product_id"/>
+                <field name="total_estimated_kg"/>
+                <field name="total_done_kg"/>
+                <field name="progress_pct"/>
+                <field name="available_qty"/>
+                <field name="order_count"/>
+                <field name="stock_ok"/>
+                <progressbar field="packing_status"
+                    colors='{"1_not_started": "muted", "2_in_progress": "warning", "3_done": "success"}'
+                    sum_field="order_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click oe_kanban_card">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="product_id"/>
+                                    </strong>
+                                </div>
+                                <span t-attf-class="badge text-bg-#{record.packing_status.raw_value == '3_done' and 'success' or (record.packing_status.raw_value == '2_in_progress' and 'warning' or 'secondary')}">
+                                    <t t-esc="record.packing_status.value"/>
+                                </span>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div>
+                                    Pedido: <field name="total_estimated_kg"/> kg —
+                                    Hecho: <field name="total_done_kg"/> kg
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar" role="progressbar"
+                                        t-attf-style="width: #{record.progress_pct.raw_value}%;"/>
+                                </div>
+                                <div t-if="!record.stock_ok.raw_value" class="text-danger">
+                                    <i class="fa fa-exclamation-triangle"/>
+                                    Stock insuficiente — disponible: <field name="available_qty"/> kg
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <field name="order_count"/> órdenes
+                                </div>
+                                <div class="oe_kanban_bottom_right">
+                                    <button name="action_select_product" type="object" string="Empacar" class="btn btn-primary btn-sm"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Vistas del Resumen (Para el Smart Button) -->
+    <record id="view_preparation_day_summary_tree" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.summary.tree</field>
+        <field name="model">guapante.preparation.day.summary</field>
+        <field name="arch" type="xml">
+            <list string="Productos a preparar" decoration-success="stock_ok" decoration-muted="packing_status == '3_done'" create="0" edit="0" delete="0">
+                <field name="stock_ok" column_invisible="1"/>
+                <field name="product_id" string="Producto"/>
+                <field name="packing_status" widget="badge" decoration-info="packing_status == '1_not_started'" decoration-warning="packing_status == '2_in_progress'" decoration-success="packing_status == '3_done'"/>
+                <field name="order_count" string="Órdenes"/>
+                <field name="total_estimated_kg" string="Total a preparar (kg)" digits="[10,3]"/>
+                <field name="total_done_kg" string="Total hecho (kg)" digits="[10,3]" optional="hide"/>
+                <field name="progress_pct" string="Progreso" widget="progressbar" options="{'editable': false}"/>
+                <field name="available_qty" string="Disponible en bodega" digits="[10,3]"/>
+                <button
+                    name="action_select_product"
+                    type="object"
+                    string="Empacar"
+                    icon="fa-cube"
+                    class="btn btn-sm btn-primary fw-bold"
+                />
+            </list>
+        </field>
+    </record>
+
+    <record id="view_preparation_day_summary_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.summary.search</field>
+        <field name="model">guapante.preparation.day.summary</field>
+        <field name="arch" type="xml">
+            <search string="Buscar productos">
+                <field name="product_id" string="Producto"/>
+                <separator/>
+                <filter string="Sin iniciar" name="filter_not_started" domain="[('packing_status', '=', '1_not_started')]"/>
+                <filter string="En progreso" name="filter_in_progress" domain="[('packing_status', '=', '2_in_progress')]"/>
+                <filter string="Terminado" name="filter_done" domain="[('packing_status', '=', '3_done')]"/>
+                <separator/>
+                <filter string="Con Stock Suficiente" name="stock_ok" domain="[('stock_ok', '=', True)]"/>
+                <filter string="Sin Stock" name="no_stock" domain="[('stock_ok', '=', False)]"/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Producto" name="group_product" context="{'group_by':'product_id'}"/>
+                    <filter string="Estado de empaque" name="group_by_status" context="{'group_by':'packing_status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Odoo 18 se rompe si ponemos una acción suelta en un megamenú.
+         Lo anidaremos dentro de la columna nativa "Empleos" (stock_picking_batch.menu_stock_jobs) -->
+    <menuitem
+        id="menu_preparation_day"
+        name="Preparación del Día"
+        parent="stock_picking_batch.menu_stock_jobs"
+        action="action_preparation_day"
+        sequence="50"
+    />
+
+    <!-- App propia en el grid de Aplicaciones (module.application=True). El menú raíz
+         NUNCA lleva action directo (mismo patrón que stock/contacts: raíz solo con
+         web_icon, el hijo lleva la acción) — es justamente el patrón nativo que evita
+         el problema de "acción suelta en megamenú" mencionado arriba. -->
+    <menuitem
+        id="menu_preparation_day_root"
+        name="Preparación"
+        web_icon="ist_preparation_day,static/description/icon.png"
+        sequence="155"
+    />
+    <menuitem
+        id="menu_preparation_day_app"
+        name="Sesiones"
+        parent="menu_preparation_day_root"
+        action="action_preparation_day"
+        sequence="10"
+    />
+
+    <!-- Wizard Transitorio: Aislamiento visual por usuario -->
+    <record id="view_preparation_day_product_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.wizard.form</field>
+        <field name="model">guapante.preparation.day.product.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Empaque de Producto">
+                <header>
+                    <button
+                        name="action_back_to_session"
+                        type="object"
+                        string="← Volver a todos los productos"
+                        class="btn-secondary"
+                    />
+                </header>
+                <sheet>
+                    <!-- Header del detalle -->
+                    <div class="d-flex align-items-center justify-content-between border-bottom pb-2">
+                        <h3 class="mb-0">
+                            <field name="product_id" readonly="1" nolabel="1" options="{'no_open': True}"/>
+                        </h3>
+                        <field name="operator_identification" widget="guapante_operator_badge" nolabel="1"/>
+                    </div>
+
+                    <!-- Indicador de stock y progreso -->
+                    <group>
+                        <field name="total_estimated_kg" string="Pedido (kg)" readonly="1" digits="[10,3]"/>
+                        <field name="available_qty" string="Disponible en bodega (kg)" readonly="1" digits="[10,3]"/>
+                        <field name="progress_percentage" widget="progressbar"/>
+                    </group>
+                    <div class="text-danger" invisible="available_qty &gt;= total_estimated_kg">
+                        <i class="fa fa-exclamation-triangle"/> Stock insuficiente para este producto.
+                    </div>
+
+                    <!-- Listas Dinámicas (Pendiente / Hecho) -->
+                    <div>
+                        <h4>Por Hacer</h4>
+                        <p class="text-muted small">Escribe el peso real y presiona la tecla <b>Enter</b> para guardar automáticamente.</p>
+                        <field name="detail_line_pending_ids" nolabel="1">
+                            <list string="Por Hacer" editable="bottom" create="0" delete="0" decoration-warning="actual_kg == 0">
+                                <field name="daily_sequence" string="Caja #" readonly="1" optional="show" decoration-bf="1"/>
+                                <field name="product_description" string="Producto exacto" readonly="1" decoration-bf="1"/>
+                                <field name="packaging_name" column_invisible="1"/>
+                                <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
+                                <field name="zone_name" string="Zona" readonly="1"/>
+                                <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                <field name="customer_uom_label" string="En" readonly="1"/>
+                                <field name="estimated_kg" column_invisible="1"/>
+                                <field name="needs_weighing" column_invisible="1"/>
+                                <field name="is_done" column_invisible="1"/>
+                                <field name="actual_kg" string="Peso real (kg)" digits="[10,3]" widget="scale_weight"/>
+                                <button name="action_save_line_weight_from_ui" type="object" icon="fa-check" title="Confirmar peso" class="btn btn-sm btn-success fw-bold"/>
+                            </list>
+                        </field>
+
+                        <h4 class="mt-4" invisible="not detail_line_done_ids">Hechos en esta sesión</h4>
+                        <field name="detail_line_done_ids" nolabel="1" readonly="1" invisible="not detail_line_done_ids">
+                            <list string="Hechos" decoration-muted="1" create="0" delete="0" open="0">
+                                <field name="daily_sequence" string="Caja #" readonly="1"/>
+                                <field name="product_description" string="Producto exacto" readonly="1"/>
+                                <field name="packaging_name" column_invisible="1"/>
+                                <field name="main_customer_name" string="Cliente Principal" readonly="1"/>
+                                <field name="zone_name" string="Zona" readonly="1"/>
+                                <field name="customer_qty_display" string="Pidió" readonly="1"/>
+                                <field name="customer_uom_label" string="En" readonly="1"/>
+                                <field name="estimated_kg" column_invisible="1"/>
+                                <field name="actual_kg" string="Peso Registrado (kg)" digits="[10,3]" decoration-bf="1" decoration-success="1"/>
+                                <button name="action_undo_line" type="object" icon="fa-undo" title="Corregir (Devolver a Pendientes)" class="btn btn-sm btn-warning fw-bold"/>
+                            </list>
+                        </field>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>

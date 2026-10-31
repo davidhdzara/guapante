@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Nivel 1 de Picking vive como client action propio en JS
+         (preparation_picking_level1_display.js/.xml, registrado como
+         "guapante_picking_level1"), no una vista/acción XML aquí —
+         especificación visual, 2026-10-23, decisión final de Tech Lead
+         tras dos rondas de kanban nativo + t-inherit que nunca
+         igualaron la tarjeta/barra de Taller real (el envoltorio
+         o_kanban_record del kanban no se podía quitar).
+
+         Diálogo nativo (target=new) para pedir el motivo de detención —
+         lista corta fija, sin texto libre. -->
+    <record id="view_preparation_day_product_claim_stop_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.claim.stop.wizard.form</field>
+        <field name="model">guapante.preparation.day.product.claim.stop.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="claim_id" invisible="1"/>
+                <group>
+                    <field name="reason" widget="radio"/>
+                </group>
+                <footer>
+                    <button string="Detener" type="object" name="action_confirm" class="btn-primary"/>
+                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Plan f2 (Tech Lead, 2026-10-31): conflicto de un solo claim por
+         operario — en vez del UserError seco de siempre, ofrece
+         terminar/liberar/detener lo que ya tiene. Diálogo nativo
+         (target=new), solo campos/botones nativos, sin CSS propio. -->
+    <record id="view_preparation_day_product_claim_conflict_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.claim.conflict.wizard.form</field>
+        <field name="model">guapante.preparation.day.product.claim.conflict.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="claim_id" invisible="1"/>
+                <field name="other_claim_id" invisible="1"/>
+                <group>
+                    <field name="message" nolabel="1" readonly="1"/>
+                </group>
+                <footer>
+                    <button string="Ir a terminarlo" type="object" name="action_go_finish" class="btn-primary"/>
+                    <button string="Liberar y tomar este" type="object" name="action_release_and_assign" class="btn-secondary"/>
+                    <button string="Detener con motivo" type="object" name="action_stop_other" class="btn-secondary"/>
+                    <button string="Cancelar" special="cancel" class="btn-link"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- ============================================================
+         CRON: Liberación automática de claims abandonados (plan f1,
+         2026-10-31). Libera de verdad en base de datos los claims En
+         progreso sin actividad real (asignar/retomar/pesar) desde hace
+         más de PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_
+         SECONDS — el operario se fue sin cerrar sesión, o su tablet se
+         quedó sin conexión. NO es el mecanismo de visibilidad (eso ya
+         lo hace get_claims_for_level1_display en cada lectura); esta
+         red de seguridad es la que de verdad deja el producto tomable
+         de nuevo con Asignarme.
+         Intervalo corto (5 min, no 10 como el cron de e4) porque un
+         producto bloqueado le impide trabajar a cualquier otro operario
+         mientras tanto — el costo de demorar la liberación es mayor
+         acá que en e4.
+         noupdate="1": mismo motivo que el cron de e4 — un ajuste manual
+         de David desde Ajustes no se pisa con una actualización del
+         módulo.
+         ============================================================ -->
+    <record id="ir_cron_guapante_release_abandoned_claims" model="ir.cron">
+        <field name="name">Guapante: liberar claims de Picking abandonados</field>
+        <field name="model_id" ref="model_guapante_preparation_day_product_claim"/>
+        <field name="code">model._cron_release_abandoned_claims()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Categoría nativa "Preparación" en Ajustes › Usuarios › Permisos
+         (mismo mecanismo que Inventario o Ventas): ir.module.category +
+         res.groups.category_id + implied_ids. GroupsView (core, base/
+         models/res_users.py) linealiza sola los grupos de una categoría
+         siguiendo la cadena de implied_ids, así que basta con que
+         "Administrador" implique a "Operario de Picking" para que el
+         selector único vacío/Operario de Picking/Administrador aparezca
+         sin widget propio. Decisión Tech Lead/QA, 2026-10-29. -->
+    <record id="module_category_preparation" model="ir.module.category">
+        <field name="name">Preparación</field>
+        <field name="sequence">25</field>
+    </record>
+
+    <!-- Mismo xmlid de siempre (group_preparation_picking_operator) — solo
+         se renombra y recategoriza, no se crea un grupo nuevo, para que
+         nadie pierda acceso: los has_group()/groups=.../ACL que ya
+         apuntaban a este xmlid (código y vistas) siguen intactos. Antes
+         controlaba solo quién ve el menú/acción de Picking; ahora,
+         categorizado en "Preparación", también decide quién puede
+         identificarse — ver controller de identificación. -->
+    <!-- OJO (Tech Lead, 2026-10-31, verificado contra staging): este
+         grupo por sí solo NO implica base.group_user ("Internal User")
+         — no tiene implied_ids. Un usuario con SOLO este grupo no es
+         "interno" (share=True) y pierde acceso a ACL que apuntan a
+         base.group_user, por ejemplo access_preparation_day sobre
+         guapante.preparation.day (usado por el fix de Nivel 2→Nivel 1,
+         punto (a) — un orm.read del estado de la sesión). El usuario
+         compartido del tablet de Picking SIEMPRE lo tiene junto con
+         stock.group_stock_user (necesario además para 'Desechar'), que
+         sí implica base.group_user — por eso en la práctica nunca se da
+         el caso aislado. Pendiente evaluar después de la salida a
+         producción si este grupo debería implicar base.group_user
+         directamente, para no depender de esa combinación. -->
+    <record id="group_preparation_picking_operator" model="res.groups">
+        <field name="name">Operario de Picking</field>
+        <field name="category_id" ref="module_category_preparation"/>
+    </record>
+
+    <!-- Grupo nuevo (Tech Lead/QA, 2026-10-29): sustituye al uso prestado
+         de stock.group_stock_manager en los modelos de notas de Picking
+         (ver preparation_day_note_template_views.xml e
+         ir.model.access.csv) y en lo que la Fase 2 vaya a necesitar de
+         "administrador" dentro de Preparación. Implica a Operario de
+         Picking (no lo deja separado) para que un Administrador pueda
+         también todo lo que puede un Operario, igual que Inventario
+         (Administrador implica Usuario), y para que el selector nativo
+         siga siendo UN solo dropdown por categoría. -->
+    <record id="group_preparation_admin" model="res.groups">
+        <field name="name">Administrador</field>
+        <field name="category_id" ref="module_category_preparation"/>
+        <field name="implied_ids" eval="[(4, ref('group_preparation_picking_operator'))]"/>
+    </record>
+</odoo>
