@@ -6,7 +6,10 @@ from odoo.http import request
 
 from ..models.const_preparation import (
     clear_active_prep_operator,
+    clear_pin_failures,
     get_active_prep_operator_id,
+    get_pin_lockout_remaining_seconds,
+    register_pin_failure,
     set_active_prep_operator,
 )
 
@@ -33,7 +36,25 @@ class PreparationDayIdentificationController(http.Controller):
         sigue siendo obligatorio para identificarse, no basta con
         tener PIN. active=True se agrega aparte (un empleado
         archivado no debe poder identificarse aunque siga marcado).
+
+        Límite de intentos (Tech Lead, 2026-10-31, punto b): 5 PIN no
+        reconocidos/ambiguos seguidos bloquean esta sesión de
+        navegador por 1 minuto — ver const_preparation.py para el
+        detalle de por qué es una medida débil, no seguridad real. El
+        PIN vacío (abajo) NO cuenta como intento: es solo el estado
+        inicial de la pantalla, nadie "intentó" nada todavía.
         """
+        remaining = get_pin_lockout_remaining_seconds(request.session)
+        if remaining:
+            return {
+                'success': False,
+                'error': (
+                    f'Demasiados intentos. Espera {remaining}s antes de '
+                    'volver a intentar.'
+                ),
+                'locked_seconds': remaining,
+            }
+
         pin = (pin or '').strip()
         if not pin:
             return {'success': False, 'error': 'Ingresa tu PIN.'}
@@ -44,8 +65,10 @@ class PreparationDayIdentificationController(http.Controller):
             ('active', '=', True),
         ])
         if not Employees:
+            register_pin_failure(request.session)
             return {'success': False, 'error': 'PIN no reconocido.'}
         if len(Employees) > 1:
+            register_pin_failure(request.session)
             return {
                 'success': False,
                 'error': (
@@ -54,6 +77,7 @@ class PreparationDayIdentificationController(http.Controller):
                 ),
             }
 
+        clear_pin_failures(request.session)
         set_active_prep_operator(request.session, Employees.id)
         return {
             'success': True,

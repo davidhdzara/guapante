@@ -68,11 +68,14 @@ export class GuapantePickingApp extends Component {
                                    autocomplete="off"
                                    class="form-control form-control-lg text-center rounded-5 shadow-sm bg-white"
                                    t-ref="pinInput"
+                                   t-att-disabled="state.lockedSeconds > 0"
                                    t-model="state.pin"
                                    t-on-keydown="onKeydown"/>
                         </div>
                         <span t-if="state.error" class="text-danger small"><t t-esc="state.error"/></span>
-                        <button class="btn btn-primary btn-lg rounded-5 shadow py-2 px-3" t-on-click="onConfirm">Confirmar</button>
+                        <button class="btn btn-primary btn-lg rounded-5 shadow py-2 px-3"
+                                t-att-disabled="state.lockedSeconds > 0"
+                                t-on-click="onConfirm">Confirmar</button>
                         <button t-if="!pwaService.isScopedApp" class="btn btn-link btn-sm text-muted" t-on-click="onDiscard">Descartar</button>
                     </div>
                 </div>
@@ -88,7 +91,7 @@ export class GuapantePickingApp extends Component {
     static props = { "*": true };
 
     setup() {
-        this.state = useState({ pin: "", error: "" });
+        this.state = useState({ pin: "", error: "", lockedSeconds: 0 });
         this.clockState = useState({ time: "", day: "", date: "" });
         this.operatorState = operatorState;
         this.pinInputRef = useRef("pinInput");
@@ -127,6 +130,9 @@ export class GuapantePickingApp extends Component {
             if (this._clockTimer) {
                 browser.clearInterval(this._clockTimer);
             }
+            if (this._lockoutTimer) {
+                browser.clearInterval(this._lockoutTimer);
+            }
         });
     }
 
@@ -152,7 +158,14 @@ export class GuapantePickingApp extends Component {
         if (!result.success) {
             this.state.error = result.error || "PIN no reconocido.";
             this.state.pin = "";
-            if (this.pinInputRef.el) {
+            // Límite de intentos (Tech Lead, 2026-10-31, punto b): el
+            // servidor ya rechaza cualquier intento mientras dure el
+            // bloqueo (ver const_preparation.py) — esto solo deshabilita
+            // el input/botón y muestra la cuenta atrás en esta pestaña,
+            // es cosmético, no la medida real.
+            if (result.locked_seconds) {
+                this._startLockoutCountdown(result.locked_seconds);
+            } else if (this.pinInputRef.el) {
                 this.pinInputRef.el.focus();
             }
             return;
@@ -160,6 +173,30 @@ export class GuapantePickingApp extends Component {
         this.state.error = "";
         this.idleWatcher.startWatching();
         await this.handoff();
+    }
+
+    _startLockoutCountdown(seconds) {
+        this.state.lockedSeconds = seconds;
+        if (this._lockoutTimer) {
+            browser.clearInterval(this._lockoutTimer);
+        }
+        this._lockoutTimer = browser.setInterval(() => {
+            this.state.lockedSeconds -= 1;
+            if (this.state.lockedSeconds <= 0) {
+                browser.clearInterval(this._lockoutTimer);
+                this._lockoutTimer = null;
+                this.state.lockedSeconds = 0;
+                this.state.error = "";
+                if (this.pinInputRef.el) {
+                    this.pinInputRef.el.focus();
+                }
+            } else {
+                this.state.error = (
+                    `Demasiados intentos. Espera ${this.state.lockedSeconds}s ` +
+                    'antes de volver a intentar.'
+                );
+            }
+        }, 1000);
     }
 
     async handoff() {

@@ -23,6 +23,19 @@ PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300
 # oculto/visible justo en el borde por esa diferencia de granularidad.
 CLAIM_STALE_MARGIN_SECONDS = 60
 
+# Límite de intentos del NIP (Tech Lead, 2026-10-31, punto b): disuade
+# adivinar un PIN a fuerza bruta en el tablet compartido, no es una
+# medida de seguridad fuerte — vive en la sesión de navegador (igual
+# que la identificación misma), así que borrar las cookies del tablet
+# la evade por completo. Suficiente para un tablet interno compartido
+# (disuade un intento casual, no protege contra alguien decidido a
+# evadirla); NO usar este mismo patrón como control de acceso real en
+# ningún otro contexto.
+PREP_OPERATOR_PIN_FAILURES_KEY = 'guapante_prep_pin_failures'
+PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY = 'guapante_prep_pin_lockout_until'
+PREP_OPERATOR_PIN_MAX_FAILURES = 5
+PREP_OPERATOR_PIN_LOCKOUT_SECONDS = 60
+
 
 def get_active_prep_operator_id(env, session, refresh=True):
     """Devuelve el employee_id identificado en esta sesión de navegador, o False si
@@ -84,3 +97,55 @@ def clear_active_prep_operator(session):
         return
     session.pop(PREP_OPERATOR_SESSION_KEY, None)
     session.pop(PREP_OPERATOR_LAST_ACTIVITY_KEY, None)
+
+
+def get_pin_lockout_remaining_seconds(session):
+    """Segundos que faltan del bloqueo por intentos fallidos del NIP en esta
+    sesión de navegador, o 0 si no hay bloqueo activo (nunca falló, o el
+    bloqueo ya venció). Limpia el bloqueo vencido en vez de dejarlo
+    acumulado en la sesión.
+
+    `session is None` a propósito, no `not session`: una sesión recién
+    creada (sin fallos todavía) es un diccionario vacío, que en Python
+    es falsy — `not session` la trataría como "no hay sesión" y nunca
+    contaría el primer fallo."""
+    if session is None:
+        return 0
+    lockout_until = session.get(PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY)
+    if not lockout_until:
+        return 0
+    remaining = int(lockout_until - time.time())
+    if remaining <= 0:
+        session.pop(PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY, None)
+        session.pop(PREP_OPERATOR_PIN_FAILURES_KEY, None)
+        return 0
+    return remaining
+
+
+def register_pin_failure(session):
+    """Cuenta un intento de NIP fallido ('no reconocido' o ambiguo — nunca el
+    de PIN vacío, ese no es un intento). Al llegar a
+    PREP_OPERATOR_PIN_MAX_FAILURES activa el bloqueo de
+    PREP_OPERATOR_PIN_LOCKOUT_SECONDS y reinicia el contador.
+
+    `session is None` a propósito — ver get_pin_lockout_remaining_
+    seconds, mismo motivo."""
+    if session is None:
+        return
+    failures = session.get(PREP_OPERATOR_PIN_FAILURES_KEY, 0) + 1
+    if failures >= PREP_OPERATOR_PIN_MAX_FAILURES:
+        session[PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY] = (
+            time.time() + PREP_OPERATOR_PIN_LOCKOUT_SECONDS
+        )
+        session[PREP_OPERATOR_PIN_FAILURES_KEY] = 0
+    else:
+        session[PREP_OPERATOR_PIN_FAILURES_KEY] = failures
+
+
+def clear_pin_failures(session):
+    """Reinicia el contador de intentos fallidos del NIP — identificación
+    exitosa."""
+    if session is None:
+        return
+    session.pop(PREP_OPERATOR_PIN_FAILURES_KEY, None)
+    session.pop(PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY, None)

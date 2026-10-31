@@ -13,8 +13,11 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     PREP_OPERATOR_LAST_ACTIVITY_KEY,
+    PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY,
+    PREP_OPERATOR_PIN_MAX_FAILURES,
     PREP_OPERATOR_SESSION_KEY,
     get_active_prep_operator_id,
+    get_pin_lockout_remaining_seconds,
     set_active_prep_operator,
 )
 from odoo.addons.ist_preparation_day.models.preparation_day import (
@@ -591,6 +594,83 @@ class TestPreparationDay(TransactionCase):
 
         self.assertFalse(result['success'])
         self.assertEqual(result['error'], 'PIN no reconocido.')
+
+    # ── Límite de intentos del NIP (Tech Lead, 2026-10-31, punto b) ──
+
+    def _identify(self, session, pin):
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        mock_request.session = session
+        with patch(
+            'odoo.addons.ist_preparation_day.controllers'
+            '.preparation_day_identification_controller.request',
+            mock_request,
+        ):
+            return PreparationDayIdentificationController().identify_operator(
+                pin=pin,
+            )
+
+    def test_pin_lockout_after_max_failures(self):
+        """PREP_OPERATOR_PIN_MAX_FAILURES intentos con PIN no reconocido
+        seguidos bloquean esta sesión de navegador — el siguiente
+        intento, aunque sea el PIN correcto, debe rechazarse sin ni
+        siquiera consultar hr.employee."""
+        employee = self._create_valid_operator(pin='9999')
+        session = {}
+        for _ in range(PREP_OPERATOR_PIN_MAX_FAILURES):
+            result = self._identify(session, 'pin-que-no-existe')
+            self.assertFalse(result['success'])
+
+        self.assertIn(PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY, session)
+        result = self._identify(session, '9999')
+        self.assertFalse(
+            result['success'],
+            'El bloqueo debe rechazar incluso el PIN correcto',
+        )
+        self.assertTrue(result.get('locked_seconds'))
+        self.assertNotIn(PREP_OPERATOR_SESSION_KEY, session)
+
+    def test_pin_empty_does_not_count_as_failure(self):
+        """El PIN vacío ('Ingresa tu PIN') no es un intento fallido —
+        no debe acercar al bloqueo."""
+        session = {}
+        for _ in range(PREP_OPERATOR_PIN_MAX_FAILURES):
+            result = self._identify(session, '')
+            self.assertEqual(result['error'], 'Ingresa tu PIN.')
+
+        self.assertEqual(get_pin_lockout_remaining_seconds(session), 0)
+
+    def test_pin_success_clears_failure_counter(self):
+        """Identificarse con éxito reinicia el contador — no basta con
+        fallar 4 veces antes de entrar bien y luego sumar sobre lo
+        viejo."""
+        employee = self._create_valid_operator(pin='1212')
+        session = {}
+        for _ in range(PREP_OPERATOR_PIN_MAX_FAILURES - 1):
+            self._identify(session, 'pin-que-no-existe')
+
+        result = self._identify(session, '1212')
+        self.assertTrue(result['success'])
+
+        # Un solo fallo después de un éxito no debe bloquear — el
+        # contador de antes de entrar bien ya no debe seguir sumando.
+        result = self._identify(session, 'pin-que-no-existe')
+        self.assertFalse(result['success'])
+        self.assertFalse(result.get('locked_seconds'))
+
+    def test_pin_lockout_expires_after_timeout(self):
+        """Pasado PREP_OPERATOR_PIN_LOCKOUT_SECONDS, el bloqueo se
+        limpia solo — un intento nuevo (correcto) vuelve a funcionar."""
+        employee = self._create_valid_operator(pin='3434')
+        session = {}
+        for _ in range(PREP_OPERATOR_PIN_MAX_FAILURES):
+            self._identify(session, 'pin-que-no-existe')
+        self.assertIn(PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY, session)
+
+        # Simula que ya pasó el minuto de bloqueo.
+        session[PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY] = time.time() - 1
+        result = self._identify(session, '3434')
+        self.assertTrue(result['success'])
 
     # ── Tests de cierre por inactividad en Picking (Fase A, 2026-10-22) ──
 
