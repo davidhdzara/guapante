@@ -149,17 +149,39 @@ export class PickingLinesDisplay extends Component {
             LINE_FIELDS,
         );
         const attrIds = [...new Set(lines.flatMap((l) => l.no_variant_attribute_value_ids))];
-        let attrNames = {};
+        let attrById = {};
         if (attrIds.length) {
             const attrs = await this.orm.read(
-                "product.template.attribute.value", attrIds, ["name"],
+                "product.template.attribute.value", attrIds,
+                ["name", "display_name", "color"],
             );
-            attrNames = Object.fromEntries(attrs.map((a) => [a.id, a.name]));
+            attrById = Object.fromEntries(attrs.map((a) => [a.id, a]));
         }
+        // Colores nativos (Tech Lead, 2026-10-31): mismo campo `color`
+        // (0-11) que ya usa el widget many2many_tags en el backend —
+        // el chip se pinta con la clase o_tag_color_N del core de Odoo
+        // (web/static/src/core/tags_list), cero CSS propio.
+        //
+        // Texto (David, 2026-10-31): "Atributo: Valor" (display_name
+        // nativo) cuando cabe sin alargar el chip — la columna de
+        // Nivel 2 es angosta (w-25). Con los atributos reales de
+        // Preparación, "Tamaño: Grande" (14) cabe bien pero "Grado de
+        // Madurez: Pinton-Maduro" (31) no — ahí se deja solo el valor
+        // ("Pinton-Maduro"). Umbral sobre el texto completo, no solo
+        // sobre el nombre del atributo, para que decida igual sin
+        // importar qué tan largo salga el valor.
+        const MAX_CHIP_TEXT_LENGTH = 20;
         for (const line of lines) {
-            line.attribute_names = line.no_variant_attribute_value_ids.map(
-                (id) => attrNames[id] || "",
-            );
+            line.attribute_chips = line.no_variant_attribute_value_ids.map((id) => {
+                const attr = attrById[id];
+                const fullText = attr?.display_name || "";
+                return {
+                    name: (
+                        fullText && fullText.length <= MAX_CHIP_TEXT_LENGTH
+                    ) ? fullText : (attr?.name || ""),
+                    color: attr?.color || 0,
+                };
+            });
         }
         this.state.lines = lines;
         this.state.loaded = true;
