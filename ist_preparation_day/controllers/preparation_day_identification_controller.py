@@ -18,6 +18,26 @@ _logger = logging.getLogger(__name__)
 
 class PreparationDayIdentificationController(http.Controller):
 
+    def _reject_pin_attempt(self, fallback_error):
+        """Cuenta el fallo y responde con el mensaje de bloqueo si ESTE
+        mismo fallo (el 5º) ya lo activó — Tech Lead, 2026-10-31: sin
+        esto, el 5º intento respondía el mensaje normal ("PIN no
+        reconocido") y solo el 6º (el que ya llega bloqueado) mostraba
+        la cuenta atrás; el operario veía 5 veces el mismo error antes
+        de enterarse del bloqueo."""
+        register_pin_failure(request.session)
+        remaining = get_pin_lockout_remaining_seconds(request.session)
+        if remaining:
+            return {
+                'success': False,
+                'error': (
+                    f'Demasiados intentos. Espera {remaining}s antes de '
+                    'volver a intentar.'
+                ),
+                'locked_seconds': remaining,
+            }
+        return {'success': False, 'error': fallback_error}
+
     @http.route(
         '/web/guapante/preparation_day/identify',
         type='json',
@@ -65,17 +85,12 @@ class PreparationDayIdentificationController(http.Controller):
             ('active', '=', True),
         ])
         if not Employees:
-            register_pin_failure(request.session)
-            return {'success': False, 'error': 'PIN no reconocido.'}
+            return self._reject_pin_attempt('PIN no reconocido.')
         if len(Employees) > 1:
-            register_pin_failure(request.session)
-            return {
-                'success': False,
-                'error': (
-                    'Este PIN está asignado a más de un operario — avisa '
-                    'a un supervisor antes de continuar.'
-                ),
-            }
+            return self._reject_pin_attempt(
+                'Este PIN está asignado a más de un operario — avisa '
+                'a un supervisor antes de continuar.'
+            )
 
         clear_pin_failures(request.session)
         set_active_prep_operator(request.session, Employees.id)

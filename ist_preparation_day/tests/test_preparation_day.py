@@ -630,6 +630,23 @@ class TestPreparationDay(TransactionCase):
         self.assertTrue(result.get('locked_seconds'))
         self.assertNotIn(PREP_OPERATOR_SESSION_KEY, session)
 
+    def test_pin_lockout_message_appears_on_the_failure_that_triggers_it(self):
+        """Tech Lead, 2026-10-31: el intento que ACTIVA el bloqueo (el
+        5º) debe responder ya con el mensaje de bloqueo y
+        locked_seconds — no el mensaje normal de "PIN no reconocido"
+        seguido de un 6º intento recién ahí avisando. Antes de este
+        fix el operario veía 5 veces el mismo error sin enterarse del
+        bloqueo hasta el siguiente intento."""
+        session = {}
+        for _ in range(PREP_OPERATOR_PIN_MAX_FAILURES - 1):
+            result = self._identify(session, 'pin-que-no-existe')
+            self.assertFalse(result.get('locked_seconds'))
+
+        result = self._identify(session, 'pin-que-no-existe')
+        self.assertFalse(result['success'])
+        self.assertTrue(result.get('locked_seconds'))
+        self.assertAlmostEqual(result['locked_seconds'], 60, delta=2)
+
     def test_pin_empty_does_not_count_as_failure(self):
         """El PIN vacío ('Ingresa tu PIN') no es un intento fallido —
         no debe acercar al bloqueo."""
