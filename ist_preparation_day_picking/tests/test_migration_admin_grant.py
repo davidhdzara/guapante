@@ -1,24 +1,33 @@
 # -*- coding: utf-8 -*-
 """Asignación de "Administrador" (Preparación) a Diana y Mauricio por
-login (Tech Lead/QA, 2026-10-29). Prueba la función compartida
-(`hooks.grant_admin_group_once`) que usan tanto `post_init_hook`
-(instalación nueva, ej. producción) como `migrations/18.0.1.1.0/
-post-migration.py` (actualización de un módulo ya instalado, ej.
-staging) — ambos caminos deben terminar en el mismo estado, sin
-duplicar ni reinstalar a quien se quite el grupo después."""
+login (Tech Lead/QA, 2026-10-29), y de "Operario de Picking" al
+usuario compartido del tablet (Tech Lead, 2026-10-31 — bloqueante real
+encontrado antes de la salida a producción, ver docstring de
+hooks.py). Prueba las funciones compartidas (`hooks.
+grant_admin_group_once`/`grant_operator_group_once`) que usan tanto
+`post_init_hook` (instalación nueva, ej. producción) como las
+migraciones (actualización de un módulo ya instalado, ej. staging) —
+ambos caminos deben terminar en el mismo estado, sin duplicar ni
+reinstalar a quien se quite el grupo después."""
 import uuid
 from unittest.mock import patch
 
+from odoo.exceptions import AccessError
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.ist_preparation_day_picking.hooks import (
     ADMIN_GRANT_DONE_PARAM,
+    OPERATOR_GRANT_DONE_PARAM,
     grant_admin_group_once,
+    grant_operator_group_once,
     post_init_hook,
 )
 
 HOOKS_LOGINS_PATCH_TARGET = (
     'odoo.addons.ist_preparation_day_picking.hooks.ADMIN_GRANT_LOGINS'
+)
+HOOKS_OPERATOR_LOGINS_PATCH_TARGET = (
+    'odoo.addons.ist_preparation_day_picking.hooks.OPERATOR_GRANT_LOGINS'
 )
 
 
@@ -57,6 +66,22 @@ class TestMigrationAdminGrant(TransactionCase):
         })
         self.mauricio = self.env['res.users'].create({
             'name': 'Mauricio Test', 'login': mauricio_login,
+        })
+
+        self.operator_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_picking_operator',
+        )
+        shared_login = f'tablet.test.{uuid.uuid4().hex}@example.com'
+        self._operator_logins_patcher = patch(
+            HOOKS_OPERATOR_LOGINS_PATCH_TARGET, [shared_login],
+        )
+        self._operator_logins_patcher.start()
+        self.addCleanup(self._operator_logins_patcher.stop)
+        self.env['ir.config_parameter'].sudo().search([
+            ('key', '=', OPERATOR_GRANT_DONE_PARAM),
+        ]).unlink()
+        self.shared_user = self.env['res.users'].create({
+            'name': 'Tablet Picking Test', 'login': shared_login,
         })
 
     def test_grant_adds_known_users_by_login(self):
@@ -108,6 +133,52 @@ class TestMigrationAdminGrant(TransactionCase):
 
         self.assertNotIn(self.group, self.mauricio.groups_id)
         self.assertIn(self.group, self.diana.groups_id)
+
+    # ── Operario de Picking para el tablet compartido (Tech Lead, 2026-10-31) ──
+
+    def test_grant_operator_adds_shared_user_by_login(self):
+        grant_operator_group_once(self.env)
+        self.assertIn(self.operator_group, self.shared_user.groups_id)
+
+    def test_grant_operator_does_not_reinstate_manual_removal(self):
+        grant_operator_group_once(self.env)
+        self.shared_user.write({'groups_id': [(3, self.operator_group.id)]})
+
+        grant_operator_group_once(self.env)
+
+        self.assertNotIn(
+            self.operator_group, self.shared_user.groups_id,
+            'La segunda corrida no debe volver a asignar a quien se quitó a mano',
+        )
+
+    def test_grant_operator_tolerates_missing_user(self):
+        """En otra base (pruebas, otro cliente) ese login no existe — no
+        debe romper la instalación."""
+        self.shared_user.unlink()
+        grant_operator_group_once(self.env)  # no debe lanzar excepción
+
+    def test_post_init_hook_grants_both_groups_on_fresh_install(self):
+        """Caso producción: instalación nueva, post_init_hook es el
+        único camino — Diana/Mauricio deben quedar en Administrador Y
+        el usuario compartido del tablet en Operario, en la misma
+        corrida."""
+        post_init_hook(self.env)
+        self.assertIn(self.group, self.diana.groups_id)
+        self.assertIn(self.group, self.mauricio.groups_id)
+        self.assertIn(self.operator_group, self.shared_user.groups_id)
+
+    def test_user_without_operator_group_cannot_open_level1(self):
+        """Verificación directa del bloqueante: un usuario sin el grupo
+        (el estado en el que nace el tablet compartido en una
+        instalación nueva, antes de esta corrección) no puede ni abrir
+        la pantalla de Picking — _check_picking_access() lo rechaza."""
+        plain_user = self.env['res.users'].create({
+            'name': 'Sin Grupo Test',
+            'login': f'singrupo.test.{uuid.uuid4().hex}@example.com',
+        })
+        Claim = self.env['guapante.preparation.day.product.claim']
+        with self.assertRaises(AccessError):
+            Claim.with_user(plain_user)._check_picking_access()
 
     def test_note_template_menu_has_only_admin_group(self):
         """QA (2026-10-29): el `groups` del <menuitem> es aditivo en una

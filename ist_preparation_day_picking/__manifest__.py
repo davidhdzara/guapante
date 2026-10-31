@@ -1,6 +1,6 @@
 {
     'name': 'Picking (Guapante)',
-    'version': '18.0.1.2.0',
+    'version': '18.0.1.3.0',
     'category': 'Inventory/Inventory',
     'summary': 'Pantalla kanban a pantalla completa para pesaje de Picking',
     'description': """
