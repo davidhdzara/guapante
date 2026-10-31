@@ -168,6 +168,44 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
                 patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
             with self.assertRaises(UserError):
                 line.with_context(guapante_picking_flow=True).action_mark_line_ready()
+
+    def test_write_actual_kg_blocked_when_operator_deactivated_mid_shift(self):
+        """Tech Lead (2026-10-31): la validación de operario (active +
+        is_guapante_prep_operator) vive ahora en get_active_prep_operator_id,
+        la compuerta que usan TODAS las escrituras de Picking — no solo
+        la pantalla de NIP. Si operator_a se desactiva a mitad de turno,
+        incluso con su claim ya asignado, pesar debe seguir rechazándolo
+        con el mismo error de "sesión expiró", no con uno de ownership."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        self.operator_a.active = False
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).write(
+                    {'actual_kg': 1.5},
+                )
+
+    def test_write_actual_kg_blocked_when_operator_loses_flag_mid_shift(self):
+        """Mismo caso que arriba pero quitando is_guapante_prep_operator
+        en vez de archivar al empleado."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        self.operator_a.is_guapante_prep_operator = False
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).write(
+                    {'actual_kg': 1.5},
+                )
         self.assertFalse(line.is_done)
 
     def test_action_mark_line_ready_checks_ownership(self):

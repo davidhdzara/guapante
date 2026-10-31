@@ -73,7 +73,7 @@ export class GuapantePickingApp extends Component {
                         </div>
                         <span t-if="state.error" class="text-danger small"><t t-esc="state.error"/></span>
                         <button class="btn btn-primary btn-lg rounded-5 shadow py-2 px-3" t-on-click="onConfirm">Confirmar</button>
-                        <button class="btn btn-link btn-sm text-muted" t-on-click="onDiscard">Descartar</button>
+                        <button t-if="!pwaService.isScopedApp" class="btn btn-link btn-sm text-muted" t-on-click="onDiscard">Descartar</button>
                     </div>
                 </div>
             </t>
@@ -95,6 +95,10 @@ export class GuapantePickingApp extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.idleWatcher = useService("guapante_picking_idle_watcher");
+        // Punto 4 (Tech Lead, 2026-10-31): mismo flag nativo que ya
+        // oculta "Cerrar" en Nivel 1/2 — en la app instalada no hay
+        // "Descartar" a un backend que, para este tablet, no existe.
+        this.pwaService = useService("pwa");
         this.iconUrl = ICON_URL;
         this.companyLogoUrl = COMPANY_LOGO_URL;
 

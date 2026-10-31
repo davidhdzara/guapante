@@ -34,7 +34,7 @@ class StockScrap(models.Model):
         Wizard = None
         if is_picking_flow:
             employee_id = (
-                get_active_prep_operator_id(request.session, refresh=True)
+                get_active_prep_operator_id(self.env, request.session, refresh=True)
                 if request else False
             )
             if not employee_id:

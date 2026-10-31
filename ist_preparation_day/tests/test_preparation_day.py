@@ -449,6 +449,11 @@ class TestPreparationDay(TransactionCase):
             # método de pago es transferencia (default); el PIN de
             # Preparación del Día no tiene relación con esto.
             'l10n_co_ne_payment_method': '10',
+            # Desde que get_active_prep_operator_id valida esto él
+            # mismo (Tech Lead, 2026-10-31), hace falta el flag incluso
+            # para este test de identificación, no solo para los de
+            # "Operarios autorizados".
+            'is_guapante_prep_operator': True,
         })
         self._create_confirmed_order(qty=2.0)
         session = self._create_session()
@@ -589,16 +594,28 @@ class TestPreparationDay(TransactionCase):
 
     # ── Tests de cierre por inactividad en Picking (Fase A, 2026-10-22) ──
 
+    def _create_valid_operator(self, pin='4242'):
+        """Empleado operario válido (active, is_guapante_prep_operator) —
+        desde que get_active_prep_operator_id valida esto él mismo
+        (Tech Lead, 2026-10-31), un id inventado como 42 ya no basta
+        para estos tests."""
+        return self.env['hr.employee'].create({
+            'name': 'Operario Helper Test', 'pin': pin,
+            'is_guapante_prep_operator': True,
+            'l10n_co_ne_payment_method': '10',
+        })
+
     def test_get_active_prep_operator_id_expires_after_timeout(self):
         """Un timestamp de actividad viejo (>5 min) debe expirar la sesión del
         operario, no devolver el employee_id heredado."""
+        employee = self._create_valid_operator()
         session = {}
-        set_active_prep_operator(session, 42)
+        set_active_prep_operator(session, employee.id)
         session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = (
             time.time() - PREP_OPERATOR_IDLE_TIMEOUT_SECONDS - 1
         )
 
-        result = get_active_prep_operator_id(session)
+        result = get_active_prep_operator_id(self.env, session)
 
         self.assertFalse(result, "Debe expirar pasados los 5 minutos")
         self.assertNotIn(
@@ -608,14 +625,15 @@ class TestPreparationDay(TransactionCase):
 
     def test_get_active_prep_operator_id_refresh_true_extends_session(self):
         """refresh=True (acción real del operario) debe extender la ventana."""
+        employee = self._create_valid_operator()
         session = {}
-        set_active_prep_operator(session, 42)
+        set_active_prep_operator(session, employee.id)
         old_timestamp = time.time() - 250  # dentro de la ventana, pero vieja
         session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = old_timestamp
 
-        result = get_active_prep_operator_id(session, refresh=True)
+        result = get_active_prep_operator_id(self.env, session, refresh=True)
 
-        self.assertEqual(result, 42)
+        self.assertEqual(result, employee.id)
         self.assertGreater(
             session[PREP_OPERATOR_LAST_ACTIVITY_KEY], old_timestamp,
             "refresh=True debe actualizar el timestamp de actividad",
@@ -625,18 +643,69 @@ class TestPreparationDay(TransactionCase):
         """refresh=False (consulta de solo lectura, ej. watchdog del cliente)
         no debe extender la ventana — si lo hiciera, el timeout nunca se
         cumpliría mientras la pestaña siga preguntando."""
+        employee = self._create_valid_operator()
         session = {}
-        set_active_prep_operator(session, 42)
+        set_active_prep_operator(session, employee.id)
         old_timestamp = time.time() - 250
         session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = old_timestamp
 
-        result = get_active_prep_operator_id(session, refresh=False)
+        result = get_active_prep_operator_id(self.env, session, refresh=False)
 
-        self.assertEqual(result, 42)
+        self.assertEqual(result, employee.id)
         self.assertEqual(
             session[PREP_OPERATOR_LAST_ACTIVITY_KEY], old_timestamp,
             "refresh=False no debe tocar el timestamp de actividad",
         )
+
+    def test_get_active_prep_operator_id_clears_session_when_deactivated(self):
+        """Tech Lead (2026-10-31): si el operario se desactiva a mitad de
+        turno, el helper debe dejar de aceptarlo — no solo la pantalla de
+        NIP, también cualquier escritura de Picking que pase por acá."""
+        employee = self._create_valid_operator(pin='4243')
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        employee.active = False
+
+        result = get_active_prep_operator_id(self.env, session, refresh=True)
+
+        self.assertFalse(result)
+        self.assertNotIn(PREP_OPERATOR_SESSION_KEY, session)
+
+    def test_get_active_prep_operator_id_clears_session_when_flag_removed(self):
+        """Mismo caso que arriba pero quitando is_guapante_prep_operator en
+        vez de archivar — David (2026-10-29): el flag sigue siendo
+        obligatorio para operar, no solo tener PIN."""
+        employee = self._create_valid_operator(pin='4244')
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        employee.is_guapante_prep_operator = False
+
+        result = get_active_prep_operator_id(self.env, session, refresh=True)
+
+        self.assertFalse(result)
+        self.assertNotIn(PREP_OPERATOR_SESSION_KEY, session)
+
+    def test_current_operator_endpoint_clears_deactivated_operator(self):
+        """Tech Lead (2026-10-31): el endpoint que consulta la pantalla de
+        NIP (y el idle watcher) también debe dejar de reconocer a un
+        operario desactivado a mitad de turno — no solo el helper en
+        aislamiento, el camino HTTP real que usa el cliente."""
+        employee = self._create_valid_operator(pin='4246')
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, employee.id)
+        employee.active = False
+
+        with patch(
+            'odoo.addons.ist_preparation_day.controllers'
+            '.preparation_day_identification_controller.request',
+            mock_request,
+        ):
+            result = PreparationDayIdentificationController().current_operator()
+
+        self.assertFalse(result['employee_id'])
+        self.assertNotIn(PREP_OPERATOR_SESSION_KEY, mock_request.session)
 
     def test_picking_flow_weight_with_expired_session_raises(self):
         """Hallazgo de Tech Lead: un pesaje que sale de Picking

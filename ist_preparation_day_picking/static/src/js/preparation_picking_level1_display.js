@@ -3,7 +3,11 @@ import { Component, useState, onWillStart, onWillUnmount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
-import { clearOperator } from "@ist_preparation_day/js/preparation_operator_state";
+import {
+    clearOperator,
+    ensureOperatorLoaded,
+    operatorState,
+} from "@ist_preparation_day/js/preparation_operator_state";
 import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingClaimGearMenu } from "./preparation_picking_claim_menu";
@@ -57,7 +61,6 @@ export class PickingClaimsDisplay extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.busService = useService("bus_service");
-        this.homeMenu = useService("home_menu");
         this.pwaService = useService("pwa");
         this.dialog = useService("dialog");
         this.statusOrder = STATUS_ORDER;
@@ -79,6 +82,20 @@ export class PickingClaimsDisplay extends Component {
         this.onOperationFinished = this.onOperationFinished.bind(this);
 
         onWillStart(async () => {
+            // Punto 3 (Tech Lead, 2026-10-31): sin operario identificado
+            // (sesión vencida, "Cerrar" en otra pestaña, F5 directo a
+            // esta URL) no se monta Nivel 1 — se vuelve a la pantalla de
+            // NIP de una vez, sin esperar los 30s del idle watcher.
+            // doAction a OTRA acción (guapante_picking_app, no esta
+            // misma) desde onWillStart no es reentrante — mismo patrón
+            // ya probado en _backToLevel1() de Nivel 2.
+            await ensureOperatorLoaded();
+            if (!operatorState.employeeName) {
+                await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
+                    clearBreadcrumbs: true,
+                });
+                return;
+            }
             await this._resolveWizard();
             await this.loadRecords();
             if (this.state.wizardId) {
@@ -174,8 +191,17 @@ export class PickingClaimsDisplay extends Component {
         this.loadRecords();
     }
 
-    onClickClose() {
-        this.homeMenu.toggle();
+    async onClickClose() {
+        // Punto 1 (Tech Lead, 2026-10-31): "Cerrar" cierra también la
+        // identificación de esta estación (clearOperator() ya llama al
+        // servidor y limpia guapante_prep_employee_id de la sesión, no
+        // solo el estado local) y vuelve a la pantalla de NIP — antes
+        // solo abría la grilla de Apps, dejando al operario identificado
+        // para quien tomara el tablet después.
+        await clearOperator();
+        await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
+            clearBreadcrumbs: true,
+        });
     }
 
     toggleDoneGroup() {

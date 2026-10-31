@@ -72,15 +72,17 @@ class PreparationDayIdentificationController(http.Controller):
         cliente — si esta sola pregunta extendiera la sesión, el cierre por
         5 minutos de inactividad nunca se cumpliría mientras la pestaña
         quede abierta (Fase A, hallazgo de Tech Lead)."""
-        employee_id = get_active_prep_operator_id(request.session, refresh=False)
+        employee_id = get_active_prep_operator_id(
+            request.env, request.session, refresh=False,
+        )
         if not employee_id:
             return {'employee_id': False, 'employee_name': False}
 
+        # Ya validado (existe, active, is_guapante_prep_operator) dentro
+        # de get_active_prep_operator_id — Tech Lead, 2026-10-31: esa
+        # validación vive en el helper, no acá, porque también la usan
+        # las escrituras de Picking (nota, peso, claim, scrap).
         Employee = request.env['hr.employee'].sudo().browse(employee_id)
-        if not Employee.exists():
-            clear_active_prep_operator(request.session)
-            return {'employee_id': False, 'employee_name': False}
-
         return {'employee_id': Employee.id, 'employee_name': Employee.name}
 
     @http.route(

@@ -135,7 +135,7 @@ class PreparationDayProductClaim(models.Model):
 
     def _compute_is_mine(self) -> None:
         current_employee_id = (
-            get_active_prep_operator_id(request.session, refresh=False)
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
             if request else False
         )
         for claim in self:
@@ -154,7 +154,7 @@ class PreparationDayProductClaim(models.Model):
 
     def _require_active_operator(self) -> int:
         employee_id = (
-            get_active_prep_operator_id(request.session, refresh=True)
+            get_active_prep_operator_id(self.env, request.session, refresh=True)
             if request else False
         )
         if not employee_id:

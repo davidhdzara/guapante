@@ -3,7 +3,11 @@ import { Component, useState, onWillStart, onWillUnmount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog, ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
-import { clearOperator } from "@ist_preparation_day/js/preparation_operator_state";
+import {
+    clearOperator,
+    ensureOperatorLoaded,
+    operatorState,
+} from "@ist_preparation_day/js/preparation_operator_state";
 import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingWeightInput } from "./preparation_picking_weight_input";
@@ -41,7 +45,6 @@ export class PickingLinesDisplay extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.busService = useService("bus_service");
-        this.homeMenu = useService("home_menu");
         this.pwaService = useService("pwa");
         this.dialog = useService("dialog");
         this.state = useState({
@@ -58,6 +61,16 @@ export class PickingLinesDisplay extends Component {
         this.onOperationFinished = this.onOperationFinished.bind(this);
 
         onWillStart(async () => {
+            // Punto 3 (Tech Lead, 2026-10-31): mismo chequeo que Nivel 1
+            // — sin operario identificado, directo a NIP, sin pasar por
+            // Nivel 1 primero (que de todas formas rebotaría igual).
+            await ensureOperatorLoaded();
+            if (!operatorState.employeeName) {
+                await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
+                    clearBreadcrumbs: true,
+                });
+                return;
+            }
             const resolved = await this._resolveClaim();
             if (!resolved) {
                 await this._backToLevel1();
@@ -176,8 +189,12 @@ export class PickingLinesDisplay extends Component {
         this.loadLines();
     }
 
-    onClickClose() {
-        this.homeMenu.toggle();
+    async onClickClose() {
+        // Punto 1 (Tech Lead, 2026-10-31): mismo fix que Nivel 1.
+        await clearOperator();
+        await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
+            clearBreadcrumbs: true,
+        });
     }
 
     toggleDoneGroup() {

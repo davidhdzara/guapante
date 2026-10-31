@@ -109,7 +109,7 @@ class PreparationDayLine(models.Model):
         if not self.env.context.get('guapante_picking_flow'):
             return
         employee_id = (
-            get_active_prep_operator_id(request.session, refresh=True)
+            get_active_prep_operator_id(self.env, request.session, refresh=True)
             if request else False
         )
         if not employee_id:
@@ -209,7 +209,7 @@ class PreparationDayLine(models.Model):
         if not clean_text:
             raise UserError('La nota no puede estar vacía.')
         employee_id = (
-            get_active_prep_operator_id(request.session, refresh=True)
+            get_active_prep_operator_id(self.env, request.session, refresh=True)
             if request else False
         )
         if not employee_id:

@@ -378,7 +378,7 @@ class PreparationDayLine(models.Model):
         if track_kg:
             is_picking_flow = bool(self.env.context.get('guapante_picking_flow'))
             operator_employee_id = (
-                get_active_prep_operator_id(request.session, refresh=True)
+                get_active_prep_operator_id(self.env, request.session, refresh=True)
                 if request else False
             )
             if is_picking_flow and not operator_employee_id:
@@ -1854,17 +1854,16 @@ class PreparationDay(models.Model):
         # (bool(request) es False ahí), donde el concepto de "operario físico" no existe.
         Employee = self.env['hr.employee']
         if request:
-            employee_id = get_active_prep_operator_id(request.session, refresh=True)
+            employee_id = get_active_prep_operator_id(
+                self.env, request.session, refresh=True,
+            )
             if not employee_id:
                 raise UserError(
                     'Debes identificarte con tu PIN antes de registrar un peso.'
                 )
+            # Ya validado (existe, active, is_guapante_prep_operator)
+            # dentro de get_active_prep_operator_id.
             Employee = Employee.sudo().browse(employee_id)
-            if not Employee.exists():
-                raise UserError(
-                    'Tu identificación de operario ya no es válida — vuelve a '
-                    'ingresar tu PIN.'
-                )
 
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de

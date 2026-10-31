@@ -16,11 +16,11 @@ PREP_OPERATOR_LAST_ACTIVITY_KEY = 'guapante_prep_employee_last_activity'
 PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300
 
 
-def get_active_prep_operator_id(session, refresh=True):
+def get_active_prep_operator_id(env, session, refresh=True):
     """Devuelve el employee_id identificado en esta sesión de navegador, o False si
-    no hay ninguno o si pasaron más de PREP_OPERATOR_IDLE_TIMEOUT_SECONDS desde la
-    última acción válida — en ese caso limpia la sesión (expira) en vez de devolver
-    un valor viejo.
+    no hay ninguno, si pasaron más de PREP_OPERATOR_IDLE_TIMEOUT_SECONDS desde la
+    última acción válida, o si el empleado ya no es un operario válido — en
+    cualquiera de esos casos limpia la sesión en vez de devolver un valor viejo.
 
     El servidor es la única fuente de verdad del timeout (Fase A, hallazgo de
     Tech Lead): un timer solo en JS no cubre pantalla apagada, app cerrada o
@@ -34,6 +34,12 @@ def get_active_prep_operator_id(session, refresh=True):
     reales del operario (identificarse, asignarse, pesar, Listo, Corregir, nota,
     etc.) — esas sí extienden la ventana de 5 minutos.
 
+    Validación de empleado (Tech Lead, 2026-10-31): vive ACÁ, no solo en el
+    controlador de identificación — esta es la compuerta que usan TODAS las
+    escrituras de Picking (nota, peso, claim, scrap), así que si un operario
+    se desactiva o pierde is_guapante_prep_operator a mitad de turno, ninguna
+    de ellas debe seguir aceptándolo, no solo la pantalla de NIP.
+
     Tolera session=None/falsy (cron, tests, odoo-bin shell sin contexto HTTP)
     devolviendo False, igual que el patrón `request and ...` ya usado en este
     módulo antes de este helper.
@@ -45,6 +51,10 @@ def get_active_prep_operator_id(session, refresh=True):
         return False
     last_activity = session.get(PREP_OPERATOR_LAST_ACTIVITY_KEY)
     if not last_activity or (time.time() - last_activity) > PREP_OPERATOR_IDLE_TIMEOUT_SECONDS:
+        clear_active_prep_operator(session)
+        return False
+    Employee = env['hr.employee'].sudo().browse(employee_id)
+    if not Employee.exists() or not Employee.active or not Employee.is_guapante_prep_operator:
         clear_active_prep_operator(session)
         return False
     if refresh:
