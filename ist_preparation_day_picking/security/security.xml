@@ -20,6 +20,19 @@
          controlaba solo quién ve el menú/acción de Picking; ahora,
          categorizado en "Preparación", también decide quién puede
          identificarse — ver controller de identificación. -->
+    <!-- OJO (Tech Lead, 2026-10-31, verificado contra staging): este
+         grupo por sí solo NO implica base.group_user ("Internal User")
+         — no tiene implied_ids. Un usuario con SOLO este grupo no es
+         "interno" (share=True) y pierde acceso a ACL que apuntan a
+         base.group_user, por ejemplo access_preparation_day sobre
+         guapante.preparation.day (usado por el fix de Nivel 2→Nivel 1,
+         punto (a) — un orm.read del estado de la sesión). El usuario
+         compartido del tablet de Picking SIEMPRE lo tiene junto con
+         stock.group_stock_user (necesario además para 'Desechar'), que
+         sí implica base.group_user — por eso en la práctica nunca se da
+         el caso aislado. Pendiente evaluar después de la salida a
+         producción si este grupo debería implicar base.group_user
+         directamente, para no depender de esa combinación. -->
     <record id="group_preparation_picking_operator" model="res.groups">
         <field name="name">Operario de Picking</field>
         <field name="category_id" ref="module_category_preparation"/>

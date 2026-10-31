@@ -301,6 +301,31 @@ export class PickingLinesDisplay extends Component {
                 },
             );
             await this.loadLines();
+            if (this.isDestroyed) {
+                return;
+            }
+            // Punto (a) (Tech Lead, 2026-10-31): si esta era la última
+            // línea pendiente de ESTE producto, volver solo a Nivel 1 —
+            // salvo que este mismo guardado también haya cerrado la
+            // OPERACIÓN completa (todas las líneas de la sesión, no solo
+            // las de este producto). El write() de arriba, cuando es la
+            // última línea pendiente de TODA la sesión, ya deja
+            // self.state = 'done' en el servidor dentro de la misma
+            // transacción (action_save_line_weight → action_mark_done),
+            // antes de que esta llamada retorne — así que leer el estado
+            // acá es una señal confiable, no una carrera contra el bus.
+            // Si la operación sí se cerró, el bus
+            // ('picking_operation_finished' → onOperationFinished) se
+            // encarga de volver al NIP; encadenar _backToLevel1() encima
+            // duplicaría la navegación.
+            if (this.pendingLines.length === 0) {
+                const [wizard] = await this.orm.read(
+                    "guapante.preparation.day", [this.state.wizardId], ["state"],
+                );
+                if (!this.isDestroyed && wizard.state !== "done") {
+                    await this._backToLevel1();
+                }
+            }
         } catch (error) {
             await this._handleError(error);
         }

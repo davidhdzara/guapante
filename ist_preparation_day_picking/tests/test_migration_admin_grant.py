@@ -180,6 +180,35 @@ class TestMigrationAdminGrant(TransactionCase):
         with self.assertRaises(AccessError):
             Claim.with_user(plain_user)._check_picking_access()
 
+    def test_operator_with_stock_user_group_can_read_session_state(self):
+        """Punto (a) (Tech Lead, 2026-10-31): el fix de Nivel 2→Nivel 1
+        hace un orm.read del `state` de la sesión (guapante.preparation.
+        day) desde el navegador del tablet compartido, después de
+        guardar un peso — si ese read lanzara AccessError, el usuario
+        vería un error justo después de un guardado exitoso.
+
+        `group_preparation_picking_operator` NO implica base.group_user
+        por sí solo (grupo standalone, ver security.xml) — un usuario
+        con SOLO ese grupo no es "interno" y el ACL de
+        guapante.preparation.day (base.group_user, access_preparation_
+        day) le niega el acceso. Pero el usuario real del tablet
+        compartido en producción SIEMPRE tiene también
+        stock.group_stock_user (confirmado por SQL en vivo, necesario
+        para 'Desechar'/stock.scrap) — y ese grupo sí implica
+        base.group_user. Esta prueba fija ese combo real, no el grupo
+        de Picking aislado.
+        """
+        self.shared_user.write({
+            'groups_id': [
+                (4, self.operator_group.id),
+                (4, self.env.ref('stock.group_stock_user').id),
+            ],
+        })
+        self.assertTrue(self.shared_user.has_group('base.group_user'))
+        Wizard = self.env['guapante.preparation.day'].search([], limit=1)
+        # No debe lanzar AccessError.
+        Wizard.with_user(self.shared_user).read(['state'])
+
     def test_note_template_menu_has_only_admin_group(self):
         """QA (2026-10-29): el `groups` del <menuitem> es aditivo en una
         actualización — una versión anterior dejó este menú con
