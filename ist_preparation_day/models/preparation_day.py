@@ -96,6 +96,36 @@ def _get_cron_repair_limits(env) -> tuple:
     )
 
 
+# Cuántos días hacia adelante (desde hoy) el cron de respaldo revisa
+# para crear la sesión que falte, si ya hay pedidos elegibles — Tech
+# Lead, 2026-10-31, condición 1 de la corrección (a): configurable
+# como las demás cotas, nunca hacia el pasado (el rango siempre
+# arranca en _current_session_date, nunca en date.today()).
+_CRON_REPAIR_CREATE_DAYS_AHEAD_PARAM_KEY = (
+    'ist_preparation_day.cron_repair_create_days_ahead'
+)
+_CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT = 7
+
+
+def _get_cron_repair_create_days_ahead(env) -> int:
+    """Días hacia adelante (desde hoy) que cubre la creación
+    automática de sesiones faltantes del cron de respaldo — ver
+    _CRON_REPAIR_CREATE_DAYS_AHEAD_PARAM_KEY."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        _CRON_REPAIR_CREATE_DAYS_AHEAD_PARAM_KEY,
+        default=str(_CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT),
+    )
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        _logger.warning(
+            'Guapante: parámetro %s inválido (%r), usando default %s',
+            _CRON_REPAIR_CREATE_DAYS_AHEAD_PARAM_KEY, raw,
+            _CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT,
+        )
+        return _CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT
+
+
 def _date_to_utc_range(env, date_val):
     """Convert a naive date into a UTC datetime range for the full
     calendar day *date_val* in the user's (or default) timezone.
@@ -1121,9 +1151,18 @@ class PreparationDay(models.Model):
         camino; nunca es el mecanismo principal. Agrega las órdenes
         confirmadas que debían tener línea en una sesión draft/loaded
         de hoy o futura y no la tienen, y renumera. Nunca toca una
-        sesión 'done' ni crea sesiones nuevas para fechas sin sesión
-        todavía (eso es trabajo de action_confirm()/
-        _ensure_session_for_date, no de este cron).
+        sesión 'done'.
+
+        Desde 2026-10-31 (Tech Lead, corrección a) también crea, hoy
+        a hoy+N días (N configurable, ver
+        _CRON_REPAIR_CREATE_DAYS_AHEAD_PARAM_KEY), la sesión que
+        falte por completo SI YA hay pedidos elegibles ese día — para
+        cubrir pedidos confirmados antes de instalar el módulo (no
+        dispararon _ensure_session_for_date porque no existía). Si ya
+        existe cualquier sesión para esa fecha (draft/loaded/done), no
+        se toca nada — así una sesión 'done' de hoy nunca se recrea,
+        y nunca se mira hacia el pasado porque el rango arranca en
+        _current_session_date, nunca en date.today().
 
         Corre en UNA sola transacción — a diferencia de e2/e3, acá un
         error de concurrencia NO se relanza (Tech Lead, 2026-10-30):
@@ -1135,12 +1174,78 @@ class PreparationDay(models.Model):
         """
         max_sessions, max_orders = _get_cron_repair_limits(self.env)
         today = _current_session_date(self.env)
-        Sessions = self.sudo().search([
-            ('state', 'in', ('draft', 'loaded')),
-            ('date', '>=', today),
-        ], order='date', limit=max_sessions)
+        days_ahead = _get_cron_repair_create_days_ahead(self.env)
 
+        sessions_budget = max_sessions
         orders_budget = max_orders
+
+        # Fase nueva (corrección a): crear la sesión que falte por
+        # completo, de hoy a hoy+days_ahead, solo si ya hay pedidos
+        # elegibles ese día — comparte el mismo presupuesto de
+        # sesiones/órdenes que la fase de abajo (condición 4).
+        internal_picking_domain_base = [
+            ('picking_type_code', '=', 'internal'),
+            ('state', 'not in', ('done', 'cancel')),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
+        ]
+        for day_offset in range(days_ahead + 1):
+            if sessions_budget <= 0:
+                break
+            candidate_date = today + timedelta(days=day_offset)
+            if self.sudo().search(
+                [('date', '=', candidate_date)], limit=1,
+            ):
+                # Ya existe una sesión para esta fecha (cualquier
+                # estado, incluido 'done') — no es terreno de esta
+                # fase nueva, se deja intacta.
+                continue
+
+            dt_start, dt_end = _date_to_utc_range(self.env, candidate_date)
+            Pickings = self.env['stock.picking'].sudo().search(
+                internal_picking_domain_base + [
+                    ('scheduled_date', '>=', dt_start),
+                    ('scheduled_date', '<', dt_end),
+                ]
+            )
+            if not Pickings:
+                _logger.debug(
+                    'Guapante: cron de respaldo — %s sin pedidos '
+                    'elegibles todavía, no crea sesión.',
+                    candidate_date,
+                )
+                continue
+
+            try:
+                with self.env.cr.savepoint():
+                    NewSession = self.sudo()._ensure_session_for_date(
+                        candidate_date,
+                    )
+                    if NewSession and NewSession.state == 'draft':
+                        NewSession.action_load()
+                    sessions_budget -= 1
+                    orders_budget -= len(Pickings.mapped('sale_id'))
+            except _PG_CONCURRENCY_ERRORS as exc:
+                _logger.info(
+                    'Guapante: cron de respaldo — no se pudo crear '
+                    'la sesión %s (%s), se reintenta en la próxima '
+                    'corrida.', candidate_date, exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: cron de respaldo no pudo crear/cargar '
+                    'la sesión %s — se reintenta en la próxima '
+                    'corrida.', candidate_date,
+                )
+
+        if sessions_budget <= 0:
+            Sessions = self.browse()
+        else:
+            Sessions = self.sudo().search([
+                ('state', 'in', ('draft', 'loaded')),
+                ('date', '>=', today),
+            ], order='date', limit=sessions_budget)
+
         for Session in Sessions:
             try:
                 with self.env.cr.savepoint():
