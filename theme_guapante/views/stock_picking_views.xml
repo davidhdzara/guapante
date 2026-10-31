@@ -5,9 +5,8 @@
         <field name="model">stock.picking</field>
         <field name="inherit_id" ref="stock.view_picking_form"/>
         <field name="arch" type="xml">
-            <!-- Caja # junto al documento origen -->
+            <!-- Vehículo/conductor junto al documento origen -->
             <xpath expr="//field[@name='origin']" position="after">
-                <field name="daily_sequence" invisible="daily_sequence == 0"/>
                 <field name="is_recolectar_operation" invisible="1"/>
                 <field name="vehicle_id" placeholder="Seleccionar Vehículo"/>
                 <field name="driver_id" placeholder="Conductor Asignado"/>
@@ -38,25 +37,4 @@
         </field>
     </record>
 
-    <!-- Caja # en la vista lista de Recolecciones y Entregas -->
-    <record id="view_picking_list_inherit_guapante" model="ir.ui.view">
-        <field name="name">stock.picking.list.inherit.guapante</field>
-        <field name="model">stock.picking</field>
-        <field name="inherit_id" ref="stock.vpicktree"/>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='origin']" position="after">
-                <field name="daily_sequence" string="Caja #" optional="show" decoration-bf="1"/>
-            </xpath>
-        </field>
-    </record>
-
-    <!-- Acción de servidor: Resetear Cajas (menú contextual de pickings) -->
-    <record id="action_reset_daily_sequence" model="ir.actions.server">
-        <field name="name">Resetear # de Cajas</field>
-        <field name="model_id" ref="stock.model_stock_picking"/>
-        <field name="binding_model_id" ref="stock.model_stock_picking"/>
-        <field name="binding_view_types">list</field>
-        <field name="state">code</field>
-        <field name="code">action = records.action_reset_daily_sequence()</field>
-    </record>
 </odoo>
