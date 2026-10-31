@@ -5,3 +5,4 @@ from . import test_preparation_day_picking_fase_d
 from . import test_preparation_day_picking_fase_e
 from . import test_preparation_day_relocation_claims
 from . import test_migration_admin_grant
+from . import test_migration_grace_last_activity
