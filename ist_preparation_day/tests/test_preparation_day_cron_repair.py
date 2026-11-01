@@ -30,14 +30,32 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
     def _run_cron(self):
         self.env['guapante.preparation.day']._cron_repair_missing_orders()
 
-    def _run_cron_as_of(self, fake_today):
+    def _bogota_to_utc(self, day, hour, minute):
+        bogota_tz = pytz.timezone('America/Bogota')
+        return bogota_tz.localize(
+            datetime.combine(day, time(hour, minute)),
+        ).astimezone(pytz.utc).replace(tzinfo=None)
+
+    def _run_cron_as_of(self, fake_today, hour=0, minute=10):
         """Corre el cron con _current_session_date() fijado a
         fake_today — las pruebas de la corrección (a) usan
         self.delivery_date (hoy+14, ya probado libre de colisión con
         datos reales por el resto de esta suite) como "hoy" simulado,
         para poder probar el rango hoy..hoy+N sin pisar sesiones
-        reales de staging_dev."""
-        with patch(CURRENT_SESSION_DATE_TARGET, return_value=fake_today):
+        reales de staging_dev.
+
+        hour/minute (hora Bogotá, corrección de #4 2026-11-01):
+        también fija fields.Datetime.now() a fake_today a esa hora,
+        para poder probar la protección de "mañana" según
+        _is_past_picking_switch_hour (que lee el reloj real, no
+        _current_session_date) y la gracia de 30 min por write_date.
+        Default 00:10 — antes de la hora de corte (21:00 default) —
+        para no cambiar el comportamiento de las pruebas que no son
+        sobre esto. Mismo patrón ya usado por _confirm_order_on_day
+        en esta clase."""
+        fixed_now = self._bogota_to_utc(fake_today, hour, minute)
+        with patch(CURRENT_SESSION_DATE_TARGET, return_value=fake_today), \
+             patch('odoo.fields.Datetime.now', return_value=fixed_now):
             self.env['guapante.preparation.day']._cron_repair_missing_orders()
 
     def _confirm_order_on_day(self, day, product=None, qty=1.0):
@@ -220,15 +238,21 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         UserError por diseño si se llamara. El cron corre cada 10
         min: sin este corte dejaría una nota de fallo en el chatter
         para siempre."""
-        # fake_today + 3 (dentro del rango hoy..hoy+7 de #4) — con
-        # _run_cron() a secas (hoy real) esta sesión también caería
-        # fuera del rango de limpieza (#4) y se borraría, lo que
-        # tumbaría esta prueba por una razón distinta a la que prueba
-        # (no es sobre borrado, es sobre no dejar nota de fallo).
+        # day = fake_today (HOY), a propósito, no una fecha futura
+        # cualquiera: desde la corrección de rango de #4 (2026-11-01),
+        # _run_cron_as_of también fija fields.Datetime.now() a
+        # fake_today (para poder probar la hora de corte y la gracia
+        # de 30 min) — eso deja el "ahora" de la prueba bien adelante
+        # del "ahora" real en el que esta sesión se crea, así que la
+        # gracia de 30 min NO la protegería (se vería "vieja" contra
+        # un reloj ya adelantado). Solo "hoy" protege sin depender de
+        # esa gracia — este test es sobre la nota de fallo, no sobre
+        # el borrado, así que usa la fecha que no depende de ese
+        # detalle.
         fake_today = self.delivery_date
-        far_day = fake_today + timedelta(days=3)
+        day = fake_today
         Session = self.env['guapante.preparation.day']._ensure_session_for_date(
-            far_day,
+            day,
         )
         self.assertEqual(Session.state, 'draft')
         self.assertEqual(len(Session.line_ids), 0)
@@ -506,17 +530,29 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         )
 
     # ------------------------------------------------------------------
-    # #4 (David/Tech Lead, 2026-10-31 — ajuste de rango de Tech Lead
-    # tras el caso real de la sesión 218): el cron también BORRA una
-    # sesión draft/loaded vacía (sin líneas, sin claims, sin historial
-    # de pesaje), pero SOLO si su fecha queda fuera del rango
-    # hoy..hoy+days_ahead que la fase de creación de arriba usa —
-    # dentro de ese rango una sesión vacía es normal (recién creada
-    # por adelantado, o por el tablet para la de mañana, #12) y nunca
-    # se toca, o este mismo cron la borraría y recrearía cada 10 min.
+    # #4 (David/Tech Lead, 2026-10-31, caso real sesión 218; corrección
+    # de rango 2026-11-01, caso real: la vacía del 2-nov no desaparecía
+    # y reaparecía al llegar un pedido nuevo — justo lo que #4 quería
+    # evitar). El cron también BORRA una sesión draft/loaded vacía (sin
+    # líneas, sin claims, sin historial de pesaje, sin pedidos
+    # elegibles pendientes) en CUALQUIER fecha, salvo: hoy; mañana
+    # SOLO si ya pasó la hora de corte del tablet (#12); o con
+    # write_date de menos de 30 min (gracia contra carreras). El rango
+    # hoy..hoy+days_ahead de la fase de creación de arriba YA NO
+    # protege del borrado — un pedido nuevo para una fecha sin sesión
+    # la recrea por e2 (_ensure_session_for_date), así que borrar una
+    # vacía fuera de hoy/mañana nunca es definitivo.
     # ------------------------------------------------------------------
 
-    def _empty_session_on(self, day):
+    def _empty_session_on(self, day, write_date=None):
+        """write_date (corrección de #4, 2026-11-01): opcional, para
+        las pruebas de la gracia de 30 minutos — escribe write_date
+        directo por SQL (la ORM no deja escribirlo por write()). Sin
+        este parámetro, la sesión queda con su write_date real de
+        creación — en las pruebas que simulan un "hoy" muy adelante
+        en el futuro (self.delivery_date, +14 días) eso ya es, de
+        sobra, más viejo que la gracia de 30 min medida contra el
+        reloj fijado de la prueba, así que no hace falta forzarlo."""
         Session = self.env['guapante.preparation.day'].search(
             [('date', '=', day)], limit=1,
         )
@@ -524,55 +560,137 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
             Session = self.env['guapante.preparation.day'].create(
                 {'date': day},
             )
+        if write_date is not None:
+            self.env.cr.execute(
+                'UPDATE guapante_preparation_day SET write_date = %s '
+                'WHERE id = %s', (write_date, Session.id),
+            )
+            Session.invalidate_recordset(['write_date'])
         return Session
 
-    def test_cron_does_not_delete_empty_session_tomorrow(self):
+    def test_cron_deletes_empty_session_tomorrow_before_switch_hour(self):
+        """Antes de la hora de corte del tablet (#12), mañana no es
+        terreno protegido todavía — una vacía sí se borra."""
         fake_today = self.delivery_date
         tomorrow = fake_today + timedelta(days=1)
         Session = self._empty_session_on(tomorrow)
-
-        self._run_cron_as_of(fake_today)
-
-        self.assertTrue(
-            Session.exists(),
-            'una sesión vacía de mañana (la que crea el tablet por '
-            'switch-hour, #12) nunca se borra',
-        )
-
-    def test_cron_does_not_delete_empty_session_within_range(self):
-        fake_today = self.delivery_date
-        day = fake_today + timedelta(days=3)
-        Session = self._empty_session_on(day)
-
-        self._run_cron_as_of(fake_today)
-
-        self.assertTrue(Session.exists())
-
-    def test_cron_does_not_delete_empty_session_at_range_boundary(self):
-        """Límite exacto hoy+days_ahead (7 por default) — dentro del
-        rango, no se borra (el corte es '>', no '>=')."""
-        fake_today = self.delivery_date
-        boundary_day = fake_today + timedelta(days=7)
-        Session = self._empty_session_on(boundary_day)
-
-        self._run_cron_as_of(fake_today)
-
-        self.assertTrue(Session.exists())
-
-    def test_cron_deletes_empty_session_past_the_range(self):
-        fake_today = self.delivery_date
-        far_day = fake_today + timedelta(days=30)
-        Session = self._empty_session_on(far_day)
         session_id = Session.id
 
-        self._run_cron_as_of(fake_today)
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
 
         self.assertFalse(
             self.env['guapante.preparation.day'].browse(
                 session_id,
             ).exists(),
-            'una sesión vacía muy lejos en el futuro (fuera del rango '
-            'de creación/reparación) sí se borra',
+            'antes de la hora de corte, una sesión vacía de mañana '
+            'sí se borra — el tablet todavía no puede estar entrando '
+            'ahí',
+        )
+
+    def test_cron_does_not_delete_empty_session_tomorrow_after_switch_hour(self):
+        """Pasada la hora de corte del tablet (#12), mañana queda
+        protegida — el tablet puede estar entrando ahí mismo."""
+        fake_today = self.delivery_date
+        tomorrow = fake_today + timedelta(days=1)
+        Session = self._empty_session_on(tomorrow)
+
+        self._run_cron_as_of(fake_today, hour=22, minute=0)
+
+        self.assertTrue(
+            Session.exists(),
+            'pasada la hora de corte, la sesión vacía de mañana no '
+            'se borra — el tablet puede estar entrando ahí',
+        )
+
+    def test_cron_does_not_delete_empty_session_today(self):
+        fake_today = self.delivery_date
+        Session = self._empty_session_on(fake_today)
+
+        self._run_cron_as_of(fake_today, hour=22, minute=0)
+
+        self.assertTrue(
+            Session.exists(),
+            'la sesión de hoy (la jornada en curso) nunca se borra, '
+            'esté vacía o no, pase o no la hora de corte',
+        )
+
+    def test_cron_does_not_delete_fresh_empty_session_within_grace_window(self):
+        """Gracia de 30 min (corrección de #4, 2026-11-01): una sesión
+        recién tocada (por el tablet o por e2, todavía sin su primera
+        línea) no se borra aunque su fecha no sea hoy ni mañana —
+        evita una carrera entre la creación y este mismo cron."""
+        fake_today = self.delivery_date
+        day = fake_today + timedelta(days=5)
+        fixed_now = self._bogota_to_utc(fake_today, 10, 0)
+        Session = self._empty_session_on(
+            day, write_date=fixed_now - timedelta(minutes=5),
+        )
+
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
+
+        self.assertTrue(
+            Session.exists(),
+            'una sesión tocada hace solo 5 minutos no se borra, '
+            'aunque su fecha no sea hoy ni mañana',
+        )
+
+    def test_cron_deletes_empty_session_outside_grace_window(self):
+        """Misma fecha y hora que la prueba de arriba, pero con
+        write_date de 31 minutos atrás (fuera de la gracia) — control
+        de que la gracia es lo único que protegía a la de arriba."""
+        fake_today = self.delivery_date
+        day = fake_today + timedelta(days=5)
+        fixed_now = self._bogota_to_utc(fake_today, 10, 0)
+        Session = self._empty_session_on(
+            day, write_date=fixed_now - timedelta(minutes=31),
+        )
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+        )
+
+    def test_cron_deletes_empty_session_past_the_old_range(self):
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=30)
+        Session = self._empty_session_on(
+            far_day,
+            write_date=self._bogota_to_utc(fake_today, 10, 0) - timedelta(minutes=31),
+        )
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'una sesión vacía muy lejos en el futuro sí se borra — '
+            'el rango de creación ya no protege del borrado',
+        )
+
+    def test_cron_deletes_empty_session_within_the_old_range(self):
+        """Antes de la corrección de rango (2026-11-01) esta fecha
+        (hoy+3, dentro de hoy..hoy+days_ahead) quedaba protegida del
+        borrado — ya no: solo hoy/mañana/gracia protegen."""
+        fake_today = self.delivery_date
+        day = fake_today + timedelta(days=3)
+        Session = self._empty_session_on(
+            day,
+            write_date=self._bogota_to_utc(fake_today, 10, 0) - timedelta(minutes=31),
+        )
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
         )
 
     def test_cron_deletes_empty_session_in_the_past(self):
@@ -590,29 +708,66 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
             'una sesión vacía de ayer sí se borra',
         )
 
-    def test_cron_does_not_delete_and_recreate_in_cycle(self):
-        """Si el cron borrara una sesión vacía dentro del rango
-        hoy..hoy+N, la fase de creación de la misma corrida (o la
-        siguiente, 10 min después) la volvería a crear en cuanto
-        hubiera pedidos elegibles — quemando numeración de PK/PICK y
-        cambiando su id cada vez. Corriendo el cron varias veces
-        seguidas, el id de una sesión vacía dentro del rango debe
-        permanecer estable."""
+    def test_cron_does_not_delete_and_recreate_tomorrow_after_switch_hour(self):
+        """Pasada la hora de corte, mañana queda protegida de forma
+        estable en corridas sucesivas — nunca se borra y recrea en
+        ciclo (lo que quemaría numeración de PK/PICK y le cambiaría
+        el id cada vez)."""
         fake_today = self.delivery_date
         tomorrow = fake_today + timedelta(days=1)
         Session = self._empty_session_on(tomorrow)
         session_id = Session.id
 
         for _ in range(3):
-            self._run_cron_as_of(fake_today)
+            self._run_cron_as_of(fake_today, hour=22, minute=0)
 
         self.assertEqual(
             self.env['guapante.preparation.day'].search(
                 [('date', '=', tomorrow)],
             ).id,
             session_id,
-            'la sesión vacía dentro del rango debe seguir siendo la '
-            'misma en corridas sucesivas, no un id nuevo cada vez',
+            'la sesión vacía de mañana, protegida por la hora de '
+            'corte, debe seguir siendo la misma en corridas '
+            'sucesivas, no un id nuevo cada vez',
+        )
+
+    def test_deleted_tomorrow_session_is_recreated_by_new_order_e2(self):
+        """Tech Lead/David, 2026-11-01: borrada la sesión vacía de
+        mañana (antes de la hora de corte), un pedido nuevo para esa
+        fecha la recrea por e2 (_ensure_session_for_date) y entra en
+        ella con normalidad — el borrado nunca es definitivo."""
+        fake_today = self.delivery_date
+        tomorrow = fake_today + timedelta(days=1)
+        Session = self._empty_session_on(tomorrow)
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today, hour=10, minute=0)
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'precondición: la sesión vacía de mañana se borró',
+        )
+
+        order = self._confirm_order_on_day(tomorrow, qty=4.0)
+
+        NewSession = self.env['guapante.preparation.day'].search(
+            [('date', '=', tomorrow)], limit=1,
+        )
+        self.assertTrue(
+            NewSession,
+            'un pedido nuevo para esa fecha debe recrear la sesión',
+        )
+        self.assertNotEqual(
+            NewSession.id, session_id,
+            'es una sesión NUEVA (la vieja se borró de verdad)',
+        )
+        Line = NewSession.line_ids.filtered(
+            lambda l: l.sale_order_id == order,
+        )
+        self.assertTrue(
+            Line, 'la línea del pedido nuevo debe entrar en la '
+            'sesión recreada',
         )
 
     def test_cron_never_deletes_done_session_even_if_empty(self):

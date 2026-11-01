@@ -126,6 +126,58 @@ def _get_cron_repair_create_days_ahead(env) -> int:
         return _CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT
 
 
+# Hora de corte configurable (hora Bogotá) desde la que el TABLET de
+# Picking resuelve "mañana" en vez de "hoy" — corrección #12. Vivía en
+# ist_preparation_day_picking (único usuario original,
+# _picking_session_date), pero se movió acá (corrección del ajuste #4,
+# Tech Lead/David 2026-11-01) porque la limpieza de sesiones vacías del
+# cron de respaldo (más abajo, en ESTE módulo, que NO depende de
+# ist_preparation_day_picking) también necesita saber si ya se pasó esa
+# hora para no borrar la sesión de mañana mientras el tablet puede
+# estar entrando ahí. ist_preparation_day_picking importa estas
+# constantes y esta función desde acá — nunca al revés, porque
+# depende de ist_preparation_day, no lo contrario. Solo afecta a dónde
+# entra el tablet y a esta limpieza; NUNCA a _current_session_date del
+# cron de respaldo ni al corte 00:30 de action_confirm — esos siguen
+# intactos.
+_PICKING_SWITCH_HOUR_PARAM_KEY = (
+    'ist_preparation_day_picking.picking_switch_hour'
+)
+_PICKING_SWITCH_HOUR_DEFAULT = '21:00'
+
+
+def _get_picking_switch_hour(env) -> tuple:
+    """(hour, minute) de corte configurable para _picking_session_date
+    y para la limpieza de sesiones vacías — ver
+    _PICKING_SWITCH_HOUR_PARAM_KEY."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        _PICKING_SWITCH_HOUR_PARAM_KEY, default=_PICKING_SWITCH_HOUR_DEFAULT,
+    )
+    try:
+        hour_str, minute_str = raw.split(':')
+        hour, minute = int(hour_str), int(minute_str)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(f'hora/minuto fuera de rango: {raw!r}')
+        return hour, minute
+    except (ValueError, AttributeError):
+        _logger.warning(
+            'Guapante: parámetro %s inválido (%r), usando default %s',
+            _PICKING_SWITCH_HOUR_PARAM_KEY, raw, _PICKING_SWITCH_HOUR_DEFAULT,
+        )
+        hour_str, minute_str = _PICKING_SWITCH_HOUR_DEFAULT.split(':')
+        return int(hour_str), int(minute_str)
+
+
+def _is_past_picking_switch_hour(env) -> bool:
+    """True si la hora local (Bogotá) de 'ahora' ya pasó la hora de
+    corte del tablet (_get_picking_switch_hour)."""
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    local_dt = pytz.utc.localize(fields.Datetime.now()).astimezone(local_tz)
+    switch_hour, switch_minute = _get_picking_switch_hour(env)
+    return (local_dt.hour, local_dt.minute) >= (switch_hour, switch_minute)
+
+
 def _date_to_utc_range(env, date_val):
     """Convert a naive date into a UTC datetime range for the full
     calendar day *date_val* in the user's (or default) timezone.
@@ -1181,12 +1233,13 @@ class PreparationDay(models.Model):
         el trabajo ya hecho en las demás sesiones de esta corrida —
         relanzar tumbaría TODO lo reparado hasta ese punto.
 
-        Desde 2026-10-31 (#4, David/Tech Lead, caso real sesión 218)
-        también borra, como segundo paso, una sesión draft/loaded sin
-        líneas/claims/historial de pesaje cuya fecha quedó fuera del
-        rango hoy..hoy+N de arriba — dentro de ese rango una sesión
-        vacía es normal (recién creada por adelantado, o por el
-        tablet para la de mañana) y nunca se toca.
+        Desde 2026-10-31 (#4, David/Tech Lead, caso real sesión 218;
+        corrección de rango 2026-11-01) también borra, como segundo
+        paso, una sesión draft/loaded sin líneas/claims/historial de
+        pesaje en CUALQUIER fecha, excepto hoy, mañana (solo si ya se
+        pasó la hora de corte del tablet) y cualquiera con write_date
+        de menos de 30 minutos — ver el comentario junto al segundo
+        paso, más abajo, para el detalle completo.
         """
         max_sessions, max_orders = _get_cron_repair_limits(self.env)
         today = _current_session_date(self.env)
@@ -1430,24 +1483,31 @@ class PreparationDay(models.Model):
                         Session.date,
                     )
 
-        # Limpieza de sesiones vacías (#4, David/Tech Lead 2026-10-31,
-        # ajuste de rango de Tech Lead tras el caso real de la sesión
-        # 218): SOLO fuera del rango hoy..hoy+days_ahead que la fase
-        # de arriba usa para crear sesiones por adelantado y que el
-        # tablet usa para la sesión de mañana (switch-hour, #12) —
-        # dentro de ese rango una sesión vacía es normal y NUNCA se
-        # toca, o este mismo cron la borraría y la volvería a crear
-        # cada 10 min (quema numeración de PK/PICK y le cambia el id).
+        # Limpieza de sesiones vacías (#4, David/Tech Lead 2026-10-31;
+        # corrección de rango, Tech Lead/David 2026-11-01, caso real:
+        # la vacía del 2-nov no desaparecía y reaparecía al llegar un
+        # pedido — el objetivo original ERA justo que desapareciera).
+        # El rango hoy..hoy+days_ahead de la fase de arriba es solo
+        # para CREAR por adelantado, no es terreno protegido para el
+        # borrado — un pedido nuevo para una fecha sin sesión la
+        # recrea por e2 (_ensure_session_for_date), así que borrar acá
+        # nunca es definitivo. Las únicas protegidas son:
+        #   - la de HOY (today) — la jornada en curso;
+        #   - la de MAÑANA (today+1) SOLO si ya se pasó la hora de
+        #     corte del tablet (_is_past_picking_switch_hour, #12): el
+        #     tablet puede estar entrando ahí mismo, aunque todavía no
+        #     tenga líneas;
+        #   - cualquiera con write_date de menos de 30 minutos (gracia
+        #     contra carreras: recién creada por el tablet o por e2,
+        #     todavía sin su primera línea).
         # Nunca una sesión 'done', nunca con líneas, nunca con un
         # claim (incluido uno 'stopped' sin dueño activo — sigue
         # siendo trabajo hecho), nunca con historial de pesaje
         # (guapante.picking.log), y nunca si todavía hay pedidos
         # elegibles sin cargar para esa fecha (mismo dominio que la
         # reparación de arriba) — eso es una sesión rota a medio
-        # reparar, no una vacía de verdad; borrarla la perdería para
-        # siempre porque, al estar fuera del rango, la fase de
-        # creación nunca la recrearía. Mismo tope max_sessions que ya
-        # limita la fase de creación/reparación, por corrida.
+        # reparar, no una vacía de verdad. Mismo tope max_sessions que
+        # ya limita la fase de creación/reparación, por corrida.
         #
         # 'guapante.preparation.day.product.claim' solo existe si
         # ist_preparation_day_picking está instalado — se verifica
@@ -1457,12 +1517,15 @@ class PreparationDay(models.Model):
         has_claim_model = (
             'guapante.preparation.day.product.claim' in self.env.registry
         )
+        protected_dates = [today]
+        if _is_past_picking_switch_hour(self.env):
+            protected_dates.append(today + timedelta(days=1))
+        grace_cutoff = fields.Datetime.now() - timedelta(minutes=30)
         EmptySessions = self.sudo().search([
             ('state', 'in', ('draft', 'loaded')),
             ('line_ids', '=', False),
-            '|',
-            ('date', '<', today),
-            ('date', '>', today + timedelta(days=days_ahead)),
+            ('date', 'not in', protected_dates),
+            ('write_date', '<=', grace_cutoff),
         ], order='date', limit=max_sessions)
         for Session in EmptySessions:
             try:
@@ -1492,10 +1555,10 @@ class PreparationDay(models.Model):
                         continue
                     _logger.info(
                         'Guapante: cron de respaldo borra la sesión '
-                        'vacía %s (id=%s) — fuera del rango hoy..hoy+'
-                        '%d, sin líneas, sin claims, sin historial de '
-                        'pesaje y sin pedidos elegibles pendientes.',
-                        Session.date, Session.id, days_ahead,
+                        'vacía %s (id=%s) — no es hoy ni mañana '
+                        'protegida, sin líneas, sin claims, sin '
+                        'historial de pesaje y sin pedidos elegibles '
+                        'pendientes.', Session.date, Session.id,
                     )
                     Session.unlink()
             except _PG_CONCURRENCY_ERRORS as exc:
