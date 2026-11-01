@@ -8,8 +8,8 @@ from odoo.http import request
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     CLAIM_STALE_MARGIN_SECONDS,
-    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     get_active_prep_operator_id,
+    get_idle_timeout_seconds,
 )
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _PG_CONCURRENCY_ERRORS,
@@ -276,12 +276,18 @@ class PreparationDayProductClaim(models.Model):
         no ve en absoluto un claim En progreso de OTRO operario — ni el
         nombre ni la tarjeta — salvo que ya quedó abandonado (instante
         efectivo, ver _effective_last_activity, más viejo que
-        PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS):
+        get_idle_timeout_seconds(env) + CLAIM_STALE_MARGIN_SECONDS):
         ese caso se trata como visible para todos, aunque la liberación
         real en base de datos la haga el cron por separado (ventana corta
         de hasta 5 minutos entre que se ve "libre" y se puede tomar de
         verdad — aceptado por Tech Lead). Su propio claim en progreso
         siempre se ve.
+
+        Timeout 0 ("sin bloqueo", fila 3 del backlog, 2026-11-01): nadie
+        queda nunca "abandonado" por inactividad — stale_cutoff se
+        deshabilita por completo en vez de colapsar a solo
+        CLAIM_STALE_MARGIN_SECONDS, que liberaría los claims casi de
+        inmediato y contradiría la intención de "sin bloqueo".
 
         El refresco por bus NO cambia (picking_claim_updated /
         onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
@@ -296,10 +302,12 @@ class PreparationDayProductClaim(models.Model):
             get_active_prep_operator_id(self.env, request.session, refresh=False)
             if request else False
         )
-        stale_cutoff = fields.Datetime.now() - timedelta(
-            seconds=(
-                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
-            ),
+        idle_timeout = get_idle_timeout_seconds(self.env)
+        stale_cutoff = (
+            fields.Datetime.now() - timedelta(
+                seconds=idle_timeout + CLAIM_STALE_MARGIN_SECONDS,
+            )
+            if idle_timeout else None
         )
         Visible = self.env['guapante.preparation.day.product.claim']
         for claim in Claims:
@@ -308,7 +316,7 @@ class PreparationDayProductClaim(models.Model):
                 is_admin
                 or claim.status != 'in_progress'
                 or claim.assigned_employee_id.id == my_employee_id
-                or (effective and effective < stale_cutoff)
+                or (stale_cutoff and effective and effective < stale_cutoff)
             ):
                 Visible |= claim
         return Visible.read(CLAIM_DISPLAY_FIELDS)
@@ -724,8 +732,8 @@ class PreparationDayProductClaim(models.Model):
     def _cron_release_abandoned_claims(self) -> None:
         """Plan f1 (Tech Lead, 2026-10-31) — libera de verdad en base de
         datos los claims En progreso que get_claims_for_level1_display ya
-        trata como abandonados (mismo umbral: PREP_OPERATOR_IDLE_TIMEOUT_
-        SECONDS + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
+        trata como abandonados (mismo umbral: get_idle_timeout_seconds(env)
+        + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
         efectivo — ver _effective_last_activity). Corre cada 5 minutos,
         no es el mecanismo de visibilidad (eso ya lo cubre el método de
         lectura) — es la red de seguridad que de verdad libera el
@@ -739,14 +747,20 @@ class PreparationDayProductClaim(models.Model):
         filtrar por status es la verificación explícita, no un supuesto
         sobre cómo se comporta otro método.
 
+        Timeout 0 ("sin bloqueo", fila 3 del backlog, 2026-11-01): no
+        libera nada — sale temprano. Igual que en
+        get_claims_for_level1_display, no tiene sentido colapsar el
+        umbral a solo CLAIM_STALE_MARGIN_SECONDS.
+
         Mismo patrón que _cron_repair_missing_orders (e4, preparation_day.py):
         savepoint por claim, un error de concurrencia se atrapa LOCAL
         (nunca se relanza — no debe tumbar el trabajo ya hecho en otros
         claims de esta misma corrida)."""
+        idle_timeout = get_idle_timeout_seconds(self.env)
+        if not idle_timeout:
+            return
         stale_cutoff = fields.Datetime.now() - timedelta(
-            seconds=(
-                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
-            ),
+            seconds=idle_timeout + CLAIM_STALE_MARGIN_SECONDS,
         )
         Claims = self.sudo().search([('status', '=', 'in_progress')])
         Claims = Claims.filtered(

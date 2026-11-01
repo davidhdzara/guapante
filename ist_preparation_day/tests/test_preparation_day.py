@@ -11,12 +11,14 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
     PreparationDayIdentificationController,
 )
 from odoo.addons.ist_preparation_day.models.const_preparation import (
+    IDLE_TIMEOUT_PARAM_KEY,
     PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     PREP_OPERATOR_LAST_ACTIVITY_KEY,
     PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY,
     PREP_OPERATOR_PIN_MAX_FAILURES,
     PREP_OPERATOR_SESSION_KEY,
     get_active_prep_operator_id,
+    get_idle_timeout_seconds,
     get_pin_lockout_remaining_seconds,
     set_active_prep_operator,
 )
@@ -731,6 +733,80 @@ class TestPreparationDay(TransactionCase):
             PREP_OPERATOR_SESSION_KEY, session,
             "La sesión vencida debe limpiarse, no solo ignorarse",
         )
+
+    def test_get_idle_timeout_seconds_defaults_to_300_without_param(self):
+        """Sin el parámetro seteado, el default debe seguir siendo el
+        comportamiento histórico (5 minutos) — sin sorpresas al instalar."""
+        self.env['ir.config_parameter'].sudo().search([
+            ('key', '=', IDLE_TIMEOUT_PARAM_KEY),
+        ]).unlink()
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_reads_custom_value(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '600',
+        )
+        self.assertEqual(get_idle_timeout_seconds(self.env), 600)
+
+    def test_get_idle_timeout_seconds_non_numeric_falls_back_to_default(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, 'no-es-un-numero',
+        )
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_negative_falls_back_to_default(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '-30',
+        )
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_zero_is_valid_sin_bloqueo(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        self.assertEqual(get_idle_timeout_seconds(self.env), 0)
+
+    def test_get_active_prep_operator_id_zero_timeout_never_expires(self):
+        """0 = sin bloqueo: una actividad viejísima (horas) NO debe
+        expirar la sesión del operario."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        employee = self._create_valid_operator()
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = time.time() - 3600 * 8
+
+        result = get_active_prep_operator_id(self.env, session)
+
+        self.assertEqual(
+            result, employee.id,
+            "Con el parámetro en 0 la sesión nunca debe expirar por tiempo",
+        )
+
+    def test_get_active_prep_operator_id_custom_timeout_respected(self):
+        """Con el parámetro en 60s, una actividad de 90s atrás ya debe
+        expirar — aunque esté muy por debajo del default de 300s."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '60',
+        )
+        employee = self._create_valid_operator()
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = time.time() - 90
+
+        result = get_active_prep_operator_id(self.env, session)
+
+        self.assertFalse(result)
 
     def test_get_active_prep_operator_id_refresh_true_extends_session(self):
         """refresh=True (acción real del operario) debe extender la ventana."""

@@ -12,6 +12,7 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
 )
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     CLAIM_STALE_MARGIN_SECONDS,
+    IDLE_TIMEOUT_PARAM_KEY,
     PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     set_active_prep_operator,
 )
@@ -522,6 +523,54 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
         self.assertIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_zero_timeout_stale_claim_stays_hidden_from_other_operator(self):
+        """Fila 3 del backlog (David/Tech Lead, 2026-11-01): con el
+        parámetro de inactividad en 0 ("sin bloqueo"), un claim viejo NO
+        se trata como abandonado — sigue oculto para otro operario,
+        igual que uno con actividad reciente."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        claim.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertNotIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_zero_timeout_cron_releases_nothing(self):
+        """Mismo parámetro en 0: el cron de liberación no debe tocar
+        ningún claim En progreso, sin importar qué tan vieja sea su
+        última actividad."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        claim.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        self._run_cron()
+        claim.invalidate_recordset()
+
+        self.assertEqual(claim.status, 'in_progress')
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
 
     def test_f1_admin_sees_all_claims_with_names(self):
         """Administrador ve TODO, activo o abandonado, con el nombre de
