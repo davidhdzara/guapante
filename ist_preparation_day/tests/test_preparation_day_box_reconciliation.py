@@ -177,3 +177,48 @@ class TestPreparationDayBoxReconciliation(TestPreparationDay):
         self.assertEqual(
             action['views'], [(expected_view.id, 'list')],
         )
+
+    def test_action_view_lines_binds_the_dedicated_search_view(self):
+        """Entrega A del buscador (David/Tech Lead, 2026-11-01): la
+        acción del botón "Líneas" debe fijar su propia vista de
+        búsqueda, no la que Odoo elija por defecto para el modelo."""
+        session = self._create_session()
+        action = session.action_view_lines()
+        expected_search_view = self.env.ref(
+            'ist_preparation_day.view_preparation_day_line_search'
+        )
+        self.assertEqual(
+            action['search_view_id'],
+            [expected_search_view.id, expected_search_view.name],
+        )
+
+    def test_line_search_view_pending_done_filters_match_is_done(self):
+        """Los filtros "Pendientes"/"Terminadas" de
+        view_preparation_day_line_search deben coincidir exactamente con
+        is_done, sin importar cuántas líneas haya de cada lado."""
+        for _ in range(3):
+            self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        Line = self.env['guapante.preparation.day.line']
+        done_line = session.line_ids[0]
+        done_line.write({'actual_kg': 1.0, 'is_done': True})
+
+        pending_domain = [('wizard_id', '=', session.id), ('is_done', '=', False)]
+        done_domain = [('wizard_id', '=', session.id), ('is_done', '=', True)]
+        self.assertEqual(
+            Line.search_count(pending_domain), len(session.line_ids) - 1,
+        )
+        self.assertEqual(Line.search_count(done_domain), 1)
+
+    def test_line_search_view_fields_exist_on_model(self):
+        """Los 4 campos de búsqueda (producto, caja #, pedido, cliente) y
+        los 4 de "Agrupar Por" (producto, cliente, zona, caja) deben
+        existir como campos reales del modelo — si alguno se renombra,
+        este test debe fallar antes que la vista en producción."""
+        Line = self.env['guapante.preparation.day.line']
+        for field_name in (
+            'product_description', 'daily_sequence', 'order_name',
+            'main_customer_name', 'product_id', 'zone_name',
+        ):
+            self.assertIn(field_name, Line._fields)

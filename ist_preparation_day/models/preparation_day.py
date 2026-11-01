@@ -1806,14 +1806,20 @@ class PreparationDay(models.Model):
         con otra lista ya registrada para este modelo (la embebida en
         el form no cuenta — es ad hoc del campo, no una vista
         registrada) podría ganar una distinta a
-        view_preparation_day_line_list y dejarla sin uso."""
+        view_preparation_day_line_list y dejarla sin uso.
+
+        search_view_id fijado igual (Entrega A del buscador, David/Tech
+        Lead, 2026-11-01): filtros pendientes/terminadas y agrupar por
+        producto/cliente/zona/caja sobre esta misma lista."""
         self.ensure_one()
         list_view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
+        search_view = self.env.ref('ist_preparation_day.view_preparation_day_line_search')
         return {
             'name': 'Líneas de picking',
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.line',
             'views': [(list_view.id, 'list')],
+            'search_view_id': [search_view.id, search_view.name],
             'domain': [('wizard_id', '=', self.id)],
             'target': 'current',
         }
