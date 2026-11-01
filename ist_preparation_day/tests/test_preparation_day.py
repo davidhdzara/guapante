@@ -138,6 +138,18 @@ class TestPreparationDay(TransactionCase):
         self.assertEqual(Fields['date'].string, 'Fecha programada')
         self.assertEqual(Fields['date_start'].string, 'Cargada el')
 
+    def test_no_duplicate_menu_under_inventory_operations(self):
+        """Corrección #3 (David, 2026-10-31): "Preparación del Día" ya
+        no debe aparecer dentro de Inventario › Operaciones (columna
+        "Empleos", stock_picking_batch.menu_stock_jobs) — solo existe
+        la app propia "Preparación". Guarda de regresión contra un
+        revert accidental del menuitem viejo."""
+        with self.assertRaises(ValueError):
+            self.env.ref('ist_preparation_day.menu_preparation_day')
+
+        app_menu = self.env.ref('ist_preparation_day.menu_preparation_day_app')
+        self.assertEqual(app_menu.action.res_model, 'guapante.preparation.day')
+
     # ── Tests de action_load() ──
 
     def test_action_load_creates_lines(self):

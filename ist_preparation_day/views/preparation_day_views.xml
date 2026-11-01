@@ -324,16 +324,6 @@
         </field>
     </record>
 
-    <!-- Odoo 18 se rompe si ponemos una acción suelta en un megamenú.
-         Lo anidaremos dentro de la columna nativa "Empleos" (stock_picking_batch.menu_stock_jobs) -->
-    <menuitem
-        id="menu_preparation_day"
-        name="Preparación del Día"
-        parent="stock_picking_batch.menu_stock_jobs"
-        action="action_preparation_day"
-        sequence="50"
-    />
-
     <!-- App propia en el grid de Aplicaciones (module.application=True). El menú raíz
          NUNCA lleva action directo (mismo patrón que stock/contacts: raíz solo con
          web_icon, el hijo lleva la acción) — es justamente el patrón nativo que evita
