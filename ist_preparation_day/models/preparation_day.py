@@ -1180,6 +1180,13 @@ class PreparationDay(models.Model):
         se repara en la próxima corrida 10 min después) sin abortar
         el trabajo ya hecho en las demás sesiones de esta corrida —
         relanzar tumbaría TODO lo reparado hasta ese punto.
+
+        Desde 2026-10-31 (#4, David/Tech Lead, caso real sesión 218)
+        también borra, como segundo paso, una sesión draft/loaded sin
+        líneas/claims/historial de pesaje cuya fecha quedó fuera del
+        rango hoy..hoy+N de arriba — dentro de ese rango una sesión
+        vacía es normal (recién creada por adelantado, o por el
+        tablet para la de mañana) y nunca se toca.
         """
         max_sessions, max_orders = _get_cron_repair_limits(self.env)
         today = _current_session_date(self.env)
@@ -1422,6 +1429,87 @@ class PreparationDay(models.Model):
                         'aviso en el chatter de la sesión %s.',
                         Session.date,
                     )
+
+        # Limpieza de sesiones vacías (#4, David/Tech Lead 2026-10-31,
+        # ajuste de rango de Tech Lead tras el caso real de la sesión
+        # 218): SOLO fuera del rango hoy..hoy+days_ahead que la fase
+        # de arriba usa para crear sesiones por adelantado y que el
+        # tablet usa para la sesión de mañana (switch-hour, #12) —
+        # dentro de ese rango una sesión vacía es normal y NUNCA se
+        # toca, o este mismo cron la borraría y la volvería a crear
+        # cada 10 min (quema numeración de PK/PICK y le cambia el id).
+        # Nunca una sesión 'done', nunca con líneas, nunca con un
+        # claim (incluido uno 'stopped' sin dueño activo — sigue
+        # siendo trabajo hecho), nunca con historial de pesaje
+        # (guapante.picking.log), y nunca si todavía hay pedidos
+        # elegibles sin cargar para esa fecha (mismo dominio que la
+        # reparación de arriba) — eso es una sesión rota a medio
+        # reparar, no una vacía de verdad; borrarla la perdería para
+        # siempre porque, al estar fuera del rango, la fase de
+        # creación nunca la recrearía. Mismo tope max_sessions que ya
+        # limita la fase de creación/reparación, por corrida.
+        #
+        # 'guapante.preparation.day.product.claim' solo existe si
+        # ist_preparation_day_picking está instalado — se verifica
+        # contra el registro, nunca con el recordset vacío de
+        # self.env[...] (que es siempre falsy aunque el modelo sí
+        # exista).
+        has_claim_model = (
+            'guapante.preparation.day.product.claim' in self.env.registry
+        )
+        EmptySessions = self.sudo().search([
+            ('state', 'in', ('draft', 'loaded')),
+            ('line_ids', '=', False),
+            '|',
+            ('date', '<', today),
+            ('date', '>', today + timedelta(days=days_ahead)),
+        ], order='date', limit=max_sessions)
+        for Session in EmptySessions:
+            try:
+                with self.env.cr.savepoint():
+                    self._guapante_lock_sessions(Session)
+                    if Session.state == 'done' or Session.line_ids:
+                        continue
+                    if has_claim_model and self.env[
+                        'guapante.preparation.day.product.claim'
+                    ].sudo().search_count(
+                        [('wizard_id', '=', Session.id)],
+                    ):
+                        continue
+                    if self.env['guapante.picking.log'].sudo().search_count(
+                        [('wizard_id', '=', Session.id)],
+                    ):
+                        continue
+                    dt_start, dt_end = _date_to_utc_range(
+                        self.env, Session.date,
+                    )
+                    if self.env['stock.picking'].sudo().search_count(
+                        internal_picking_domain_base + [
+                            ('scheduled_date', '>=', dt_start),
+                            ('scheduled_date', '<', dt_end),
+                        ],
+                    ):
+                        continue
+                    _logger.info(
+                        'Guapante: cron de respaldo borra la sesión '
+                        'vacía %s (id=%s) — fuera del rango hoy..hoy+'
+                        '%d, sin líneas, sin claims, sin historial de '
+                        'pesaje y sin pedidos elegibles pendientes.',
+                        Session.date, Session.id, days_ahead,
+                    )
+                    Session.unlink()
+            except _PG_CONCURRENCY_ERRORS as exc:
+                _logger.info(
+                    'Guapante: cron de respaldo — no se pudo borrar '
+                    'la sesión vacía %s (%s), se reintenta en la '
+                    'próxima corrida.', Session.date,
+                    exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: cron de respaldo no pudo borrar la '
+                    'sesión vacía %s.', Session.date,
+                )
 
     def _guapante_add_confirmed_order(self, date_val, order) -> None:
         """Resuelve (o crea) la sesión de *date_val* y agrega *order* —

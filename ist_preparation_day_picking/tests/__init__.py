@@ -8,3 +8,4 @@ from . import test_preparation_day_relocation_claims
 from . import test_migration_admin_grant
 from . import test_migration_grace_last_activity
 from . import test_picking_switch_hour
+from . import test_preparation_day_cron_cleanup_claims

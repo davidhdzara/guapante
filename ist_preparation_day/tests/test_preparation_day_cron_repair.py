@@ -220,7 +220,13 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         UserError por diseño si se llamara. El cron corre cada 10
         min: sin este corte dejaría una nota de fallo en el chatter
         para siempre."""
-        far_day = fields.Date.add(self.delivery_date, days=30)
+        # fake_today + 3 (dentro del rango hoy..hoy+7 de #4) — con
+        # _run_cron() a secas (hoy real) esta sesión también caería
+        # fuera del rango de limpieza (#4) y se borraría, lo que
+        # tumbaría esta prueba por una razón distinta a la que prueba
+        # (no es sobre borrado, es sobre no dejar nota de fallo).
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=3)
         Session = self.env['guapante.preparation.day']._ensure_session_for_date(
             far_day,
         )
@@ -229,7 +235,7 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         messages_before = len(Session.message_ids)
 
         for _ in range(3):
-            self._run_cron()
+            self._run_cron_as_of(fake_today)
 
         Session.invalidate_recordset()
         self.assertEqual(Session.state, 'draft')
@@ -497,4 +503,193 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         self.assertEqual(
             [o.daily_sequence for o in orders], [1, 2, 3],
             'numeración 1..N en el orden de sale_id (orden de creación)',
+        )
+
+    # ------------------------------------------------------------------
+    # #4 (David/Tech Lead, 2026-10-31 — ajuste de rango de Tech Lead
+    # tras el caso real de la sesión 218): el cron también BORRA una
+    # sesión draft/loaded vacía (sin líneas, sin claims, sin historial
+    # de pesaje), pero SOLO si su fecha queda fuera del rango
+    # hoy..hoy+days_ahead que la fase de creación de arriba usa —
+    # dentro de ese rango una sesión vacía es normal (recién creada
+    # por adelantado, o por el tablet para la de mañana, #12) y nunca
+    # se toca, o este mismo cron la borraría y recrearía cada 10 min.
+    # ------------------------------------------------------------------
+
+    def _empty_session_on(self, day):
+        Session = self.env['guapante.preparation.day'].search(
+            [('date', '=', day)], limit=1,
+        )
+        if not Session:
+            Session = self.env['guapante.preparation.day'].create(
+                {'date': day},
+            )
+        return Session
+
+    def test_cron_does_not_delete_empty_session_tomorrow(self):
+        fake_today = self.delivery_date
+        tomorrow = fake_today + timedelta(days=1)
+        Session = self._empty_session_on(tomorrow)
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(
+            Session.exists(),
+            'una sesión vacía de mañana (la que crea el tablet por '
+            'switch-hour, #12) nunca se borra',
+        )
+
+    def test_cron_does_not_delete_empty_session_within_range(self):
+        fake_today = self.delivery_date
+        day = fake_today + timedelta(days=3)
+        Session = self._empty_session_on(day)
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(Session.exists())
+
+    def test_cron_does_not_delete_empty_session_at_range_boundary(self):
+        """Límite exacto hoy+days_ahead (7 por default) — dentro del
+        rango, no se borra (el corte es '>', no '>=')."""
+        fake_today = self.delivery_date
+        boundary_day = fake_today + timedelta(days=7)
+        Session = self._empty_session_on(boundary_day)
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(Session.exists())
+
+    def test_cron_deletes_empty_session_past_the_range(self):
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=30)
+        Session = self._empty_session_on(far_day)
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'una sesión vacía muy lejos en el futuro (fuera del rango '
+            'de creación/reparación) sí se borra',
+        )
+
+    def test_cron_deletes_empty_session_in_the_past(self):
+        fake_today = self.delivery_date
+        past_day = fake_today - timedelta(days=1)
+        Session = self._empty_session_on(past_day)
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'una sesión vacía de ayer sí se borra',
+        )
+
+    def test_cron_does_not_delete_and_recreate_in_cycle(self):
+        """Si el cron borrara una sesión vacía dentro del rango
+        hoy..hoy+N, la fase de creación de la misma corrida (o la
+        siguiente, 10 min después) la volvería a crear en cuanto
+        hubiera pedidos elegibles — quemando numeración de PK/PICK y
+        cambiando su id cada vez. Corriendo el cron varias veces
+        seguidas, el id de una sesión vacía dentro del rango debe
+        permanecer estable."""
+        fake_today = self.delivery_date
+        tomorrow = fake_today + timedelta(days=1)
+        Session = self._empty_session_on(tomorrow)
+        session_id = Session.id
+
+        for _ in range(3):
+            self._run_cron_as_of(fake_today)
+
+        self.assertEqual(
+            self.env['guapante.preparation.day'].search(
+                [('date', '=', tomorrow)],
+            ).id,
+            session_id,
+            'la sesión vacía dentro del rango debe seguir siendo la '
+            'misma en corridas sucesivas, no un id nuevo cada vez',
+        )
+
+    def test_cron_never_deletes_done_session_even_if_empty(self):
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=30)
+        Session = self._empty_session_on(far_day)
+        Session.action_mark_done()
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'una sesión done nunca se borra, aunque esté vacía y '
+            'fuera del rango',
+        )
+
+    def test_cron_never_deletes_session_with_lines_even_outside_range(self):
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=30)
+        self._confirm_order_on_day(far_day, qty=5.0)
+        Session = self.env['guapante.preparation.day'].search(
+            [('date', '=', far_day)], limit=1,
+        )
+        self.assertTrue(Session.line_ids)
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(Session.exists())
+        self.assertEqual(len(Session.line_ids), 1)
+
+    def test_cron_never_deletes_session_with_weighing_history(self):
+        fake_today = self.delivery_date
+        far_day = fake_today + timedelta(days=30)
+        Session = self._empty_session_on(far_day)
+        self.env['guapante.picking.log'].create({'wizard_id': Session.id})
+        session_id = Session.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertTrue(
+            self.env['guapante.preparation.day'].browse(
+                session_id,
+            ).exists(),
+            'historial de pesaje (guapante.picking.log) impide el '
+            'borrado aunque hoy no tenga líneas',
+        )
+
+    def test_cron_cleanup_not_starved_by_many_old_sessions_with_lines(self):
+        """Tech Lead, tras revisar 75439bc: el dominio original de
+        EmptySessions no filtraba por line_ids — en staging_main/
+        producción hay muchas sesiones 'loaded' pasadas CON líneas
+        (ej. la 217, 210-216), que llenaban el tope de sesiones de la
+        corrida antes de llegar a evaluar las vacías viejas de
+        verdad, dejando la limpieza sin efecto en la práctica. Fuerza
+        un tope bajo (2) y crea 3 sesiones pasadas CON líneas más una
+        vacía — la vacía debe borrarse igual en la misma corrida."""
+        fake_today = self.delivery_date
+        self.env['ir.config_parameter'].sudo().set_param(
+            'ist_preparation_day.cron_repair_max_sessions', '2',
+        )
+        for offset in (10, 9, 8):
+            day = fake_today - timedelta(days=offset)
+            self._confirm_order_on_day(day, qty=1.0)
+
+        empty_day = fake_today - timedelta(days=1)
+        EmptySession = self._empty_session_on(empty_day)
+        empty_session_id = EmptySession.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                empty_session_id,
+            ).exists(),
+            'la sesión vacía debe borrarse aunque existan más '
+            'sesiones viejas CON líneas que el tope de la corrida',
         )
