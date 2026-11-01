@@ -396,6 +396,40 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             claim.action_resume()
         self.assertGreater(len(session.message_ids), messages_before)
 
+    def test_stopped_claims_have_no_cap_can_take_a_fourth(self):
+        """Aclaración de David (#8, vía Tech Lead, 2026-10-31): un
+        operario puede tener N productos Detenidos a la vez — el único
+        tope es 1 En progreso. _check_single_claim_per_operator solo
+        mira status='in_progress' (ver su domain) y no existe en todo
+        el módulo ninguna validación que cuente Detenidos — este test
+        lo prueba con 3 detenidos reales, no por inspección de código."""
+        session = self._load_session_with_product()
+        other_products = [
+            self.env['product.product'].create({
+                'name': f'Producto Detenido Test {i}',
+                'type': 'consu',
+            })
+            for i in range(3)
+        ]
+        claims = session.product_claim_ids
+        for product in other_products:
+            claims |= self.Claim.create({
+                'wizard_id': session.id,
+                'product_tmpl_id': product.product_tmpl_id.id,
+            })
+        self.assertEqual(len(claims), 4, 'setup: 1 del fixture + 3 nuevos')
+
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            for claim in claims[:3]:
+                claim.action_assign()
+                claim.action_stop('sin_stock')
+            self.assertEqual(claims[:3].mapped('status'), ['stopped'] * 3)
+
+            fourth = claims[3]
+            fourth.action_assign()
+            self.assertEqual(fourth.status, 'in_progress')
+            self.assertEqual(fourth.assigned_employee_id, self.operator_a)
+
     # ── finalización automática (Tech Lead, punto 4) ──
 
     def test_claim_released_when_last_line_finishes(self):
