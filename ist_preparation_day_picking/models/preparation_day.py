@@ -35,7 +35,10 @@ def _get_picking_switch_hour(env) -> tuple:
     )
     try:
         hour_str, minute_str = raw.split(':')
-        return int(hour_str), int(minute_str)
+        hour, minute = int(hour_str), int(minute_str)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(f'hora/minuto fuera de rango: {raw!r}')
+        return hour, minute
     except (ValueError, AttributeError):
         _logger.warning(
             'Guapante: parámetro %s inválido (%r), usando default %s',

@@ -248,13 +248,13 @@ export class PickingLinesDisplay extends Component {
         }
     }
 
-    // Sin pesaje real (Tech Lead, 2026-10-29, punto b — kg directo Y
-    // unidades): el input se precarga con estimated_kg (ver template) —
-    // si el operario confirma SIN tocar ese valor, se guarda tal cual
-    // con guapante_qty_estimated=True (is_qty_estimated, informativo
-    // para reportes de Fase 2); si lo edita, llega distinto y se guarda
-    // en False. Nunca aplica a needs_weighing=True: ahí el valor nace en
-    // 0, cualquier número que llegue es necesariamente un pesaje real.
+    // Campo de peso/cantidad SIEMPRE vacío y obligatorio (David,
+    // corrección #7, 2026-10-31): ya no se precarga con estimated_kg —
+    // el operario tiene que escribir un valor real para poder
+    // confirmar la línea, aplique o no needs_weighing. is_qty_estimated
+    // ya no se marca desde aquí; sigue existiendo en el modelo pero solo
+    // la pone en True action_mark_line_ready() (botón "Marcar lista" /
+    // RPC), nunca esta escritura.
     //
     // Dos alertas independientes, cada una en su propio caso, sin
     // tocarse entre sí:
@@ -271,7 +271,6 @@ export class PickingLinesDisplay extends Component {
     //    aquí como en el 1). Comparación redondeada a 3 decimales para
     //    no disparar por residuos de coma flotante.
     async onConfirmWeight(line, value) {
-        const wasUnedited = !line.needs_weighing && value === line.estimated_kg;
         if (line.needs_weighing && line.expected_kg_per_unit > 0) {
             const expectedWeight = line.estimated_kg * line.expected_kg_per_unit;
             const outOfRange = (
@@ -323,7 +322,6 @@ export class PickingLinesDisplay extends Component {
                 {
                     context: {
                         guapante_picking_flow: true,
-                        guapante_qty_estimated: wasUnedited,
                     },
                 },
             );

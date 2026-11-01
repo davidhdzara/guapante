@@ -79,6 +79,19 @@ class TestPickingSwitchHour(TestPreparationDay):
             'ni quedarse pegado a "hoy"',
         )
 
+    def test_out_of_range_param_falls_back_to_default_21_00(self):
+        """Tech Lead, 2026-10-31: "25:99" pasa el parseo (son enteros
+        válidos) pero no es una hora real — debe caer al default igual
+        que un valor no numérico, no quedarse pegado a "hoy" para
+        siempre."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            _PICKING_SWITCH_HOUR_PARAM_KEY, '25:99',
+        )
+        self.assertEqual(
+            self._session_date_at(self.delivery_date, 21, 30),
+            self.delivery_date + timedelta(days=1),
+        )
+
     def test_past_switch_hour_with_today_done_resolves_tomorrow(self):
         Session = self.env[
             'guapante.preparation.day'
