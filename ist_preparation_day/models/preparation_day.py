@@ -1459,10 +1459,11 @@ class PreparationDay(models.Model):
         )
         EmptySessions = self.sudo().search([
             ('state', 'in', ('draft', 'loaded')),
+            ('line_ids', '=', False),
             '|',
             ('date', '<', today),
             ('date', '>', today + timedelta(days=days_ahead)),
-        ], limit=max_sessions)
+        ], order='date', limit=max_sessions)
         for Session in EmptySessions:
             try:
                 with self.env.cr.savepoint():

@@ -662,3 +662,34 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
             'historial de pesaje (guapante.picking.log) impide el '
             'borrado aunque hoy no tenga líneas',
         )
+
+    def test_cron_cleanup_not_starved_by_many_old_sessions_with_lines(self):
+        """Tech Lead, tras revisar 75439bc: el dominio original de
+        EmptySessions no filtraba por line_ids — en staging_main/
+        producción hay muchas sesiones 'loaded' pasadas CON líneas
+        (ej. la 217, 210-216), que llenaban el tope de sesiones de la
+        corrida antes de llegar a evaluar las vacías viejas de
+        verdad, dejando la limpieza sin efecto en la práctica. Fuerza
+        un tope bajo (2) y crea 3 sesiones pasadas CON líneas más una
+        vacía — la vacía debe borrarse igual en la misma corrida."""
+        fake_today = self.delivery_date
+        self.env['ir.config_parameter'].sudo().set_param(
+            'ist_preparation_day.cron_repair_max_sessions', '2',
+        )
+        for offset in (10, 9, 8):
+            day = fake_today - timedelta(days=offset)
+            self._confirm_order_on_day(day, qty=1.0)
+
+        empty_day = fake_today - timedelta(days=1)
+        EmptySession = self._empty_session_on(empty_day)
+        empty_session_id = EmptySession.id
+
+        self._run_cron_as_of(fake_today)
+
+        self.assertFalse(
+            self.env['guapante.preparation.day'].browse(
+                empty_session_id,
+            ).exists(),
+            'la sesión vacía debe borrarse aunque existan más '
+            'sesiones viejas CON líneas que el tope de la corrida',
+        )
