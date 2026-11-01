@@ -1,10 +1,90 @@
 # -*- coding: utf-8 -*-
+import logging
+from datetime import timedelta
+
+import pytz
+
 from odoo import api, fields, models
 from odoo.exceptions import AccessError
 
 from odoo.addons.ist_preparation_day.models.preparation_day import (
-    _current_session_date,
+    _DEFAULT_TZ,
 )
+
+_logger = logging.getLogger(__name__)
+
+# Hora de corte configurable (hora Bogotá) desde la que el TABLET de
+# Picking resuelve "mañana" en vez de "hoy" — corrección #12, David
+# tras probar en staging_main 2026-10-31: la operación real empieza a
+# las 22:00 del día anterior. Solo afecta a dónde entra el tablet
+# (_picking_session_date, usada ÚNICAMENTE por
+# action_resolve_picking_handoff); NUNCA a _current_session_date del
+# cron de respaldo ni al corte 00:30 de action_confirm — esos siguen
+# intactos.
+_PICKING_SWITCH_HOUR_PARAM_KEY = (
+    'ist_preparation_day_picking.picking_switch_hour'
+)
+_PICKING_SWITCH_HOUR_DEFAULT = '21:00'
+
+
+def _get_picking_switch_hour(env) -> tuple:
+    """(hour, minute) de corte configurable para _picking_session_date
+    — ver _PICKING_SWITCH_HOUR_PARAM_KEY."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        _PICKING_SWITCH_HOUR_PARAM_KEY, default=_PICKING_SWITCH_HOUR_DEFAULT,
+    )
+    try:
+        hour_str, minute_str = raw.split(':')
+        hour, minute = int(hour_str), int(minute_str)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(f'hora/minuto fuera de rango: {raw!r}')
+        return hour, minute
+    except (ValueError, AttributeError):
+        _logger.warning(
+            'Guapante: parámetro %s inválido (%r), usando default %s',
+            _PICKING_SWITCH_HOUR_PARAM_KEY, raw, _PICKING_SWITCH_HOUR_DEFAULT,
+        )
+        hour_str, minute_str = _PICKING_SWITCH_HOUR_DEFAULT.split(':')
+        return int(hour_str), int(minute_str)
+
+
+def _picking_session_date(env):
+    """A qué fecha de sesión debe entrar el TABLET de Picking ahora
+    mismo — corrección #12. Antes de la hora de corte (ver
+    _get_picking_switch_hour), hoy; desde esa hora, mañana — SALVO que
+    la sesión de hoy siga abierta con trabajo pendiente (turno que se
+    alargó): si hoy existe, no está 'done' y tiene líneas pendientes,
+    se queda en hoy (condición de seguridad operativa, Tech Lead
+    2026-10-31) — esas pendientes son las que deben manejar al
+    operario, no una sesión de mañana todavía sin poblar.
+    """
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    local_dt = pytz.utc.localize(
+        fields.Datetime.now(),
+    ).astimezone(local_tz)
+    today = local_dt.date()
+
+    switch_hour, switch_minute = _get_picking_switch_hour(env)
+    past_switch = (local_dt.hour, local_dt.minute) >= (switch_hour, switch_minute)
+    if not past_switch:
+        return today
+
+    TodaySession = env['guapante.preparation.day'].sudo().search(
+        [('date', '=', today)], limit=1,
+    )
+    if TodaySession and TodaySession.state != 'done':
+        pending = TodaySession.line_ids.filtered(lambda l: not l.is_done)
+        if pending:
+            _logger.info(
+                'Guapante: tablet de Picking — pasada la hora de '
+                'corte pero la sesión de hoy (%s) tiene %d línea(s) '
+                'pendiente(s); se queda en hoy en vez de pasar a '
+                'mañana.', today, len(pending),
+            )
+            return today
+
+    return today + timedelta(days=1)
 
 
 class PreparationDay(models.Model):
@@ -213,8 +293,11 @@ class PreparationDay(models.Model):
 
         Si hay una sesión puntual en el contexto de la acción (entrada por
         el botón del form vía action_open_picking_app), la respeta. Si no
-        (entrada por el ícono/menú de la app), resuelve "la sesión de hoy"
-        reusando _current_session_date / _ensure_session_for_date — crea la
+        (entrada por el ícono/menú de la app), resuelve con
+        _picking_session_date (corrección #12, Tech Lead 2026-10-31: la
+        operación real empieza a las 22:00 del día anterior — hora de
+        corte configurable, nunca _current_session_date que usan el cron
+        de respaldo y action_confirm) / _ensure_session_for_date — crea la
         sesión en borrador si todavía no existe, mismo comportamiento que ya
         dispara sale_order.action_confirm() para pedidos confirmados hoy.
         """
@@ -222,6 +305,6 @@ class PreparationDay(models.Model):
         if session_id:
             Session = self.browse(session_id)
         else:
-            today = _current_session_date(self.env)
-            Session = self._ensure_session_for_date(today)
+            target_date = _picking_session_date(self.env)
+            Session = self._ensure_session_for_date(target_date)
         return Session.action_view_product_claims()

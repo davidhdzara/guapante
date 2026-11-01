@@ -73,7 +73,7 @@
                                     Unidad no soportada — avisa a un administrador.
                                 </span>
                                 <PickingWeightInput t-else=""
-                                                     value="line.needs_weighing ? line.actual_kg : (line.actual_kg || line.estimated_kg)"
+                                                     value="line.actual_kg"
                                                      onConfirm="(value) => this.onConfirmWeight(line, value)"
                                                      integer="line.qty_uom_label === 'und'"
                                                      placeholder="line.qty_uom_label === 'und' ? 'Unidades' : 'Peso (kg)'"/>

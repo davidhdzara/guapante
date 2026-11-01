@@ -323,6 +323,28 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         self.assertEqual(line.actual_kg, 3.2)
         self.assertTrue(line.is_done)
 
+    def test_write_actual_kg_without_qty_estimated_context_defaults_false(self):
+        """Corrección #7 (David, 2026-10-31): el input de Nivel 2 ya no
+        precarga ni envía guapante_qty_estimated — onConfirmWeight manda
+        actual_kg solo. Confirma que, sin esa clave en el contexto en
+        absoluto (no False explícito, AUSENTE), is_qty_estimated cae en
+        False igual — action_mark_line_ready sigue siendo el único
+        camino que la deja en True."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(guapante_picking_flow=True).write(
+                {'actual_kg': 4.0},
+            )
+        self.assertFalse(line.is_qty_estimated)
+        self.assertEqual(line.actual_kg, 4.0)
+        self.assertTrue(line.is_done)
+
     def test_write_actual_kg_unedited_marks_estimated_units(self):
         """Mismo patrón, producto por unidad (is_weight=False)."""
         session = self._create_session()

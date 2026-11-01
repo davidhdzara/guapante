@@ -653,7 +653,16 @@ class PreparationDay(models.Model):
     so_count = fields.Integer(
         string='Cajas',
         compute='_compute_box_reconciliation',
-        help='Cantidad de órdenes de venta confirmadas para la fecha.',
+        help=(
+            'Cantidad de pedidos con líneas reales en esta sesión '
+            '(incluye cancelados que conservan su número mientras sus '
+            'líneas sigan acá). Antes de la corrección #5/#6 (David, '
+            '2026-10-31) se calculaba buscando pickings PICK por fecha '
+            'programada — podía mostrar un número distinto al real de '
+            'la sesión (reprogramaciones, duplicados). Se mantiene ese '
+            'cálculo viejo solo como respaldo para una sesión sin '
+            'líneas (vacía/borrador).'
+        ),
     )
     box_diff = fields.Integer(
         string='Diferencia',
@@ -1596,12 +1605,24 @@ class PreparationDay(models.Model):
                 (done / total * 100.0) if total else 0.0
             )
 
-    @api.depends('date', 'line_ids')
+    @api.depends('date', 'line_ids', 'line_ids.sale_order_id')
     def _compute_box_reconciliation(self) -> None:
         """Conciliación de cajas: confirmadas vs cotizaciones pendientes.
 
         El valor real de este indicador es mostrar cotizaciones
         draft/sent que podrían convertirse en cajas adicionales.
+
+        so_count (corrección #5, David 2026-10-31): con líneas reales
+        ya cargadas, son la fuente de verdad — distinct sale_order_id
+        de line_ids, sin filtrar por estado del pedido (así, un pedido
+        cancelado que conserva su número sigue contando MIENTRAS sus
+        líneas sigan en la sesión; si algo las borra, deja de contar,
+        sin necesidad de ningún caso especial acá). El cálculo viejo
+        por Pickings/fecha programada queda solo de respaldo para una
+        sesión sin líneas todavía (vacía/borrador) — box_diff/box_match
+        NO dependen de so_count en ningún lado (ambos fijos en
+        0/True desde antes de esta corrección), así que este cambio no
+        les afecta.
         """
         for session in self:
             if not session.date:
@@ -1615,18 +1636,24 @@ class PreparationDay(models.Model):
                 self.env, session.date,
             )
 
-            # Pickings PICK (internal) de órdenes activas para la fecha.
-            # Excluir pickings cancelados Y órdenes canceladas (S00217).
-            Pickings = self.env['stock.picking'].sudo().search([
-                ('scheduled_date', '>=', dt_start),
-                ('scheduled_date', '<', dt_end),
-                ('picking_type_code', '=', 'internal'),
-                ('sale_id', '!=', False),
-                ('sale_id.state', 'in', ('sale', 'done')),
-                ('state', 'not in', ('cancel',)),
-            ])
-            pick_orders = Pickings.mapped('sale_id')
-            session.so_count = len(pick_orders)
+            if session.line_ids:
+                session.so_count = len(
+                    session.line_ids.mapped('sale_order_id')
+                )
+            else:
+                # Pickings PICK (internal) de órdenes activas para la
+                # fecha. Excluir pickings cancelados Y órdenes
+                # canceladas (S00217).
+                Pickings = self.env['stock.picking'].sudo().search([
+                    ('scheduled_date', '>=', dt_start),
+                    ('scheduled_date', '<', dt_end),
+                    ('picking_type_code', '=', 'internal'),
+                    ('sale_id', '!=', False),
+                    ('sale_id.state', 'in', ('sale', 'done')),
+                    ('state', 'not in', ('cancel',)),
+                ])
+                pick_orders = Pickings.mapped('sale_id')
+                session.so_count = len(pick_orders)
 
             session.box_diff = 0
             session.box_match = True
@@ -1677,6 +1704,29 @@ class PreparationDay(models.Model):
                 'default_wizard_id': self.id,
                 'search_default_group_by_status': 1,
             },
+            'target': 'current',
+        }
+
+    def action_view_lines(self) -> dict:
+        """Abre la lista de líneas de picking de esta sesión (corrección
+        #6, David 2026-10-31) — mismo dominio que total_lines
+        (len(line_ids)), para que el número del botón y las filas que
+        abre siempre coincidan.
+
+        Vista fijada explícitamente (Tech Lead, 2026-10-31): sin
+        'views', Odoo elige la lista del modelo por prioridad/id, y
+        con otra lista ya registrada para este modelo (la embebida en
+        el form no cuenta — es ad hoc del campo, no una vista
+        registrada) podría ganar una distinta a
+        view_preparation_day_line_list y dejarla sin uso."""
+        self.ensure_one()
+        list_view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
+        return {
+            'name': 'Líneas de picking',
+            'type': 'ir.actions.act_window',
+            'res_model': 'guapante.preparation.day.line',
+            'views': [(list_view.id, 'list')],
+            'domain': [('wizard_id', '=', self.id)],
             'target': 'current',
         }
 
