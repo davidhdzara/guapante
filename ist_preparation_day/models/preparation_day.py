@@ -1711,13 +1711,21 @@ class PreparationDay(models.Model):
         """Abre la lista de líneas de picking de esta sesión (corrección
         #6, David 2026-10-31) — mismo dominio que total_lines
         (len(line_ids)), para que el número del botón y las filas que
-        abre siempre coincidan."""
+        abre siempre coincidan.
+
+        Vista fijada explícitamente (Tech Lead, 2026-10-31): sin
+        'views', Odoo elige la lista del modelo por prioridad/id, y
+        con otra lista ya registrada para este modelo (la embebida en
+        el form no cuenta — es ad hoc del campo, no una vista
+        registrada) podría ganar una distinta a
+        view_preparation_day_line_list y dejarla sin uso."""
         self.ensure_one()
+        list_view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
         return {
             'name': 'Líneas de picking',
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.line',
-            'view_mode': 'list',
+            'views': [(list_view.id, 'list')],
             'domain': [('wizard_id', '=', self.id)],
             'target': 'current',
         }

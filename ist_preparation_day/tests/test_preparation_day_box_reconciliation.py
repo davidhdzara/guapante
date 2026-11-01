@@ -164,3 +164,16 @@ class TestPreparationDayBoxReconciliation(TestPreparationDay):
             self.env['guapante.preparation.day.line'].search_count(domain),
             session.total_lines,
         )
+
+    def test_action_view_lines_binds_the_dedicated_list_view(self):
+        """Tech Lead, 2026-10-31: sin fijar la vista explícitamente,
+        Odoo podría elegir otra lista registrada para el modelo y
+        dejar view_preparation_day_line_list sin uso."""
+        session = self._create_session()
+        action = session.action_view_lines()
+        expected_view = self.env.ref(
+            'ist_preparation_day.view_preparation_day_line_list'
+        )
+        self.assertEqual(
+            action['views'], [(expected_view.id, 'list')],
+        )
