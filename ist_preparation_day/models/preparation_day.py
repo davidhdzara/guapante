@@ -758,7 +758,7 @@ class PreparationDay(models.Model):
     )
     draft_count = fields.Integer(
         string='Cotizaciones pendientes',
-        compute='_compute_box_reconciliation',
+        compute='_compute_draft_count',
         help='Cotizaciones (draft/sent) que podrían ser cajas si se confirman.',
     )
 
@@ -1777,10 +1777,32 @@ class PreparationDay(models.Model):
 
     @api.depends('line_ids.is_done')
     def _compute_global_progress(self) -> None:
-        """Calcula el progreso global de toda la sesión."""
+        """Calcula el progreso global de toda la sesión.
+
+        Una sola consulta agregada para TODO el lote de self (Tech
+        Lead, 2026-11-02) — la versión anterior recorría
+        session.line_ids por cada sesión, y el ORM resuelve cada
+        acceso como un search propio: 144 consultas para pintar una
+        página de 80 sesiones (medido en staging_main). _read_group
+        agrupado por (wizard_id, is_done) da total y hechas en una
+        sola pasada, sin importar cuántas sesiones traiga self.
+        """
+        counts = {}
+        if self.ids:
+            groups = self.env['guapante.preparation.day.line']._read_group(
+                [('wizard_id', 'in', self.ids)],
+                groupby=['wizard_id', 'is_done'],
+                aggregates=['__count'],
+            )
+            for wizard, is_done, count in groups:
+                entry = counts.setdefault(wizard.id, {'total': 0, 'done': 0})
+                entry['total'] += count
+                if is_done:
+                    entry['done'] += count
         for session in self:
-            total = len(session.line_ids)
-            done = len(session.line_ids.filtered(lambda l: l.is_done))
+            entry = counts.get(session.id, {'total': 0, 'done': 0})
+            total = entry['total']
+            done = entry['done']
             session.total_lines = total
             session.done_lines = done
             session.pending_lines = total - done
@@ -1790,10 +1812,11 @@ class PreparationDay(models.Model):
 
     @api.depends('date', 'line_ids', 'line_ids.sale_order_id')
     def _compute_box_reconciliation(self) -> None:
-        """Conciliación de cajas: confirmadas vs cotizaciones pendientes.
+        """Conciliación de cajas: so_count/box_diff/box_match.
 
-        El valor real de este indicador es mostrar cotizaciones
-        draft/sent que podrían convertirse en cajas adicionales.
+        draft_count (cotizaciones pendientes) vive en su PROPIO
+        compute (_compute_draft_count, Tech Lead 2026-11-02) — ver su
+        docstring para el porqué.
 
         so_count (corrección #5, David 2026-10-31): con líneas reales
         ya cargadas, son la fuente de verdad — distinct sale_order_id
@@ -1806,13 +1829,30 @@ class PreparationDay(models.Model):
         NO dependen de so_count en ningún lado (ambos fijos en
         0/True desde antes de esta corrección), así que este cambio no
         les afecta.
+
+        so_count vía consulta agregada (Tech Lead, 2026-11-02): una
+        sola _read_group para TODO el lote de self, sin recorrer
+        line_ids — mismo hallazgo de rendimiento que
+        _compute_global_progress. Agrupa SOLO por wizard_id, nunca
+        también por is_done: un pedido con líneas en distintos estados
+        de is_done contaría dos veces si el distinct de sale_order_id
+        se partiera por subgrupo.
         """
+        sessions_with_lines = self.filtered('line_ids')
+        so_counts = {}
+        if sessions_with_lines:
+            groups = self.env['guapante.preparation.day.line']._read_group(
+                [('wizard_id', 'in', sessions_with_lines.ids)],
+                groupby=['wizard_id'],
+                aggregates=['sale_order_id:count_distinct'],
+            )
+            so_counts = {wizard.id: count for wizard, count in groups}
+
         for session in self:
             if not session.date:
                 session.so_count = 0
                 session.box_diff = 0
                 session.box_match = True
-                session.draft_count = 0
                 continue
 
             dt_start, dt_end = _date_to_utc_range(
@@ -1820,9 +1860,7 @@ class PreparationDay(models.Model):
             )
 
             if session.line_ids:
-                session.so_count = len(
-                    session.line_ids.mapped('sale_order_id')
-                )
+                session.so_count = so_counts.get(session.id, 0)
             else:
                 # Pickings PICK (internal) de órdenes activas para la
                 # fecha. Excluir pickings cancelados Y órdenes
@@ -1841,10 +1879,28 @@ class PreparationDay(models.Model):
             session.box_diff = 0
             session.box_match = True
 
-            # Cotizaciones pendientes (draft/sent) que podrían
-            # llegar si el cliente confirma.
-            # Buscan por expected_date (fecha estimada de entrega
-            # calculada por Odoo) o date_order (fecha de creación).
+    @api.depends('date')
+    def _compute_draft_count(self) -> None:
+        """Cotizaciones pendientes (draft/sent) que podrían convertirse
+        en cajas si el cliente confirma.
+
+        Compute PROPIO, separado de _compute_box_reconciliation (Tech
+        Lead, 2026-11-02): antes vivían juntos, y como Odoo calcula de
+        una vez todos los campos de un mismo compute, pedir so_count
+        (lo que hace la lista de Sesiones) disparaba también esta
+        búsqueda de sale.order por sesión — aunque draft_count no se
+        muestra en ninguna vista hoy (confirmado por grep). Separarlo
+        hace que esta búsqueda solo corra donde de verdad se lee/
+        muestra draft_count, sin arrastrar su costo a la lista.
+
+        Mismo cálculo de siempre, sin cambios: por expected_date
+        (fecha estimada de entrega) o date_order (fecha de creación).
+        """
+        for session in self:
+            if not session.date:
+                session.draft_count = 0
+                continue
+            dt_start, dt_end = _date_to_utc_range(self.env, session.date)
             DraftOrders = self.env['sale.order'].sudo().search([
                 ('state', 'in', ('draft', 'sent')),
                 '|',
