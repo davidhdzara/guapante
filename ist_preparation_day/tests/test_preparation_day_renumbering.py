@@ -101,7 +101,11 @@ class TestPreparationDayRenumbering(TransactionCase):
             Lines = self.env['guapante.preparation.day.line'].sudo().search(
                 [('sale_order_id', '=', order.id)],
             )
-            Lines.sudo().write({'is_done': True})
+            # actual_kg junto con is_done (E4, 2026-11-02): escribir
+            # is_done solo, sin peso, ahora exige un peso > 0 ya puesto
+            # (track_done en CORE) — "ya se había pesado" necesita el
+            # peso para ser fiel a lo que simula.
+            Lines.sudo().write({'actual_kg': 1.0, 'is_done': True})
         # action_cancel() en una orden ya confirmada solo devuelve la
         # acción del wizard de cancelación (no cancela nada por sí
         # solo) — _action_cancel() es el método real que sí pone

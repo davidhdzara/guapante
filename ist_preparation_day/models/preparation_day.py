@@ -487,7 +487,45 @@ class PreparationDayLine(models.Model):
         en el reintento por error de serialización de Postgres — el
         lock explícito es lo que garantiza el orden, no una suposición
         sobre el nivel de aislamiento.
+
+        Casilla "Terminado" editable para admin (E4, David/Tech Lead,
+        2026-11-02): SOLO cuando 'is_done' viene SOLO (sin 'actual_kg'
+        en el mismo vals) — si vienen los dos juntos en la misma fila
+        (marcar la casilla Y cambiar el peso a la vez), se trata como
+        pesar/corregir: el camino de abajo (track_kg) ya decide todo
+        solo con el peso, e is_done termina en el valor correcto de
+        todas formas sin que haga falta este bloque. Desmarcar
+        (True→False) reusa action_undo_line() entero (nota + guard de
+        sesión cerrada, igual que poner el peso en 0). Marcar
+        (False→True) sin tocar el peso exige actual_kg>0 YA puesto —
+        nunca Terminado de un peso que no existe — y reusa
+        _register_weight_from_productos_tab() entero (mismo efecto
+        que lo que ya hace guardar un peso>0 sobre una Pendiente).
         """
+        track_done = (
+            'is_done' in vals
+            and 'actual_kg' not in vals
+            and not self.env.context.get('skip_auto_save')
+            and bool(self)
+        )
+        if track_done:
+            target = bool(vals['is_done'])
+            ToMarkDone = self.filtered(lambda l: target and not l.is_done)
+            ToUndo = self.filtered(lambda l: not target and l.is_done)
+            for line in ToMarkDone:
+                if line.actual_kg <= 0:
+                    raise UserError(
+                        f'{line.product_description} '
+                        f'(Caja #{line.daily_sequence}): no se puede '
+                        'marcar Terminado sin un peso registrado — '
+                        'ingresa el peso primero.'
+                    )
+            for line in ToMarkDone:
+                line._register_weight_from_productos_tab()
+            if ToUndo:
+                ToUndo.action_undo_line()
+            return True
+
         track_kg = (
             'actual_kg' in vals
             and not self.env.context.get('skip_auto_save')

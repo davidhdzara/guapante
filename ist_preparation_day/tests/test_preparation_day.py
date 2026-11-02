@@ -1160,6 +1160,83 @@ class TestPreparationDay(TransactionCase):
             line.write({'actual_kg': -1.0})
         self.assertEqual(line.actual_kg, 0.0, 'el valor negativo no debe escribirse')
 
+    # ── Edición inline de admin: casilla "Terminado" (E4, David/Tech
+    # Lead, 2026-11-02) — mismo write() de CORE, dispatch track_done ──
+
+    def test_write_is_done_true_marks_done_like_weighing(self):
+        """Marcar Terminado (sin tocar el peso) con un peso ya puesto > 0
+        reusa _register_weight_from_productos_tab() entero."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+        self.assertFalse(line.is_done, 'setup: peso puesto, aún no Terminado')
+
+        line.write({'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_true_with_zero_weight_raises(self):
+        """Marcar Terminado sin un peso registrado (actual_kg<=0) da un
+        UserError claro — nunca un Terminado de un peso que no existe."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        with self.assertRaises(UserError):
+            line.write({'is_done': True})
+        self.assertFalse(line.is_done, 'el guard bloquea antes de marcar nada')
+
+    def test_write_is_done_false_reverts_via_action_undo_line(self):
+        """Desmarcar Terminado (sin tocar el peso) tiene el mismo efecto
+        que action_undo_line(): vuelve a Pendiente, limpia done_by/
+        done_date y el peso.
+
+        Segundo producto (mismo motivo que test_write_zero_on_done_
+        line_reverts_via_action_undo_line): sin uno pendiente, terminar
+        la única línea cierra la sesión y el segundo write chocaría con
+        el guard de sesión cerrada en vez de probar la reversa."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.is_done)
+
+        line.write({'is_done': False})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+
+    def test_write_is_done_and_actual_kg_together_treated_as_weighing(self):
+        """Marcar Terminado Y escribir un peso nuevo en la misma fila no
+        pasa por track_done — el camino de actual_kg (track_kg) decide
+        todo solo con el peso, is_done termina correcto igual."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        line.write({'actual_kg': 1.5, 'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 1.5)
+        self.assertTrue(line.done_date)
+
     # ── Tests de write() override ──
 
     def test_write_actual_kg_auto_saves(self):
