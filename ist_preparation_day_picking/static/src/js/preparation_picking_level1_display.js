@@ -74,6 +74,14 @@ export class PickingClaimsDisplay extends Component {
             // expandidas porque el objeto solo trae estas dos claves.
             foldedGroups: { done: true, stopped: true },
             searchText: "",
+            // "Mis productos / Todos" (Tech Lead/David, 2026-11-02):
+            // arranca en "Todos" (false) — con "Mis productos" por
+            // defecto, un operario que recién abre el L1 vería la
+            // pantalla casi vacía (oculta hasta los Pendientes) y
+            // tendría que tocar el interruptor antes de poder tomar un
+            // producto, en contra del principio rector. No se recuerda
+            // entre sesiones — siempre arranca en "Todos".
+            myProductsOnly: false,
             loaded: false,
         });
         // Punto (a), heredado de la implementación kanban: nunca tocar
@@ -171,6 +179,15 @@ export class PickingClaimsDisplay extends Component {
         const search = this.state.searchText.trim().toLowerCase();
         for (const claim of this.state.claims) {
             if (search && !claim.product_tmpl_name.toLowerCase().includes(search)) {
+                continue;
+            }
+            // "Mis productos": solo lo que YO toqué (en progreso, lo
+            // que detuve, lo que terminé pesando al menos una línea) —
+            // touched_by_me ya lo calculó el servidor
+            // (get_claims_for_level1_display); nunca Pendientes ni lo
+            // de otros, aunque la regla de privacidad (qué "En
+            // progreso" ajeno llega siquiera al cliente) no cambia acá.
+            if (this.state.myProductsOnly && !claim.touched_by_me) {
                 continue;
             }
             groups[claim.status].push(claim);

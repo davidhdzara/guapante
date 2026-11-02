@@ -292,6 +292,13 @@ class PreparationDayProductClaim(models.Model):
         El refresco por bus NO cambia (picking_claim_updated /
         onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
         cambia QUÉ devuelve este método, nunca el mecanismo.
+
+        Además de CLAIM_DISPLAY_FIELDS, cada dict trae `touched_by_me`
+        (toggle "Mis productos" del L1, Tech Lead/David 2026-11-02): si
+        YO tengo el claim en progreso, lo detuve, o pesé al menos una
+        línea de un producto ya Terminado — nunca sale de un `.read()`,
+        se calcula acá con una sola consulta agrupada extra (ver más
+        abajo), no por campo del modelo.
         """
         self._check_picking_access()
         Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
@@ -319,7 +326,45 @@ class PreparationDayProductClaim(models.Model):
                 or (stale_cutoff and effective and effective < stale_cutoff)
             ):
                 Visible |= claim
-        return Visible.read(CLAIM_DISPLAY_FIELDS)
+        records = Visible.read(CLAIM_DISPLAY_FIELDS)
+
+        # "Mis productos" (L1, Tech Lead/David 2026-11-02): el toggle
+        # necesita, además de is_mine (solo En progreso), saber si YO
+        # detuve el claim o si YO pesé al menos una línea de un producto
+        # ya Terminado — ninguno de los dos sale de un campo existente.
+        # UNA sola consulta agrupada sobre las líneas del lote para la
+        # parte de "terminado por mí" — nunca una búsqueda por claim
+        # (serían hasta ~100 por sesión). Un producto terminado antes de
+        # 4a (sin done_by_employee_id) nunca cuenta como "mío" acá — no
+        # hay dato que lo respalde, no se inventa.
+        my_done_tmpl_ids = set()
+        if my_employee_id:
+            done_tmpl_ids = [
+                record['product_tmpl_id'][0] for record in records
+                if record['status'] == 'done' and record['product_tmpl_id']
+            ]
+            if done_tmpl_ids:
+                groups = self.env['guapante.preparation.day.line'].sudo()._read_group(
+                    domain=[
+                        ('wizard_id', '=', wizard_id),
+                        ('product_id', 'in', done_tmpl_ids),
+                        ('done_by_employee_id', '=', my_employee_id),
+                    ],
+                    groupby=['product_id'],
+                    aggregates=['__count'],
+                )
+                my_done_tmpl_ids = {template.id for template, _count in groups}
+        for record in records:
+            tmpl_id = record['product_tmpl_id'][0] if record['product_tmpl_id'] else False
+            record['touched_by_me'] = bool(my_employee_id) and (
+                record['is_mine']
+                or (
+                    record['stopped_by_employee_id']
+                    and record['stopped_by_employee_id'][0] == my_employee_id
+                )
+                or (record['status'] == 'done' and tmpl_id in my_done_tmpl_ids)
+            )
+        return records
 
     # ── Acciones ──
 

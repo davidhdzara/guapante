@@ -3,6 +3,7 @@ import uuid
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+import odoo.sql_db as sql_db
 from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
@@ -735,6 +736,118 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
         self.assertIn(claim.id, [c['id'] for c in visible])
+
+    # ── "Mis productos": touched_by_me (Tech Lead/David, 2026-11-02) ──
+
+    def test_touched_by_me_true_when_in_progress_mine(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_for_pending_claim(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_true_when_i_stopped_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_when_other_operator_stopped_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_true_when_i_weighed_a_line_of_a_done_product(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_when_someone_else_finished_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_b.id,
+            'done_date': fields.Datetime.now(),
+        })
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_for_done_product_from_before_4a(self):
+        """Dato previo a 4a (sin done_by_employee_id) — nunca se cuenta
+        como mío, aunque yo sea quien lo mira."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_uses_a_bounded_number_of_queries(self):
+        """Tech Lead: UNA consulta agrupada sobre las líneas del lote
+        para "terminado por mí", nunca una búsqueda por claim (serían
+        hasta ~100 por sesión)."""
+        products = [
+            self.env['product.product'].create({
+                'name': f'Producto Touched By Me Test {i}', 'type': 'consu',
+            })
+            for i in range(5)
+        ]
+        for product in products:
+            self._create_confirmed_order(qty=1.0, product=product)
+        session = self._create_session()
+        session.action_load()
+        self.assertEqual(len(session.product_claim_ids), 5)
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            before = sql_db.sql_counter
+            self.Claim.get_claims_for_level1_display(session.id)
+            after = sql_db.sql_counter
+        self.assertLessEqual(
+            after - before, 20,
+            "El número de queries no debe crecer con la cantidad de "
+            "claims Terminados — una sola consulta agrupada, no una "
+            "por claim.",
+        )
 
     def test_f1_identification_failure_does_not_orphan_claim(self):
         """Corrección de Tech Lead sobre el primer diseño (punto A): una
