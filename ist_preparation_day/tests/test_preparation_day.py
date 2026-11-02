@@ -981,6 +981,110 @@ class TestPreparationDay(TransactionCase):
             msg="Undo should subtract the weight from summary",
         )
 
+    # ── Tests de done_by_employee_id / done_date (punto 4 de Tech Lead, 2026-11-02) ──
+
+    def test_save_line_weight_stamps_done_by_employee_and_date(self):
+        """Pesaje por Picking (PIN) debe estampar quién y cuándo."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Stamp Test',
+            'l10n_co_ne_payment_method': '10',
+            'is_guapante_prep_operator': True,
+        })
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        mock_request = MagicMock()
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, employee.id)
+        with patch(
+            'odoo.addons.ist_preparation_day.models.preparation_day.request',
+            mock_request,
+        ):
+            session.action_save_line_weight(line.id)
+
+        self.assertEqual(line.done_by_employee_id, employee)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_from_productos_tab_stamps_employee_from_user(self):
+        """Edición inline desde Productos (sin PIN): done_by_employee_id
+        sale del empleado vinculado al usuario de Odoo logueado."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Supervisor Stamp Test',
+            'l10n_co_ne_payment_method': '10',
+            'user_id': self.env.user.id,
+        })
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+
+        self.assertEqual(line.done_by_employee_id, employee)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_from_productos_tab_stamps_date_without_employee(self):
+        """Sin empleado vinculado al usuario logueado, done_by_employee_id
+        queda vacío pero done_date se estampa igual (Tech Lead, 2026-11-02)."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+
+        self.assertFalse(line.done_by_employee_id)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_correction_does_not_overwrite_done_stamp(self):
+        """Una corrección post-cierre no debe pisar quién/cuándo completó
+        la línea la PRIMERA vez."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        employee = self.env['hr.employee'].create({
+            'name': 'Supervisor Original Stamp',
+            'l10n_co_ne_payment_method': '10',
+            'user_id': self.env.user.id,
+        })
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
+        self.assertEqual(original_employee, employee)
+
+        line.write({'actual_kg': 1.8})
+
+        self.assertEqual(
+            line.done_by_employee_id, original_employee,
+            "Una corrección no debe cambiar quién completó la línea",
+        )
+        self.assertEqual(
+            line.done_date, original_date,
+            "Una corrección no debe cambiar cuándo se completó la línea",
+        )
+
+    def test_undo_line_clears_done_stamp(self):
+        """Devolver una línea a Pendiente debe limpiar done_by_employee_id
+        y done_date, no solo is_done/actual_kg."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.done_date)
+
+        line.action_undo_line()
+
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+
     # ── Tests de write() override ──
 
     def test_write_actual_kg_auto_saves(self):

@@ -369,6 +369,28 @@ class PreparationDayLine(models.Model):
         help='Indica si esta línea ya fue pesada y validada en esta sesión.',
     )
 
+    # Insumo de Fase 2 (Tech Lead, 2026-11-02): quién/cuándo completó
+    # esta línea — se estampa en los dos únicos sitios que ponen
+    # is_done=True (action_save_line_weight y
+    # _register_weight_from_productos_tab, más abajo), NUNCA se pisa en
+    # una corrección post-cierre (_register_weight_correction no los
+    # toca), y se limpia en action_undo_line junto con is_done/
+    # actual_kg. Líneas ya Terminadas antes de este cambio quedan con
+    # estos campos vacíos — sin migración de relleno (David, vía Tech
+    # Lead): no hay cómo reconstruir con fiabilidad quién pesó cada una
+    # de las ~127k líneas históricas.
+    done_by_employee_id = fields.Many2one(
+        'hr.employee',
+        string='Completado por',
+        readonly=True,
+        copy=False,
+    )
+    done_date = fields.Datetime(
+        string='Completado el',
+        readonly=True,
+        copy=False,
+    )
+
     @api.model
     def _get_display_qty(self, line) -> tuple:
         """Return (qty_str, uom_label) as the customer sees it.
@@ -538,7 +560,14 @@ class PreparationDayLine(models.Model):
                 Summary.total_done_kg + self.actual_kg, 3,
             )
 
-        self.with_context(skip_auto_save=True).write({'is_done': True})
+        # Sin PIN acá — done_by_employee_id usa el empleado vinculado al
+        # usuario de Odoo logueado, si tiene uno (Tech Lead, 2026-11-02:
+        # queda False si no, la fecha se estampa igual).
+        self.with_context(skip_auto_save=True).write({
+            'is_done': True,
+            'done_by_employee_id': self.env.user.employee_id.id,
+            'done_date': fields.Datetime.now(),
+        })
 
         self.wizard_id.sudo().message_post(
             body=(
@@ -610,9 +639,12 @@ class PreparationDayLine(models.Model):
                     line.stock_move_id.sudo().with_context(
                         skip_inverse_visual_qty=True,
                     ).move_line_ids.write({'quantity': 0})
-                line.with_context(skip_auto_save=True).write(
-                    {'is_done': False, 'actual_kg': 0.0}
-                )
+                line.with_context(skip_auto_save=True).write({
+                    'is_done': False,
+                    'actual_kg': 0.0,
+                    'done_by_employee_id': False,
+                    'done_date': False,
+                })
         return True
 
 
@@ -2214,7 +2246,14 @@ class PreparationDay(models.Model):
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.
-        Line.with_context(skip_auto_save=True).write({'is_done': True})
+        # done_by_employee_id (Tech Lead, 2026-11-02): Employee ya
+        # resuelto arriba (operario de PIN en Picking) — False si esta
+        # llamada corrió sin request (shell/tests).
+        Line.with_context(skip_auto_save=True).write({
+            'is_done': True,
+            'done_by_employee_id': Employee.id,
+            'done_date': fields.Datetime.now(),
+        })
 
         # Actualizar total_done_kg en el resumen del producto
         Summary = self.summary_ids.filtered(

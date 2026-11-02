@@ -156,6 +156,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             'action_mark_line_ready() acepta lo pedido sin verificar, '
             'por definición — debe marcarlo (Tech Lead, punto b.3)',
         )
+        self.assertEqual(
+            line.done_by_employee_id, self.operator_a,
+            "El botón Listo también pasa por action_save_line_weight — "
+            "debe estampar done_by_employee_id (Tech Lead, 2026-11-02)",
+        )
+        self.assertTrue(line.done_date)
 
     def test_action_mark_line_ready_raises_without_estimated_kg(self):
         session = self._create_session()
