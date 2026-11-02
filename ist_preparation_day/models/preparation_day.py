@@ -500,7 +500,11 @@ class PreparationDayLine(models.Model):
         (False→True) sin tocar el peso exige actual_kg>0 YA puesto —
         nunca Terminado de un peso que no existe — y reusa
         _register_weight_from_productos_tab() entero (mismo efecto
-        que lo que ya hace guardar un peso>0 sobre una Pendiente).
+        que lo que ya hace guardar un peso>0 sobre una Pendiente). Si
+        vals trae alguna OTRA clave además de is_done (hoy no pasa
+        desde la vista, pero la vía RPC/Python no lo impide), esa
+        parte igual se escribe antes de retornar — is_done no absorbe
+        todo el write().
         """
         track_done = (
             'is_done' in vals
@@ -524,6 +528,13 @@ class PreparationDayLine(models.Model):
                 line._register_weight_from_productos_tab()
             if ToUndo:
                 ToUndo.action_undo_line()
+            # Tech Lead, 2026-11-02: is_done no es la única clave posible
+            # en vals (un admin podría editar otro campo en la misma
+            # fila/llamada) — sin esto, el resto se perdía en silencio
+            # al retornar antes de llegar a super().write(vals).
+            rest = {k: v for k, v in vals.items() if k != 'is_done'}
+            if rest:
+                super().write(rest)
             return True
 
         track_kg = (

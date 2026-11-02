@@ -1237,6 +1237,28 @@ class TestPreparationDay(TransactionCase):
         self.assertEqual(line.actual_kg, 1.5)
         self.assertTrue(line.done_date)
 
+    def test_write_is_done_with_other_field_applies_both(self):
+        """track_done hace return antes de llegar a super().write(vals)
+        — si vals trae OTRA clave además de is_done, debe escribirse
+        igual (Tech Lead, 2026-11-02): no es el camino de hoy desde la
+        vista (solo is_done o solo actual_kg llegan editables), pero
+        write() es público y nada impide una llamada RPC/Python con
+        más claves en el mismo vals."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        line.write({
+            'is_done': True,
+            'product_description': 'Descripción editada aparte',
+        })
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.product_description, 'Descripción editada aparte')
+
     # ── Tests de write() override ──
 
     def test_write_actual_kg_auto_saves(self):
