@@ -587,9 +587,12 @@ class TestPreparationDayProductClaim(TestPreparationDay):
     def _run_cron(self):
         self.Claim._cron_release_abandoned_claims()
 
-    def test_f1_active_claim_hidden_from_other_operator(self):
-        """Un claim En progreso con actividad reciente NO debe aparecer
-        en absoluto para otro operario — ni la tarjeta ni el nombre."""
+    def test_f1_active_claim_visible_to_other_operator(self):
+        """E3 (David/Tech Lead, 2026-11-02 — rediseño "operarios
+        administradores absolutos de Picking"): un claim En progreso de
+        OTRO operario es visible para todos, con nombre — la ocultación
+        que existía acá antes de E3 se eliminó junto con el resto de
+        las restricciones de ownership (ver E1)."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         mock_a = self._request_as(self.operator_a)
@@ -599,13 +602,16 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         mock_b = self._request_as(self.operator_b)
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
-        self.assertNotIn(claim.id, [c['id'] for c in visible])
+        by_id = {c['id']: c for c in visible}
+        self.assertIn(claim.id, by_id)
+        self.assertEqual(
+            by_id[claim.id]['assigned_employee_id'][0], self.operator_a.id,
+        )
 
     def test_f1_stale_claim_visible_to_other_operator_before_cron(self):
-        """Un claim En progreso sin actividad real desde hace más del
-        umbral (operario que se fue sin cerrar sesión o perdió
-        conexión) se trata como visible para TODOS, aunque la
-        liberación real en base de datos todavía no haya corrido."""
+        """Visible para todos sin importar actividad/staleness (E3) —
+        incluso ANTES de que el cron corra y libere de verdad el claim
+        abandonado en base de datos (ese otro mecanismo no cambia)."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         mock_a = self._request_as(self.operator_a)
@@ -622,10 +628,12 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             visible = self.Claim.get_claims_for_level1_display(session.id)
         self.assertIn(claim.id, [c['id'] for c in visible])
 
-    def test_f1_zero_timeout_stale_claim_stays_hidden_from_other_operator(self):
-        """Fila 3 del backlog (David/Tech Lead, 2026-11-01): con el
-        parámetro de inactividad en 0 ("sin bloqueo"), un claim viejo NO
-        se trata como abandonado — sigue oculto para otro operario,
+    def test_f1_zero_timeout_stale_claim_still_visible_to_other_operator(self):
+        """Fila 3 del backlog (David/Tech Lead, 2026-11-01) + E3
+        (2026-11-02): con el parámetro de inactividad en 0 ("sin
+        bloqueo") el claim nunca se trata como abandonado para el CRON
+        de liberación — pero la visibilidad en el L1 ya no depende de
+        eso ni de ningún otro estado: sigue viéndose para otro operario
         igual que uno con actividad reciente."""
         self.env['ir.config_parameter'].sudo().set_param(
             IDLE_TIMEOUT_PARAM_KEY, '0',
@@ -644,7 +652,7 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         mock_b = self._request_as(self.operator_b)
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
-        self.assertNotIn(claim.id, [c['id'] for c in visible])
+        self.assertIn(claim.id, [c['id'] for c in visible])
 
     def test_f1_zero_timeout_cron_releases_nothing(self):
         """Mismo parámetro en 0: el cron de liberación no debe tocar
@@ -671,8 +679,10 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertEqual(claim.assigned_employee_id, self.operator_a)
 
     def test_f1_admin_sees_all_claims_with_names(self):
-        """Administrador ve TODO, activo o abandonado, con el nombre de
-        quien lo tiene — nunca aplica la regla de ocultamiento."""
+        """Ve TODO, activo o abandonado, con el nombre de quien lo
+        tiene — ya no es un privilegio de administrador (E3): cualquier
+        operario ve exactamente lo mismo, este test solo confirma que
+        tampoco cambia para admin."""
         self.env.user.sudo().write({
             'groups_id': [(4, self.env.ref(
                 'ist_preparation_day_picking.group_preparation_admin'
@@ -848,6 +858,87 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             "claims Terminados — una sola consulta agrupada, no una "
             "por claim.",
         )
+
+    # ── "Terminado por X (hh:mm)" (E3, David/Tech Lead, 2026-11-02) ──
+
+    def test_level1_done_shows_who_finished_it_and_when(self):
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertEqual(
+            by_id[claim.id]['done_by_employee_name'], self.operator_a.name,
+        )
+        self.assertRegex(by_id[claim.id]['done_time_label'], r'^\d{2}:\d{2}$')
+
+    def test_level1_done_shows_most_recent_finisher_when_two_operators(self):
+        """Dos líneas del MISMO producto (dos pedidos/Cajas distintas),
+        pesadas por operarios distintos en momentos distintos — el
+        reparto sale de la línea con el done_date MÁS RECIENTE, no del
+        primero que pesó ni del orden de creación de la línea. Dos
+        pedidos separados, no un solo qty=2.0 (que da una sola línea de
+        2 kg, no dos Cajas) — mismo patrón que test_line_write_
+        notifies_bus_once_per_session_not_per_line."""
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        self.assertEqual(len(claim), 1, 'un solo claim para el mismo producto')
+        self.assertEqual(len(session.line_ids), 2, 'una línea por pedido')
+        line_first, line_second = session.line_ids[0], session.line_ids[1]
+        now = fields.Datetime.now()
+        line_first.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': now - timedelta(minutes=10),
+        })
+        line_second.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_b.id,
+            'done_date': now,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertEqual(
+            by_id[claim.id]['done_by_employee_name'], self.operator_b.name,
+            'debe ganar quien pesó la línea más reciente, no el primero',
+        )
+
+    def test_level1_done_before_4a_shows_no_finisher_data(self):
+        """Dato previo a 4a (sin done_by_employee_id/done_date) — nunca
+        se inventa un nombre u hora, los dos campos quedan en False."""
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['done_by_employee_name'])
+        self.assertFalse(by_id[claim.id]['done_time_label'])
+
+    def test_level1_pending_shows_no_finisher_data(self):
+        """Un claim que ni siquiera está Terminado nunca trae datos de
+        reparto — guard por status, no solo por falta de líneas done."""
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['done_by_employee_name'])
+        self.assertFalse(by_id[claim.id]['done_time_label'])
 
     def test_f1_identification_failure_does_not_orphan_claim(self):
         """Corrección de Tech Lead sobre el primer diseño (punto A): una

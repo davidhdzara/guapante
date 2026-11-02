@@ -266,94 +266,77 @@ class PreparationDayProductClaim(models.Model):
         claims sin filtrar para detectar conflictos; filtrar ahí los
         dejaría ciegos.
 
-        Regla: Administrador ve todo (con el nombre de quien lo tiene,
-        igual que siempre). Pendiente/Detenido/Terminado SIEMPRE visibles
-        para todos — la regla de ocultar solo aplica a En progreso (Tech
-        Lead, corrección 2: Detenido es una pausa JUSTIFICADA por un
-        operario, no abandono; se verifica por `status`, no solo por
-        `assigned_employee_id`, para no depender de que action_stop()
-        siga limpiándolo — defensa en profundidad). Un operario normal
-        no ve en absoluto un claim En progreso de OTRO operario — ni el
-        nombre ni la tarjeta — salvo que ya quedó abandonado (instante
-        efectivo, ver _effective_last_activity, más viejo que
-        get_idle_timeout_seconds(env) + CLAIM_STALE_MARGIN_SECONDS):
-        ese caso se trata como visible para todos, aunque la liberación
-        real en base de datos la haga el cron por separado (ventana corta
-        de hasta 5 minutos entre que se ve "libre" y se puede tomar de
-        verdad — aceptado por Tech Lead). Su propio claim en progreso
-        siempre se ve.
-
-        Timeout 0 ("sin bloqueo", fila 3 del backlog, 2026-11-01): nadie
-        queda nunca "abandonado" por inactividad — stale_cutoff se
-        deshabilita por completo en vez de colapsar a solo
-        CLAIM_STALE_MARGIN_SECONDS, que liberaría los claims casi de
-        inmediato y contradiría la intención de "sin bloqueo".
+        Sin filtro de visibilidad (E3, David/Tech Lead, 2026-11-02 —
+        rediseño "operarios administradores absolutos de Picking"):
+        TODOS los claims de la sesión, de cualquier estado y dueño,
+        salen siempre — incluido En progreso ajeno. La ocultación de En
+        progreso de otro operario que vivía acá (ver historial de este
+        método antes de E3) quedó descartada junto con el resto de las
+        restricciones de ownership eliminadas en E1 — ningún operario
+        tiene nada que no pueda ver.
 
         El refresco por bus NO cambia (picking_claim_updated /
         onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
         cambia QUÉ devuelve este método, nunca el mecanismo.
 
-        Además de CLAIM_DISPLAY_FIELDS, cada dict trae `touched_by_me`
-        (toggle "Mis productos" del L1, Tech Lead/David 2026-11-02): si
-        YO tengo el claim en progreso, lo detuve, o pesé al menos una
-        línea de un producto ya Terminado — nunca sale de un `.read()`,
-        se calcula acá con una sola consulta agrupada extra (ver más
-        abajo), no por campo del modelo.
+        Además de CLAIM_DISPLAY_FIELDS, cada dict trae:
+        - `touched_by_me` (toggle "Mis productos" del L1, Tech Lead/
+          David 2026-11-02): si YO tengo el claim en progreso, lo
+          detuve, o pesé al menos una línea de un producto ya Terminado.
+        - `done_by_employee_name`/`done_time_label` (tarjeta "Terminado
+          por X (hh:mm)", E3): nombre y hora (zona del usuario) de quien
+          pesó la línea MÁS RECIENTE de un producto Terminado — False en
+          ambos si el producto no tiene ninguna línea con done_date (p.
+          ej. terminado antes de 4a, sin ese dato), nunca un valor
+          inventado.
+        Ninguno sale de un `.read()` — los dos se calculan acá con la
+        MISMA consulta agrupada sobre las líneas del lote (ver más
+        abajo), nunca una consulta nueva por tarjeta.
         """
         self._check_picking_access()
         Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
-        is_admin = self.env.user.has_group(
-            'ist_preparation_day_picking.group_preparation_admin'
-        )
         my_employee_id = (
             get_active_prep_operator_id(self.env, request.session, refresh=False)
             if request else False
         )
-        idle_timeout = get_idle_timeout_seconds(self.env)
-        stale_cutoff = (
-            fields.Datetime.now() - timedelta(
-                seconds=idle_timeout + CLAIM_STALE_MARGIN_SECONDS,
-            )
-            if idle_timeout else None
-        )
-        Visible = self.env['guapante.preparation.day.product.claim']
-        for claim in Claims:
-            effective = claim._effective_last_activity()
-            if (
-                is_admin
-                or claim.status != 'in_progress'
-                or claim.assigned_employee_id.id == my_employee_id
-                or (stale_cutoff and effective and effective < stale_cutoff)
-            ):
-                Visible |= claim
-        records = Visible.read(CLAIM_DISPLAY_FIELDS)
+        records = Claims.read(CLAIM_DISPLAY_FIELDS)
 
-        # "Mis productos" (L1, Tech Lead/David 2026-11-02): el toggle
-        # necesita, además de is_mine (solo En progreso), saber si YO
-        # detuve el claim o si YO pesé al menos una línea de un producto
-        # ya Terminado — ninguno de los dos sale de un campo existente.
-        # UNA sola consulta agrupada sobre las líneas del lote para la
-        # parte de "terminado por mí" — nunca una búsqueda por claim
-        # (serían hasta ~100 por sesión). Un producto terminado antes de
-        # 4a (sin done_by_employee_id) nunca cuenta como "mío" acá — no
-        # hay dato que lo respalde, no se inventa.
+        # "Mis productos" + "Terminado por X (hh:mm)" (L1, Tech Lead/
+        # David 2026-11-02, E3): UNA sola consulta sobre las líneas del
+        # lote sirve para las dos cosas — nunca una búsqueda por claim
+        # (serían hasta ~100 por sesión). search_read (no _read_group):
+        # necesitamos la IDENTIDAD del último pesaje (quién + cuándo),
+        # no solo un conteo — agregar done_by_employee_id y done_date
+        # por separado no garantiza que vengan del MISMO renglón. Un
+        # producto terminado antes de 4a (sin done_by_employee_id) no
+        # cuenta como "mío" ni aporta dato de reparto — no hay dato que
+        # lo respalde, no se inventa.
         my_done_tmpl_ids = set()
-        if my_employee_id:
-            done_tmpl_ids = [
-                record['product_tmpl_id'][0] for record in records
-                if record['status'] == 'done' and record['product_tmpl_id']
-            ]
-            if done_tmpl_ids:
-                groups = self.env['guapante.preparation.day.line'].sudo()._read_group(
-                    domain=[
-                        ('wizard_id', '=', wizard_id),
-                        ('product_id', 'in', done_tmpl_ids),
-                        ('done_by_employee_id', '=', my_employee_id),
-                    ],
-                    groupby=['product_id'],
-                    aggregates=['__count'],
-                )
-                my_done_tmpl_ids = {template.id for template, _count in groups}
+        last_finisher_by_tmpl = {}
+        done_tmpl_ids = [
+            record['product_tmpl_id'][0] for record in records
+            if record['status'] == 'done' and record['product_tmpl_id']
+        ]
+        if done_tmpl_ids:
+            Lines = self.env['guapante.preparation.day.line'].sudo().search_read(
+                domain=[
+                    ('wizard_id', '=', wizard_id),
+                    ('product_id', 'in', done_tmpl_ids),
+                    ('done_by_employee_id', '!=', False),
+                ],
+                fields=['product_id', 'done_by_employee_id', 'done_date'],
+            )
+            for line in Lines:
+                tmpl_id = line['product_id'][0]
+                employee_id, employee_name = line['done_by_employee_id']
+                if my_employee_id and employee_id == my_employee_id:
+                    my_done_tmpl_ids.add(tmpl_id)
+                current = last_finisher_by_tmpl.get(tmpl_id)
+                if not current or line['done_date'] > current['done_date']:
+                    last_finisher_by_tmpl[tmpl_id] = {
+                        'employee_name': employee_name,
+                        'done_date': line['done_date'],
+                    }
         for record in records:
             tmpl_id = record['product_tmpl_id'][0] if record['product_tmpl_id'] else False
             record['touched_by_me'] = bool(my_employee_id) and (
@@ -363,6 +346,19 @@ class PreparationDayProductClaim(models.Model):
                     and record['stopped_by_employee_id'][0] == my_employee_id
                 )
                 or (record['status'] == 'done' and tmpl_id in my_done_tmpl_ids)
+            )
+            finisher = (
+                last_finisher_by_tmpl.get(tmpl_id)
+                if record['status'] == 'done' else None
+            )
+            record['done_by_employee_name'] = (
+                finisher['employee_name'] if finisher else False
+            )
+            record['done_time_label'] = (
+                fields.Datetime.context_timestamp(
+                    self.env.user, finisher['done_date'],
+                ).strftime('%H:%M')
+                if finisher else False
             )
         return records
 
