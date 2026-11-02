@@ -289,7 +289,14 @@ class PreparationDayProductClaim(models.Model):
           ambos si el producto no tiene ninguna línea con done_date (p.
           ej. terminado antes de 4a, sin ese dato), nunca un valor
           inventado.
-        Ninguno sale de un `.read()` — los dos se calculan acá con la
+        - `customer_names_summary` (buscador de Nivel 1, E6, David/Tech
+          Lead, 2026-11-02): nombres de cliente distintos (join con ', ',
+          orden alfabético para que el resultado sea estable) de TODAS
+          las líneas del producto, Terminadas y Pendientes por igual —
+          alguien puede buscar un cliente cuyo pedido ya se despachó. No
+          se guarda en el modelo (se recalcula en cada lectura, igual que
+          touched_by_me) — el dataset es el de una sola sesión.
+        Ninguno sale de un `.read()` — los tres se calculan acá con la
         MISMA consulta agrupada sobre las líneas del lote (ver más
         abajo), nunca una consulta nueva por tarjeta.
         """
@@ -301,33 +308,36 @@ class PreparationDayProductClaim(models.Model):
         )
         records = Claims.read(CLAIM_DISPLAY_FIELDS)
 
-        # "Mis productos" + "Terminado por X (hh:mm)" (L1, Tech Lead/
-        # David 2026-11-02, E3): UNA sola consulta sobre las líneas del
-        # lote sirve para las dos cosas — nunca una búsqueda por claim
-        # (serían hasta ~100 por sesión). search_read (no _read_group):
-        # necesitamos la IDENTIDAD del último pesaje (quién + cuándo),
-        # no solo un conteo — agregar done_by_employee_id y done_date
-        # por separado no garantiza que vengan del MISMO renglón. Un
-        # producto terminado antes de 4a (sin done_by_employee_id) no
-        # cuenta como "mío" ni aporta dato de reparto — no hay dato que
-        # lo respalde, no se inventa.
+        # "Mis productos" + "Terminado por X (hh:mm)" + resumen de
+        # clientes del buscador (L1, Tech Lead/David 2026-11-02, E3/E6):
+        # UNA sola consulta sobre TODAS las líneas del lote (no solo las
+        # de productos ya Terminados) sirve para las tres cosas — nunca
+        # una búsqueda por claim (serían hasta ~100 por sesión).
+        # search_read (no _read_group): necesitamos la IDENTIDAD del
+        # último pesaje (quién + cuándo), no solo un conteo — agregar
+        # done_by_employee_id y done_date por separado no garantiza que
+        # vengan del MISMO renglón. Un producto terminado antes de 4a
+        # (sin done_by_employee_id) no cuenta como "mío" ni aporta dato
+        # de reparto — no hay dato que lo respalde, no se inventa.
         my_done_tmpl_ids = set()
         last_finisher_by_tmpl = {}
-        done_tmpl_ids = [
-            record['product_tmpl_id'][0] for record in records
-            if record['status'] == 'done' and record['product_tmpl_id']
-        ]
-        if done_tmpl_ids:
-            Lines = self.env['guapante.preparation.day.line'].sudo().search_read(
-                domain=[
-                    ('wizard_id', '=', wizard_id),
-                    ('product_id', 'in', done_tmpl_ids),
-                    ('done_by_employee_id', '!=', False),
-                ],
-                fields=['product_id', 'done_by_employee_id', 'done_date'],
-            )
-            for line in Lines:
-                tmpl_id = line['product_id'][0]
+        customer_names_by_tmpl = {}
+        all_lines = self.env['guapante.preparation.day.line'].sudo().search_read(
+            domain=[('wizard_id', '=', wizard_id)],
+            fields=[
+                'product_id', 'main_customer_name',
+                'done_by_employee_id', 'done_date',
+            ],
+        )
+        for line in all_lines:
+            if not line['product_id']:
+                continue
+            tmpl_id = line['product_id'][0]
+            if line['main_customer_name']:
+                customer_names_by_tmpl.setdefault(tmpl_id, set()).add(
+                    line['main_customer_name']
+                )
+            if line['done_by_employee_id']:
                 employee_id, employee_name = line['done_by_employee_id']
                 if my_employee_id and employee_id == my_employee_id:
                     my_done_tmpl_ids.add(tmpl_id)
@@ -359,6 +369,9 @@ class PreparationDayProductClaim(models.Model):
                     self.env.user, finisher['done_date'],
                 ).strftime('%H:%M')
                 if finisher else False
+            )
+            record['customer_names_summary'] = ', '.join(
+                sorted(customer_names_by_tmpl.get(tmpl_id, set()))
             )
         return records
 

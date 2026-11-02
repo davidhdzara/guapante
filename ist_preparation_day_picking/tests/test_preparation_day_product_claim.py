@@ -859,6 +859,78 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             "por claim.",
         )
 
+    # ── customer_names_summary, buscador de Nivel 1 por cliente (E6,
+    # David/Tech Lead, 2026-11-02) ──
+
+    def test_customer_names_summary_includes_pending_and_done_customers(self):
+        """El resumen trae clientes de TODAS las líneas del producto —
+        Pendientes Y Terminadas — alguien puede buscar un cliente cuyo
+        pedido ya se despachó."""
+        other_partner = self.env['res.partner'].create({
+            'name': 'Cliente Buscador Despachado',
+        })
+        self._create_confirmed_order(qty=1.0, partner=other_partner)
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        done_line = session.line_ids.filtered(
+            lambda l: l.main_customer_name == other_partner.name
+        )
+        done_line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+        })
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        summary = by_id[claim.id]['customer_names_summary']
+        self.assertIn(other_partner.name, summary)
+        self.assertIn(self.partner.name, summary)
+
+    def test_customer_names_summary_deduplicates_same_customer(self):
+        """Dos líneas del mismo cliente (dos Cajas) no repiten su nombre
+        en el resumen."""
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        summary = by_id[claim.id]['customer_names_summary']
+        self.assertEqual(summary.count(self.partner.name), 1)
+
+    def test_customer_names_summary_distinguishes_different_products(self):
+        """El resumen de un producto no mezcla clientes de OTRO producto
+        de la misma sesión."""
+        other_product = self.env['product.product'].create({
+            'name': 'Producto Buscador Cliente B', 'type': 'consu',
+        })
+        other_partner = self.env['res.partner'].create({
+            'name': 'Cliente Buscador Producto B',
+        })
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        self._create_confirmed_order(
+            qty=1.0, product=other_product, partner=other_partner,
+        )
+        session = self._create_session()
+        session.action_load()
+        claims = session.product_claim_ids
+        claim_a = claims.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        claim_b = claims.filtered(
+            lambda c: c.product_tmpl_id == other_product.product_tmpl_id
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertNotIn(other_partner.name, by_id[claim_a.id]['customer_names_summary'])
+        self.assertIn(self.partner.name, by_id[claim_a.id]['customer_names_summary'])
+        self.assertNotIn(self.partner.name, by_id[claim_b.id]['customer_names_summary'])
+        self.assertIn(other_partner.name, by_id[claim_b.id]['customer_names_summary'])
+
     # ── "Terminado por X (hh:mm)" (E3, David/Tech Lead, 2026-11-02) ──
 
     def test_level1_done_shows_who_finished_it_and_when(self):
