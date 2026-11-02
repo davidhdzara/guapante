@@ -356,8 +356,10 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertIn(self.operator_a.name, last_message.body)
 
     def test_action_assign_does_not_post_chatter(self):
-        """Tech Lead, punto 5: Asignar NO va al chatter (con 30-60
-        productos por día inundaría los mensajes de pesaje)."""
+        """Punto 5 de Tech Lead (vigente aún con (4b), 2026-11-02 —
+        David aclaró que tomar un producto nunca tomado antes es
+        ruido: la tarjeta de L1 ya muestra "Asignado a", y quien lo
+        toma queda registrado al pesar, en la nota "Terminado")."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         messages_before = len(session.message_ids)

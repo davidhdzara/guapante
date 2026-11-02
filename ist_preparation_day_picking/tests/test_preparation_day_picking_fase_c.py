@@ -726,3 +726,115 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             if c.args[1] == 'picking_operation_finished'
         ]
         self.assertEqual(finished_calls, [])
+
+    # ── (4b) nota resumen "Terminado" en el chatter (Tech Lead/David,
+    # 2026-11-02): inicio/fin con hora y reparto de líneas por operario.
+    # David descartó la nota al tomar (ruido, ver test de abajo) — toda
+    # la info nueva vive en esta única nota de cierre. ──
+
+    def _weigh_as(self, line, employee, kg):
+        line.with_context(skip_auto_save=True).write({'actual_kg': kg})
+        mock = self._request_as(employee)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock):
+            line.wizard_id.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+
+    def test_action_assign_does_not_post_tomado_chatter(self):
+        """David (2026-11-02): tomar un producto nunca antes tomado NO
+        deja nota — es ruido, la tarjeta de L1 ya muestra "Asignado a"
+        y quien lo toma queda registrado al pesar, en la nota
+        Terminado."""
+        session = self._create_session()
+        self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        messages_before = len(session.message_ids)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+        self.assertEqual(len(session.message_ids), messages_before)
+
+    def test_terminado_chatter_shows_breakdown_and_different_start_end(self):
+        session = self._create_session()
+        lines_a = [
+            self._create_line(session, needs_weighing=True, estimated_kg=1.0)
+            for _ in range(3)
+        ]
+        line_b = self._create_line(session, needs_weighing=True, estimated_kg=1.0)
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+        for line in lines_a:
+            self._weigh_as(line, self.operator_a, 1.0)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_release()
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+            claim.action_assign()
+        self._weigh_as(line_b, self.operator_b, 1.0)
+
+        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Terminado', terminado.body)
+        self.assertIn(f'inició {self.operator_a.name}', terminado.body)
+        self.assertIn(f'terminó {self.operator_b.name}', terminado.body)
+        self.assertIn(f'{self.operator_a.name} (3 líneas)', terminado.body)
+        self.assertIn(f'{self.operator_b.name} (1 línea)', terminado.body)
+        self.assertFalse(claim.assigned_employee_id)
+
+    def test_terminado_chatter_does_not_repeat_name_for_single_operator(self):
+        session = self._create_session()
+        lines = [
+            self._create_line(session, needs_weighing=True, estimated_kg=1.0)
+            for _ in range(2)
+        ]
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+        for line in lines:
+            self._weigh_as(line, self.operator_a, 1.0)
+
+        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(f'terminado por {self.operator_a.name}', terminado.body)
+        self.assertNotIn('inició', terminado.body)
+        self.assertEqual(
+            terminado.body.count(self.operator_a.name), 2,
+            'El nombre aparece una vez en "terminado por" y otra en el '
+            'reparto — nunca dos veces en una cláusula de inicio/fin',
+        )
+
+    def test_terminado_chatter_does_not_duplicate_on_repeated_call(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+        self._weigh_as(line, self.operator_a, 2.0)
+
+        terminado_count = len(session.message_ids.filtered(
+            lambda m: 'Terminado' in (m.body or '')
+        ))
+        self.assertEqual(terminado_count, 1)
+        messages_before = len(session.message_ids)
+        # Simula una ruta repetida/reconexión que vuelve a llamar el
+        # hook — el claim ya quedó sin dueño, no debe volver a postear.
+        line._maybe_release_finished_claim()
+        self.assertEqual(len(session.message_ids), messages_before)
+
+    def test_terminado_chatter_shows_both_operators_after_stop_and_resume(self):
+        session = self._create_session()
+        line1 = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line2 = self._create_line(session, needs_weighing=True, estimated_kg=3.0)
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+        self._weigh_as(line1, self.operator_a, 2.0)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+            claim.action_resume()
+        self._weigh_as(line2, self.operator_b, 3.0)
+
+        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Terminado', terminado.body)
+        self.assertIn(self.operator_a.name, terminado.body)
+        self.assertIn(self.operator_b.name, terminado.body)
+        self.assertIn(f'terminó {self.operator_b.name}', terminado.body)

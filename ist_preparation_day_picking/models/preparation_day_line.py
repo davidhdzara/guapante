@@ -255,6 +255,46 @@ class PreparationDayLine(models.Model):
         return True
 
     def _maybe_release_finished_claim(self) -> None:
+        """Además de soltar el dueño, deja una nota resumen "Terminado"
+        en el chatter de la sesión (4b, Tech Lead/David 2026-11-02) —
+        una por producto, no una por línea, para no inundar el
+        chatter. David descartó una nota al tomar el producto por
+        primera vez (ruido: la tarjeta de L1 ya muestra "Asignado a",
+        y las notas de Detenido/Retomado/Liberado ya cubren a quien lo
+        toca) — toda la información nueva vive en esta única nota de
+        cierre, sacada de las líneas (4a: done_by_employee_id,
+        done_date), sin campo nuevo en el claim.
+
+        Formato: "inició {A} ({hh:mm}); terminó {B} ({hh:mm}).
+        Pesaron: {A} (n líneas), {B} (m líneas)." Inicio = la línea
+        con done_date más antigua; fin = la más reciente. Si el mismo
+        operario pesó todo, el nombre no se repite en esa cláusula —
+        queda solo "terminado por {operario} ({hh:mm})". Horas en la
+        zona horaria del usuario (fields.Datetime.context_timestamp).
+        Una línea con done_by_employee_id/done_date vacíos (dato
+        previo a 4a) se omite tanto del reparto como de inicio/fin —
+        si TODAS las líneas son así, la nota cae al fallback
+        "terminado por {claim.assigned_employee_id}" sin horas ni
+        reparto, para no inventar un dato que no existe.
+
+        done_date tiene precisión de 1 segundo (fields.Datetime.now()
+        le quita los microsegundos) — un empate ahí (dos pesajes en el
+        mismo segundo, poco probable en uso real) se desempata por id
+        de línea, no por el orden de iteración.
+
+        Límite conocido, documentado por instrucción de Tech Lead: si
+        el producto queda con todas sus líneas is_done sin que el claim
+        tenga assigned_employee_id (p. ej. editado directo en la
+        pestaña Productos del supervisor, nunca por acá), este método
+        no lo ve — el filtro de abajo exige dueño activo — y no sale
+        nota de Terminado. El dato por línea sigue en
+        done_by_employee_id aunque la nota no se emita.
+
+        Auto-guardado contra duplicados: el filtro de abajo exige
+        assigned_employee_id != False, y el write lo deja en False —
+        una segunda llamada (reconexión, ruta repetida) no vuelve a
+        matchear este claim.
+        """
         templates = self.mapped('product_id')
         wizard_ids = self.mapped('wizard_id').ids
         if not templates or not wizard_ids:
@@ -266,11 +306,62 @@ class PreparationDayLine(models.Model):
         ])
         for claim in Claims:
             Lines = claim._get_lines()
-            if Lines and all(line.is_done for line in Lines):
-                claim.write({
-                    'assigned_employee_id': False,
-                    'assigned_date': False,
-                })
+            if not Lines or not all(line.is_done for line in Lines):
+                continue
+            StampedLines = Lines.filtered(
+                lambda line: line.done_by_employee_id and line.done_date
+            )
+            counts = {}
+            order = []
+            for line in StampedLines:
+                employee = line.done_by_employee_id
+                if employee.id not in counts:
+                    counts[employee.id] = 0
+                    order.append(employee)
+                counts[employee.id] += 1
+            breakdown = ', '.join(
+                f'{employee.name} ({counts[employee.id]} '
+                f'{"línea" if counts[employee.id] == 1 else "líneas"})'
+                for employee in order
+            )
+            if StampedLines:
+                # done_date tiene precisión de 1 segundo (fields.Datetime.
+                # now() le quita los microsegundos) — dos pesajes rápidos
+                # pueden empatar ahí. Se desempata por id (orden de
+                # creación de la línea) para que el primero/último
+                # queden determinados siempre, no por el orden de
+                # iteración de StampedLines.
+                FirstLine = min(
+                    StampedLines, key=lambda line: (line.done_date, line.id),
+                )
+                LastLine = max(
+                    StampedLines, key=lambda line: (line.done_date, line.id),
+                )
+                start_employee = FirstLine.done_by_employee_id
+                end_employee = LastLine.done_by_employee_id
+                start_label = fields.Datetime.context_timestamp(
+                    claim, FirstLine.done_date,
+                ).strftime('%H:%M')
+                end_label = fields.Datetime.context_timestamp(
+                    claim, LastLine.done_date,
+                ).strftime('%H:%M')
+                if start_employee == end_employee:
+                    summary = f"terminado por {end_employee.name} ({end_label})"
+                else:
+                    summary = (
+                        f"inició {start_employee.name} ({start_label}); "
+                        f"terminó {end_employee.name} ({end_label})"
+                    )
+            else:
+                summary = f"terminado por {claim.assigned_employee_id.name}"
+            body = f"Terminado — {claim.product_tmpl_id.name}: {summary}."
+            if breakdown:
+                body += f" Pesaron: {breakdown}."
+            claim.wizard_id.sudo().message_post(body=body)
+            claim.write({
+                'assigned_employee_id': False,
+                'assigned_date': False,
+            })
 
     def _notify_picking_claims_bus(self) -> None:
         Bus = self.env['bus.bus']
