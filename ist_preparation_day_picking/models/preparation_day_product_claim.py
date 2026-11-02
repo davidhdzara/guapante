@@ -453,6 +453,68 @@ class PreparationDayProductClaim(models.Model):
         self._notify_bus()
         return self.action_open_lines_kanban()
 
+    def action_unstop(self) -> bool:
+        """"Liberar" un Detenido (entrega 2, Tech Lead/David, 2026-11-02):
+        a diferencia de action_resume(), NO lo toma para quien lo libera
+        — solo quita el motivo y vuelve a Pendiente, sin dueño, para que
+        cualquiera lo tome después con Asignarme. Mismo motivo que
+        action_resume() para no exigir ownership: un Detenido no tiene
+        dueño, así que cualquier operario con NIP vigente puede hacerlo."""
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+
+        # Mismo flush_recordset()/SELECT ... FOR UPDATE que el resto del
+        # archivo. Se bloquea también stopped_by_employee_id porque el
+        # chatter necesita su valor de ANTES de limpiarlo (punto 2 de
+        # Tech Lead) — leerlo de la fila bloqueada es la misma garantía
+        # de concurrencia que ya usa action_assign() con assigned_employee_id.
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT stop_reason, stopped_by_employee_id FROM '
+            'guapante_preparation_day_product_claim WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        locked_stop_reason, locked_stopped_by_id = row if row else (False, False)
+        if not locked_stop_reason:
+            self.invalidate_recordset(['stop_reason'])
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya no está detenido — '
+                'actualiza la pantalla.'
+            )
+        # Mismo caso borde que action_resume(): si las líneas ya quedaron
+        # is_done por otra vía mientras seguía con stop_reason puesto, no
+        # revive — ya está Terminado.
+        Lines = self._get_lines()
+        if Lines and all(line.is_done for line in Lines):
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
+                'actualiza la pantalla.'
+            )
+        ReleasingEmployee = self.env['hr.employee'].sudo().browse(employee_id)
+        StoppedByEmployee = (
+            self.env['hr.employee'].sudo().browse(locked_stopped_by_id)
+            if locked_stopped_by_id else False
+        )
+        self.write({
+            'stop_reason': False,
+            'stopped_by_employee_id': False,
+        })
+        reason_label = dict(STOP_REASONS).get(
+            locked_stop_reason, locked_stop_reason,
+        )
+        stopped_by_name = StoppedByEmployee.name if StoppedByEmployee else 'nadie'
+        self.wizard_id.sudo().message_post(
+            body=(
+                f"Liberado — {self.product_tmpl_id.name}: vuelve a "
+                f"Pendiente (por {ReleasingEmployee.name}; estaba "
+                f"detenido por {reason_label}, por {stopped_by_name})."
+            ),
+        )
+        self._notify_bus()
+        return True
+
     def action_release(self) -> bool:
         self.ensure_one()
         self._check_picking_access()

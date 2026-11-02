@@ -65,7 +65,14 @@ export class PickingClaimsDisplay extends Component {
             wizardId: null,
             hasLines: false,
             claims: [],
-            foldedDone: true,
+            // Terminado y Detenido empiezan plegados (Tech Lead,
+            // 2026-11-02 — un Detenido escondido sin pista de que
+            // existe sería un riesgo operativo, por eso el encabezado
+            // SIEMPRE muestra el contador "Detenido (N)" con el mismo
+            // chevron clickeable, plegado o no). Pendiente/En progreso
+            // nunca entran acá — toggleGroup() las deja siempre
+            // expandidas porque el objeto solo trae estas dos claves.
+            foldedGroups: { done: true, stopped: true },
             searchText: "",
             loaded: false,
         });
@@ -203,8 +210,8 @@ export class PickingClaimsDisplay extends Component {
         });
     }
 
-    toggleDoneGroup() {
-        this.state.foldedDone = !this.state.foldedDone;
+    toggleGroup(status) {
+        this.state.foldedGroups[status] = !this.state.foldedGroups[status];
     }
 
     async _callClaim(method, claimId, args = []) {
@@ -257,6 +264,15 @@ export class PickingClaimsDisplay extends Component {
 
     async onRelease(claim) {
         const ok = await this._callClaim("action_release", claim.id);
+        if (ok !== null) {
+            await this.loadRecords();
+        }
+    }
+
+    async onUnstop(claim) {
+        // Igual que onRelease: queda en Nivel 1 (vuelve a Pendiente,
+        // sin dueño), no abre ninguna acción — solo recarga.
+        const ok = await this._callClaim("action_unstop", claim.id);
         if (ok !== null) {
             await this.loadRecords();
         }

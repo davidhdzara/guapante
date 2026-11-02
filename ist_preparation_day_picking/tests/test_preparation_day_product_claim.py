@@ -397,6 +397,101 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             claim.action_resume()
         self.assertGreater(len(session.message_ids), messages_before)
 
+    # ── action_unstop ("Liberar" un Detenido, entrega 2, 2026-11-02) ──
+
+    def test_action_unstop_requires_active_operator(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with self.assertRaises(UserError):
+            claim.action_unstop()
+
+    def test_action_unstop_allowed_by_any_operator_without_ownership(self):
+        """A diferencia de action_release()/action_stop(), un Detenido no
+        tiene dueño — cualquier operario con NIP vigente puede liberarlo,
+        no solo quien lo detuvo."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()  # no debe lanzar
+        self.assertEqual(claim.status, 'pending')
+
+    def test_action_unstop_clears_stop_fields_without_assigning_anyone(self):
+        """A diferencia de action_resume(), liberar NO toma el claim para
+        quien lo libera — vuelve a Pendiente sin dueño."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()
+        self.assertFalse(claim.stop_reason)
+        self.assertFalse(claim.stopped_by_employee_id)
+        self.assertFalse(
+            claim.assigned_employee_id,
+            'Liberar no debe asignarle el claim a quien lo libera',
+        )
+
+    def test_action_unstop_rejects_if_not_stopped(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            with self.assertRaises(UserError):
+                claim.action_unstop()
+
+    def test_action_unstop_rejects_if_claim_done(self):
+        """Mismo caso borde que action_resume(): las líneas ya quedaron
+        is_done por otra vía mientras el claim seguía con stop_reason."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            with self.assertRaises(UserError):
+                claim.action_unstop()
+
+    def test_action_unstop_posts_chatter_with_releaser_reason_and_stopper(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        messages_before = len(session.message_ids)
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()
+        self.assertGreater(len(session.message_ids), messages_before)
+        last_message = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(self.operator_b.name, last_message.body)
+        self.assertIn('Sin stock', last_message.body)
+        self.assertIn(self.operator_a.name, last_message.body)
+
+    def test_action_unstop_notifies_bus(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        BusModel = self.env.registry['bus.bus']
+        with patch.object(BusModel, '_sendone') as mock_sendone:
+            with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+                claim.action_unstop()
+        mock_sendone.assert_called_once_with(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated',
+            {},
+        )
+
     def test_stopped_claims_have_no_cap_can_take_a_fourth(self):
         """Aclaración de David (#8, vía Tech Lead, 2026-10-31): un
         operario puede tener N productos Detenidos a la vez — el único
