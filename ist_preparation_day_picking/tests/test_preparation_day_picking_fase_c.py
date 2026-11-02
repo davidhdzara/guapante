@@ -3,7 +3,7 @@ import re
 from unittest.mock import MagicMock, patch
 
 from odoo import fields
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
@@ -1163,6 +1163,41 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         )
         self.assertNotIn('readonly="1"', nodes[0])
 
+    # ── Reabrir sesión, solo admin (E5, David/Tech Lead, 2026-11-02) ──
+
+    def test_action_reopen_blocked_without_admin_group(self):
+        """Sin group_preparation_admin, action_reopen() debe rechazar
+        con AccessError antes de llegar a super() — defensa en
+        profundidad, el botón del form ya queda oculto para este caso
+        (ver test de 'groups' en la vista, mismo patrón que is_done/
+        actual_kg)."""
+        session = self._create_session()
+        self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        session.action_mark_done()
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        self.env.user.sudo().write({'groups_id': [(3, admin_group.id)]})
+
+        with self.assertRaises(AccessError):
+            session.action_reopen()
+        self.assertEqual(session.state, 'done', 'el guard bloquea antes de tocar nada')
+
+    def test_action_reopen_allowed_for_admin(self):
+        session = self._create_session()
+        self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        session.action_mark_done()
+        self.assertTrue(session.date_done)
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
+
+        session.action_reopen()
+
+        self.assertEqual(session.state, 'loaded')
+        self.assertFalse(session.date_done)
+
     def test_actual_kg_editable_only_for_admin_in_line_list(self):
         """v2 (David/Tech Lead, 2026-11-02): ya no hay botón "Corregir" —
         el peso se edita inline, solo para group_preparation_admin. Dos
@@ -1309,7 +1344,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             claim.action_assign()
         self._weigh_as(line_b, self.operator_b, 1.0)
 
-        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        # filtered, no el último mensaje a secas (E5, 2026-11-02):
+        # terminar la última línea cierra la sesión, que ahora deja su
+        # propia nota de cierre DESPUÉS de esta — ver action_mark_done().
+        terminado = session.message_ids.filtered(
+            lambda m: 'Terminado' in (m.body or '')
+        ).sorted('id', reverse=True)[0]
         self.assertIn('Terminado', terminado.body)
         self.assertIn(f'inició {self.operator_a.name}', terminado.body)
         self.assertIn(f'terminó {self.operator_b.name}', terminado.body)
@@ -1329,7 +1369,11 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         for line in lines:
             self._weigh_as(line, self.operator_a, 1.0)
 
-        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        # filtered, no el último mensaje a secas (E5, 2026-11-02): ver
+        # el comentario del test anterior.
+        terminado = session.message_ids.filtered(
+            lambda m: 'Terminado' in (m.body or '')
+        ).sorted('id', reverse=True)[0]
         self.assertIn(f'terminado por {self.operator_a.name}', terminado.body)
         self.assertNotIn('inició', terminado.body)
         self.assertEqual(
@@ -1370,7 +1414,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             claim.action_resume()
         self._weigh_as(line2, self.operator_b, 3.0)
 
-        terminado = session.message_ids.sorted('id', reverse=True)[0]
+        # filtered, no el último mensaje a secas (E5, 2026-11-02): ver
+        # el comentario de test_terminado_chatter_shows_breakdown_and_
+        # different_start_end.
+        terminado = session.message_ids.filtered(
+            lambda m: 'Terminado' in (m.body or '')
+        ).sorted('id', reverse=True)[0]
         self.assertIn('Terminado', terminado.body)
         self.assertIn(self.operator_a.name, terminado.body)
         self.assertIn(self.operator_b.name, terminado.body)

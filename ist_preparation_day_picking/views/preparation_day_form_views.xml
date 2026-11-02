@@ -13,6 +13,14 @@
                 <attribute name="name">action_open_picking_app</attribute>
                 <attribute name="groups">ist_preparation_day_picking.group_preparation_picking_operator</attribute>
             </button>
+            <!-- Reabrir Sesión solo para group_preparation_admin (E5,
+                 Tech Lead, 2026-11-02) — defensa en profundidad en
+                 action_reopen() del modelo (ver preparation_day.py),
+                 esto es solo ocultarlo en la UI para quien no tiene
+                 el grupo. -->
+            <button name="action_reopen" position="attributes">
+                <attribute name="groups">ist_preparation_day_picking.group_preparation_admin</attribute>
+            </button>
         </field>
     </record>
 

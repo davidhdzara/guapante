@@ -153,6 +153,29 @@ class PreparationDay(models.Model):
         Claim = self.env['guapante.preparation.day.product.claim']
         Claim._ensure_claims_for_templates(self, line.product_id)
 
+    def action_reopen(self) -> bool:
+        """Solo group_preparation_admin puede reabrir (E5, Tech Lead,
+        2026-11-02) — CORE no puede referenciar ese grupo (vive acá,
+        en un módulo que depende de CORE), así que el check vive en
+        este override, antes de llamar a super(). Mismo patrón que
+        action_view_product_claims() (arriba): has_group() + AccessError
+        de un vistazo, en vez de un decorador o un campo computado.
+
+        Solo bloquea esta llamada — el botón del form ya queda oculto
+        para quien no tiene el grupo (ver la vista), esto es la
+        defensa en profundidad para RPC directo. Si este módulo se
+        desinstala, el check desaparece con él y queda el
+        comportamiento de CORE (sin restricción), igual que el resto
+        de los overrides de esta clase.
+        """
+        if not self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin'
+        ):
+            raise AccessError(
+                'Solo un administrador puede reabrir una operación cerrada.'
+            )
+        return super().action_reopen()
+
     def action_save_line_weight(self, line_id: int) -> bool:
         """Extiende action_save_line_weight() del padre con dos cosas de
         Fase C:
