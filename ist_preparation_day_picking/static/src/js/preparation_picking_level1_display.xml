@@ -26,7 +26,7 @@
                             <div class="o_searchview_input_container d-flex flex-grow-1">
                                 <input type="text"
                                        class="o_searchview_input o_input flex-grow-1 border-0"
-                                       placeholder="Buscar producto…"
+                                       placeholder="Buscar producto o cliente…"
                                        t-model="state.searchText"/>
                             </div>
                         </div>
@@ -64,12 +64,12 @@
                             <button t-if="status === 'done' || status === 'stopped'" type="button"
                                     class="btn btn-link p-0 text-muted text-decoration-none d-flex align-items-center gap-1"
                                     t-on-click="() => this.toggleGroup(status)">
-                                <i t-attf-class="fa #{state.foldedGroups[status] ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
+                                <i t-attf-class="fa #{isGroupFolded(status) ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
                                 <strong t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
                             </button>
                             <strong t-else="" t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
                         </div>
-                        <t t-if="!state.foldedGroups[status]">
+                        <t t-if="!isGroupFolded(status)">
                             <t t-foreach="groupedClaims[status]" t-as="claim" t-key="claim.id">
                                 <!-- Tarjeta clicable completa, cualquier estado (E3, 2026-11-02):
                                      abre Nivel 2 directo, sin asignar ni retomar — el servidor

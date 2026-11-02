@@ -11,6 +11,7 @@ import {
 import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingClaimGearMenu } from "./preparation_picking_claim_menu";
+import { normalizeSearchText } from "./preparation_picking_search_utils";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -188,27 +189,58 @@ export class PickingClaimsDisplay extends Component {
 
     get groupedClaims() {
         const groups = { pending: [], in_progress: [], stopped: [], done: [] };
-        const search = this.state.searchText.trim().toLowerCase();
+        // E6 (David/Tech Lead, 2026-11-02): busca por producto O cliente
+        // (customer_names_summary, calculado en el servidor — ver
+        // get_claims_for_level1_display), sin distinguir acentos.
+        const search = normalizeSearchText(this.state.searchText);
         for (const claim of this.state.claims) {
-            if (search && !claim.product_tmpl_name.toLowerCase().includes(search)) {
-                continue;
-            }
-            // "Mis productos + Pendientes" (E3, 2026-11-02): vista por
-            // defecto — lo que YO toqué (touched_by_me, calculado en el
-            // servidor) MÁS todos los Pendientes (de nadie todavía, le
-            // sirven a cualquiera). "Todos" (showAllClaims) no filtra
-            // nada — ya no hay ninguna regla de privacidad que aplicar,
-            // el servidor manda todo sin filtrar (E1/E3).
-            if (
+            if (search) {
+                const haystack = normalizeSearchText(
+                    claim.product_tmpl_name + " " + (claim.customer_names_summary || "")
+                );
+                if (!haystack.includes(search)) {
+                    continue;
+                }
+                // Con texto de búsqueda, el buscador ignora "Mis
+                // productos + Pendientes" (preferencia de David, vía
+                // Tech Lead) — busca en TODO para no esconder una
+                // coincidencia real detrás del filtro.
+            } else if (
                 !this.state.showAllClaims
                 && !claim.touched_by_me
                 && claim.status !== "pending"
             ) {
+                // "Mis productos + Pendientes" (E3, 2026-11-02): vista
+                // por defecto — lo que YO toqué (touched_by_me,
+                // calculado en el servidor) MÁS todos los Pendientes
+                // (de nadie todavía, le sirven a cualquiera). "Todos"
+                // (showAllClaims) no filtra nada — ya no hay ninguna
+                // regla de privacidad que aplicar, el servidor manda
+                // todo sin filtrar (E1/E3).
                 continue;
             }
             groups[claim.status].push(claim);
         }
         return groups;
+    }
+
+    // E6: un grupo plegable (done/stopped) se despliega SOLO mientras
+    // haya texto de búsqueda y tenga coincidencias — nunca se escribe
+    // en state.foldedGroups al buscar, así que al borrar el texto el
+    // grupo vuelve exactamente al plegado/desplegado que el usuario
+    // había elegido antes de buscar (preferencia intacta, no hay nada
+    // que "restaurar" porque nunca se tocó).
+    isGroupFolded(status) {
+        if (!(status in this.state.foldedGroups)) {
+            return false;
+        }
+        if (
+            normalizeSearchText(this.state.searchText)
+            && this.groupedClaims[status].length
+        ) {
+            return false;
+        }
+        return this.state.foldedGroups[status];
     }
 
     onBusNotif() {

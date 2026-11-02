@@ -12,6 +12,7 @@ import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingWeightInput } from "./preparation_picking_weight_input";
 import { PickingNoteDialog } from "./preparation_picking_note_dialog";
+import { matchesLineSearch } from "./preparation_picking_search_utils";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -58,6 +59,7 @@ export class PickingLinesDisplay extends Component {
             productTmplId: null,
             lines: [],
             foldedDone: true,
+            searchText: "",
             loaded: false,
             noteTemplates: [],
         });
@@ -209,12 +211,36 @@ export class PickingLinesDisplay extends Component {
         this.state.loaded = true;
     }
 
+    // E6 (David/Tech Lead, 2026-11-02): un solo buscador para Caja #
+    // y cliente — ver matchesLineSearch() para la regla exacta de "#"
+    // vs. número suelto vs. texto normal.
+    _matchesSearch(line) {
+        return matchesLineSearch(
+            line.daily_sequence, line.main_customer_name, this.state.searchText,
+        );
+    }
+
     get pendingLines() {
-        return this.state.lines.filter((line) => !line.is_done);
+        return this.state.lines.filter(
+            (line) => !line.is_done && this._matchesSearch(line)
+        );
     }
 
     get doneLines() {
-        return this.state.lines.filter((line) => line.is_done);
+        return this.state.lines.filter(
+            (line) => line.is_done && this._matchesSearch(line)
+        );
+    }
+
+    // Igual que isGroupFolded() en Nivel 1: el grupo "Terminado" se
+    // despliega solo mientras haya coincidencias de la búsqueda ahí —
+    // nunca se toca state.foldedDone al buscar, así que al borrar el
+    // texto vuelve exactamente al plegado/desplegado que tenía antes.
+    isDoneFolded() {
+        if (this.state.searchText.trim() && this.doneLines.length) {
+            return false;
+        }
+        return this.state.foldedDone;
     }
 
     onOperationFinished() {

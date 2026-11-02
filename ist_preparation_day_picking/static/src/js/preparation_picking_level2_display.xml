@@ -20,6 +20,19 @@
                         </button>
                         <strong t-esc="state.productName"/>
                     </div>
+                    <!-- E6 (David/Tech Lead, 2026-11-02): mismas clases
+                         nativas del buscador de Nivel 1, sin CSS propio. -->
+                    <div class="o_cp_searchview d-flex input-group flex-grow-1" role="search" style="max-width: 480px;">
+                        <div class="o_searchview form-control d-flex align-items-center py-1">
+                            <i class="o_searchview_icon oi oi-search me-2"/>
+                            <div class="o_searchview_input_container d-flex flex-grow-1">
+                                <input type="text"
+                                       class="o_searchview_input o_input flex-grow-1 border-0"
+                                       placeholder="Buscar caja (#8) o cliente…"
+                                       t-model="state.searchText"/>
+                            </div>
+                        </div>
+                    </div>
                     <div class="d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
                         <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
@@ -89,11 +102,11 @@
                         <button type="button"
                                 class="btn btn-link p-0 text-muted text-decoration-none d-flex align-items-center gap-1"
                                 t-on-click="toggleDoneGroup">
-                            <i t-attf-class="fa #{state.foldedDone ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
+                            <i t-attf-class="fa #{isDoneFolded() ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
                             <strong t-esc="'Terminado (' + doneLines.length + ')'"/>
                         </button>
                     </div>
-                    <t t-if="!state.foldedDone">
+                    <t t-if="!isDoneFolded()">
                         <t t-foreach="doneLines" t-as="line" t-key="line.id">
                             <div class="o_mrp_display_record card border rounded m-0 mb-2">
                                 <div class="card-header">
