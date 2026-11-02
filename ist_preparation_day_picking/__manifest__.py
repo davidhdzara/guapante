@@ -32,6 +32,7 @@
         'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
         'views/preparation_day_note_template_views.xml',
+        'views/preparation_settings_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
