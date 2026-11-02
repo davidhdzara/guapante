@@ -391,6 +391,25 @@ class PreparationDayLine(models.Model):
         copy=False,
     )
 
+    dispatch_note = fields.Char(
+        string='Nota',
+        compute='_compute_dispatch_note',
+        help=(
+            'E7 (David/Tech Lead, 2026-11-02): el cliente pidió un '
+            'producto que no hay — la línea se Termina en 0 y queda '
+            'marcada así, para que el administrador la revise después.'
+        ),
+    )
+
+    @api.depends('is_done', 'actual_kg')
+    def _compute_dispatch_note(self):
+        for line in self:
+            line.dispatch_note = (
+                'Sin stock — producto no disponible para despacho'
+                if line.is_done and line.actual_kg == 0
+                else False
+            )
+
     @api.model
     def _get_display_qty(self, line) -> tuple:
         """Return (qty_str, uom_label) as the customer sees it.
@@ -488,6 +507,24 @@ class PreparationDayLine(models.Model):
         lock explícito es lo que garantiza el orden, no una suposición
         sobre el nivel de aislamiento.
 
+        Despacho en 0 (E7, David/Tech Lead, 2026-11-02): el cliente
+        pidió un producto que no hay en bodega — el operario lo
+        despacha en 0 desde el tablet y la línea queda Terminada
+        igual (antes era imposible: "mayor que cero" bloqueaba el
+        pesaje y 0 sobre una Terminada la devolvía a Pendiente). El 0
+        completa una línea SOLO cuando viene del flujo explícito del
+        tablet (contexto 'guapante_picking_flow') con un operario con
+        PIN vigente — así ninguna escritura incidental de
+        actual_kg=0 (reset, reubicación, reintento, código) completa
+        una línea por accidente; auditado por grep contra todos los
+        orígenes de escritura de actual_kg en el módulo. Una vez
+        Terminada, 0 se corrige igual que cualquier otro valor
+        (_register_weight_correction, nunca action_undo_line). La
+        casilla "Terminado" de admin (E4) también acepta 0 directo.
+        Cada línea en 0 queda marcada con 'dispatch_note' (compute,
+        ver su campo) para la leyenda en la lista, y con una nota de
+        chatter propia (_maybe_post_dispatch_zero_note).
+
         Casilla "Terminado" editable para admin (E4, David/Tech Lead,
         2026-11-02): SOLO cuando 'is_done' viene SOLO (sin 'actual_kg'
         en el mismo vals) — si vienen los dos juntos en la misma fila
@@ -517,14 +554,20 @@ class PreparationDayLine(models.Model):
             ToMarkDone = self.filtered(lambda l: target and not l.is_done)
             ToUndo = self.filtered(lambda l: not target and l.is_done)
             for line in ToMarkDone:
-                if line.actual_kg <= 0:
+                # E7 (David/Tech Lead, 2026-11-02): 0 es válido acá —
+                # "despacho en 0" (sin stock) también se puede marcar
+                # desde la casilla de admin, igual que desde el
+                # tablet. Solo un peso negativo se rechaza.
+                if line.actual_kg < 0:
                     raise UserError(
                         f'{line.product_description} '
-                        f'(Caja #{line.daily_sequence}): no se puede '
-                        'marcar Terminado sin un peso registrado — '
-                        'ingresa el peso primero.'
+                        f'(Caja #{line.daily_sequence}): el peso no '
+                        'puede ser negativo.'
                     )
             for line in ToMarkDone:
+                # _register_weight_from_productos_tab() ya posta la
+                # nota de "sin stock" si actual_kg quedó en 0 — no
+                # duplicar la llamada acá.
                 line._register_weight_from_productos_tab()
             if ToUndo:
                 ToUndo.action_undo_line()
@@ -575,7 +618,14 @@ class PreparationDayLine(models.Model):
                 new_kg = line.actual_kg
 
                 if was_done:
-                    if new_kg > 0 and new_kg != old_kg:
+                    # E7 (David/Tech Lead, 2026-11-02): poner el peso
+                    # en 0 sobre una línea ya Terminada ya NO la
+                    # devuelve a Pendiente (se quitó la rama que
+                    # llamaba action_undo_line() en new_kg==0) — 0 es
+                    # un valor de despacho válido ("sin stock"), no un
+                    # "deshacer". Cualquier cambio de valor (incluido
+                    # hacia o desde 0) se trata como corrección.
+                    if new_kg != old_kg:
                         # Guard de sesión cerrada para el operario
                         # (David/Tech Lead, 2026-11-02): desde Picking
                         # ya no corrige si la operación cerró — solo un
@@ -591,9 +641,15 @@ class PreparationDayLine(models.Model):
                         line._register_weight_correction(
                             old_kg, operator_employee_id,
                         )
-                    elif new_kg == 0:
-                        line.action_undo_line()
-                elif new_kg > 0:
+                elif new_kg > 0 or (
+                    new_kg == 0 and is_picking_flow and operator_employee_id
+                ):
+                    # E7: 0 también marca Terminado ("despacho en 0" —
+                    # sin stock), pero SOLO desde el flujo explícito
+                    # del tablet con un operario con PIN vigente — así
+                    # ninguna escritura incidental de actual_kg=0 fuera
+                    # de ese flujo completa una línea por accidente
+                    # (ver auditoría de grep en el diseño aprobado).
                     if is_picking_flow:
                         line.wizard_id.action_save_line_weight(line.id)
                     else:
@@ -667,6 +723,7 @@ class PreparationDayLine(models.Model):
                 f"{self.actual_kg:.3f} kg (por {self.env.user.name})."
             )
         )
+        self._maybe_post_dispatch_zero_note(self.env.user.name)
 
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
@@ -678,6 +735,25 @@ class PreparationDayLine(models.Model):
         ])
         if pending_total == 0:
             self.wizard_id.action_mark_done()
+
+    def _maybe_post_dispatch_zero_note(self, actor_name: str) -> None:
+        """E7 (David/Tech Lead, 2026-11-02): nota propia cuando una línea
+        se Termina en 0 — "sin stock", el cliente pidió un producto que
+        no hay. Separada de la nota de "Peso registrado"/action_save_
+        line_weight (que siempre se postea igual) para que sea fácil de
+        encontrar en el chatter. Un solo punto para los dos orígenes que
+        llegan a marcar Terminado (tablet vía action_save_line_weight,
+        backend vía _register_weight_from_productos_tab o la casilla de
+        admin de E4), para no duplicar el texto."""
+        self.ensure_one()
+        if self.actual_kg == 0:
+            self.wizard_id.sudo().message_post(
+                body=(
+                    f'{actor_name} terminó {self.product_description} '
+                    f'(Caja #{self.daily_sequence}) en 0 — sin stock, '
+                    'no se despacha.'
+                )
+            )
 
     def _register_weight_correction(
         self, old_kg: float, operator_employee_id,
@@ -715,6 +791,7 @@ class PreparationDayLine(models.Model):
                 f"el peso de {old_kg:.3f} kg a {new_kg:.3f} kg."
             )
         )
+        self._maybe_post_dispatch_zero_note(actor_name)
 
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
@@ -2341,7 +2418,13 @@ class PreparationDay(models.Model):
         preparation line as done.
         """
         Line = self.env['guapante.preparation.day.line'].browse(line_id)
-        if not Line or Line.is_done or Line.actual_kg <= 0:
+        # E7 (David/Tech Lead, 2026-11-02): ya no exige actual_kg>0 —
+        # 0 es un despacho válido ("sin stock", el cliente pidió un
+        # producto que no hay). El campo de peso nunca llega
+        # pre-llenado en 0 por defecto (siempre empieza vacío); 0 solo
+        # existe si el operario lo tecleó a propósito. Negativos ya
+        # quedan bloqueados antes de este punto, en write().
+        if not Line or Line.is_done:
             return False
 
         # Identificación por PIN (Fase 1, 2026-10-19 — migrada a este módulo 2026-10-21):
@@ -2408,6 +2491,7 @@ class PreparationDay(models.Model):
             'done_by_employee_id': Employee.id,
             'done_date': fields.Datetime.now(),
         })
+        Line._maybe_post_dispatch_zero_note(Employee.name or self.env.user.name)
 
         # Actualizar total_done_kg en el resumen del producto
         Summary = self.summary_ids.filtered(

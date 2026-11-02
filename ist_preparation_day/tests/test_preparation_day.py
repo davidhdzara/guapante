@@ -434,8 +434,11 @@ class TestPreparationDay(TransactionCase):
             msg="Summary total_done_kg should include the saved weight",
         )
 
-    def test_save_line_weight_ignores_zero(self):
-        """Saving with actual_kg=0 should NOT mark as done."""
+    def test_save_line_weight_marks_done_with_zero(self):
+        """E7 (David/Tech Lead, 2026-11-02): pesar 0 ('despacho en 0' —
+        el cliente pidió un producto que no hay) SÍ marca Terminado, y
+        cierra la sesión si era la última línea pendiente — ya no se
+        ignora como antes de E7."""
         self._create_confirmed_order(qty=2.0)
         session = self._create_session()
         session.action_load()
@@ -443,8 +446,13 @@ class TestPreparationDay(TransactionCase):
         line = session.line_ids[:1]
         result = session.action_save_line_weight(line.id)
 
-        self.assertFalse(result)
-        self.assertFalse(line.is_done)
+        self.assertTrue(result)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(
+            session.state, 'done',
+            'era la única línea pendiente — debe autocerrar la sesión',
+        )
 
     def test_auto_finish_session(self):
         """Session should auto-finish when all lines are done."""
@@ -1132,20 +1140,21 @@ class TestPreparationDay(TransactionCase):
         self.assertFalse(line.done_by_employee_id)
         self.assertFalse(line.done_date)
 
-    # ── Edición inline de admin: 0 sobre una Terminada = action_undo_line,
-    # negativo bloqueado en todos los orígenes (M-1, David/Tech Lead,
-    # 2026-11-02) ──
+    # ── Edición inline de admin: 0 sobre una Terminada es una corrección
+    # más, ya NO revierte a Pendiente (E7, David/Tech Lead, 2026-11-02);
+    # negativo sigue bloqueado en todos los orígenes (M-1) ──
 
-    def test_write_zero_on_done_line_reverts_via_action_undo_line(self):
-        """Poner actual_kg en 0 sobre una línea ya Terminada, vía write()
-        (como hace la edición inline de admin en la lista de líneas),
-        debe tener el mismo efecto que llamar action_undo_line() directo:
-        vuelve a Pendiente, limpia done_by/done_date y el stock.
+    def test_write_zero_on_done_line_is_treated_as_correction(self):
+        """E7: poner actual_kg en 0 sobre una línea ya Terminada, vía
+        write() (como hace la edición inline de admin en la lista de
+        líneas), YA NO la devuelve a Pendiente — es un 'despacho en 0'
+        válido y se trata como cualquier otra corrección: sigue
+        Terminada, con el peso en 0, sin tocar done_by/done_date.
 
         Segundo producto (David/Tech Lead, 2026-11-02, M-1): sin un
         segundo pendiente, terminar la única línea cierra la sesión y
         el segundo write (a 0) chocaría con el guard de sesión cerrada
-        en vez de probar la reversa — eso se prueba aparte."""
+        en vez de probar la corrección — eso se prueba aparte."""
         self._create_confirmed_order(qty=2.0)
         self._create_confirmed_order(product=self.product_unit, qty=3.0)
         session = self._create_session()
@@ -1156,13 +1165,17 @@ class TestPreparationDay(TransactionCase):
         )
         line.write({'actual_kg': 1.5})
         self.assertTrue(line.is_done)
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
 
         line.write({'actual_kg': 0})
 
-        self.assertFalse(line.is_done)
+        self.assertTrue(
+            line.is_done, '0 ya no devuelve la línea a Pendiente (E7)',
+        )
         self.assertEqual(line.actual_kg, 0.0)
-        self.assertFalse(line.done_by_employee_id)
-        self.assertFalse(line.done_date)
+        self.assertEqual(line.done_by_employee_id, original_employee)
+        self.assertEqual(line.done_date, original_date)
 
     def test_write_negative_actual_kg_raises(self):
         """Ningún origen puede escribir un peso negativo — guard parejo
@@ -1195,9 +1208,11 @@ class TestPreparationDay(TransactionCase):
         self.assertTrue(line.is_done)
         self.assertTrue(line.done_date)
 
-    def test_write_is_done_true_with_zero_weight_raises(self):
-        """Marcar Terminado sin un peso registrado (actual_kg<=0) da un
-        UserError claro — nunca un Terminado de un peso que no existe."""
+    def test_write_is_done_true_with_zero_weight_succeeds(self):
+        """E7 (David/Tech Lead, 2026-11-02): la casilla de admin
+        también acepta terminar una línea en 0 directo, sin pesarla
+        antes — 'despacho en 0' es válido, ya no exige peso>0 (antes
+        de E7 esto lanzaba UserError)."""
         self._create_confirmed_order(qty=2.0)
         session = self._create_session()
         session.action_load()
@@ -1205,9 +1220,93 @@ class TestPreparationDay(TransactionCase):
         line = session.line_ids[:1]
         self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
 
+        line.write({'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_true_with_negative_weight_raises(self):
+        """El guard de track_done solo rechaza negativos — 0 ya es
+        válido (E7), pero un peso negativo nunca debería existir en la
+        línea a estas alturas (write() de actual_kg ya lo bloquea
+        antes); se confirma igual acá por completitud del guard."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': -1.0})
+        self.assertEqual(line.actual_kg, -1.0, 'setup: peso negativo forzado')
+
         with self.assertRaises(UserError):
             line.write({'is_done': True})
         self.assertFalse(line.is_done, 'el guard bloquea antes de marcar nada')
+
+    # ── E7, pruebas de la lista explícita de Tech Lead (David/Tech Lead,
+    # 2026-11-02). El caso "pesar 0 desde el tablet" vive en el test de
+    # Picking (test_preparation_day_picking_fase_c.py) — ese flujo pasa
+    # por _check_picking_ownership() del claim, que no existe en CORE
+    # sin ese módulo instalado. ──
+
+    def test_write_zero_outside_tablet_flow_does_not_mark_done(self):
+        """Escribir actual_kg=0 SIN guapante_picking_flow en el contexto
+        (reset, reubicación, reintento, código) no marca Terminado —
+        el gate de E7 exige el flujo explícito del tablet."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 0})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.dispatch_note)
+
+    def test_correction_from_zero_to_value_treated_as_correction(self):
+        """Una línea Terminada en 0 (despacho en 0) corregida después a
+        un peso > 0 se trata igual que cualquier corrección — sigue
+        Terminada, cambia el peso, no toca done_by/done_date."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'is_done': True})  # Terminado en 0 (E4 relajado, E7)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
+
+        line.write({'actual_kg': 2.0})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 2.0)
+        self.assertFalse(line.dispatch_note, 'ya no es un despacho en 0')
+        self.assertEqual(line.done_by_employee_id, original_employee)
+        self.assertEqual(line.done_date, original_date)
+
+    def test_write_same_zero_value_is_noop(self):
+        """Escribir 0 sobre una línea ya Terminada en 0 (mismo valor) no
+        dispara una corrección — mismo comportamiento que cualquier
+        otro valor sin cambio real."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'is_done': True})
+        self.assertTrue(line.is_done)
+        messages_before = len(session.message_ids)
+
+        line.write({'actual_kg': 0})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(
+            len(session.message_ids), messages_before,
+            'sin cambio real de valor no debe postear una nueva corrección',
+        )
 
     def test_write_is_done_false_reverts_via_action_undo_line(self):
         """Desmarcar Terminado (sin tocar el peso) tiene el mismo efecto
