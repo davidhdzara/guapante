@@ -74,14 +74,17 @@ export class PickingClaimsDisplay extends Component {
             // expandidas porque el objeto solo trae estas dos claves.
             foldedGroups: { done: true, stopped: true },
             searchText: "",
-            // "Mis productos / Todos" (Tech Lead/David, 2026-11-02):
-            // arranca en "Todos" (false) — con "Mis productos" por
-            // defecto, un operario que recién abre el L1 vería la
-            // pantalla casi vacía (oculta hasta los Pendientes) y
-            // tendría que tocar el interruptor antes de poder tomar un
-            // producto, en contra del principio rector. No se recuerda
-            // entre sesiones — siempre arranca en "Todos".
-            myProductsOnly: false,
+            // "Mis productos + Pendientes" / "Todos" (E3, David/Tech
+            // Lead, 2026-11-02 — reemplaza el toggle anterior
+            // "Mis productos"/"Todos"): arranca en la vista restringida
+            // (false) — a diferencia del toggle viejo, ESTA vista nunca
+            // deja la pantalla vacía (los Pendientes siempre entran), así
+            // que ya no hace falta arrancar en "Todos" para que el
+            // operario pueda tomar un producto sin tocar nada. "Todos"
+            // (true) muestra TODO sin filtrar, incluido En progreso ajeno,
+            // sin atenuar — nadie tiene nada que no pueda ver (E1/E3). No
+            // se recuerda entre sesiones — siempre arranca restringida.
+            showAllClaims: false,
             loaded: false,
         });
         // Punto (a), heredado de la implementación kanban: nunca tocar
@@ -169,6 +172,15 @@ export class PickingClaimsDisplay extends Component {
                 ? claim.assigned_employee_id[1] : "";
             claim.stopped_by_employee_name = claim.stopped_by_employee_id
                 ? claim.stopped_by_employee_id[1] : "";
+            // "Detenido por mí" (E3, 2026-11-02) — igual que "Asignado a
+            // mí", comparado contra el operario YA identificado en esta
+            // estación (operatorState, cargado en onWillStart), no un
+            // campo nuevo del servidor: el servidor ya manda el id real
+            // en stopped_by_employee_id, alcanza con compararlo acá.
+            claim.stopped_by_me = Boolean(
+                claim.stopped_by_employee_id
+                && claim.stopped_by_employee_id[0] === operatorState.employeeId
+            );
         }
         this.state.claims = claims;
         this.state.loaded = true;
@@ -181,13 +193,17 @@ export class PickingClaimsDisplay extends Component {
             if (search && !claim.product_tmpl_name.toLowerCase().includes(search)) {
                 continue;
             }
-            // "Mis productos": solo lo que YO toqué (en progreso, lo
-            // que detuve, lo que terminé pesando al menos una línea) —
-            // touched_by_me ya lo calculó el servidor
-            // (get_claims_for_level1_display); nunca Pendientes ni lo
-            // de otros, aunque la regla de privacidad (qué "En
-            // progreso" ajeno llega siquiera al cliente) no cambia acá.
-            if (this.state.myProductsOnly && !claim.touched_by_me) {
+            // "Mis productos + Pendientes" (E3, 2026-11-02): vista por
+            // defecto — lo que YO toqué (touched_by_me, calculado en el
+            // servidor) MÁS todos los Pendientes (de nadie todavía, le
+            // sirven a cualquiera). "Todos" (showAllClaims) no filtra
+            // nada — ya no hay ninguna regla de privacidad que aplicar,
+            // el servidor manda todo sin filtrar (E1/E3).
+            if (
+                !this.state.showAllClaims
+                && !claim.touched_by_me
+                && claim.status !== "pending"
+            ) {
                 continue;
             }
             groups[claim.status].push(claim);
@@ -272,6 +288,11 @@ export class PickingClaimsDisplay extends Component {
         }
     }
 
+    // Doble entrada desde E3 (2026-11-02): el botón "Continuar" (solo
+    // En progreso + mía) Y el click en CUALQUIER parte de la tarjeta,
+    // de cualquier estado — mismo método, mismo action_open_lines_
+    // kanban() sin ningún chequeo de dueño del lado servidor, así que
+    // no hace falta distinguir de dónde vino la llamada.
     async onContinue(claim) {
         const result = await this._callClaim("action_open_lines_kanban", claim.id);
         if (result) {
