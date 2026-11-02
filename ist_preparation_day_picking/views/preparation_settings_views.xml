@@ -35,22 +35,22 @@
         <field name="target">inline</field>
     </record>
 
-    <!-- Preparación (menu_preparation_day_root, en ist_preparation_day) ›
-         Configuración › Ajustes. Visible solo para group_preparation_admin —
-         Mauricio lo tiene, no necesita base.group_system para esto (decisión
-         de David, 2026-11-02). -->
-    <menuitem
-        id="menu_preparation_config"
-        name="Configuración"
-        parent="ist_preparation_day.menu_preparation_day_root"
-        groups="group_preparation_admin"
-        sequence="90"
-    />
+    <!-- Preparación › Configuración › Ajustes. "Configuración"
+         (menu_preparation_day_config) ya existe — se define en
+         hr_employee_config_views.xml, con "Operarios autorizados" y
+         "Modelos de notas" como hermanos — no se crea un segundo menú
+         "Configuración" acá (hallazgo de Tech Lead, 2026-11-02),
+         "Ajustes" solo cuelga de ese mismo menú, primero entre sus
+         hermanos (sequence 1, antes de Operarios autorizados en 10 y
+         Modelos de notas en 20). El grupo del padre ya es
+         group_preparation_admin — Mauricio lo tiene, no necesita
+         base.group_system para esto (decisión de David, 2026-11-02). -->
     <menuitem
         id="menu_preparation_settings"
         name="Ajustes"
-        parent="menu_preparation_config"
+        parent="menu_preparation_day_config"
         action="action_guapante_preparation_settings"
-        sequence="10"
+        groups="group_preparation_admin"
+        sequence="1"
     />
 </odoo>

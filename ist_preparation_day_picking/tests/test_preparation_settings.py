@@ -101,6 +101,26 @@ class TestPreparationSettingsIdleLock(TestPreparationDay):
         settings.execute()
         self.assertEqual(self._get_param(), str(1440 * 60))
 
+    def test_single_configuracion_menu_under_preparation_with_ajustes_child(self):
+        """Hallazgo de Tech Lead (2026-11-02): "Configuración" ya existe
+        (hr_employee_config_views.xml, con Operarios autorizados y
+        Modelos de notas) — este menú NO debe crear un segundo
+        "Configuración" bajo Preparación, solo colgar "Ajustes" del
+        que ya hay."""
+        root = self.env.ref('ist_preparation_day.menu_preparation_day_root')
+        config_menus = self.env['ir.ui.menu'].search([
+            ('name', '=', 'Configuración'),
+            ('parent_id', '=', root.id),
+        ])
+        self.assertEqual(
+            len(config_menus), 1,
+            'Debe existir un solo menú "Configuración" bajo Preparación',
+        )
+        settings_menu = self.env.ref(
+            'ist_preparation_day_picking.menu_preparation_settings',
+        )
+        self.assertEqual(settings_menu.parent_id, config_menus)
+
 
 @tagged('post_install', '-at_install')
 class TestPreparationSettingsPermissions(TestPreparationDay):
