@@ -489,7 +489,7 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         mock_sendone.assert_called_once_with(
             f'guapante_preparation_day-{session.id}',
             'picking_claim_updated',
-            {},
+            {'claim_id': claim.id},
         )
 
     def test_stopped_claims_have_no_cap_can_take_a_fourth(self):
