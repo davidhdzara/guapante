@@ -31,6 +31,19 @@ from odoo.addons.ist_preparation_day.models.preparation_day import (
 class TestPreparationDay(TransactionCase):
     """Tests for the Preparation Day session workflow."""
 
+    def setUp(self):
+        """Fija el timeout de inactividad al default histórico antes de
+        cada test (David/Tech Lead, 2026-11-02) — un valor viejo que
+        haya quedado puesto a mano en la base real (ej. una prueba
+        manual en Ajustes) no debe filtrarse a los tests, que no deben
+        depender del estado de la base. Los tests que prueban su propio
+        valor (0, negativo, personalizado, sin parámetro) lo sobre-
+        escriben ellos mismos después de este baseline, sin conflicto."""
+        super().setUp()
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, str(PREP_OPERATOR_IDLE_TIMEOUT_SECONDS),
+        )
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
