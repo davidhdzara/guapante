@@ -24,6 +24,20 @@ from odoo.addons.ist_preparation_day.tests.test_preparation_day import (
 
 @tagged('post_install', '-at_install')
 class TestPreparationSettingsIdleLock(TestPreparationDay):
+    """Tests de la traducción segundos↔minutos, no de permisos (esos
+    están en TestPreparationSettingsPermissions). El usuario por
+    defecto de TransactionCase (uid=SUPERUSER_ID) salta el ACL del
+    modelo (create pasa), pero NO tiene group_preparation_admin — el
+    chequeo explícito de execute() SÍ lo evalúa (a propósito, no debe
+    haber un atajo de superusuario ahí), así que hace falta otorgarle
+    el grupo acá para poder probar execute() sin que sea esta la
+    prueba de permisos."""
+
+    def setUp(self):
+        super().setUp()
+        self.env.user.sudo().write({'groups_id': [(4, self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin',
+        ).id)]})
 
     def _set_param(self, value):
         self.env['ir.config_parameter'].sudo().set_param(
@@ -106,20 +120,32 @@ class TestPreparationSettingsIdleLock(TestPreparationDay):
         (hr_employee_config_views.xml, con Operarios autorizados y
         Modelos de notas) — este menú NO debe crear un segundo
         "Configuración" bajo Preparación, solo colgar "Ajustes" del
-        que ya hay."""
+        que ya hay.
+
+        `name` en ir.ui.menu es un campo traducido (jsonb en la
+        columna real) — buscar por igualdad de texto en `search()` no
+        lo decodifica como se espera, por eso se filtra en Python
+        sobre los hijos ya cargados (`child_id`), que sí devuelve el
+        string ya traducido."""
         root = self.env.ref('ist_preparation_day.menu_preparation_day_root')
-        config_menus = self.env['ir.ui.menu'].search([
-            ('name', '=', 'Configuración'),
-            ('parent_id', '=', root.id),
-        ])
+        existing_config_menu = self.env.ref(
+            'ist_preparation_day_picking.menu_preparation_day_config',
+        )
+        self.assertEqual(existing_config_menu.parent_id, root)
+
+        config_menus = root.child_id.filtered(
+            lambda m: m.name == 'Configuración',
+        )
         self.assertEqual(
             len(config_menus), 1,
             'Debe existir un solo menú "Configuración" bajo Preparación',
         )
+        self.assertEqual(config_menus, existing_config_menu)
+
         settings_menu = self.env.ref(
             'ist_preparation_day_picking.menu_preparation_settings',
         )
-        self.assertEqual(settings_menu.parent_id, config_menus)
+        self.assertEqual(settings_menu.parent_id, existing_config_menu)
 
 
 @tagged('post_install', '-at_install')
