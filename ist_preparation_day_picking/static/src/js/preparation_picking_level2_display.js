@@ -18,7 +18,7 @@ const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app
 const LINE_FIELDS = [
     "daily_sequence", "is_done", "needs_weighing", "estimated_kg",
     "expected_kg_per_unit", "actual_kg", "main_customer_name", "zone_name",
-    "customer_qty_display", "customer_uom_label", "claim_is_mine",
+    "customer_qty_display", "customer_uom_label",
     "no_variant_attribute_value_ids", "qty_uom_label",
 ];
 
@@ -234,8 +234,9 @@ export class PickingLinesDisplay extends Component {
     // es de toda la sesión, dispara por pedidos de OTROS productos la
     // mayoría de las veces). Primero se filtra por relevancia
     // (_checkForRelevantReload) y recién ahí se reemplaza state.lines —
-    // reemplazo que, además, ya es seguro hoy: onConfirmWeight/onUndo
-    // hacen exactamente lo mismo en cada confirmación y no borra el
+    // reemplazo que, además, ya es seguro hoy: onConfirmWeight hace
+    // exactamente lo mismo en cada confirmación (Pendiente o Terminada,
+    // E2) y no borra el
     // texto sin confirmar de las demás tarjetas (ver mensaje a Tech
     // Lead, 2026-11-02 — PickingWeightInput no resincroniza state.text
     // desde props tras el setup() inicial, y OWL reutiliza la instancia
@@ -340,6 +341,18 @@ export class PickingLinesDisplay extends Component {
     //    aquí como en el 1). Comparación redondeada a 3 decimales para
     //    no disparar por residuos de coma flotante.
     async onConfirmWeight(line, value) {
+        // E2 (David/Tech Lead, 2026-11-02 — Terminadas editables sin
+        // botón Deshacer): mismo valor que ya estaba registrado (Enter
+        // sin cambios sobre una Terminada, input precargado con
+        // actual_kg) — no-op también en el cliente, antes de cualquier
+        // alerta o viaje al servidor. El servidor ya lo trataría como
+        // no-op (new_kg == old_kg no dispara corrección ni undo), pero
+        // sin este corte temprano el operario vería "Despachas menos de
+        // lo pedido" sobre un valor que en realidad no cambió.
+        if (line.is_done && round3(value) === round3(line.actual_kg)) {
+            return;
+        }
+        const wasPending = !line.is_done;
         if (line.needs_weighing && line.expected_kg_per_unit > 0) {
             const expectedWeight = line.estimated_kg * line.expected_kg_per_unit;
             const outOfRange = (
@@ -402,9 +415,14 @@ export class PickingLinesDisplay extends Component {
             // línea pendiente de ESTE producto, volver solo a Nivel 1 —
             // salvo que este mismo guardado también haya cerrado la
             // OPERACIÓN completa (todas las líneas de la sesión, no solo
-            // las de este producto). El write() de arriba, cuando es la
-            // última línea pendiente de TODA la sesión, ya deja
-            // self.state = 'done' en el servidor dentro de la misma
+            // las de este producto). wasPending (E2, 2026-11-02): una
+            // corrección sobre una línea que YA estaba Terminada nunca
+            // navega sola — sin esto, corregir el peso de la única línea
+            // de un producto que ya no tenía pendientes volvía a Nivel 1
+            // aunque nada nuevo se hubiera completado. El write() de
+            // arriba, cuando es la última línea pendiente de TODA la
+            // sesión, ya deja self.state = 'done' en el servidor dentro
+            // de la misma
             // transacción (action_save_line_weight → action_mark_done),
             // antes de que esta llamada retorne — así que leer el estado
             // acá es una señal confiable, no una carrera contra el bus.
@@ -412,7 +430,7 @@ export class PickingLinesDisplay extends Component {
             // ('picking_operation_finished' → onOperationFinished) se
             // encarga de volver al NIP; encadenar _backToLevel1() encima
             // duplicaría la navegación.
-            if (this.pendingLines.length === 0) {
+            if (wasPending && this.pendingLines.length === 0) {
                 const [wizard] = await this.orm.read(
                     "guapante.preparation.day", [this.state.wizardId], ["state"],
                 );
@@ -420,18 +438,6 @@ export class PickingLinesDisplay extends Component {
                     await this._backToLevel1();
                 }
             }
-        } catch (error) {
-            await this._handleError(error);
-        }
-    }
-
-    async onUndo(line) {
-        try {
-            await this.orm.call(
-                "guapante.preparation.day.line", "action_undo_line", [[line.id]],
-                { context: { guapante_picking_flow: true } },
-            );
-            await this.loadLines();
         } catch (error) {
             await this._handleError(error);
         }
