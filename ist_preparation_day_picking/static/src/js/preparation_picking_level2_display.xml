@@ -113,6 +113,14 @@
                                     <li class="list-group-item">
                                         <t t-esc="line.main_customer_name"/> · <t t-esc="line.zone_name"/>
                                     </li>
+                                    <!-- E7 (David/Tech Lead, 2026-11-02): "despacho en 0" —
+                                         el cliente pidió un producto que no hay, terminada
+                                         en 0 en vez de pendiente. Solo en la tarjeta de
+                                         Terminado: una Pendiente con peso en 0 todavía no
+                                         es un despacho, solo no se ha pesado. -->
+                                    <li t-if="line.actual_kg === 0" class="list-group-item text-danger">
+                                        Sin stock — producto no disponible para despacho
+                                    </li>
                                 </ul>
                                 <div class="card-footer d-flex align-items-center justify-content-between">
                                     <span t-if="!line.qty_uom_label" class="text-danger small">
