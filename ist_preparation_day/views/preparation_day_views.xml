@@ -111,6 +111,15 @@
                 <field name="name"/>
                 <field name="date"/>
                 <field name="so_count" string="Cajas"/>
+                <!-- Punto 3 (Tech Lead, 2026-11-02): reusa done_lines/total_lines,
+                     ya computados en batch por _compute_global_progress (mismo
+                     campo detrás de global_progress_pct en el kanban) — sin
+                     agregar ningún campo ni búsqueda nueva por fila. -->
+                <field name="total_lines" column_invisible="1"/>
+                <field name="done_lines"
+                       string="Líneas"
+                       widget="progressbar"
+                       options="{'current_value': 'done_lines', 'max_value': 'total_lines', 'editable': false}"/>
                 <field name="state"
                        widget="badge"
                        decoration-muted="state == 'draft'"
