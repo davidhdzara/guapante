@@ -27,6 +27,11 @@ const LINE_FIELDS = [
 // coma flotante (ej. 2.5 - 2.3 !== 0.2 exacto en JS).
 const round3 = (n) => Math.round(n * 1000) / 1000;
 
+// Debounce de 'reload' (Tech Lead, 2026-11-02): el canal es de toda la
+// sesión — una renumeración + varias líneas nuevas pueden mandar varios
+// 'reload' seguidos; colapsarlos evita varias verificaciones redundantes.
+const RELOAD_DEBOUNCE_MS = 400;
+
 // Nivel 2 de Picking como client action propio (especificación visual,
 // David 2026-10-23 — misma decisión final que Nivel 1, ver
 // preparation_picking_level1_display.js). Llega acá SIEMPRE con
@@ -58,7 +63,9 @@ export class PickingLinesDisplay extends Component {
         });
         this.isDestroyed = false;
         this.channel = null;
+        this._reloadDebounceTimer = null;
         this.onOperationFinished = this.onOperationFinished.bind(this);
+        this.onBusReload = this.onBusReload.bind(this);
 
         onWillStart(async () => {
             // Punto 3 (Tech Lead, 2026-10-31): mismo chequeo que Nivel 1
@@ -86,12 +93,22 @@ export class PickingLinesDisplay extends Component {
             this.channel = `guapante_preparation_day-${this.state.wizardId}`;
             await this.busService.addChannel(this.channel);
             this.busService.subscribe("picking_operation_finished", this.onOperationFinished);
+            // Punto 2 (Tech Lead, 2026-11-02): este canal es de toda la
+            // sesión — un pedido nuevo de CUALQUIER producto manda
+            // 'reload' acá también, no solo a Nivel 1. onBusReload()
+            // filtra por relevancia antes de tocar state.lines.
+            this.busService.subscribe("reload", this.onBusReload);
         });
         onWillUnmount(() => {
             this.isDestroyed = true;
+            if (this._reloadDebounceTimer) {
+                clearTimeout(this._reloadDebounceTimer);
+                this._reloadDebounceTimer = null;
+            }
             if (this.channel) {
                 this.busService.deleteChannel(this.channel);
                 this.busService.unsubscribe("picking_operation_finished", this.onOperationFinished);
+                this.busService.unsubscribe("reload", this.onBusReload);
             }
         });
     }
@@ -210,6 +227,58 @@ export class PickingLinesDisplay extends Component {
     async _closeAndReturnToNip() {
         await clearOperator();
         await this.actionService.doAction(PICKING_APP_ACTION_XMLID, { clearBreadcrumbs: true });
+    }
+
+    // Punto 2 (Tech Lead, 2026-11-02): "El Nivel 2 se actualiza solo" —
+    // no se puede llamar loadLines() directo en cada 'reload' (ese canal
+    // es de toda la sesión, dispara por pedidos de OTROS productos la
+    // mayoría de las veces). Primero se filtra por relevancia
+    // (_checkForRelevantReload) y recién ahí se reemplaza state.lines —
+    // reemplazo que, además, ya es seguro hoy: onConfirmWeight/onUndo
+    // hacen exactamente lo mismo en cada confirmación y no borra el
+    // texto sin confirmar de las demás tarjetas (ver mensaje a Tech
+    // Lead, 2026-11-02 — PickingWeightInput no resincroniza state.text
+    // desde props tras el setup() inicial, y OWL reutiliza la instancia
+    // mientras el t-key=line.id siga en la lista).
+    onBusReload() {
+        if (this.isDestroyed) {
+            return;
+        }
+        if (this._reloadDebounceTimer) {
+            clearTimeout(this._reloadDebounceTimer);
+        }
+        this._reloadDebounceTimer = setTimeout(() => {
+            this._reloadDebounceTimer = null;
+            this._checkForRelevantReload();
+        }, RELOAD_DEBOUNCE_MS);
+    }
+
+    async _checkForRelevantReload() {
+        if (this.isDestroyed) {
+            return;
+        }
+        // Comparación por conjunto de ids, no por conteo (Tech Lead,
+        // 2026-11-02): una reubicación + un pedido nuevo al mismo tiempo
+        // deja el conteo igual pero cambia qué líneas corresponden —
+        // un searchCount no lo detecta.
+        const currentIds = await this.orm.search(
+            "guapante.preparation.day.line",
+            [
+                ["wizard_id", "=", this.state.wizardId],
+                ["product_id", "=", this.state.productTmplId],
+            ],
+        );
+        if (this.isDestroyed) {
+            return;
+        }
+        const knownIds = this.state.lines.map((line) => line.id);
+        const sameSet = (
+            currentIds.length === knownIds.length &&
+            new Set(currentIds).size === new Set([...currentIds, ...knownIds]).size
+        );
+        if (!sameSet) {
+            await this.loadLines();
+        }
     }
 
     onClickRefresh() {
