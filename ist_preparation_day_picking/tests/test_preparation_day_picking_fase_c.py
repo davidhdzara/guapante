@@ -222,7 +222,10 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
                 )
         self.assertFalse(line.is_done)
 
-    def test_action_mark_line_ready_checks_ownership(self):
+    def test_action_mark_line_ready_allowed_for_any_operator_with_pin(self):
+        """Rediseño (David/Tech Lead, 2026-11-02): sin ownership, un
+        operario con PIN vigente puede marcar Listo una línea de un
+        producto asignado a OTRO — antes esto bloqueaba con UserError."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
         claim = session.product_claim_ids
@@ -232,9 +235,8 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             claim.action_assign()
         with patch(REQUEST_PATCH_TARGET_LINE, mock_b), \
                 patch(REQUEST_PATCH_TARGET_PARENT, mock_b):
-            with self.assertRaises(UserError):
-                line.with_context(guapante_picking_flow=True).action_mark_line_ready()
-        self.assertFalse(line.is_done)
+            line.with_context(guapante_picking_flow=True).action_mark_line_ready()
+        self.assertTrue(line.is_done)
 
     # ── Productos sin pesaje: kg directo y unidades (punto b, Tech
     # Lead/David, 2026-10-29) ──
@@ -448,9 +450,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
 
     def test_write_actual_kg_unedited_double_call_registers_once(self):
         """Doble Enter/doble clic del camino "confirmar sin editar" (kg
-        directo, sin pesaje) — mismo bloqueo por ownership que el camino
-        de pesaje real: tras la primera, el claim se libera y la segunda
-        se bloquea con UserError antes de tocar nada."""
+        directo, sin pesaje) — sin ownership (David/Tech Lead,
+        2026-11-02), la segunda llamada ya no se bloquea con UserError:
+        new_kg == old_kg no matchea ni la rama de corrección
+        (new_kg != old_kg) ni la de undo (new_kg == 0) en write() de
+        CORE, así que es un no-op explícito por el propio dispatch, no
+        una excepción."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=False, estimated_kg=4.0)
         claim = session.product_claim_ids
@@ -466,20 +471,24 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
                 guapante_picking_flow=True, guapante_qty_estimated=True,
             ).write({'actual_kg': 4.0})
             kg_after_first = Summary.total_done_kg
-            with self.assertRaises(UserError):
-                line.with_context(
-                    guapante_picking_flow=True, guapante_qty_estimated=True,
-                ).write({'actual_kg': 4.0})
+            # Segunda llamada con el mismo valor — simula el doble
+            # Enter/doble clic alcanzando al servidor.
+            line.with_context(
+                guapante_picking_flow=True, guapante_qty_estimated=True,
+            ).write({'actual_kg': 4.0})
         self.assertEqual(Summary.total_done_kg, kg_after_first)
         self.assertTrue(line.is_qty_estimated)
         self.assertEqual(line.actual_kg, 4.0)
 
-    # ── ownership en métodos públicos (punto 3 de Tech Lead) ──
+    # ── sin ownership en métodos públicos (rediseño David/Tech Lead,
+    # 2026-11-02 — antes bloqueaban por claim, ahora solo exigen PIN
+    # vigente, para cualquier operario) ──
 
-    def test_action_save_line_weight_blocks_non_owner(self):
+    def test_action_save_line_weight_allowed_for_any_operator_with_pin(self):
         """action_save_line_weight(line_id) es público y se puede llamar
-        por RPC directo sin pasar antes por write() con actual_kg — el
-        ownership tiene que estar ahí también."""
+        por RPC directo sin pasar antes por write() con actual_kg —
+        antes bloqueaba si el claim no era de quien pesa; ahora cualquier
+        operario con PIN vigente puede, sea o no el dueño."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         claim = session.product_claim_ids
@@ -495,11 +504,10 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         line.with_context(skip_auto_save=True).write({'actual_kg': 2.0})
         with patch(REQUEST_PATCH_TARGET_LINE, mock_b), \
                 patch(REQUEST_PATCH_TARGET_PARENT, mock_b):
-            with self.assertRaises(UserError):
-                session.with_context(
-                    guapante_picking_flow=True,
-                ).action_save_line_weight(line.id)
-        self.assertFalse(line.is_done)
+            session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertTrue(line.is_done)
 
     def test_action_save_line_weight_allowed_by_owner(self):
         session = self._create_session()
@@ -524,12 +532,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
     def test_action_save_line_weight_double_call_registers_once(self):
         """Peso Nivel 2 (Tech Lead, 2026-10-29): aunque un doble Enter o
         doble clic en el cliente llegue a disparar dos RPC al servidor
-        en secuencia, el guardado queda registrado una sola vez. Al
-        terminar la primera llamada, esta línea era la última pendiente
-        de su plantilla — el claim se libera (Fase B) — así que la
-        segunda llamada ya no pasa el chequeo de ownership y se
-        bloquea con UserError antes de volver a tocar nada; no es un
-        no-op silencioso, es un bloqueo explícito."""
+        en secuencia, el guardado queda registrado una sola vez. Sin
+        ownership (David/Tech Lead, 2026-11-02), la segunda llamada ya
+        no se bloquea con UserError — el propio guard de
+        action_save_line_weight() (`if ... Line.is_done ...: return
+        False`) la vuelve no-op, línea ya is_done=True tras la
+        primera."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         claim = session.product_claim_ids
@@ -551,10 +559,10 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             kg_after_first = Summary.total_done_kg
             # Segunda llamada con el mismo line_id — simula el doble
             # Enter/doble clic alcanzando al servidor.
-            with self.assertRaises(UserError):
-                session.with_context(
-                    guapante_picking_flow=True,
-                ).action_save_line_weight(line.id)
+            second_result = session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertFalse(second_result)
         self.assertEqual(
             self.env['guapante.picking.log'].search_count([
                 ('wizard_id', '=', session.id),
@@ -574,10 +582,11 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         Nivel 2: `orm.write(..., {'actual_kg': value}, {guapante_picking_
         flow: True})` — no action_save_line_weight() directo (Tech Lead,
         2026-10-29, sobre el test anterior: ese pega al método, este
-        pega al write() real). PreparationDayLine.write() exige
-        ownership ANTES de escribir nada — con el claim ya liberado tras
-        la primera llamada, la segunda se bloquea con UserError sin
-        tocar el log ni total_done_kg."""
+        pega al write() real). Sin ownership (David/Tech Lead,
+        2026-11-02): la segunda llamada ya no se bloquea con UserError —
+        new_kg == old_kg en write() de CORE no matchea ni corrección ni
+        undo, así que es no-op por dispatch, sin tocar el log ni
+        total_done_kg."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         claim = session.product_claim_ids
@@ -596,10 +605,9 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             kg_after_first = Summary.total_done_kg
             # Segunda llamada por el mismo camino real — simula el doble
             # Enter/doble clic de la UI alcanzando al servidor.
-            with self.assertRaises(UserError):
-                line.with_context(
-                    guapante_picking_flow=True,
-                ).write({'actual_kg': 2.0})
+            line.with_context(
+                guapante_picking_flow=True,
+            ).write({'actual_kg': 2.0})
         self.assertEqual(
             self.env['guapante.picking.log'].search_count([
                 ('wizard_id', '=', session.id),
@@ -614,7 +622,17 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         self.assertTrue(line.is_done)
         self.assertEqual(line.actual_kg, 2.0)
 
-    def test_action_undo_line_blocks_non_owner(self):
+    def test_action_undo_line_allowed_for_non_owner(self):
+        """Rediseño (David/Tech Lead, 2026-11-02): sin ownership, un
+        operario con PIN vigente puede devolver a Pendiente una línea
+        de un producto asignado a OTRO — antes esto bloqueaba.
+
+        Transitorio: E2 va a quitarle a Picking la capacidad de
+        deshacer por completo ("sin deshacer" en el rediseño) — cuando
+        eso aterrice, este test deja de tener sentido tal cual (ya no
+        habrá acción_undo_line alcanzable desde el tablet para nadie,
+        dueño o no) y hay que reescribirlo o borrarlo entonces, no
+        ahora."""
         session = self._create_session()
         line_done = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         line_pending = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
@@ -626,16 +644,11 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         line_done.with_context(skip_auto_save=True).write({
             'is_done': True, 'actual_kg': 2.0,
         })
-        self.assertEqual(
-            claim.assigned_employee_id, self.operator_a,
-            "line_pending sigue sin terminar: el claim no debió soltarse",
-        )
         with patch(REQUEST_PATCH_TARGET_LINE, mock_b):
-            with self.assertRaises(UserError):
-                line_done.with_context(
-                    guapante_picking_flow=True,
-                ).action_undo_line()
-        self.assertTrue(line_done.is_done)
+            line_done.with_context(
+                guapante_picking_flow=True,
+            ).action_undo_line()
+        self.assertFalse(line_done.is_done)
         self.assertEqual(line_pending.is_done, False)
 
     def test_action_undo_line_allowed_by_owner(self):
@@ -653,12 +666,14 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             line_done.with_context(guapante_picking_flow=True).action_undo_line()
         self.assertFalse(line_done.is_done)
 
-    def test_action_undo_line_blocks_once_claim_has_no_owner(self):
-        """Corrección de Tech Lead: una vez terminado el último
-        pendiente, el claim se libera (regla de la Fase B) — pero eso NO
-        abre la puerta a corregir desde Picking sin asignación. Terminado
-        es solo lectura desde Picking; la corrección post-cierre la hace
-        un supervisor desde la pestaña Productos."""
+    def test_action_undo_line_allowed_once_claim_has_no_owner(self):
+        """Rediseño (David/Tech Lead, 2026-11-02): antes, un claim sin
+        dueño (liberado al terminar su última caja) bloqueaba
+        action_undo_line desde Picking por completo — ya no: solo
+        exige PIN vigente, sin importar si el claim tiene dueño.
+
+        Transitorio, mismo aviso que test_action_undo_line_allowed_
+        for_non_owner — E2 quita esta capacidad del tablet por completo."""
         session = self._create_session()
         line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
         claim = session.product_claim_ids
@@ -670,9 +685,121 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         })
         self.assertFalse(claim.assigned_employee_id)
         with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
-            with self.assertRaises(UserError):
-                line.with_context(guapante_picking_flow=True).action_undo_line()
+            line.with_context(guapante_picking_flow=True).action_undo_line()
+        self.assertFalse(line.is_done)
+
+    # ── concurrencia barata y guard de sesión cerrada para el operario
+    # (rediseño, David/Tech Lead, 2026-11-02) ──
+
+    def test_write_actual_kg_already_done_by_lock_time_is_treated_as_correction(self):
+        """Lo que garantiza el SELECT ... FOR UPDATE de write() (CORE):
+        si para cuando esta escritura toma el lock de la línea ya está
+        Terminada (otro operario la pesó mientras esta esperaba), se
+        reevalúa is_done YA bajo el lock y se trata como corrección —
+        nunca como un segundo primer guardado. No se puede forzar una
+        carrera real de dos transacciones dentro de un solo test de
+        Odoo; esto verifica el resultado observable que el lock
+        garantiza: encontrar la línea ya hecha al tomarla.
+
+        Segundo producto pendiente: sin él, terminar la única línea
+        cierra la sesión y la "corrección" de operator_b chocaría con
+        el guard de sesión cerrada en vez de probar lo que este test
+        quiere probar — eso se prueba aparte."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        self._create_line(
+            session, needs_weighing=True, estimated_kg=1.0,
+            product=self.product_unit,
+        )
+        mock_a = self._request_as(self.operator_a)
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.0})
         self.assertTrue(line.is_done)
+        messages_before = len(session.message_ids)
+
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_b), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_b):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.6})
+
+        self.assertTrue(line.is_done, 'sigue Terminada, nunca se reabrió')
+        self.assertEqual(line.actual_kg, 2.6)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+        self.assertGreater(len(session.message_ids), messages_before)
+
+    def test_write_weight_correction_blocked_for_operator_when_session_is_done(self):
+        """David/Tech Lead, 2026-11-02: el operario NO corrige pesos con
+        la sesión cerrada — solo un administrador, desde Preparación o
+        reabriendo la sesión. Backend sin guapante_picking_flow sigue
+        permitido (ver test_write_weight_correction_allowed_when_
+        session_is_done en este mismo archivo, de (1))."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.0})
+        self.assertEqual(session.state, 'done', 'setup: único producto terminado cierra la sesión')
+        messages_before = len(session.message_ids)
+
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.6})
+        # El guard lanza ANTES de _register_weight_correction() — nunca
+        # llega a sincronizar stock ni a postear su nota "Corregido".
+        # No se verifica actual_kg directo: ya quedó escrito por
+        # super().write() antes del raise (mismo caso ya aceptado en
+        # test_write_actual_kg_blocked_when_operator_loses_flag_mid_
+        # shift, que tampoco lo verifica por el mismo motivo).
+        self.assertEqual(len(session.message_ids), messages_before)
+
+    # ── trazabilidad cruzada: pesar/corregir un producto asignado a
+    # OTRO (rediseño, David/Tech Lead, 2026-11-02) ──
+
+    def test_write_actual_kg_posts_cross_operator_note_when_actor_is_not_owner(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        messages_before = len(session.message_ids)
+
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_b), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_b):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.0})
+
+        self.assertGreater(len(session.message_ids), messages_before)
+        cross_notes = session.message_ids.filtered(
+            lambda m: 'estaba asignado a' in (m.body or '')
+        )
+        self.assertEqual(len(cross_notes), 1)
+        self.assertIn('pesó', cross_notes.body)
+        self.assertIn(self.operator_b.name, cross_notes.body)
+        self.assertIn(self.operator_a.name, cross_notes.body)
+        self.assertIn(line.product_description, cross_notes.body)
+        self.assertIn(str(line.daily_sequence), cross_notes.body)
+
+    def test_write_actual_kg_no_cross_operator_note_when_actor_is_owner(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.0})
+
+        cross_notes = session.message_ids.filtered(
+            lambda m: 'estaba asignado a' in (m.body or '')
+        )
+        self.assertFalse(cross_notes)
 
     # ── nota automática "Corregido" y guard de sesión cerrada (M-1,
     # David/Tech Lead, 2026-11-02) ──

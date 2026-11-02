@@ -476,15 +476,34 @@ class PreparationDayLine(models.Model):
         cuando estos mismos métodos vuelven a escribir en la línea — la
         escritura interna de action_undo_line() usa ese flag, así que
         nunca reentra a este dispatch.
+
+        Concurrencia barata (David/Tech Lead, 2026-11-02 — sin
+        ownership, dos operarios pueden pesar el mismo producto a la
+        vez de verdad): bloquea la(s) fila(s) con SELECT ... FOR UPDATE
+        antes de leer su estado, para no decidir con un snapshot
+        obsoleto. Si otro ya la pesó mientras esta escritura esperaba
+        el lock, acá se ve YA hecha y se trata como corrección (con su
+        nota), nunca como un segundo primer guardado. No se apoya solo
+        en el reintento por error de serialización de Postgres — el
+        lock explícito es lo que garantiza el orden, no una suposición
+        sobre el nivel de aislamiento.
         """
         track_kg = (
             'actual_kg' in vals
             and not self.env.context.get('skip_auto_save')
+            and bool(self)
         )
         old_snapshot = {}
         if track_kg:
             if vals['actual_kg'] < 0:
                 raise UserError('El peso no puede ser negativo.')
+            self.flush_recordset()
+            self.env.cr.execute(
+                'SELECT id FROM guapante_preparation_day_line '
+                'WHERE id IN %s FOR UPDATE',
+                (tuple(self.ids),),
+            )
+            self.invalidate_recordset(['actual_kg', 'is_done'])
             old_snapshot = {
                 line.id: (line.actual_kg, line.is_done) for line in self
             }
@@ -508,6 +527,18 @@ class PreparationDayLine(models.Model):
 
                 if was_done:
                     if new_kg > 0 and new_kg != old_kg:
+                        # Guard de sesión cerrada para el operario
+                        # (David/Tech Lead, 2026-11-02): desde Picking
+                        # ya no corrige si la operación cerró — solo un
+                        # administrador, desde Preparación o
+                        # reabriendo la sesión. Backend (sin
+                        # guapante_picking_flow) sigue permitido tal
+                        # cual (1).
+                        if is_picking_flow and line.wizard_id.state == 'done':
+                            raise UserError(
+                                'La operación está cerrada. Pide a un '
+                                'administrador que la reabra.'
+                            )
                         line._register_weight_correction(
                             old_kg, operator_employee_id,
                         )
@@ -570,9 +601,7 @@ class PreparationDayLine(models.Model):
             lambda s: s.product_id == self.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                Summary.total_done_kg + self.actual_kg, 3,
-            )
+            Summary._add_done_kg(self.actual_kg)
 
         # Sin PIN acá — done_by_employee_id usa el empleado vinculado al
         # usuario de Odoo logueado, si tiene uno (Tech Lead, 2026-11-02:
@@ -624,9 +653,7 @@ class PreparationDayLine(models.Model):
             lambda s: s.product_id == self.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                max(0.0, Summary.total_done_kg - old_kg + new_kg), 3,
-            )
+            Summary._add_done_kg(new_kg - old_kg)
 
         actor_name = (
             self.env['hr.employee'].sudo().browse(operator_employee_id).name
@@ -652,10 +679,7 @@ class PreparationDayLine(models.Model):
                     lambda s: s.product_id == line.product_product_id
                 )
                 if summary:
-                    summary.total_done_kg = round(
-                        max(0.0, summary.total_done_kg - line.actual_kg),
-                        3,
-                    )
+                    summary._add_done_kg(-line.actual_kg)
                 # Limpiar la cantidad ejecutada en el picking.
                 # sudo(): el operario puede no tener permisos
                 # de escritura directa sobre stock.move.line.
@@ -2341,9 +2365,7 @@ class PreparationDay(models.Model):
             lambda s: s.product_id == Line.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                Summary.total_done_kg + Line.actual_kg, 3,
-            )
+            Summary._add_done_kg(Line.actual_kg)
 
         # Log de rendimiento por operario
         LastLog = self.env['guapante.picking.log'].search([
@@ -2482,6 +2504,25 @@ class PreparationDaySummary(models.Model):
         digits=(5, 1),
         store=True,
     )
+
+    def _add_done_kg(self, delta: float) -> None:
+        """Read-modify-write de total_done_kg bajo lock explícito
+        (David/Tech Lead, 2026-11-02): sin ownership, dos líneas
+        DISTINTAS del mismo producto pueden terminarse/corregirse casi
+        a la vez por dos operarios — ambas tocan este mismo registro de
+        resumen. SELECT ... FOR UPDATE antes de leer, para no basar el
+        nuevo valor en un snapshot que la otra escritura ya dejó
+        obsoleto (no alcanza con confiar en el reintento por
+        serialización de Postgres)."""
+        self.ensure_one()
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT id FROM guapante_preparation_day_summary '
+            'WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        self.invalidate_recordset(['total_done_kg'])
+        self.total_done_kg = round(max(0.0, self.total_done_kg + delta), 3)
 
     @api.depends(
         'wizard_id.line_ids.is_done',

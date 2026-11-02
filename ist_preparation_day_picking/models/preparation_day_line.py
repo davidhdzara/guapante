@@ -40,6 +40,38 @@ class PreparationDayLine(models.Model):
         entra un pedido nuevo de esa plantilla (action_load agrega
         líneas), el claim vuelve a Pendiente sin dueño, no a "En progreso"
         de alguien que ya se fue."""
+        # Trazabilidad cruzada (David/Tech Lead, 2026-11-02): sin
+        # ownership, cualquier operario puede pesar/corregir una línea
+        # de un producto asignado a OTRO — la nota automática de
+        # "Terminado"/reparto no cubre este caso puntual (quién tocó
+        # una caja de un producto que no es suyo), así que se deja acá,
+        # UNA por escritura, solo cuando el actor no es el dueño actual
+        # del claim. Snapshot ANTES de super().write(): need el is_done
+        # VIEJO para elegir "pesó" (primera vez) vs "corrigió", y el
+        # dueño del claim ANTES de que _maybe_release_finished_claim()
+        # (más abajo) pueda soltarlo.
+        cross_operator_notes = []
+        if (
+            'actual_kg' in vals
+            and self.env.context.get('guapante_picking_flow')
+            and not self.env.context.get('skip_auto_save')
+        ):
+            actor_employee_id = (
+                get_active_prep_operator_id(self.env, request.session, refresh=False)
+                if request else False
+            )
+            if actor_employee_id:
+                for line in self:
+                    if not line.wizard_id or not line.product_id:
+                        continue
+                    Claim = line.wizard_id.product_claim_ids.filtered(
+                        lambda c: c.product_tmpl_id == line.product_id
+                    )
+                    owner = Claim.assigned_employee_id if Claim else False
+                    if owner and owner.id != actor_employee_id:
+                        cross_operator_notes.append((
+                            line, line.is_done, owner,
+                        ))
         if 'actual_kg' in vals:
             # Ownership antes de super().write() (Fase C, punto 3 de Tech
             # Lead) — no-op si no viene guapante_picking_flow en contexto
@@ -61,6 +93,18 @@ class PreparationDayLine(models.Model):
                     and not any(self.mapped('needs_weighing'))
                 )
         res = super().write(vals)
+        if cross_operator_notes:
+            actor = self.env['hr.employee'].sudo().browse(actor_employee_id)
+            for line, was_done, owner in cross_operator_notes:
+                verb = 'corrigió' if was_done else 'pesó'
+                line.wizard_id.sudo().message_post(
+                    body=(
+                        f"{actor.name} {verb} {line.product_description} "
+                        f"(Caja #{line.daily_sequence}): "
+                        f"{line.actual_kg:.3f} kg; el producto estaba "
+                        f"asignado a {owner.name}."
+                    ),
+                )
         if 'is_done' in vals or 'actual_kg' in vals:
             self._maybe_release_finished_claim()
         if 'is_done' in vals:
@@ -85,26 +129,18 @@ class PreparationDayLine(models.Model):
         return res
 
     def _check_picking_ownership(self) -> None:
-        """Chequeo de ownership compartido (Fase C, punto 3 de Tech Lead):
-        antes solo vivía implícito dentro de write() al exigir operario
-        activo — eso no cubre action_save_line_weight(line_id) ni
-        action_undo_line(), públicos y llamables por RPC directo sin
-        pasar por write() con actual_kg. Un solo helper, tres llamadas
-        (acá, y los overrides de esos dos métodos), para que ningún
-        camino de Picking quede sin el control de "esta caja no es
-        tuya".
+        """Exige operario con PIN vigente para pesar/corregir desde
+        Picking (David/Tech Lead, 2026-11-02 — rediseño "operarios
+        administradores absolutos del módulo de Picking"): YA NO exige
+        que el claim del producto esté asignado a ESE operario — con
+        NIP vigente, cualquier operario puede pesar o corregir
+        cualquier línea de cualquier producto, sea suyo, de otro, o sin
+        dueño. El control de "esta caja no es tuya" que vivía acá se
+        elimina a propósito, no es un descuido.
 
         No-op si la llamada no viene de Picking (sin
         guapante_picking_flow en contexto) — fuera de Picking (pestaña
-        Productos) no aplica ownership por caja, solo el ACL normal.
-
-        Exige dueño activo, no solo "que no sea de otro" (Tech Lead,
-        corrección sobre la primera versión): un claim sin dueño
-        (Pendiente, o recién liberado al Terminar su última caja) no deja
-        pesar/Listo/Corregir a nadie sin pasar antes por Asignarme. Esto
-        es consecuencia directa del plan: Terminado es solo lectura desde
-        Picking — una corrección post-cierre la hace un supervisor desde
-        la pestaña Productos, no un operario de Picking sin asignación.
+        Productos) nunca aplicó esto, solo el ACL normal.
         """
         if not self.env.context.get('guapante_picking_flow'):
             return
@@ -123,21 +159,13 @@ class PreparationDayLine(models.Model):
             Claim = line.wizard_id.product_claim_ids.filtered(
                 lambda c: c.product_tmpl_id == line.product_id
             )
-            if not Claim or Claim.assigned_employee_id.id != employee_id:
-                if Claim and not Claim.assigned_employee_id:
-                    raise UserError(
-                        f'Asígnate {Claim.product_tmpl_id.name} primero '
-                        '— actualiza la pantalla.'
-                    )
-                raise UserError(
-                    f'{line.product_description or "Esta caja"} no está '
-                    'asignada a ti — actualiza la pantalla.'
-                )
-            # Plan f1 (Tech Lead, 2026-10-31): pesar/Corregir es actividad
-            # real sobre ESTE producto — refresca last_activity del claim
-            # para que no quede marcado como abandonado mientras el
-            # operario sigue trabajando en él.
-            Claim.sudo().write({'last_activity': fields.Datetime.now()})
+            if Claim:
+                # Plan f1 (Tech Lead, 2026-10-31): pesar/Corregir es
+                # actividad real sobre ESTE producto — refresca
+                # last_activity del claim para que no quede marcado
+                # como abandonado. Ya no exige que el claim sea DE este
+                # operario — cualquier actividad de cualquiera cuenta.
+                Claim.sudo().write({'last_activity': fields.Datetime.now()})
 
     def _correction_actor_name(self) -> str:
         """Quién corrige, para la nota automática de action_undo_line()
