@@ -958,12 +958,20 @@ class TestPreparationDay(TransactionCase):
         self.assertAlmostEqual(line.actual_kg, 0.0, places=2)
 
     def test_undo_line_updates_summary(self):
-        """Undoing should subtract from summary total_done_kg."""
+        """Undoing should subtract from summary total_done_kg.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): mismo
+        motivo que en test_undo_line_clears_done_stamp — sin un segundo
+        pendiente, terminar la única línea cierra la sesión y
+        action_undo_line() queda bloqueado por el guard de cierre."""
         self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
         session = self._create_session()
         session.action_load()
 
-        line = session.line_ids[:1]
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
         line.with_context(skip_auto_save=True).write({'actual_kg': 2.5})
         session.action_save_line_weight(line.id)
 
@@ -1071,12 +1079,22 @@ class TestPreparationDay(TransactionCase):
 
     def test_undo_line_clears_done_stamp(self):
         """Devolver una línea a Pendiente debe limpiar done_by_employee_id
-        y done_date, no solo is_done/actual_kg."""
+        y done_date, no solo is_done/actual_kg.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): una sesión
+        de un solo producto se auto-cierra al terminar su única línea
+        (pending_total == 0) y action_undo_line() ya no permite devolver
+        a Pendiente una línea de sesión cerrada (guard nuevo) — sin un
+        segundo producto pendiente, este test terminaría probando el
+        guard de cierre, no la reversa que le da nombre."""
         self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
         session = self._create_session()
         session.action_load()
 
-        line = session.line_ids[:1]
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
         line.write({'actual_kg': 1.5})
         self.assertTrue(line.done_date)
 
@@ -1084,6 +1102,50 @@ class TestPreparationDay(TransactionCase):
 
         self.assertFalse(line.done_by_employee_id)
         self.assertFalse(line.done_date)
+
+    # ── Edición inline de admin: 0 sobre una Terminada = action_undo_line,
+    # negativo bloqueado en todos los orígenes (M-1, David/Tech Lead,
+    # 2026-11-02) ──
+
+    def test_write_zero_on_done_line_reverts_via_action_undo_line(self):
+        """Poner actual_kg en 0 sobre una línea ya Terminada, vía write()
+        (como hace la edición inline de admin en la lista de líneas),
+        debe tener el mismo efecto que llamar action_undo_line() directo:
+        vuelve a Pendiente, limpia done_by/done_date y el stock.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): sin un
+        segundo pendiente, terminar la única línea cierra la sesión y
+        el segundo write (a 0) chocaría con el guard de sesión cerrada
+        en vez de probar la reversa — eso se prueba aparte."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.is_done)
+
+        line.write({'actual_kg': 0})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+
+    def test_write_negative_actual_kg_raises(self):
+        """Ningún origen puede escribir un peso negativo — guard parejo
+        en CORE, antes de que el valor llegue a super().write()."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        with self.assertRaises(UserError):
+            line.write({'actual_kg': -1.0})
+        self.assertEqual(line.actual_kg, 0.0, 'el valor negativo no debe escribirse')
 
     # ── Tests de write() override ──
 

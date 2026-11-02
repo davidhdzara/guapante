@@ -139,12 +139,56 @@ class PreparationDayLine(models.Model):
             # operario sigue trabajando en él.
             Claim.sudo().write({'last_activity': fields.Datetime.now()})
 
+    def _correction_actor_name(self) -> str:
+        """Quién corrige, para la nota automática de action_undo_line()
+        (David/Tech Lead, 2026-11-02): el operario con PIN activo si
+        viene del tablet (guapante_picking_flow en contexto, igual que
+        _check_picking_ownership), o el usuario de Odoo si viene del
+        backend (botón nuevo de la lista de líneas, o el viejo del
+        wizard de Productos) — nunca el usuario compartido "Operación
+        Guapante" cuando en realidad fue un operario identificado."""
+        if self.env.context.get('guapante_picking_flow'):
+            employee_id = (
+                get_active_prep_operator_id(self.env, request.session, refresh=False)
+                if request else False
+            )
+            if employee_id:
+                return self.env['hr.employee'].sudo().browse(employee_id).name
+        return self.env.user.name
+
     def action_undo_line(self) -> bool:
         """Mismo ownership que write() con actual_kg (Fase C, punto 3 de
         Tech Lead) — este método es público y no pasa por ahí: su propio
         write() interno usa skip_auto_save, sin guapante_picking_flow en
-        contexto, así que el chequeo de write() no lo cubre solo."""
+        contexto, así que el chequeo de write() no lo cubre solo.
+
+        Nota automática "Corregido" y guard de sesión cerrada (David/
+        Tech Lead, 2026-11-02, entrega M-1): en TODAS las rutas que
+        llegan acá — el botón nuevo de admin en la lista de líneas, el
+        botón viejo del wizard de Productos, y "Corregir" del propio
+        operario en Nivel 2 del tablet — sin pedir motivo. Devolver una
+        línea a Pendiente dentro de una sesión `done` dejaría el estado
+        incoherente (stock/resumen ya cerrados) hasta que exista
+        reabrir sesión (entrega 7) — UserError para TODAS las rutas,
+        incluido RPC directo, no solo el botón nuevo (que además queda
+        `invisible` en ese caso en la vista). Idempotente ante una
+        segunda llamada (doble clic/RPC repetido): la segunda ya no
+        encuentra líneas is_done, ToUndo queda vacío, no hay nota ni
+        guard de sesión que dispare dos veces.
+        """
         self._check_picking_ownership()
+        ToUndo = self.filtered('is_done')
+        for line in ToUndo:
+            if line.wizard_id.state == 'done':
+                raise UserError(
+                    'La operación está cerrada. Un administrador debe '
+                    'reabrirla antes de devolver una línea a pendiente.'
+                )
+        actor_name = self._correction_actor_name()
+        corrections = [
+            (line.wizard_id, line.product_description, line.daily_sequence, line.actual_kg)
+            for line in ToUndo
+        ]
         res = super().action_undo_line()
         # is_qty_estimated (Tech Lead, punto b): el padre ya resetea
         # actual_kg a 0.0 — sin una caja despachada no hay "lo pedido
@@ -153,6 +197,14 @@ class PreparationDayLine(models.Model):
         # directo a super().write() del ORM, no pasa por el bloque de
         # arriba).
         self.write({'is_qty_estimated': False})
+        for wizard, product_description, daily_sequence, actual_kg in corrections:
+            wizard.sudo().message_post(
+                body=(
+                    f"Corregido — {product_description} "
+                    f"(Caja #{daily_sequence}): {actor_name} la devolvió "
+                    f"a Pendiente (pesaba {actual_kg} kg)."
+                ),
+            )
         return res
 
     def action_mark_line_ready(self) -> bool:

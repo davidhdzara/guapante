@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from unittest.mock import MagicMock, patch
 
 from odoo import fields
@@ -80,6 +81,13 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             'wizard_id': wizard.id,
             'product_id': product.product_tmpl_id.id,
             'product_product_id': product.id,
+            # product_description (David/Tech Lead, 2026-11-02): un
+            # Char plano, no computado — el flujo real de action_load()
+            # lo llena desde line.name; sin esto quedaba False en las
+            # líneas de este helper (creadas directo, no desde una
+            # orden) y rompía con TypeError cualquier assertIn contra
+            # la nota de corrección/undo (que ya lo incluye).
+            'product_description': product.display_name,
             'needs_weighing': needs_weighing,
             'estimated_kg': estimated_kg,
             'actual_kg': actual_kg,
@@ -665,6 +673,271 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
             with self.assertRaises(UserError):
                 line.with_context(guapante_picking_flow=True).action_undo_line()
         self.assertTrue(line.is_done)
+
+    # ── nota automática "Corregido" y guard de sesión cerrada (M-1,
+    # David/Tech Lead, 2026-11-02) ──
+
+    def test_action_undo_line_posts_note_from_tablet_with_operator_and_weight(self):
+        """Segunda línea pendiente del MISMO producto (David/Tech Lead,
+        2026-11-02, hallazgo al correr la batería completa): sin ella,
+        terminar la única línea suelta el claim (_maybe_release_
+        finished_claim) antes de llegar al undo, y _check_picking_
+        ownership del tablet lo bloquearía por falta de dueño — no es
+        lo que este test quiere probar (eso ya lo cubre
+        test_action_undo_line_blocks_once_claim_has_no_owner)."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.5,
+        })
+        messages_before = len(session.message_ids)
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
+            line.with_context(guapante_picking_flow=True).action_undo_line()
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+        self.assertIn(line.product_description, note.body)
+        self.assertIn(str(line.daily_sequence), note.body)
+        self.assertIn(self.operator_a.name, note.body)
+        self.assertIn('2.5', note.body)
+
+    def test_action_undo_line_posts_note_from_backend_with_odoo_user_as_actor(self):
+        """Mismo código para el botón nuevo de la lista de líneas y el
+        viejo del wizard de Productos — los dos llaman action_undo_line
+        sin guapante_picking_flow en contexto, así que un solo test
+        cubre a ambos del lado del servidor."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 3.0,
+        })
+        messages_before = len(session.message_ids)
+        line.action_undo_line()
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+        self.assertIn(self.env.user.name, note.body)
+        self.assertIn('3.0', note.body)
+        self.assertFalse(line.is_done)
+
+    def test_action_undo_line_does_not_duplicate_note_on_second_call(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        line.action_undo_line()
+        correction_notes = session.message_ids.filtered(
+            lambda m: 'Corregido' in (m.body or '')
+        )
+        self.assertEqual(len(correction_notes), 1)
+        messages_before = len(session.message_ids)
+        # Segunda llamada: la línea ya no está is_done, ToUndo queda
+        # vacío — ni nota ni error, simple no-op (doble clic/RPC
+        # repetido).
+        line.action_undo_line()
+        self.assertEqual(len(session.message_ids), messages_before)
+
+    def test_action_undo_line_blocks_from_backend_when_session_is_done(self):
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        # Mismo camino de test_write_notifies_operation_finished_on_
+        # session_completion para llegar a session.state == 'done' de
+        # verdad (skip_auto_save solo deja puesto actual_kg; hace falta
+        # action_save_line_weight() para disparar el cierre).
+        line.with_context(skip_auto_save=True).write({'actual_kg': 2.0})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertEqual(session.state, 'done', 'setup: único producto terminado cierra la sesión')
+        with self.assertRaises(UserError):
+            line.action_undo_line()
+        self.assertTrue(line.is_done, 'el guard bloquea antes de tocar nada')
+
+    def test_action_undo_line_blocks_from_tablet_when_session_is_forced_done(self):
+        """Caso defensivo, no el camino natural: con el flujo normal,
+        una sesión `done` implica TODOS los claims liberados (sin
+        dueño) — eso ya bloquea al operario con el error de ownership
+        de test_action_undo_line_blocks_once_claim_has_no_owner, antes
+        de llegar a este guard. Acá se fuerza `state='done'` a mano
+        mientras el claim sigue asignado, para probar que el guard de
+        sesión cerrada protege el método en sí (defensa en
+        profundidad), no solo porque la ruta normal nunca lo deja
+        llegar tan lejos."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
+        session.sudo().write({'state': 'done'})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a):
+            with self.assertRaises(UserError):
+                line.with_context(guapante_picking_flow=True).action_undo_line()
+        self.assertTrue(line.is_done)
+
+    # ── edición inline de admin disparada vía write(), no por llamada
+    # directa a action_undo_line() (M-1 v2, David/Tech Lead, 2026-11-02) ──
+
+    def test_write_zero_from_backend_reverts_and_posts_note(self):
+        """Admin pone en 0 el peso de una línea Terminada desde la lista
+        de líneas (edición inline, sin guapante_picking_flow en
+        contexto) — mismo efecto y nota que llamar action_undo_line()
+        directo, pero disparado por write() desde el dispatch de CORE."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.5,
+        })
+        messages_before = len(session.message_ids)
+
+        line.write({'actual_kg': 0})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+        self.assertIn(line.product_description, note.body)
+        self.assertIn(str(line.daily_sequence), note.body)
+        self.assertIn(self.env.user.name, note.body)
+
+    def test_write_zero_from_backend_blocked_when_session_is_done(self):
+        """Mismo guard de sesión cerrada que action_undo_line(), ahora
+        disparado por la edición inline (write con actual_kg=0) en vez
+        de por una llamada directa al método."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        line.with_context(skip_auto_save=True).write({'actual_kg': 2.0})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertEqual(session.state, 'done', 'setup: único producto terminado cierra la sesión')
+
+        with self.assertRaises(UserError):
+            line.write({'actual_kg': 0})
+        self.assertTrue(line.is_done, 'el guard bloquea antes de revertir is_done/done_by/done_date')
+        self.assertTrue(line.done_by_employee_id)
+        self.assertTrue(line.done_date)
+
+    def test_write_weight_correction_allowed_when_session_is_done(self):
+        """A diferencia de poner el peso en 0, corregirlo a otro valor
+        > 0 SÍ se permite con la sesión cerrada (no reabre nada, solo
+        re-sincroniza stock/resumen) — y la nota ya trae el nombre real
+        del actor, el producto y ambos valores (antes mostraba un texto
+        genérico 'operario con PIN activo')."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        line.with_context(skip_auto_save=True).write({'actual_kg': 2.0})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertEqual(session.state, 'done')
+        messages_before = len(session.message_ids)
+
+        line.write({'actual_kg': 2.8})
+
+        self.assertTrue(line.is_done, 'corregir peso no reabre la línea')
+        self.assertEqual(line.actual_kg, 2.8)
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+        self.assertIn(line.product_description, note.body)
+        self.assertIn(str(line.daily_sequence), note.body)
+        self.assertIn(self.env.user.name, note.body)
+        self.assertIn('2.000', note.body)
+        self.assertIn('2.800', note.body)
+
+    def test_write_zero_on_done_line_does_not_recurse(self):
+        """La escritura interna de action_undo_line() (skip_auto_save)
+        no debe reentrar al dispatch de write() — si recurriera,
+        quedaría una segunda nota 'Corregido' (o un RecursionError).
+        Una sola nota y un solo ciclo de reversa prueban que
+        skip_auto_save corta la cadena donde debe."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+
+        line.write({'actual_kg': 0})
+
+        correction_notes = session.message_ids.filtered(
+            lambda m: 'Corregido' in (m.body or '')
+        )
+        self.assertEqual(len(correction_notes), 1)
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+
+    def test_actual_kg_editable_only_for_admin_in_line_list(self):
+        """v2 (David/Tech Lead, 2026-11-02): ya no hay botón "Corregir" —
+        el peso se edita inline, solo para group_preparation_admin. Dos
+        nodos del mismo campo con groups complementarios (uno negado):
+        get_view() resuelve 'groups' en el servidor y elimina del arch
+        el nodo que el usuario no puede ver (mismo mecanismo que probaba
+        el test anterior del botón, ahora aplicado al campo)."""
+        View = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_day_line_list_picking'
+        )
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        def actual_kg_nodes(arch):
+            return re.findall(r'<field[^>]*name="actual_kg"[^>]*/>', arch)
+
+        self.env.user.sudo().write({'groups_id': [(3, admin_group.id)]})
+        without_admin = self.env['guapante.preparation.day.line'].get_view(
+            view_id=View.id, view_type='list',
+        )['arch']
+        nodes = actual_kg_nodes(without_admin)
+        self.assertEqual(
+            len(nodes), 1,
+            'sin el grupo admin debe quedar un único nodo actual_kg (el '
+            'de solo lectura) — el editable se elimina del arch',
+        )
+        self.assertIn('readonly="1"', nodes[0])
+
+        self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
+        with_admin = self.env['guapante.preparation.day.line'].get_view(
+            view_id=View.id, view_type='list',
+        )['arch']
+        nodes = actual_kg_nodes(with_admin)
+        self.assertEqual(
+            len(nodes), 1,
+            'con el grupo admin debe quedar un único nodo actual_kg (el '
+            'editable) — el de solo lectura se elimina del arch',
+        )
+        self.assertNotIn('readonly="1"', nodes[0])
 
     # ── aviso de cierre de operación (punto 4 de Tech Lead) ──
 

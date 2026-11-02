@@ -464,8 +464,18 @@ class PreparationDayLine(models.Model):
         sin operario activo (expiró) lanza UserError en vez de colarse por
         la otra rama.
 
+        Edición inline de admin en la lista de líneas (Tech Lead/David,
+        2026-11-02): al poner en 0 el peso de una línea ya Terminada se
+        reusa action_undo_line() entero (nota + guard de sesión cerrada
+        incluidos) — Python resuelve el override de Picking automáticamente
+        si ese módulo está instalado. Un peso negativo se rechaza acá para
+        los tres orígenes por igual (ningún flujo legítimo escribe
+        negativos: ni el tablet, ni "Por Hacer", ni esta edición).
+
         Usa flag de contexto 'skip_auto_save' para evitar recursión
-        cuando estos mismos métodos vuelven a escribir en la línea.
+        cuando estos mismos métodos vuelven a escribir en la línea — la
+        escritura interna de action_undo_line() usa ese flag, así que
+        nunca reentra a este dispatch.
         """
         track_kg = (
             'actual_kg' in vals
@@ -473,6 +483,8 @@ class PreparationDayLine(models.Model):
         )
         old_snapshot = {}
         if track_kg:
+            if vals['actual_kg'] < 0:
+                raise UserError('El peso no puede ser negativo.')
             old_snapshot = {
                 line.id: (line.actual_kg, line.is_done) for line in self
             }
@@ -497,8 +509,10 @@ class PreparationDayLine(models.Model):
                 if was_done:
                     if new_kg > 0 and new_kg != old_kg:
                         line._register_weight_correction(
-                            old_kg, is_picking_flow,
+                            old_kg, operator_employee_id,
                         )
+                    elif new_kg == 0:
+                        line.action_undo_line()
                 elif new_kg > 0:
                     if is_picking_flow:
                         line.wizard_id.action_save_line_weight(line.id)
@@ -588,11 +602,19 @@ class PreparationDayLine(models.Model):
             self.wizard_id.action_mark_done()
 
     def _register_weight_correction(
-        self, old_kg: float, has_pin_operator: bool,
+        self, old_kg: float, operator_employee_id,
     ) -> None:
         """Corrige el peso de una línea ya Terminada, editada inline desde
-        Productos — re-sincroniza stock/resumen sin repetir los efectos de
-        un primer guardado (no re-evalúa auto-finish, no toca date_done).
+        Productos o Picking — re-sincroniza stock/resumen sin repetir los
+        efectos de un primer guardado (no re-evalúa auto-finish, no toca
+        date_done). Permitido con la sesión cerrada (a diferencia de
+        volver una línea a Pendiente, ver action_undo_line) — corregir un
+        peso no reabre nada.
+
+        operator_employee_id: id de hr.employee si hay operario con PIN
+        activo (Tech Lead/David, 2026-11-02 — antes se mostraba un texto
+        genérico "operario con PIN activo" en vez del nombre real);
+        False/None para usar self.env.user.
         """
         self.ensure_one()
         new_kg = self.actual_kg
@@ -606,12 +628,15 @@ class PreparationDayLine(models.Model):
                 max(0.0, Summary.total_done_kg - old_kg + new_kg), 3,
             )
 
-        quien = 'operario con PIN activo' if has_pin_operator else self.env.user.name
+        actor_name = (
+            self.env['hr.employee'].sudo().browse(operator_employee_id).name
+            if operator_employee_id else self.env.user.name
+        )
         self.wizard_id.sudo().message_post(
             body=(
-                f"Corrección post-cierre — Caja #{self.daily_sequence}: "
-                f"peso de {old_kg:.3f} kg a {new_kg:.3f} kg "
-                f"(la línea ya estaba Terminada; corregido por {quien})."
+                f"Corregido — {self.product_description} "
+                f"(Caja #{self.daily_sequence}): {actor_name} cambió "
+                f"el peso de {old_kg:.3f} kg a {new_kg:.3f} kg."
             )
         )
 
