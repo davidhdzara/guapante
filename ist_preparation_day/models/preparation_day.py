@@ -2485,14 +2485,65 @@ class PreparationDay(models.Model):
                 self._propagate_weight_to_chain(dest, weight)
 
     def action_mark_done(self) -> bool:
-        """Mark session as done."""
+        """Mark session as done.
+
+        Nota automática (E5, David/Tech Lead, 2026-11-02): quién y
+        cuándo — simétrica con la de action_reopen(). Nunca toca
+        stock ni resúmenes acá: eso ya se actualizó línea por línea,
+        en el momento en que cada una se pesó (_sync_weight_to_stock +
+        Summary._add_done_kg, dentro de _register_weight_from_
+        productos_tab/action_save_line_weight) — para cuando se llega
+        a 'done', todo lo que hay que sincronizar ya está aplicado.
+        """
         self.state = 'done'
         self.date_done = fields.Datetime.now()
+        self.sudo().message_post(
+            body=(
+                f'Operación finalizada por {self.env.user.name} '
+                f'el {fields.Datetime.now()}.'
+            )
+        )
         return False
 
     def action_reopen(self) -> bool:
-        """Reopen a finished session to allow adding new orders."""
+        """Reopen a finished session to allow adding new orders.
+
+        E5 (David/Tech Lead, 2026-11-02): solo cambia state y
+        date_done — NUNCA toca line_ids ni summary_ids. No hace
+        falta: el estado de cada línea (is_done, actual_kg, done_by,
+        done_date) y su stock/resumen ya quedaron consistentes al
+        pesarse, independientemente de si la sesión está 'done' o
+        'loaded' (ver action_mark_done) — reabrir solo LEVANTA los
+        guards que bloqueaban corregir/deshacer líneas mientras la
+        sesión estaba cerrada (action_undo_line de Picking, el
+        bloqueo de stock_picking.write() al mover un PICK hacia esta
+        sesión), nunca recalcula nada desde cero.
+
+        date_done se limpia: ya no está Finalizada, hasta el próximo
+        cierre (automático o manual) que la vuelva a estampar.
+
+        Reapertura y re-cierre NO son simétricos — ojo con esto al dar
+        soporte: el auto-cierre (pending_total==0 → action_mark_done())
+        solo vive en el camino de "primer guardado" de una línea
+        (_register_weight_from_productos_tab/action_save_line_weight),
+        nunca en _register_weight_correction (a propósito: una
+        corrección no reabre nada, no reevalúa auto-finish). Entonces
+        si, tras reabrir, el administrador solo CORRIGE pesos de
+        líneas ya Terminadas (sin desmarcar/re-marcar ninguna), el
+        auto-cierre nunca se vuelve a disparar — la sesión queda
+        'loaded' indefinidamente hasta que alguien pulse manualmente
+        "Finalizar Operación" (ya visible para cualquier state==
+        'loaded', sin cambios).
+        """
         self.state = 'loaded'
+        self.date_done = False
+        self.sudo().message_post(
+            body=(
+                f'Operación reabierta por {self.env.user.name} '
+                f'el {fields.Datetime.now()} — usa "Actualizar '
+                'pedidos" si hay pedidos tardíos que recoger.'
+            )
+        )
         return False
 
     def action_export_excel(self) -> dict:

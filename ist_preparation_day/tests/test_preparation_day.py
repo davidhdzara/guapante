@@ -133,6 +133,22 @@ class TestPreparationDay(TransactionCase):
             'guapante.preparation.day'
         ]._ensure_session_for_date(self.delivery_date)
 
+    def _grant_admin_group_for_reopen(self):
+        """E5 (David/Tech Lead, 2026-11-02): action_reopen() exige
+        group_preparation_admin cuando ist_preparation_day_picking está
+        instalado (override en ese módulo — CORE no puede referenciar
+        su grupo). Sin esto, action_reopen() en self.env.user (sin ese
+        grupo por defecto) rechaza con AccessError en cualquier test de
+        CORE que no sea específicamente sobre el control de acceso.
+        raise_if_not_found=False: si Picking no está instalado, no hay
+        override ni grupo que otorgar — no-op, CORE sigue pasando solo."""
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin',
+            raise_if_not_found=False,
+        )
+        if admin_group:
+            self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
+
     # ── Tests de Creación de Sesión ──
 
     def test_session_create_default_name(self):
@@ -1364,6 +1380,7 @@ class TestPreparationDay(TransactionCase):
         session.action_mark_done()
         self.assertEqual(session.state, 'done')
 
+        self._grant_admin_group_for_reopen()
         session.action_reopen()
         self.assertEqual(session.state, 'loaded')
 
@@ -1373,6 +1390,7 @@ class TestPreparationDay(TransactionCase):
         session = self._create_session()
         session.action_load()
         session.action_mark_done()
+        self._grant_admin_group_for_reopen()
         session.action_reopen()
 
         # Agregar una nueva orden
@@ -1388,6 +1406,47 @@ class TestPreparationDay(TransactionCase):
             has_unit_product,
             "Reopened session should pick up new orders on load",
         )
+
+    def test_action_mark_done_posts_note(self):
+        """E5: nota automática (quién, cuándo) al finalizar."""
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        messages_before = len(session.message_ids)
+
+        session.action_mark_done()
+
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('finalizada', note.body.lower())
+        self.assertIn(self.env.user.name, note.body)
+
+    def test_action_reopen_clears_date_done_and_posts_note(self):
+        """E5: reabrir limpia date_done (ya no está Finalizada) y deja
+        nota automática (quién, cuándo) — no toca line_ids/summary_ids,
+        el estado de cada línea ya era correcto desde que se pesó."""
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        session.action_mark_done()
+        self.assertTrue(session.date_done, 'setup: queda estampado al finalizar')
+        line_state_before = session.line_ids.read(['is_done', 'actual_kg'])
+        messages_before = len(session.message_ids)
+
+        self._grant_admin_group_for_reopen()
+        session.action_reopen()
+
+        self.assertFalse(session.date_done)
+        self.assertEqual(session.state, 'loaded')
+        self.assertEqual(
+            session.line_ids.read(['is_done', 'actual_kg']),
+            line_state_before,
+            'reabrir no debe tocar ninguna línea',
+        )
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('reabierta', note.body.lower())
+        self.assertIn(self.env.user.name, note.body)
 
     # ── Tests de _get_display_qty() ──
 
