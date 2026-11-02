@@ -1026,6 +1026,143 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
         self.assertFalse(line.is_done)
         self.assertEqual(line.actual_kg, 0.0)
 
+    # ── edición inline de admin, casilla "Terminado" (E4, David/Tech
+    # Lead, 2026-11-02) — mismo dispatch de CORE (track_done), ahora
+    # disparado por write({'is_done': ...}) en vez de actual_kg ──
+
+    def test_write_is_done_true_marks_done_like_weighing(self):
+        """Marcar la casilla Terminado (sin tocar el peso) con un peso ya
+        puesto > 0 debe tener el mismo efecto que pesar desde cero:
+        reusa _register_weight_from_productos_tab() entero (estampa
+        done_by/done_date, sincroniza stock/resumen)."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({'actual_kg': 2.5})
+        self.assertFalse(line.is_done, 'setup: peso puesto, aún no Terminado')
+
+        line.write({'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertTrue(
+            line.done_date,
+            'done_by_employee_id depende de que env.user tenga un '
+            'empleado vinculado (ver test_register_weight_from_'
+            'productos_tab_stamps_date_without_employee en CORE) — '
+            'no se fija en los fixtures de esta clase, solo done_date.',
+        )
+
+    def test_write_is_done_true_with_zero_weight_raises(self):
+        """Marcar Terminado sin un peso registrado (actual_kg<=0) debe
+        dar un UserError claro, nombrando el producto y la caja — nunca
+        un Terminado silencioso de un peso que no existe."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        with self.assertRaises(UserError):
+            line.write({'is_done': True})
+        self.assertFalse(line.is_done, 'el guard bloquea antes de marcar nada')
+
+    def test_write_is_done_false_on_done_line_reverts_via_action_undo_line(self):
+        """Desmarcar Terminado (sin tocar el peso) debe tener el mismo
+        efecto que action_undo_line(): vuelve a Pendiente, limpia
+        done_by/done_date, el peso y el stock, y posta la misma nota."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.5,
+        })
+        messages_before = len(session.message_ids)
+
+        line.write({'is_done': False})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('Corregido', note.body)
+
+    def test_write_is_done_false_blocked_when_session_is_done(self):
+        """Mismo guard de sesión cerrada que poner el peso en 0 — ahora
+        disparado por desmarcar la casilla Terminado."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_a):
+            claim.action_assign()
+        line.with_context(skip_auto_save=True).write({'actual_kg': 2.0})
+        with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
+                patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
+            session.with_context(
+                guapante_picking_flow=True,
+            ).action_save_line_weight(line.id)
+        self.assertEqual(session.state, 'done', 'setup: único producto terminado cierra la sesión')
+
+        with self.assertRaises(UserError):
+            line.write({'is_done': False})
+        self.assertTrue(line.is_done, 'el guard bloquea antes de revertir nada')
+        self.assertTrue(line.done_by_employee_id)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_and_actual_kg_together_treated_as_weighing(self):
+        """Marcar la casilla Terminado Y escribir un peso nuevo en la
+        misma fila (mismo vals) no debe pasar por track_done — el
+        camino de actual_kg (track_kg) ya decide todo solo con el peso,
+        is_done termina correcto sin que este bloque intervenga. Sin
+        esta exclusión mutua, el guard de 'peso > 0' de track_done
+        podría disparar sobre un peso viejo (0) antes de que
+        super().write() ponga el nuevo."""
+        session = self._create_session()
+        line = self._create_line(session, needs_weighing=True, estimated_kg=2.0)
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        line.write({'actual_kg': 2.5, 'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 2.5)
+        self.assertTrue(line.done_date)
+
+    def test_is_done_editable_only_for_admin_in_line_list(self):
+        """Mismo mecanismo que actual_kg (ver test_actual_kg_editable_
+        only_for_admin_in_line_list): dos nodos del mismo campo con
+        groups complementarios, get_view() elimina del arch el que el
+        usuario no puede ver."""
+        View = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_day_line_list_picking'
+        )
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin'
+        )
+        def is_done_nodes(arch):
+            return re.findall(r'<field[^>]*name="is_done"[^>]*/>', arch)
+
+        self.env.user.sudo().write({'groups_id': [(3, admin_group.id)]})
+        without_admin = self.env['guapante.preparation.day.line'].get_view(
+            view_id=View.id, view_type='list',
+        )['arch']
+        nodes = is_done_nodes(without_admin)
+        self.assertEqual(
+            len(nodes), 1,
+            'sin el grupo admin debe quedar un único nodo is_done (el '
+            'de solo lectura) — el editable se elimina del arch',
+        )
+        self.assertIn('readonly="1"', nodes[0])
+
+        self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
+        with_admin = self.env['guapante.preparation.day.line'].get_view(
+            view_id=View.id, view_type='list',
+        )['arch']
+        nodes = is_done_nodes(with_admin)
+        self.assertEqual(
+            len(nodes), 1,
+            'con el grupo admin debe quedar un único nodo is_done (el '
+            'editable) — el de solo lectura se elimina del arch',
+        )
+        self.assertNotIn('readonly="1"', nodes[0])
+
     def test_actual_kg_editable_only_for_admin_in_line_list(self):
         """v2 (David/Tech Lead, 2026-11-02): ya no hay botón "Corregir" —
         el peso se edita inline, solo para group_preparation_admin. Dos
