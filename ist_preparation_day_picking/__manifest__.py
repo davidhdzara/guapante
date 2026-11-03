@@ -49,6 +49,8 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.xml',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.js',
+            'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.xml',
+            'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.js',
         ],
     },
     'installable': True,

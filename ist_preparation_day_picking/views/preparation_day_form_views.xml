@@ -47,6 +47,26 @@
                 <field name="is_done" string="Terminado"
                        groups="ist_preparation_day_picking.group_preparation_admin"/>
             </field>
+            <!-- Punto 5 (PROTOTIPO, David/Tech Lead, 2026-11-03): View
+                 embebida vía <widget> (sin campo propio) con buscador
+                 nativo (filtros + agrupar por, d3b3335) reutilizando
+                 view_preparation_day_line_list_picking — mismo
+                 mecanismo que BankRecViewEmbedder en la conciliación
+                 bancaria de Contabilidad (list_view_ref/search_view_ref
+                 por xmlid en el context, visto en
+                 _prepare_embedded_views_data de bank_rec_widget.py).
+                 Se agrega DEBAJO de la lista nativa de line_ids, sin
+                 tocarla ni quitarla — así la pestaña nunca queda peor
+                 que hoy mientras se evalúa en navegador si la edición
+                 inline (actual_kg/is_done para admin) sigue
+                 funcionando dentro de la View embebida; si no
+                 funciona, el fallback es dejar esta View solo como
+                 buscador/filtro y la edición se sigue haciendo en la
+                 lista de arriba y/o el botón "Líneas". NO sincronizado
+                 al host todavía — pendiente veredicto de Tech Lead. -->
+            <field name="line_ids" position="after">
+                <widget name="preparation_day_productos_embedder"/>
+            </field>
         </field>
     </record>
 
