@@ -266,7 +266,7 @@ class TestPreparationDayRenumbering(TransactionCase):
         self.assertEqual(order.daily_sequence, 1)
         session.invalidate_recordset()
         self.assertEqual(len(session.message_ids), messages_before + 1)
-        self.assertIn('renumeradas', session.message_ids[0].body or '')
+        self.assertIn('Renumerada', session.message_ids[0].body or '')
 
     def test_no_notes_posted_when_nothing_changes(self):
         session = self._session()
@@ -279,9 +279,10 @@ class TestPreparationDayRenumbering(TransactionCase):
         session.invalidate_recordset()
         self.assertEqual(len(session.message_ids), messages_before)
 
-    def test_per_box_note_posted_on_its_own_picking(self):
-        """Condición 6 del plan: nota corta individual en el picking
-        de CADA caja renumerada — requiere un picking real."""
+    def test_no_per_box_note_posted_on_its_own_picking(self):
+        """David/Tech Lead, 2026-11-03: las notas individuales "Caja #N
+        pasó a #M" en el picking de cada caja renumerada eran ruido —
+        se quitaron, solo queda la nota-resumen de la sesión."""
         order = self.env['sale.order'].create({
             'partner_id': self.partner.id,
             'order_line': [(0, 0, {
@@ -311,9 +312,4 @@ class TestPreparationDayRenumbering(TransactionCase):
 
         self.assertEqual(order.daily_sequence, 1)
         Picking.invalidate_recordset()
-        new_messages = Picking.message_ids.sorted('id', reverse=True)[
-            :len(Picking.message_ids) - messages_before
-        ]
-        self.assertTrue(
-            any('pasó a #1' in (m.body or '') for m in new_messages)
-        )
+        self.assertEqual(len(Picking.message_ids), messages_before)

@@ -22,7 +22,7 @@
                     </div>
                     <!-- E6 (David/Tech Lead, 2026-11-02): mismas clases
                          nativas del buscador de Nivel 1, sin CSS propio. -->
-                    <div class="o_cp_searchview d-flex input-group flex-grow-1" role="search" style="max-width: 480px;">
+                    <div class="o_cp_searchview d-flex input-group flex-grow-1" role="search" style="max-width: 260px;">
                         <div class="o_searchview form-control d-flex align-items-center py-1">
                             <i class="o_searchview_icon oi oi-search me-2"/>
                             <div class="o_searchview_input_container d-flex flex-grow-1">

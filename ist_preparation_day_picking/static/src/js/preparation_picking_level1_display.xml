@@ -100,7 +100,8 @@
                                             <t t-esc="stopReasonLabels[claim.stop_reason] || claim.stop_reason"/> — detenido por <t t-if="claim.stopped_by_me">mí</t><t t-else=""><t t-esc="claim.stopped_by_employee_name"/></t>
                                         </li>
                                         <li t-if="status === 'done' and claim.done_by_employee_name" class="list-group-item">
-                                            Terminado por <t t-esc="claim.done_by_employee_name"/> (<t t-esc="claim.done_time_label"/>)
+                                            Terminado por <t t-esc="claim.done_by_employee_name"/>
+                                            <small class="d-block text-muted" t-esc="claim.done_time_label"/>
                                         </li>
                                     </ul>
                                     <div class="card-footer d-flex justify-content-between align-items-center"
@@ -110,7 +111,16 @@
                                         <button t-if="status === 'stopped'" type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
                                         <span t-if="status === 'done'"/>
                                         <button t-if="status === 'stopped'" type="button" class="btn btn-outline-secondary" t-on-click="() => this.onUnstop(claim)">Liberar</button>
-                                        <PickingClaimGearMenu t-if="status === 'in_progress' and claim.is_mine"
+                                        <!-- Puntos 3/8 (David/Tech Lead, 2026-11-03): el engranaje
+                                             (Detener/Liberar/Desechar) ya no exige claim.is_mine —
+                                             cualquier operario con NIP vigente puede Detener o
+                                             Liberar el claim de otro, no solo el suyo (action_stop/
+                                             action_release en el servidor ya no bloquean por
+                                             ownership). "Desechar" sigue protegido aparte, por su
+                                             propio chequeo en action_open_scrap_wizard(), sin
+                                             cambios. "Continuar" (arriba) sí sigue siendo solo para
+                                             el dueño — no es parte de esta decisión. -->
+                                        <PickingClaimGearMenu t-if="status === 'in_progress'"
                                                                onScrap="() => this.onScrap(claim)"
                                                                onStop="() => this.onStop(claim)"
                                                                onRelease="() => this.onRelease(claim)"/>

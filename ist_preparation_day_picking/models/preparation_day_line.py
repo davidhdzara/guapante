@@ -209,8 +209,9 @@ class PreparationDayLine(models.Model):
         for line in ToUndo:
             if line.wizard_id.state == 'done':
                 raise UserError(
-                    'La operación está cerrada. Un administrador debe '
-                    'reabrirla antes de devolver una línea a pendiente.'
+                    'La operación está cerrada. Reabre la sesión '
+                    '(botón «Reabrir Sesión») para poder corregir '
+                    'esta línea.'
                 )
         actor_name = self._correction_actor_name()
         corrections = [

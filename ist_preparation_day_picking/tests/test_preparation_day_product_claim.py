@@ -306,15 +306,35 @@ class TestPreparationDayProductClaim(TestPreparationDay):
 
     # ── action_release ──
 
-    def test_action_release_only_by_owner(self):
+    def test_action_release_allowed_by_any_operator_without_ownership(self):
+        """Puntos 3/8 (David/Tech Lead, 2026-11-03 — "operarios
+        administradores absolutos"): B puede liberar el claim de A,
+        no solo A mismo. Mismo criterio que ya tenía action_unstop()
+        para un Detenido, ahora también para un claim En progreso."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             claim.action_assign()
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_release()  # no debe lanzar
+        self.assertFalse(claim.assigned_employee_id)
+        self.assertEqual(claim.status, 'pending')
+
+    def test_action_release_requires_active_operator(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+        with self.assertRaises(UserError):
+            claim.action_release()
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
+
+    def test_action_release_rejects_if_already_unassigned(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             with self.assertRaises(UserError):
                 claim.action_release()
-        self.assertEqual(claim.assigned_employee_id, self.operator_a)
 
     def test_action_release_clears_assignment(self):
         session = self._load_session_with_product()
@@ -325,14 +345,49 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertFalse(claim.assigned_employee_id)
         self.assertEqual(claim.status, 'pending')
 
+    def test_action_release_posts_cross_operator_chatter_when_not_owner(self):
+        """Nota automática (quién, producto) solo cuando el actor no es
+        el dueño actual — ver docstring de action_release()."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+        messages_before = len(session.message_ids)
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_release()
+        self.assertGreater(len(session.message_ids), messages_before)
+        last_message = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(self.operator_b.name, last_message.body)
+        self.assertIn(self.operator_a.name, last_message.body)
+
     # ── action_stop / action_resume ──
 
-    def test_action_stop_only_by_owner(self):
+    def test_action_stop_allowed_by_any_operator_without_ownership(self):
+        """Puntos 3/8 (David/Tech Lead, 2026-11-03): B puede detener el
+        claim de A, no solo A mismo. El motivo sigue siendo
+        obligatorio (ver test_action_stop_invalid_reason_raises)."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             claim.action_assign()
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_stop('sin_stock')  # no debe lanzar
+        self.assertFalse(claim.assigned_employee_id)
+        self.assertEqual(claim.stopped_by_employee_id, self.operator_b)
+
+    def test_action_stop_requires_active_operator(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+        with self.assertRaises(UserError):
+            claim.action_stop('sin_stock')
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
+
+    def test_action_stop_rejects_if_already_unassigned(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
             with self.assertRaises(UserError):
                 claim.action_stop('sin_stock')
 
@@ -343,6 +398,7 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             claim.action_assign()
             with self.assertRaises(UserError):
                 claim.action_stop('motivo_que_no_existe')
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
 
     def test_action_stop_posts_chatter_with_reason_and_who(self):
         session = self._load_session_with_product()
@@ -354,6 +410,19 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertGreater(len(session.message_ids), messages_before)
         last_message = session.message_ids.sorted('id', reverse=True)[0]
         self.assertIn('Sin stock', last_message.body)
+        self.assertIn(self.operator_a.name, last_message.body)
+
+    def test_action_stop_posts_cross_operator_detail_when_not_owner(self):
+        """Mismo criterio que action_release(): cuando el actor no es
+        el dueño, la nota de "Detenido" indica a quién se le quitó."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_stop('sin_stock')
+        last_message = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(self.operator_b.name, last_message.body)
         self.assertIn(self.operator_a.name, last_message.body)
 
     def test_action_assign_does_not_post_chatter(self):

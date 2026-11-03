@@ -746,8 +746,11 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
 
         with patch(REQUEST_PATCH_TARGET_LINE, mock_a), \
                 patch(REQUEST_PATCH_TARGET_PARENT, mock_a):
-            with self.assertRaises(UserError):
+            with self.assertRaises(UserError) as ctx:
                 line.with_context(guapante_picking_flow=True).write({'actual_kg': 2.6})
+        # Punto 6.2 (David/Tech Lead, 2026-11-03): mensaje unificado,
+        # debe decir explícitamente qué botón usar para desbloquear.
+        self.assertIn('Reabrir Sesión', str(ctx.exception))
         # El guard lanza ANTES de _register_weight_correction() — nunca
         # llega a sincronizar stock ni a postear su nota "Corregido".
         # No se verifica actual_kg directo: ya quedó escrito por
@@ -888,9 +891,12 @@ class TestPreparationDayPickingFaseC(TestPreparationDay):
                 guapante_picking_flow=True,
             ).action_save_line_weight(line.id)
         self.assertEqual(session.state, 'done', 'setup: único producto terminado cierra la sesión')
-        with self.assertRaises(UserError):
+        with self.assertRaises(UserError) as ctx:
             line.action_undo_line()
         self.assertTrue(line.is_done, 'el guard bloquea antes de tocar nada')
+        # Punto 6.2 (David/Tech Lead, 2026-11-03): mensaje unificado,
+        # debe decir explícitamente qué botón usar para desbloquear.
+        self.assertIn('Reabrir Sesión', str(ctx.exception))
 
     def test_action_undo_line_blocks_from_tablet_when_session_is_forced_done(self):
         """Caso defensivo, no el camino natural: con el flujo normal,
