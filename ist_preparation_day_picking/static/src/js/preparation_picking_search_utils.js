@@ -8,16 +8,16 @@
 
 // Normaliza para comparar sin distinguir mayúsculas ni acentos:
 // "Pérez" y "PEREZ" deben encontrarse entre sí. NFD separa cada letra
-// acentuada en (letra base + marca diacrítica combinante); el regex
-// bota solo esas marcas (rango Unicode U+0300-U+036F), dejando la
-// letra base intacta.
+// acentuada en (letra base + marca diacrítica combinante); \p{M}
+// (categoría Unicode "Mark", flag u) bota solo esas marcas, dejando
+// la letra base intacta.
 //   normalizeSearchText("Pérez")   -> "perez"
 //   normalizeSearchText("  Óscar") -> "oscar"
 //   normalizeSearchText("ABC")     -> "abc"
 export function normalizeSearchText(text) {
     return (text || "")
         .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
+        .replace(/\p{M}/gu, "")
         .trim()
         .toLowerCase();
 }
@@ -35,6 +35,8 @@ export function normalizeSearchText(text) {
 //   matchesLineSearch(18, "Pérez", "8")   -> false (18 != 8, y "8" no está en "Pérez")
 //   matchesLineSearch(3,  "Cliente 8 SAS", "8") -> true (substring en el cliente)
 //   matchesLineSearch(1,  "Pérez", "perez") -> true (cliente, normalizado)
+//   matchesLineSearch(8,  "Pérez", "#")   -> true  (sin dígitos aún —
+//                                            no filtra mientras se teclea)
 export function matchesLineSearch(dailySequence, customerName, rawSearchText) {
     const search = rawSearchText.trim();
     if (!search) {
@@ -42,7 +44,10 @@ export function matchesLineSearch(dailySequence, customerName, rawSearchText) {
     }
     if (search.startsWith("#")) {
         const digits = search.slice(1).trim();
-        return digits !== "" && String(dailySequence) === digits;
+        // Tech Lead, 2026-11-02: "#" solo (sin dígitos todavía, el
+        // usuario sigue tecleando) no debe vaciar la lista — no
+        // filtra hasta que haya al menos un dígito.
+        return digits === "" || String(dailySequence) === digits;
     }
     const normalizedSearch = normalizeSearchText(search);
     if (/^\d+$/.test(search) && String(dailySequence) === search) {
