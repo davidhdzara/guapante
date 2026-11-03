@@ -9,17 +9,24 @@ from odoo.addons.ist_preparation_day.models.preparation_day import (
 
 @tagged('post_install', '-at_install')
 class TestPreparationDayRenumbering(TransactionCase):
-    """Plan de carga automática, paso e3 (2026-10-30): algoritmo de
-    renumeración FIJA/FLEXIBLE (_guapante_renumber_session).
+    """Eliminación de _guapante_renumber_session (David/Tech Lead,
+    2026-11-03), a raíz del incidente de producción con el pedido
+    S15245: una orden reubicada manualmente de la sesión de mañana a
+    la de hoy debía tomar el siguiente número append-only (#73) y en
+    cambio terminó en #53, desplazando otras cajas — causa raíz: el
+    renumerador reshuffleaba TODAS las órdenes no pesadas de la sesión
+    (ordenadas por id de creación, no por llegada) cada vez que
+    entraba/se reubicaba/se reparaba una orden, inmediatamente
+    deshaciendo la asignación MAX+1 correcta que
+    sale_order._assign_daily_sequences() ya había hecho.
 
-    Fixture directa (orden + línea, sin pasar por action_confirm() ni
-    action_load()) para controlar con precisión qué queda FIJO,
-    FLEXIBLE o CANCELADO — la integración real con e2 (alta
-    incremental al confirmar) y con la reubicación ya está cubierta en
-    test_sale_order_auto_load.py y test_preparation_day_relocation.py.
-    Una orden en 'draft' sin picking es suficiente: el algoritmo solo
-    mira line_ids/is_done para fijas/flexibles, y una consulta aparte
-    a stock.picking (con picking real) para canceladas.
+    Esta clase prueba la garantía que queda en su lugar: numeración
+    estrictamente append-only (MAX+1), sin excepción y sin importar la
+    hora del día — una orden que ya tiene daily_sequence > 0 nunca se
+    vuelve a tocar, para nadie, nunca. Usa pedidos confirmados reales
+    (con picking interno) porque _assign_daily_sequences() solo mira
+    stock.picking — la fixture directa de línea sin picking que usaba
+    el renumerador eliminado ya no aplica a este archivo.
     """
 
     @classmethod
@@ -46,40 +53,16 @@ class TestPreparationDayRenumbering(TransactionCase):
         # Ventana lejana, propia de este archivo — no choca con otros
         # tests/datos reales.
         cls.day = fields.Date.add(
-            fields.Date.context_today(cls.env['sale.order']), days=100,
+            fields.Date.context_today(cls.env['sale.order']), days=110,
         )
 
-    def _session(self):
-        return self.env[
-            'guapante.preparation.day'
-        ]._ensure_session_for_date(self.day)
-
-    def _order(self, daily_sequence=0):
-        order = self.env['sale.order'].create({
-            'partner_id': self.partner.id,
-            'order_line': [(0, 0, {
-                'product_id': self.product.id,
-                'product_uom_qty': 1,
-            })],
-        })
-        if daily_sequence:
-            order.sudo().daily_sequence = daily_sequence
-        return order
-
-    def _line(self, session, order, is_done=False):
-        return self.env['guapante.preparation.day.line'].create({
-            'wizard_id': session.id,
-            'sale_order_id': order.id,
-            'product_product_id': self.product.id,
-            'is_done': is_done,
-        })
-
-    def _confirm_and_cancel_with_number(self, number, mark_done=False):
-        """Pedido cancelado real (con picking interno en self.day) con
-        un número de caja ya asignado — necesario para el test de
-        cancelados, que consulta stock.picking de verdad.
-        mark_done=True simula que ya se había pesado ANTES de
-        cancelarse (caso de doble conteo, Tech Lead 2026-10-30)."""
+    def _order_on_day(self, day=None):
+        """Pedido confirmado real, con su picking interno reprogramado
+        al día de prueba — dispara action_confirm()/
+        _guapante_add_confirmed_order() (altas) o
+        _guapante_relocate_picking() (si ya existía en otro día), el
+        mismo camino que producción."""
+        day = day or self.day
         order = self.env['sale.order'].create({
             'partner_id': self.partner.id,
             'order_line': [(0, 0, {
@@ -88,228 +71,137 @@ class TestPreparationDayRenumbering(TransactionCase):
             })],
         })
         order.action_confirm()
-        dt_start, _dt_end = _date_to_utc_range(self.env, self.day)
-        Picking = order.picking_ids.filtered(
+        dt_start, _dt_end = _date_to_utc_range(self.env, day)
+        pick = order.picking_ids.filtered(
             lambda p: (
                 p.picking_type_code == 'internal'
                 and p.state not in ('done', 'cancel')
             )
         )
-        Picking.scheduled_date = dt_start
-        order.sudo().daily_sequence = number
-        if mark_done:
-            Lines = self.env['guapante.preparation.day.line'].sudo().search(
-                [('sale_order_id', '=', order.id)],
-            )
-            # actual_kg junto con is_done (E4, 2026-11-02): escribir
-            # is_done solo, sin peso, ahora exige un peso > 0 ya puesto
-            # (track_done en CORE) — "ya se había pesado" necesita el
-            # peso para ser fiel a lo que simula.
-            Lines.sudo().write({'actual_kg': 1.0, 'is_done': True})
-        # action_cancel() en una orden ya confirmada solo devuelve la
-        # acción del wizard de cancelación (no cancela nada por sí
-        # solo) — _action_cancel() es el método real que sí pone
-        # state='cancel', lo que llama el wizard por debajo.
-        order.sudo()._action_cancel()
-        return order
+        if pick.scheduled_date != dt_start:
+            pick.scheduled_date = dt_start
+        return order, pick
 
-    # ── Ejemplo de David: 6 cajas, #2 y #5 ya pesadas, llega 1 nueva ──
-
-    def test_example_6_boxes_two_fixed(self):
-        session = self._session()
-        orders = [self._order() for _ in range(6)]
-        for i, order in enumerate(orders, start=1):
-            order.sudo().daily_sequence = i
-            self._line(session, order, is_done=(i in (2, 5)))
-        new_order = self._order()
-        self._line(session, new_order, is_done=False)
-
-        session._guapante_renumber_session()
-
-        fixed_ids = {orders[1].id, orders[4].id}
-        self.assertEqual(orders[1].daily_sequence, 2)
-        self.assertEqual(orders[4].daily_sequence, 5)
-
-        flexible = [o for o in orders if o.id not in fixed_ids] + [new_order]
-        flexible_sorted = sorted(flexible, key=lambda o: o.id)
-        available = [1, 3, 4, 6, 7]
-        for order, expected in zip(flexible_sorted, available):
-            self.assertEqual(
-                order.daily_sequence, expected,
-                f'orden id={order.id} debería quedar en #{expected}',
-            )
-
-    def test_gap_from_high_fixed_number_is_not_compressed(self):
-        """Caso borde explícito del plan: si un número fijo alto deja
-        más huecos bajos que flexibles para llenarlos, el hueco queda
-        — no se comprime la numeración."""
-        session = self._session()
-        orders = [self._order() for _ in range(3)]
-        orders[0].sudo().daily_sequence = 1
-        orders[1].sudo().daily_sequence = 2
-        orders[2].sudo().daily_sequence = 5  # fija, con número alto
-        self._line(session, orders[0], is_done=False)
-        self._line(session, orders[1], is_done=False)
-        self._line(session, orders[2], is_done=True)
-
-        session._guapante_renumber_session()
-
-        self.assertEqual(orders[2].daily_sequence, 5)
-        # N = 3 (1 fija + 2 flexibles) → disponibles = {1,2,3}: nunca
-        # se inventa un 4 para "acercar" el hueco a la fija de arriba.
-        self.assertEqual(
-            sorted([orders[0].daily_sequence, orders[1].daily_sequence]),
-            [1, 2],
+    def _line_for(self, order):
+        return self.env['guapante.preparation.day.line'].sudo().search(
+            [('sale_order_id', '=', order.id)],
         )
 
-    # ── Cancelado (Tech Lead, 2026-10-30): número ocupado para siempre ──
+    # ── Garantía central: append-only, nunca se toca lo ya asignado ──
 
-    def test_cancelled_order_number_never_reused(self):
-        cancelled = self._confirm_and_cancel_with_number(3)
-        session = self._session()
-        orders = [self._order() for _ in range(3)]
-        for order in orders:
-            self._line(session, order, is_done=False)
+    def test_new_orders_never_change_existing_numbers(self):
+        """Regresión directa de S15245: llegan pedidos nuevos uno tras
+        otro — cada uno toma MAX+1 y ninguno de los anteriores cambia
+        de número."""
+        order_1, _p1 = self._order_on_day()
+        self.assertEqual(order_1.daily_sequence, 1)
 
-        session._guapante_renumber_session()
+        order_2, _p2 = self._order_on_day()
+        order_1.invalidate_recordset()
+        self.assertEqual(order_1.daily_sequence, 1, 'no se toca al llegar order_2')
+        self.assertEqual(order_2.daily_sequence, 2)
 
-        self.assertEqual(cancelled.daily_sequence, 3)
-        new_numbers = sorted(o.daily_sequence for o in orders)
-        self.assertNotIn(3, new_numbers)
-        # N = 1 cancelada + 3 flexibles = 4 → disponibles {1,2,4}.
-        self.assertEqual(new_numbers, [1, 2, 4])
+        order_3, _p3 = self._order_on_day()
+        order_1.invalidate_recordset()
+        order_2.invalidate_recordset()
+        self.assertEqual(order_1.daily_sequence, 1, 'no se toca al llegar order_3')
+        self.assertEqual(order_2.daily_sequence, 2, 'no se toca al llegar order_3')
+        self.assertEqual(order_3.daily_sequence, 3)
 
-    def test_cancelled_order_line_not_double_counted_as_flexible(self):
-        """Si la línea de la cancelada todavía no se limpió (limpieza
-        perezosa, solo en el próximo action_load), no debe contarse
-        dos veces — ni como ocupada Y como flexible. La línea "vieja"
-        ya queda puesta sola por _confirm_and_cancel_with_number (el
-        confirm+reubicación reales la crean) — no se duplica a mano."""
-        cancelled = self._confirm_and_cancel_with_number(2)
-        session = self._session()
-        self.assertIn(
-            cancelled, session.line_ids.mapped('sale_order_id'),
-            'la línea vieja de la cancelada debe seguir presente, sin '
-            'limpiar, para que el test ejercite el caso real',
-        )
-        order = self._order()
-        self._line(session, order, is_done=False)
+    def test_weighed_and_unweighed_orders_equally_protected(self):
+        """La garantía de no tocar un número ya asignado no depende de
+        si la orden está pesada (is_done) — antes solo las pesadas
+        ("fijas") estaban a salvo del reshuffle; ahora TODAS lo están,
+        pesadas o no, porque ya no hay reshuffle."""
+        order_1, _p1 = self._order_on_day()
+        order_2, _p2 = self._order_on_day()
+        line_2 = self._line_for(order_2)
+        line_2.sudo().write({'actual_kg': 1.0, 'is_done': True})
 
-        session._guapante_renumber_session()
+        order_3, _p3 = self._order_on_day()
 
-        self.assertEqual(cancelled.daily_sequence, 2)
-        self.assertEqual(order.daily_sequence, 1)
+        order_1.invalidate_recordset()
+        order_2.invalidate_recordset()
+        self.assertEqual(order_1.daily_sequence, 1, 'no pesada — tampoco se toca')
+        self.assertEqual(order_2.daily_sequence, 2, 'pesada — nunca se tocaba')
+        self.assertEqual(order_3.daily_sequence, 3)
 
-    def test_cancelled_order_with_weighed_line_not_double_counted(self):
-        """Corrección de Tech Lead (2026-10-30): una cancelada que YA
-        estaba pesada antes de cancelarse cae en FixedOrders Y en
-        cancelled_numbers a la vez (mismo número) — sumar los dos
-        conteos por separado inflaba `total` y repartía un número de
-        más a alguna flexible."""
-        cancelled = self._confirm_and_cancel_with_number(2, mark_done=True)
-        session = self._session()
-        orders = [self._order() for _ in range(3)]
-        for order in orders:
-            self._line(session, order, is_done=False)
+    def test_gap_from_manual_high_number_is_never_compressed(self):
+        """daily_sequence nunca se asume contiguo en ningún lugar del
+        código (verificado por grep) — si un número queda con un
+        hueco abajo (ajuste manual, dato histórico irregular), una
+        orden nueva NUNCA lo rellena ni comprime la numeración, solo
+        toma MAX+1 real."""
+        order_1, _p1 = self._order_on_day()
+        self.assertEqual(order_1.daily_sequence, 1)
+        order_1.sudo().daily_sequence = 5  # hueco manual 2,3,4.
 
-        session._guapante_renumber_session()
+        order_2, _p2 = self._order_on_day()
 
-        self.assertEqual(cancelled.daily_sequence, 2)
-        new_numbers = sorted(o.daily_sequence for o in orders)
-        # Con el bug: total = 1 (fija) + 1 (cancelada) + 3 = 5 →
-        # disponibles {1,3,4,5}, un hueco de más. Corregido: total =
-        # 1 (ocupado único) + 3 = 4 → disponibles {1,3,4}.
-        self.assertEqual(new_numbers, [1, 3, 4])
-        self.assertNotIn(5, new_numbers)
-
-    # ── Fija con trabajo en curso: solo el número cambia, nada más ──
-
-    def test_fixed_box_claim_in_progress_untouched_only_number_fixed(self):
-        session = self._session()
-        fixed_order = self._order(daily_sequence=1)
-        fixed_line = self._line(session, fixed_order, is_done=True)
-        flexible_order = self._order(daily_sequence=2)
-        self._line(session, flexible_order, is_done=False)
-        new_order = self._order()
-        self._line(session, new_order, is_done=False)
-
-        session._guapante_renumber_session()
-
-        self.assertEqual(fixed_order.daily_sequence, 1)
-        self.assertTrue(fixed_line.is_done)
+        order_1.invalidate_recordset()
+        self.assertEqual(order_1.daily_sequence, 5, 'el ajuste manual no se toca')
         self.assertEqual(
-            sorted([flexible_order.daily_sequence, new_order.daily_sequence]),
-            [2, 3],
+            order_2.daily_sequence, 6,
+            'MAX(5)+1 = 6 — nunca se inventa un 2 para llenar el hueco',
         )
 
     def test_idempotent_running_twice_gives_same_result(self):
-        session = self._session()
-        orders = [self._order() for _ in range(4)]
-        for order in orders:
-            self._line(session, order, is_done=False)
-        session._guapante_renumber_session()
-        first_pass = sorted(o.daily_sequence for o in orders)
-        session._guapante_renumber_session()
-        second_pass = sorted(o.daily_sequence for o in orders)
-        self.assertEqual(first_pass, second_pass)
+        """Correr _assign_daily_sequences de nuevo sobre el mismo día
+        (ej. una segunda llamada desde otro camino) no cambia nada —
+        las órdenes ya tienen número y se saltan."""
+        order_1, _p1 = self._order_on_day()
+        order_2, _p2 = self._order_on_day()
+        before = (order_1.daily_sequence, order_2.daily_sequence)
 
-    def test_summary_note_posted_once_on_session_chatter(self):
-        """Condición 6 del plan: una sola nota-resumen en el chatter
-        de la sesión cuando hay cambios."""
-        session = self._session()
-        order = self._order(daily_sequence=5)  # va a bajar a 1
-        self._line(session, order, is_done=False)
-        messages_before = len(session.message_ids)
+        self.env['sale.order']._assign_daily_sequences(self.day)
 
-        session._guapante_renumber_session()
+        order_1.invalidate_recordset()
+        order_2.invalidate_recordset()
+        after = (order_1.daily_sequence, order_2.daily_sequence)
+        self.assertEqual(before, after)
 
-        self.assertEqual(order.daily_sequence, 1)
-        session.invalidate_recordset()
-        self.assertEqual(len(session.message_ids), messages_before + 1)
-        self.assertIn('Renumerada', session.message_ids[0].body or '')
+    # ── Cancelado: número ocupado para siempre, nunca se reutiliza ──
 
-    def test_no_notes_posted_when_nothing_changes(self):
-        session = self._session()
-        orders = [self._order() for _ in range(3)]
-        for order in orders:
-            self._line(session, order, is_done=False)
-        session._guapante_renumber_session()
-        messages_before = len(session.message_ids)
-        session._guapante_renumber_session()  # segunda pasada, sin cambios
-        session.invalidate_recordset()
-        self.assertEqual(len(session.message_ids), messages_before)
+    def test_cancelled_order_number_never_reused(self):
+        cancelled, pick = self._order_on_day()
+        self.assertEqual(cancelled.daily_sequence, 1)
+        # action_cancel() en una orden ya confirmada solo devuelve la
+        # acción del wizard de cancelación — _action_cancel() es el
+        # método real que sí pone state='cancel'.
+        cancelled.sudo()._action_cancel()
 
-    def test_no_per_box_note_posted_on_its_own_picking(self):
-        """David/Tech Lead, 2026-11-03: las notas individuales "Caja #N
-        pasó a #M" en el picking de cada caja renumerada eran ruido —
-        se quitaron, solo queda la nota-resumen de la sesión."""
-        order = self.env['sale.order'].create({
-            'partner_id': self.partner.id,
-            'order_line': [(0, 0, {
-                'product_id': self.product.id,
-                'product_uom_qty': 1,
-            })],
-        })
-        order.action_confirm()
-        dt_start, _dt_end = _date_to_utc_range(self.env, self.day)
-        Picking = order.picking_ids.filtered(
-            lambda p: (
-                p.picking_type_code == 'internal'
-                and p.state not in ('done', 'cancel')
-            )
+        order_2, _p2 = self._order_on_day()
+
+        cancelled.invalidate_recordset()
+        self.assertEqual(cancelled.daily_sequence, 1, 'la cancelada conserva su número')
+        self.assertEqual(
+            order_2.daily_sequence, 2,
+            'MAX incluye TODOS los estados (incluso cancelado) — nunca se reutiliza el 1',
         )
-        # Dispara la reubicación existente hacia self.day — e2/e3 ya
-        # corren solos acá y dejan el número correcto (#1, única
-        # orden). Se fuerza un número "equivocado" después para que
-        # la siguiente renumeración manual tenga algo que corregir y
-        # de verdad publique la nota.
-        Picking.scheduled_date = dt_start
-        session = self._session()
-        order.sudo().daily_sequence = 99
-        messages_before = len(Picking.message_ids)
 
-        session._guapante_renumber_session()
+    def test_cancelled_order_with_weighed_line_number_never_reused(self):
+        """Corrección de Tech Lead (2026-10-30), todavía vigente: una
+        cancelada que ya estaba pesada antes de cancelarse sigue
+        contando su número como ocupado para siempre — un solo
+        conteo, no doble."""
+        cancelled, pick = self._order_on_day()
+        line = self._line_for(cancelled)
+        line.sudo().write({'actual_kg': 1.0, 'is_done': True})
+        cancelled.sudo()._action_cancel()
 
-        self.assertEqual(order.daily_sequence, 1)
-        Picking.invalidate_recordset()
-        self.assertEqual(len(Picking.message_ids), messages_before)
+        order_2, _p2 = self._order_on_day()
+
+        cancelled.invalidate_recordset()
+        self.assertEqual(cancelled.daily_sequence, 1)
+        self.assertEqual(order_2.daily_sequence, 2)
+
+    # ── El renumerador ya no existe — guardia explícita de regresión ──
+
+    def test_renumber_session_method_was_removed(self):
+        Session = self.env['guapante.preparation.day']
+        self.assertFalse(
+            hasattr(Session, '_guapante_renumber_session'),
+            '_guapante_renumber_session debía eliminarse por completo '
+            '(David/Tech Lead, 2026-11-03) — si esto falla, alguien lo '
+            'reintrodujo.',
+        )
