@@ -38,7 +38,13 @@ export class PickingWeightInput extends Component {
         </div>
     `;
     static props = {
-        value: { type: Number, optional: true },
+        // E8 (David/Tech Lead, 2026-11-03): el caller pasa null a
+        // propósito para una línea Pendiente (ver
+        // preparation_picking_level2_display.xml) — "sin pesar" y
+        // "pesado en 0" son is_done, no un valor de actual_kg distinto,
+        // así que el prop admite null explícito en vez de forzar al
+        // caller a inventar un valor numérico que no existe.
+        value: { type: [Number, { value: null }], optional: true },
         onConfirm: Function,
         integer: { type: Boolean, optional: true },
         placeholder: { type: String, optional: true },
