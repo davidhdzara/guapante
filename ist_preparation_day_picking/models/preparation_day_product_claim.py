@@ -570,6 +570,21 @@ class PreparationDayProductClaim(models.Model):
         return True
 
     def action_release(self) -> bool:
+        """Sin ownership (David/Tech Lead, 2026-11-03 — "operarios
+        administradores absolutos del módulo de Picking"): cualquier
+        operario con NIP vigente puede liberar el claim de CUALQUIERA,
+        no solo el suyo — mismo criterio que ya tenía action_unstop()
+        para un Detenido ("un Detenido no tiene dueño, cualquier
+        operario con NIP vigente puede hacerlo"), ahora extendido a un
+        claim En progreso. El control de "esta caja no es tuya" que
+        vivía acá se elimina a propósito, no es un descuido — igual
+        que _check_picking_ownership() en preparation_day_line.py.
+
+        Trazabilidad cruzada: nota automática en el chatter SOLO
+        cuando el actor no es el dueño actual (quién liberó el
+        producto de quién) — si el actor es el propio dueño, no hace
+        falta ninguna nota nueva (_notify_bus() ya avisa a los demás
+        tablets)."""
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
@@ -582,15 +597,20 @@ class PreparationDayProductClaim(models.Model):
         )
         row = self.env.cr.fetchone()
         current_owner_id = row[0] if row else False
-        if current_owner_id != employee_id:
-            self.invalidate_recordset(['assigned_employee_id'])
-            owner_name = (
-                self.assigned_employee_id.name
-                if self.assigned_employee_id else 'nadie'
-            )
+        self.invalidate_recordset(['assigned_employee_id'])
+        if not current_owner_id:
             raise UserError(
-                f'No puedes liberar {self.product_tmpl_id.name} — '
-                f'lo tiene {owner_name}.'
+                f'{self.product_tmpl_id.name} ya no está asignado a '
+                'nadie — actualiza la pantalla.'
+            )
+        if current_owner_id != employee_id:
+            Actor = self.env['hr.employee'].sudo().browse(employee_id)
+            Owner = self.env['hr.employee'].sudo().browse(current_owner_id)
+            self.wizard_id.sudo().message_post(
+                body=(
+                    f"{Actor.name} liberó {self.product_tmpl_id.name}: "
+                    f"estaba asignado a {Owner.name}."
+                ),
             )
         self._release_claim()
         return True
@@ -639,6 +659,16 @@ class PreparationDayProductClaim(models.Model):
             claim._release_claim()
 
     def action_stop(self, reason: str) -> bool:
+        """Sin ownership (David/Tech Lead, 2026-11-03 — "operarios
+        administradores absolutos del módulo de Picking"): cualquier
+        operario con NIP vigente puede detener el claim de
+        CUALQUIERA, no solo el suyo — ver el mismo razonamiento en
+        action_release(). El motivo sigue siendo obligatorio
+        (reason not in STOP_REASONS ya lo exige, sin cambios).
+
+        Trazabilidad cruzada: la nota de "Detenido" ya incluye quién
+        lo detuvo; cuando el actor no es el dueño actual, se le agrega
+        a quién se le quitó."""
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
@@ -653,15 +683,11 @@ class PreparationDayProductClaim(models.Model):
         )
         row = self.env.cr.fetchone()
         current_owner_id = row[0] if row else False
-        if current_owner_id != employee_id:
-            self.invalidate_recordset(['assigned_employee_id'])
-            owner_name = (
-                self.assigned_employee_id.name
-                if self.assigned_employee_id else 'nadie'
-            )
+        self.invalidate_recordset(['assigned_employee_id'])
+        if not current_owner_id:
             raise UserError(
-                f'No puedes detener {self.product_tmpl_id.name} — '
-                f'lo tiene {owner_name}.'
+                f'{self.product_tmpl_id.name} ya no está asignado a '
+                'nadie — actualiza la pantalla.'
             )
         Employee = self.env['hr.employee'].sudo().browse(employee_id)
         self.write({
@@ -670,10 +696,15 @@ class PreparationDayProductClaim(models.Model):
             'stop_reason': reason,
             'stopped_by_employee_id': employee_id,
         })
+        cross_operator_note = ''
+        if current_owner_id != employee_id:
+            Owner = self.env['hr.employee'].sudo().browse(current_owner_id)
+            cross_operator_note = f' — se lo quitó a {Owner.name}.'
         self.wizard_id.sudo().message_post(
             body=(
                 f"Detenido — {self.product_tmpl_id.name}: "
                 f"{dict(STOP_REASONS)[reason]} (por {Employee.name})."
+                f"{cross_operator_note}"
             ),
         )
         self._notify_bus()
