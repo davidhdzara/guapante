@@ -185,6 +185,13 @@ class TestPreparationDayRenumbering(TransactionCase):
         contando su número como ocupado para siempre — un solo
         conteo, no doble."""
         cancelled, pick = self._order_on_day()
+        # keepalive: si cancelled quedara como la ÚNICA orden de la
+        # sesión, marcar su única línea is_done=True dejaría
+        # pending_total en 0 y la sesión se auto-cerraría (ver
+        # action_mark_done/pending_total==0 en preparation_day.py) —
+        # keepalive se queda sin pesar a propósito, solo para que la
+        # sesión siga abierta y poder crear order_2 después.
+        keepalive, _pk = self._order_on_day()
         line = self._line_for(cancelled)
         line.sudo().write({'actual_kg': 1.0, 'is_done': True})
         cancelled.sudo()._action_cancel()
@@ -193,7 +200,8 @@ class TestPreparationDayRenumbering(TransactionCase):
 
         cancelled.invalidate_recordset()
         self.assertEqual(cancelled.daily_sequence, 1)
-        self.assertEqual(order_2.daily_sequence, 2)
+        self.assertEqual(keepalive.daily_sequence, 2)
+        self.assertEqual(order_2.daily_sequence, 3)
 
     # ── El renumerador ya no existe — guardia explícita de regresión ──
 
