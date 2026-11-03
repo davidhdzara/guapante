@@ -16,11 +16,13 @@ import pytz
 from odoo import fields
 from odoo.tests.common import tagged
 
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _PICKING_SWITCH_HOUR_PARAM_KEY,
+)
 from odoo.addons.ist_preparation_day.tests.test_preparation_day import (
     TestPreparationDay,
 )
 from odoo.addons.ist_preparation_day_picking.models.preparation_day import (
-    _PICKING_SWITCH_HOUR_PARAM_KEY,
     _picking_session_date,
 )
 

@@ -11,12 +11,14 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
     PreparationDayIdentificationController,
 )
 from odoo.addons.ist_preparation_day.models.const_preparation import (
+    IDLE_TIMEOUT_PARAM_KEY,
     PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     PREP_OPERATOR_LAST_ACTIVITY_KEY,
     PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY,
     PREP_OPERATOR_PIN_MAX_FAILURES,
     PREP_OPERATOR_SESSION_KEY,
     get_active_prep_operator_id,
+    get_idle_timeout_seconds,
     get_pin_lockout_remaining_seconds,
     set_active_prep_operator,
 )
@@ -28,6 +30,19 @@ from odoo.addons.ist_preparation_day.models.preparation_day import (
 @tagged('post_install', '-at_install')
 class TestPreparationDay(TransactionCase):
     """Tests for the Preparation Day session workflow."""
+
+    def setUp(self):
+        """Fija el timeout de inactividad al default histórico antes de
+        cada test (David/Tech Lead, 2026-11-02) — un valor viejo que
+        haya quedado puesto a mano en la base real (ej. una prueba
+        manual en Ajustes) no debe filtrarse a los tests, que no deben
+        depender del estado de la base. Los tests que prueban su propio
+        valor (0, negativo, personalizado, sin parámetro) lo sobre-
+        escriben ellos mismos después de este baseline, sin conflicto."""
+        super().setUp()
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, str(PREP_OPERATOR_IDLE_TIMEOUT_SECONDS),
+        )
 
     @classmethod
     def setUpClass(cls):
@@ -117,6 +132,22 @@ class TestPreparationDay(TransactionCase):
         return self.env[
             'guapante.preparation.day'
         ]._ensure_session_for_date(self.delivery_date)
+
+    def _grant_admin_group_for_reopen(self):
+        """E5 (David/Tech Lead, 2026-11-02): action_reopen() exige
+        group_preparation_admin cuando ist_preparation_day_picking está
+        instalado (override en ese módulo — CORE no puede referenciar
+        su grupo). Sin esto, action_reopen() en self.env.user (sin ese
+        grupo por defecto) rechaza con AccessError en cualquier test de
+        CORE que no sea específicamente sobre el control de acceso.
+        raise_if_not_found=False: si Picking no está instalado, no hay
+        override ni grupo que otorgar — no-op, CORE sigue pasando solo."""
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin',
+            raise_if_not_found=False,
+        )
+        if admin_group:
+            self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
 
     # ── Tests de Creación de Sesión ──
 
@@ -403,8 +434,11 @@ class TestPreparationDay(TransactionCase):
             msg="Summary total_done_kg should include the saved weight",
         )
 
-    def test_save_line_weight_ignores_zero(self):
-        """Saving with actual_kg=0 should NOT mark as done."""
+    def test_save_line_weight_marks_done_with_zero(self):
+        """E7 (David/Tech Lead, 2026-11-02): pesar 0 ('despacho en 0' —
+        el cliente pidió un producto que no hay) SÍ marca Terminado, y
+        cierra la sesión si era la última línea pendiente — ya no se
+        ignora como antes de E7."""
         self._create_confirmed_order(qty=2.0)
         session = self._create_session()
         session.action_load()
@@ -412,8 +446,13 @@ class TestPreparationDay(TransactionCase):
         line = session.line_ids[:1]
         result = session.action_save_line_weight(line.id)
 
-        self.assertFalse(result)
-        self.assertFalse(line.is_done)
+        self.assertTrue(result)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(
+            session.state, 'done',
+            'era la única línea pendiente — debe autocerrar la sesión',
+        )
 
     def test_auto_finish_session(self):
         """Session should auto-finish when all lines are done."""
@@ -732,6 +771,80 @@ class TestPreparationDay(TransactionCase):
             "La sesión vencida debe limpiarse, no solo ignorarse",
         )
 
+    def test_get_idle_timeout_seconds_defaults_to_300_without_param(self):
+        """Sin el parámetro seteado, el default debe seguir siendo el
+        comportamiento histórico (5 minutos) — sin sorpresas al instalar."""
+        self.env['ir.config_parameter'].sudo().search([
+            ('key', '=', IDLE_TIMEOUT_PARAM_KEY),
+        ]).unlink()
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_reads_custom_value(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '600',
+        )
+        self.assertEqual(get_idle_timeout_seconds(self.env), 600)
+
+    def test_get_idle_timeout_seconds_non_numeric_falls_back_to_default(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, 'no-es-un-numero',
+        )
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_negative_falls_back_to_default(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '-30',
+        )
+        self.assertEqual(
+            get_idle_timeout_seconds(self.env),
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+
+    def test_get_idle_timeout_seconds_zero_is_valid_sin_bloqueo(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        self.assertEqual(get_idle_timeout_seconds(self.env), 0)
+
+    def test_get_active_prep_operator_id_zero_timeout_never_expires(self):
+        """0 = sin bloqueo: una actividad viejísima (horas) NO debe
+        expirar la sesión del operario."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        employee = self._create_valid_operator()
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = time.time() - 3600 * 8
+
+        result = get_active_prep_operator_id(self.env, session)
+
+        self.assertEqual(
+            result, employee.id,
+            "Con el parámetro en 0 la sesión nunca debe expirar por tiempo",
+        )
+
+    def test_get_active_prep_operator_id_custom_timeout_respected(self):
+        """Con el parámetro en 60s, una actividad de 90s atrás ya debe
+        expirar — aunque esté muy por debajo del default de 300s."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '60',
+        )
+        employee = self._create_valid_operator()
+        session = {}
+        set_active_prep_operator(session, employee.id)
+        session[PREP_OPERATOR_LAST_ACTIVITY_KEY] = time.time() - 90
+
+        result = get_active_prep_operator_id(self.env, session)
+
+        self.assertFalse(result)
+
     def test_get_active_prep_operator_id_refresh_true_extends_session(self):
         """refresh=True (acción real del operario) debe extender la ventana."""
         employee = self._create_valid_operator()
@@ -882,12 +995,20 @@ class TestPreparationDay(TransactionCase):
         self.assertAlmostEqual(line.actual_kg, 0.0, places=2)
 
     def test_undo_line_updates_summary(self):
-        """Undoing should subtract from summary total_done_kg."""
+        """Undoing should subtract from summary total_done_kg.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): mismo
+        motivo que en test_undo_line_clears_done_stamp — sin un segundo
+        pendiente, terminar la única línea cierra la sesión y
+        action_undo_line() queda bloqueado por el guard de cierre."""
         self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
         session = self._create_session()
         session.action_load()
 
-        line = session.line_ids[:1]
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
         line.with_context(skip_auto_save=True).write({'actual_kg': 2.5})
         session.action_save_line_weight(line.id)
 
@@ -904,6 +1025,354 @@ class TestPreparationDay(TransactionCase):
             places=2,
             msg="Undo should subtract the weight from summary",
         )
+
+    # ── Tests de done_by_employee_id / done_date (punto 4 de Tech Lead, 2026-11-02) ──
+
+    def test_save_line_weight_stamps_done_by_employee_and_date(self):
+        """Pesaje por Picking (PIN) debe estampar quién y cuándo."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Stamp Test',
+            'l10n_co_ne_payment_method': '10',
+            'is_guapante_prep_operator': True,
+        })
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        mock_request = MagicMock()
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, employee.id)
+        with patch(
+            'odoo.addons.ist_preparation_day.models.preparation_day.request',
+            mock_request,
+        ):
+            session.action_save_line_weight(line.id)
+
+        self.assertEqual(line.done_by_employee_id, employee)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_from_productos_tab_stamps_employee_from_user(self):
+        """Edición inline desde Productos (sin PIN): done_by_employee_id
+        sale del empleado vinculado al usuario de Odoo logueado."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Supervisor Stamp Test',
+            'l10n_co_ne_payment_method': '10',
+            'user_id': self.env.user.id,
+        })
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+
+        self.assertEqual(line.done_by_employee_id, employee)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_from_productos_tab_stamps_date_without_employee(self):
+        """Sin empleado vinculado al usuario logueado, done_by_employee_id
+        queda vacío pero done_date se estampa igual (Tech Lead, 2026-11-02)."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+
+        self.assertFalse(line.done_by_employee_id)
+        self.assertTrue(line.done_date)
+
+    def test_register_weight_correction_does_not_overwrite_done_stamp(self):
+        """Una corrección post-cierre no debe pisar quién/cuándo completó
+        la línea la PRIMERA vez."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        employee = self.env['hr.employee'].create({
+            'name': 'Supervisor Original Stamp',
+            'l10n_co_ne_payment_method': '10',
+            'user_id': self.env.user.id,
+        })
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 1.5})
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
+        self.assertEqual(original_employee, employee)
+
+        line.write({'actual_kg': 1.8})
+
+        self.assertEqual(
+            line.done_by_employee_id, original_employee,
+            "Una corrección no debe cambiar quién completó la línea",
+        )
+        self.assertEqual(
+            line.done_date, original_date,
+            "Una corrección no debe cambiar cuándo se completó la línea",
+        )
+
+    def test_undo_line_clears_done_stamp(self):
+        """Devolver una línea a Pendiente debe limpiar done_by_employee_id
+        y done_date, no solo is_done/actual_kg.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): una sesión
+        de un solo producto se auto-cierra al terminar su única línea
+        (pending_total == 0) y action_undo_line() ya no permite devolver
+        a Pendiente una línea de sesión cerrada (guard nuevo) — sin un
+        segundo producto pendiente, este test terminaría probando el
+        guard de cierre, no la reversa que le da nombre."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.done_date)
+
+        line.action_undo_line()
+
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+
+    # ── Edición inline de admin: 0 sobre una Terminada es una corrección
+    # más, ya NO revierte a Pendiente (E7, David/Tech Lead, 2026-11-02);
+    # negativo sigue bloqueado en todos los orígenes (M-1) ──
+
+    def test_write_zero_on_done_line_is_treated_as_correction(self):
+        """E7: poner actual_kg en 0 sobre una línea ya Terminada, vía
+        write() (como hace la edición inline de admin en la lista de
+        líneas), YA NO la devuelve a Pendiente — es un 'despacho en 0'
+        válido y se trata como cualquier otra corrección: sigue
+        Terminada, con el peso en 0, sin tocar done_by/done_date.
+
+        Segundo producto (David/Tech Lead, 2026-11-02, M-1): sin un
+        segundo pendiente, terminar la única línea cierra la sesión y
+        el segundo write (a 0) chocaría con el guard de sesión cerrada
+        en vez de probar la corrección — eso se prueba aparte."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.is_done)
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
+
+        line.write({'actual_kg': 0})
+
+        self.assertTrue(
+            line.is_done, '0 ya no devuelve la línea a Pendiente (E7)',
+        )
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(line.done_by_employee_id, original_employee)
+        self.assertEqual(line.done_date, original_date)
+
+    def test_write_negative_actual_kg_raises(self):
+        """Ningún origen puede escribir un peso negativo — guard parejo
+        en CORE, antes de que el valor llegue a super().write()."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        with self.assertRaises(UserError):
+            line.write({'actual_kg': -1.0})
+        self.assertEqual(line.actual_kg, 0.0, 'el valor negativo no debe escribirse')
+
+    # ── Edición inline de admin: casilla "Terminado" (E4, David/Tech
+    # Lead, 2026-11-02) — mismo write() de CORE, dispatch track_done ──
+
+    def test_write_is_done_true_marks_done_like_weighing(self):
+        """Marcar Terminado (sin tocar el peso) con un peso ya puesto > 0
+        reusa _register_weight_from_productos_tab() entero."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+        self.assertFalse(line.is_done, 'setup: peso puesto, aún no Terminado')
+
+        line.write({'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_true_with_zero_weight_succeeds(self):
+        """E7 (David/Tech Lead, 2026-11-02): la casilla de admin
+        también acepta terminar una línea en 0 directo, sin pesarla
+        antes — 'despacho en 0' es válido, ya no exige peso>0 (antes
+        de E7 esto lanzaba UserError)."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        line.write({'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_true_with_negative_weight_raises(self):
+        """El guard de track_done solo rechaza negativos — 0 ya es
+        válido (E7), pero un peso negativo nunca debería existir en la
+        línea a estas alturas (write() de actual_kg ya lo bloquea
+        antes); se confirma igual acá por completitud del guard."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': -1.0})
+        self.assertEqual(line.actual_kg, -1.0, 'setup: peso negativo forzado')
+
+        with self.assertRaises(UserError):
+            line.write({'is_done': True})
+        self.assertFalse(line.is_done, 'el guard bloquea antes de marcar nada')
+
+    # ── E7, pruebas de la lista explícita de Tech Lead (David/Tech Lead,
+    # 2026-11-02). El caso "pesar 0 desde el tablet" vive en el test de
+    # Picking (test_preparation_day_picking_fase_c.py) — ese flujo pasa
+    # por _check_picking_ownership() del claim, que no existe en CORE
+    # sin ese módulo instalado. ──
+
+    def test_write_zero_outside_tablet_flow_does_not_mark_done(self):
+        """Escribir actual_kg=0 SIN guapante_picking_flow en el contexto
+        (reset, reubicación, reintento, código) no marca Terminado —
+        el gate de E7 exige el flujo explícito del tablet."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'actual_kg': 0})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.dispatch_note)
+
+    def test_correction_from_zero_to_value_treated_as_correction(self):
+        """Una línea Terminada en 0 (despacho en 0) corregida después a
+        un peso > 0 se trata igual que cualquier corrección — sigue
+        Terminada, cambia el peso, no toca done_by/done_date."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'is_done': True})  # Terminado en 0 (E4 relajado, E7)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        original_employee = line.done_by_employee_id
+        original_date = line.done_date
+
+        line.write({'actual_kg': 2.0})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 2.0)
+        self.assertFalse(line.dispatch_note, 'ya no es un despacho en 0')
+        self.assertEqual(line.done_by_employee_id, original_employee)
+        self.assertEqual(line.done_date, original_date)
+
+    def test_write_same_zero_value_is_noop(self):
+        """Escribir 0 sobre una línea ya Terminada en 0 (mismo valor) no
+        dispara una corrección — mismo comportamiento que cualquier
+        otro valor sin cambio real."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.write({'is_done': True})
+        self.assertTrue(line.is_done)
+        messages_before = len(session.message_ids)
+
+        line.write({'actual_kg': 0})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(
+            len(session.message_ids), messages_before,
+            'sin cambio real de valor no debe postear una nueva corrección',
+        )
+
+    def test_write_is_done_false_reverts_via_action_undo_line(self):
+        """Desmarcar Terminado (sin tocar el peso) tiene el mismo efecto
+        que action_undo_line(): vuelve a Pendiente, limpia done_by/
+        done_date y el peso.
+
+        Segundo producto (mismo motivo que test_write_zero_on_done_
+        line_reverts_via_action_undo_line): sin uno pendiente, terminar
+        la única línea cierra la sesión y el segundo write chocaría con
+        el guard de sesión cerrada en vez de probar la reversa."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(product=self.product_unit, qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids.filtered(
+            lambda l: l.product_product_id == self.product_weight
+        )
+        line.write({'actual_kg': 1.5})
+        self.assertTrue(line.is_done)
+
+        line.write({'is_done': False})
+
+        self.assertFalse(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.done_date)
+
+    def test_write_is_done_and_actual_kg_together_treated_as_weighing(self):
+        """Marcar Terminado Y escribir un peso nuevo en la misma fila no
+        pasa por track_done — el camino de actual_kg (track_kg) decide
+        todo solo con el peso, is_done termina correcto igual."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        self.assertEqual(line.actual_kg, 0.0, 'setup: sin peso puesto')
+
+        line.write({'actual_kg': 1.5, 'is_done': True})
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 1.5)
+        self.assertTrue(line.done_date)
+
+    def test_write_is_done_with_other_field_applies_both(self):
+        """track_done hace return antes de llegar a super().write(vals)
+        — si vals trae OTRA clave además de is_done, debe escribirse
+        igual (Tech Lead, 2026-11-02): no es el camino de hoy desde la
+        vista (solo is_done o solo actual_kg llegan editables), pero
+        write() es público y nada impide una llamada RPC/Python con
+        más claves en el mismo vals."""
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+
+        line.write({
+            'is_done': True,
+            'product_description': 'Descripción editada aparte',
+        })
+
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.product_description, 'Descripción editada aparte')
 
     # ── Tests de write() override ──
 
@@ -1010,6 +1479,7 @@ class TestPreparationDay(TransactionCase):
         session.action_mark_done()
         self.assertEqual(session.state, 'done')
 
+        self._grant_admin_group_for_reopen()
         session.action_reopen()
         self.assertEqual(session.state, 'loaded')
 
@@ -1019,6 +1489,7 @@ class TestPreparationDay(TransactionCase):
         session = self._create_session()
         session.action_load()
         session.action_mark_done()
+        self._grant_admin_group_for_reopen()
         session.action_reopen()
 
         # Agregar una nueva orden
@@ -1034,6 +1505,47 @@ class TestPreparationDay(TransactionCase):
             has_unit_product,
             "Reopened session should pick up new orders on load",
         )
+
+    def test_action_mark_done_posts_note(self):
+        """E5: nota automática (quién, cuándo) al finalizar."""
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        messages_before = len(session.message_ids)
+
+        session.action_mark_done()
+
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('finalizada', note.body.lower())
+        self.assertIn(self.env.user.name, note.body)
+
+    def test_action_reopen_clears_date_done_and_posts_note(self):
+        """E5: reabrir limpia date_done (ya no está Finalizada) y deja
+        nota automática (quién, cuándo) — no toca line_ids/summary_ids,
+        el estado de cada línea ya era correcto desde que se pesó."""
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        session.action_mark_done()
+        self.assertTrue(session.date_done, 'setup: queda estampado al finalizar')
+        line_state_before = session.line_ids.read(['is_done', 'actual_kg'])
+        messages_before = len(session.message_ids)
+
+        self._grant_admin_group_for_reopen()
+        session.action_reopen()
+
+        self.assertFalse(session.date_done)
+        self.assertEqual(session.state, 'loaded')
+        self.assertEqual(
+            session.line_ids.read(['is_done', 'actual_kg']),
+            line_state_before,
+            'reabrir no debe tocar ninguna línea',
+        )
+        self.assertGreater(len(session.message_ids), messages_before)
+        note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('reabierta', note.body.lower())
+        self.assertIn(self.env.user.name, note.body)
 
     # ── Tests de _get_display_qty() ──
 

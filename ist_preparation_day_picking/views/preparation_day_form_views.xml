@@ -13,6 +13,92 @@
                 <attribute name="name">action_open_picking_app</attribute>
                 <attribute name="groups">ist_preparation_day_picking.group_preparation_picking_operator</attribute>
             </button>
+            <!-- Reabrir Sesión solo para group_preparation_admin (E5,
+                 Tech Lead, 2026-11-02) — defensa en profundidad en
+                 action_reopen() del modelo (ver preparation_day.py),
+                 esto es solo ocultarlo en la UI para quien no tiene
+                 el grupo. -->
+            <button name="action_reopen" position="attributes">
+                <attribute name="groups">ist_preparation_day_picking.group_preparation_admin</attribute>
+            </button>
+        </field>
+    </record>
+
+    <!-- Edición inline de actual_kg e is_done para admin en la lista de
+         líneas de la sesión (entrega M-1, Tech Lead/David 2026-11-02,
+         v2; is_done agregado en E4, 2026-11-02 — el diseño original de
+         un botón "Corregir" se descartó a favor de editar directamente,
+         más nativo). El padre deja "Líneas de picking" 100% de solo
+         lectura (create/edit/delete="0") — acá se vuelven editables
+         SOLO actual_kg e is_done, y SOLO para group_preparation_admin
+         (ese grupo vive en este módulo, no en el padre). El resto de
+         columnas se marca readonly explícito para que editable="bottom"
+         no las vuelva editables por default. Reutiliza entero el
+         write() ya existente de CORE (ver su docstring en
+         preparation_day.py): > 0 sobre una Terminada corrige el peso
+         (_register_weight_correction), 0 sobre una Terminada la
+         devuelve a Pendiente (action_undo_line, con su nota y su guard
+         de sesión cerrada), desmarcar Terminado sin tocar el peso
+         también reusa action_undo_line(), marcar Terminado sin tocar
+         el peso reusa _register_weight_from_productos_tab() (exige
+         actual_kg>0 ya puesto) — Python resuelve el override de
+         Picking automáticamente.
+
+         Dos nodos del mismo campo con groups complementarios (uno
+         negado con "!") en vez de un campo computado nuevo: patrón
+         estándar de Odoo ("groups" acepta refs negadas en cualquier
+         vista, heredada o no) para "editable solo por grupo" sin
+         agregar un compute por fila. Mismo patrón para los dos campos. -->
+    <record id="view_preparation_day_line_list_picking" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.line.list.picking</field>
+        <field name="model">guapante.preparation.day.line</field>
+        <field name="inherit_id" ref="ist_preparation_day.view_preparation_day_line_list"/>
+        <field name="arch" type="xml">
+            <list position="attributes">
+                <attribute name="edit">1</attribute>
+                <attribute name="editable">bottom</attribute>
+            </list>
+            <field name="daily_sequence" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="order_name" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="product_description" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="main_customer_name" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="zone_name" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="customer_qty_display" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <field name="customer_uom_label" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </field>
+            <!-- No-admin: mismo campo, solo lectura. -->
+            <field name="actual_kg" position="attributes">
+                <attribute name="readonly">1</attribute>
+                <attribute name="groups">!ist_preparation_day_picking.group_preparation_admin</attribute>
+            </field>
+            <!-- Admin: segundo nodo del mismo campo, editable. -->
+            <field name="actual_kg" position="after">
+                <field name="actual_kg" digits="[10,3]"
+                       groups="ist_preparation_day_picking.group_preparation_admin"/>
+            </field>
+            <!-- No-admin: mismo campo, solo lectura (E4). -->
+            <field name="is_done" position="attributes">
+                <attribute name="readonly">1</attribute>
+                <attribute name="groups">!ist_preparation_day_picking.group_preparation_admin</attribute>
+            </field>
+            <!-- Admin: segundo nodo del mismo campo, editable (E4). -->
+            <field name="is_done" position="after">
+                <field name="is_done" string="Terminado"
+                       groups="ist_preparation_day_picking.group_preparation_admin"/>
+            </field>
         </field>
     </record>
 </odoo>

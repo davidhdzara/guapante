@@ -8,6 +8,10 @@ cancelado que conserva su número sigue contando mientras sus líneas
 sigan en la sesión). box_diff/box_match NO dependen de so_count — se
 mantienen fijos en 0/True antes y después de esta corrección.
 """
+from unittest.mock import patch
+
+import odoo.sql_db as sql_db
+from odoo import fields
 from odoo.tests.common import tagged
 
 from odoo.addons.ist_preparation_day.models.preparation_day import (
@@ -152,6 +156,103 @@ class TestPreparationDayBoxReconciliation(TestPreparationDay):
         self.assertFalse(session.line_ids)
         self.assertEqual(session.so_count, 1)
 
+    def test_so_count_and_progress_use_a_bounded_number_of_queries(self):
+        """Tech Lead, 2026-11-02: leer so_count/total_lines/done_lines de
+        varias sesiones a la vez no debe crecer con la cantidad de
+        sesiones — antes de la consulta agregada, cada sesión disparaba
+        su propio search() sobre line_ids (144 consultas para 80
+        sesiones, medido en staging_main)."""
+        sessions = self.env['guapante.preparation.day']
+        for _ in range(3):
+            self._create_confirmed_order(qty=1.0)
+            session = self._create_session()
+            session.action_load()
+            sessions |= session
+            self.delivery_date = fields.Date.add(self.delivery_date, days=1)
+
+        sessions.invalidate_recordset(['so_count', 'total_lines', 'done_lines'])
+        before = sql_db.sql_counter
+        sessions.mapped('so_count')
+        sessions.mapped('total_lines')
+        sessions.mapped('done_lines')
+        after = sql_db.sql_counter
+        # 7 medido con 3 sesiones (2 _read_group, más chequeos de acceso
+        # y refresco de otros campos dependientes) — el número exacto
+        # importa menos que el techo: fijo pase lo que pase con la
+        # cantidad de sesiones, no ~3-5 consultas POR sesión como antes
+        # (eso daría ~144 para 80 sesiones, medido en staging_main).
+        self.assertLessEqual(
+            after - before, 10,
+            "so_count/total_lines/done_lines de varias sesiones deben "
+            "resolverse con un número fijo de consultas, no uno por sesión",
+        )
+
+    def test_reading_so_count_does_not_trigger_draft_count_search(self):
+        """Tech Lead, 2026-11-02: draft_count vive en su PROPIO compute
+        (_compute_draft_count) — antes compartía compute con so_count,
+        así que pedir so_count (lo que hace la lista de Sesiones)
+        disparaba también la búsqueda de sale.order draft/sent de
+        draft_count, aunque nadie lo pidiera. Separados, leer so_count/
+        total_lines no debe tocar _compute_draft_count para nada."""
+        sessions = self.env['guapante.preparation.day']
+        for _ in range(3):
+            self._create_confirmed_order(qty=1.0)
+            session = self._create_session()
+            session.action_load()
+            sessions |= session
+            self.delivery_date = fields.Date.add(self.delivery_date, days=1)
+
+        sessions.invalidate_recordset(
+            ['so_count', 'total_lines', 'done_lines', 'draft_count']
+        )
+        PreparationDay = type(sessions)
+        with patch.object(
+            PreparationDay, '_compute_draft_count',
+            side_effect=AssertionError(
+                '_compute_draft_count no debe correr al leer '
+                'so_count/total_lines/done_lines'
+            ),
+        ):
+            sessions.mapped('so_count')
+            sessions.mapped('total_lines')
+            sessions.mapped('done_lines')
+
+    def test_draft_count_split_keeps_the_same_value_as_before(self):
+        """Tech Lead, 2026-11-02: separar draft_count a su propio
+        compute no debe cambiar el valor que calcula — solo DÓNDE
+        corre. Hallazgo aparte (no se toca en este ítem): expected_date
+        en sale.order es un campo no-almacenado sin método search()
+        propio — Odoo registra error y lo ignora generando un leaf
+        vacío (dummy True), así que esa mitad del OR con date_order
+        queda siempre verdadera y draft_count termina contando TODAS
+        las cotizaciones draft/sent de la base, sin filtrar por fecha
+        de la sesión. Este test fija ese comportamiento actual (buggy
+        pero sin cambios por este refactor), no lo valida como
+        correcto."""
+        total_draft_sent = self.env['sale.order'].sudo().search_count(
+            [('state', 'in', ('draft', 'sent'))]
+        )
+        self.env['sale.order'].create({
+            'partner_id': self.partner.id,
+            'order_line': [(0, 0, {
+                'product_id': self.product_weight.id,
+                'product_uom_qty': 1.0,
+            })],
+        })
+        total_draft_sent += 1
+
+        # Fecha sin ninguna relación con la cotización recién creada —
+        # si el filtro de fecha funcionara, draft_count no debería
+        # incluirla.
+        unrelated_session = self.env['guapante.preparation.day'].create({
+            'date': '2000-01-01',
+        })
+        self.assertEqual(
+            unrelated_session.draft_count, total_draft_sent,
+            "draft_count hoy ignora la fecha de la sesión (hallazgo "
+            "aparte, sin tocar) — debe seguir igual tras el refactor",
+        )
+
     def test_action_view_lines_domain_matches_total_lines_count(self):
         for _ in range(4):
             self._create_confirmed_order(qty=1.0)
@@ -177,3 +278,48 @@ class TestPreparationDayBoxReconciliation(TestPreparationDay):
         self.assertEqual(
             action['views'], [(expected_view.id, 'list')],
         )
+
+    def test_action_view_lines_binds_the_dedicated_search_view(self):
+        """Entrega A del buscador (David/Tech Lead, 2026-11-01): la
+        acción del botón "Líneas" debe fijar su propia vista de
+        búsqueda, no la que Odoo elija por defecto para el modelo."""
+        session = self._create_session()
+        action = session.action_view_lines()
+        expected_search_view = self.env.ref(
+            'ist_preparation_day.view_preparation_day_line_search'
+        )
+        self.assertEqual(
+            action['search_view_id'],
+            [expected_search_view.id, expected_search_view.name],
+        )
+
+    def test_line_search_view_pending_done_filters_match_is_done(self):
+        """Los filtros "Pendientes"/"Terminadas" de
+        view_preparation_day_line_search deben coincidir exactamente con
+        is_done, sin importar cuántas líneas haya de cada lado."""
+        for _ in range(3):
+            self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        Line = self.env['guapante.preparation.day.line']
+        done_line = session.line_ids[0]
+        done_line.write({'actual_kg': 1.0, 'is_done': True})
+
+        pending_domain = [('wizard_id', '=', session.id), ('is_done', '=', False)]
+        done_domain = [('wizard_id', '=', session.id), ('is_done', '=', True)]
+        self.assertEqual(
+            Line.search_count(pending_domain), len(session.line_ids) - 1,
+        )
+        self.assertEqual(Line.search_count(done_domain), 1)
+
+    def test_line_search_view_fields_exist_on_model(self):
+        """Los 4 campos de búsqueda (producto, caja #, pedido, cliente) y
+        los 4 de "Agrupar Por" (producto, cliente, zona, caja) deben
+        existir como campos reales del modelo — si alguno se renombra,
+        este test debe fallar antes que la vista en producción."""
+        Line = self.env['guapante.preparation.day.line']
+        for field_name in (
+            'product_description', 'daily_sequence', 'order_name',
+            'main_customer_name', 'product_id', 'zone_name',
+        ):
+            self.assertIn(field_name, Line._fields)

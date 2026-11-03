@@ -429,7 +429,11 @@ class TestPreparationDayRelocation(TransactionCase):
         self.assertEqual(order_3.daily_sequence, 3)
 
         line_2 = self._line_for(order_2)
-        line_2.sudo().write({'is_done': True})  # Caja #2 ya pesada — FIJA.
+        # actual_kg junto con is_done (E4, 2026-11-02): escribir is_done
+        # solo, sin peso, ahora exige un peso > 0 ya puesto (track_done
+        # en CORE) — Caja #2 "ya pesada" necesita el peso para ser
+        # fiel a lo que simula.
+        line_2.sudo().write({'actual_kg': 1.0, 'is_done': True})  # Caja #2 ya pesada — FIJA.
 
         dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
         pick_1.write({'scheduled_date': dt_start_b})  # order_1 se va.

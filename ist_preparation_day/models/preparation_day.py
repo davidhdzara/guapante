@@ -126,6 +126,58 @@ def _get_cron_repair_create_days_ahead(env) -> int:
         return _CRON_REPAIR_CREATE_DAYS_AHEAD_DEFAULT
 
 
+# Hora de corte configurable (hora Bogotá) desde la que el TABLET de
+# Picking resuelve "mañana" en vez de "hoy" — corrección #12. Vivía en
+# ist_preparation_day_picking (único usuario original,
+# _picking_session_date), pero se movió acá (corrección del ajuste #4,
+# Tech Lead/David 2026-11-01) porque la limpieza de sesiones vacías del
+# cron de respaldo (más abajo, en ESTE módulo, que NO depende de
+# ist_preparation_day_picking) también necesita saber si ya se pasó esa
+# hora para no borrar la sesión de mañana mientras el tablet puede
+# estar entrando ahí. ist_preparation_day_picking importa estas
+# constantes y esta función desde acá — nunca al revés, porque
+# depende de ist_preparation_day, no lo contrario. Solo afecta a dónde
+# entra el tablet y a esta limpieza; NUNCA a _current_session_date del
+# cron de respaldo ni al corte 00:30 de action_confirm — esos siguen
+# intactos.
+_PICKING_SWITCH_HOUR_PARAM_KEY = (
+    'ist_preparation_day_picking.picking_switch_hour'
+)
+_PICKING_SWITCH_HOUR_DEFAULT = '21:00'
+
+
+def _get_picking_switch_hour(env) -> tuple:
+    """(hour, minute) de corte configurable para _picking_session_date
+    y para la limpieza de sesiones vacías — ver
+    _PICKING_SWITCH_HOUR_PARAM_KEY."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        _PICKING_SWITCH_HOUR_PARAM_KEY, default=_PICKING_SWITCH_HOUR_DEFAULT,
+    )
+    try:
+        hour_str, minute_str = raw.split(':')
+        hour, minute = int(hour_str), int(minute_str)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(f'hora/minuto fuera de rango: {raw!r}')
+        return hour, minute
+    except (ValueError, AttributeError):
+        _logger.warning(
+            'Guapante: parámetro %s inválido (%r), usando default %s',
+            _PICKING_SWITCH_HOUR_PARAM_KEY, raw, _PICKING_SWITCH_HOUR_DEFAULT,
+        )
+        hour_str, minute_str = _PICKING_SWITCH_HOUR_DEFAULT.split(':')
+        return int(hour_str), int(minute_str)
+
+
+def _is_past_picking_switch_hour(env) -> bool:
+    """True si la hora local (Bogotá) de 'ahora' ya pasó la hora de
+    corte del tablet (_get_picking_switch_hour)."""
+    tz_name = env.user.tz or _DEFAULT_TZ
+    local_tz = pytz.timezone(tz_name)
+    local_dt = pytz.utc.localize(fields.Datetime.now()).astimezone(local_tz)
+    switch_hour, switch_minute = _get_picking_switch_hour(env)
+    return (local_dt.hour, local_dt.minute) >= (switch_hour, switch_minute)
+
+
 def _date_to_utc_range(env, date_val):
     """Convert a naive date into a UTC datetime range for the full
     calendar day *date_val* in the user's (or default) timezone.
@@ -317,6 +369,47 @@ class PreparationDayLine(models.Model):
         help='Indica si esta línea ya fue pesada y validada en esta sesión.',
     )
 
+    # Insumo de Fase 2 (Tech Lead, 2026-11-02): quién/cuándo completó
+    # esta línea — se estampa en los dos únicos sitios que ponen
+    # is_done=True (action_save_line_weight y
+    # _register_weight_from_productos_tab, más abajo), NUNCA se pisa en
+    # una corrección post-cierre (_register_weight_correction no los
+    # toca), y se limpia en action_undo_line junto con is_done/
+    # actual_kg. Líneas ya Terminadas antes de este cambio quedan con
+    # estos campos vacíos — sin migración de relleno (David, vía Tech
+    # Lead): no hay cómo reconstruir con fiabilidad quién pesó cada una
+    # de las ~127k líneas históricas.
+    done_by_employee_id = fields.Many2one(
+        'hr.employee',
+        string='Completado por',
+        readonly=True,
+        copy=False,
+    )
+    done_date = fields.Datetime(
+        string='Completado el',
+        readonly=True,
+        copy=False,
+    )
+
+    dispatch_note = fields.Char(
+        string='Nota',
+        compute='_compute_dispatch_note',
+        help=(
+            'E7 (David/Tech Lead, 2026-11-02): el cliente pidió un '
+            'producto que no hay — la línea se Termina en 0 y queda '
+            'marcada así, para que el administrador la revise después.'
+        ),
+    )
+
+    @api.depends('is_done', 'actual_kg')
+    def _compute_dispatch_note(self):
+        for line in self:
+            line.dispatch_note = (
+                'Sin stock — producto no disponible para despacho'
+                if line.is_done and line.actual_kg == 0
+                else False
+            )
+
     @api.model
     def _get_display_qty(self, line) -> tuple:
         """Return (qty_str, uom_label) as the customer sees it.
@@ -390,15 +483,119 @@ class PreparationDayLine(models.Model):
         sin operario activo (expiró) lanza UserError en vez de colarse por
         la otra rama.
 
+        Edición inline de admin en la lista de líneas (Tech Lead/David,
+        2026-11-02): al poner en 0 el peso de una línea ya Terminada se
+        reusa action_undo_line() entero (nota + guard de sesión cerrada
+        incluidos) — Python resuelve el override de Picking automáticamente
+        si ese módulo está instalado. Un peso negativo se rechaza acá para
+        los tres orígenes por igual (ningún flujo legítimo escribe
+        negativos: ni el tablet, ni "Por Hacer", ni esta edición).
+
         Usa flag de contexto 'skip_auto_save' para evitar recursión
-        cuando estos mismos métodos vuelven a escribir en la línea.
+        cuando estos mismos métodos vuelven a escribir en la línea — la
+        escritura interna de action_undo_line() usa ese flag, así que
+        nunca reentra a este dispatch.
+
+        Concurrencia barata (David/Tech Lead, 2026-11-02 — sin
+        ownership, dos operarios pueden pesar el mismo producto a la
+        vez de verdad): bloquea la(s) fila(s) con SELECT ... FOR UPDATE
+        antes de leer su estado, para no decidir con un snapshot
+        obsoleto. Si otro ya la pesó mientras esta escritura esperaba
+        el lock, acá se ve YA hecha y se trata como corrección (con su
+        nota), nunca como un segundo primer guardado. No se apoya solo
+        en el reintento por error de serialización de Postgres — el
+        lock explícito es lo que garantiza el orden, no una suposición
+        sobre el nivel de aislamiento.
+
+        Despacho en 0 (E7, David/Tech Lead, 2026-11-02): el cliente
+        pidió un producto que no hay en bodega — el operario lo
+        despacha en 0 desde el tablet y la línea queda Terminada
+        igual (antes era imposible: "mayor que cero" bloqueaba el
+        pesaje y 0 sobre una Terminada la devolvía a Pendiente). El 0
+        completa una línea SOLO cuando viene del flujo explícito del
+        tablet (contexto 'guapante_picking_flow') con un operario con
+        PIN vigente — así ninguna escritura incidental de
+        actual_kg=0 (reset, reubicación, reintento, código) completa
+        una línea por accidente; auditado por grep contra todos los
+        orígenes de escritura de actual_kg en el módulo. Una vez
+        Terminada, 0 se corrige igual que cualquier otro valor
+        (_register_weight_correction, nunca action_undo_line). La
+        casilla "Terminado" de admin (E4) también acepta 0 directo.
+        Cada línea en 0 queda marcada con 'dispatch_note' (compute,
+        ver su campo) para la leyenda en la lista, y con una nota de
+        chatter propia (_maybe_post_dispatch_zero_note).
+
+        Casilla "Terminado" editable para admin (E4, David/Tech Lead,
+        2026-11-02): SOLO cuando 'is_done' viene SOLO (sin 'actual_kg'
+        en el mismo vals) — si vienen los dos juntos en la misma fila
+        (marcar la casilla Y cambiar el peso a la vez), se trata como
+        pesar/corregir: el camino de abajo (track_kg) ya decide todo
+        solo con el peso, e is_done termina en el valor correcto de
+        todas formas sin que haga falta este bloque. Desmarcar
+        (True→False) reusa action_undo_line() entero (nota + guard de
+        sesión cerrada, igual que poner el peso en 0). Marcar
+        (False→True) sin tocar el peso exige actual_kg>0 YA puesto —
+        nunca Terminado de un peso que no existe — y reusa
+        _register_weight_from_productos_tab() entero (mismo efecto
+        que lo que ya hace guardar un peso>0 sobre una Pendiente). Si
+        vals trae alguna OTRA clave además de is_done (hoy no pasa
+        desde la vista, pero la vía RPC/Python no lo impide), esa
+        parte igual se escribe antes de retornar — is_done no absorbe
+        todo el write().
         """
+        track_done = (
+            'is_done' in vals
+            and 'actual_kg' not in vals
+            and not self.env.context.get('skip_auto_save')
+            and bool(self)
+        )
+        if track_done:
+            target = bool(vals['is_done'])
+            ToMarkDone = self.filtered(lambda l: target and not l.is_done)
+            ToUndo = self.filtered(lambda l: not target and l.is_done)
+            for line in ToMarkDone:
+                # E7 (David/Tech Lead, 2026-11-02): 0 es válido acá —
+                # "despacho en 0" (sin stock) también se puede marcar
+                # desde la casilla de admin, igual que desde el
+                # tablet. Solo un peso negativo se rechaza.
+                if line.actual_kg < 0:
+                    raise UserError(
+                        f'{line.product_description} '
+                        f'(Caja #{line.daily_sequence}): el peso no '
+                        'puede ser negativo.'
+                    )
+            for line in ToMarkDone:
+                # _register_weight_from_productos_tab() ya posta la
+                # nota de "sin stock" si actual_kg quedó en 0 — no
+                # duplicar la llamada acá.
+                line._register_weight_from_productos_tab()
+            if ToUndo:
+                ToUndo.action_undo_line()
+            # Tech Lead, 2026-11-02: is_done no es la única clave posible
+            # en vals (un admin podría editar otro campo en la misma
+            # fila/llamada) — sin esto, el resto se perdía en silencio
+            # al retornar antes de llegar a super().write(vals).
+            rest = {k: v for k, v in vals.items() if k != 'is_done'}
+            if rest:
+                super().write(rest)
+            return True
+
         track_kg = (
             'actual_kg' in vals
             and not self.env.context.get('skip_auto_save')
+            and bool(self)
         )
         old_snapshot = {}
         if track_kg:
+            if vals['actual_kg'] < 0:
+                raise UserError('El peso no puede ser negativo.')
+            self.flush_recordset()
+            self.env.cr.execute(
+                'SELECT id FROM guapante_preparation_day_line '
+                'WHERE id IN %s FOR UPDATE',
+                (tuple(self.ids),),
+            )
+            self.invalidate_recordset(['actual_kg', 'is_done'])
             old_snapshot = {
                 line.id: (line.actual_kg, line.is_done) for line in self
             }
@@ -421,11 +618,38 @@ class PreparationDayLine(models.Model):
                 new_kg = line.actual_kg
 
                 if was_done:
-                    if new_kg > 0 and new_kg != old_kg:
+                    # E7 (David/Tech Lead, 2026-11-02): poner el peso
+                    # en 0 sobre una línea ya Terminada ya NO la
+                    # devuelve a Pendiente (se quitó la rama que
+                    # llamaba action_undo_line() en new_kg==0) — 0 es
+                    # un valor de despacho válido ("sin stock"), no un
+                    # "deshacer". Cualquier cambio de valor (incluido
+                    # hacia o desde 0) se trata como corrección.
+                    if new_kg != old_kg:
+                        # Guard de sesión cerrada para el operario
+                        # (David/Tech Lead, 2026-11-02): desde Picking
+                        # ya no corrige si la operación cerró — solo un
+                        # administrador, desde Preparación o
+                        # reabriendo la sesión. Backend (sin
+                        # guapante_picking_flow) sigue permitido tal
+                        # cual (1).
+                        if is_picking_flow and line.wizard_id.state == 'done':
+                            raise UserError(
+                                'La operación está cerrada. Pide a un '
+                                'administrador que la reabra.'
+                            )
                         line._register_weight_correction(
-                            old_kg, is_picking_flow,
+                            old_kg, operator_employee_id,
                         )
-                elif new_kg > 0:
+                elif new_kg > 0 or (
+                    new_kg == 0 and is_picking_flow and operator_employee_id
+                ):
+                    # E7: 0 también marca Terminado ("despacho en 0" —
+                    # sin stock), pero SOLO desde el flujo explícito
+                    # del tablet con un operario con PIN vigente — así
+                    # ninguna escritura incidental de actual_kg=0 fuera
+                    # de ese flujo completa una línea por accidente
+                    # (ver auditoría de grep en el diseño aprobado).
                     if is_picking_flow:
                         line.wizard_id.action_save_line_weight(line.id)
                     else:
@@ -482,11 +706,16 @@ class PreparationDayLine(models.Model):
             lambda s: s.product_id == self.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                Summary.total_done_kg + self.actual_kg, 3,
-            )
+            Summary._add_done_kg(self.actual_kg)
 
-        self.with_context(skip_auto_save=True).write({'is_done': True})
+        # Sin PIN acá — done_by_employee_id usa el empleado vinculado al
+        # usuario de Odoo logueado, si tiene uno (Tech Lead, 2026-11-02:
+        # queda False si no, la fecha se estampa igual).
+        self.with_context(skip_auto_save=True).write({
+            'is_done': True,
+            'done_by_employee_id': self.env.user.employee_id.id,
+            'done_date': fields.Datetime.now(),
+        })
 
         self.wizard_id.sudo().message_post(
             body=(
@@ -494,6 +723,7 @@ class PreparationDayLine(models.Model):
                 f"{self.actual_kg:.3f} kg (por {self.env.user.name})."
             )
         )
+        self._maybe_post_dispatch_zero_note(self.env.user.name)
 
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
@@ -506,12 +736,39 @@ class PreparationDayLine(models.Model):
         if pending_total == 0:
             self.wizard_id.action_mark_done()
 
+    def _maybe_post_dispatch_zero_note(self, actor_name: str) -> None:
+        """E7 (David/Tech Lead, 2026-11-02): nota propia cuando una línea
+        se Termina en 0 — "sin stock", el cliente pidió un producto que
+        no hay. Separada de la nota de "Peso registrado"/action_save_
+        line_weight (que siempre se postea igual) para que sea fácil de
+        encontrar en el chatter. Un solo punto para los dos orígenes que
+        llegan a marcar Terminado (tablet vía action_save_line_weight,
+        backend vía _register_weight_from_productos_tab o la casilla de
+        admin de E4), para no duplicar el texto."""
+        self.ensure_one()
+        if self.actual_kg == 0:
+            self.wizard_id.sudo().message_post(
+                body=(
+                    f'{actor_name} terminó {self.product_description} '
+                    f'(Caja #{self.daily_sequence}) en 0 — sin stock, '
+                    'no se despacha.'
+                )
+            )
+
     def _register_weight_correction(
-        self, old_kg: float, has_pin_operator: bool,
+        self, old_kg: float, operator_employee_id,
     ) -> None:
         """Corrige el peso de una línea ya Terminada, editada inline desde
-        Productos — re-sincroniza stock/resumen sin repetir los efectos de
-        un primer guardado (no re-evalúa auto-finish, no toca date_done).
+        Productos o Picking — re-sincroniza stock/resumen sin repetir los
+        efectos de un primer guardado (no re-evalúa auto-finish, no toca
+        date_done). Permitido con la sesión cerrada (a diferencia de
+        volver una línea a Pendiente, ver action_undo_line) — corregir un
+        peso no reabre nada.
+
+        operator_employee_id: id de hr.employee si hay operario con PIN
+        activo (Tech Lead/David, 2026-11-02 — antes se mostraba un texto
+        genérico "operario con PIN activo" en vez del nombre real);
+        False/None para usar self.env.user.
         """
         self.ensure_one()
         new_kg = self.actual_kg
@@ -521,18 +778,20 @@ class PreparationDayLine(models.Model):
             lambda s: s.product_id == self.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                max(0.0, Summary.total_done_kg - old_kg + new_kg), 3,
-            )
+            Summary._add_done_kg(new_kg - old_kg)
 
-        quien = 'operario con PIN activo' if has_pin_operator else self.env.user.name
+        actor_name = (
+            self.env['hr.employee'].sudo().browse(operator_employee_id).name
+            if operator_employee_id else self.env.user.name
+        )
         self.wizard_id.sudo().message_post(
             body=(
-                f"Corrección post-cierre — Caja #{self.daily_sequence}: "
-                f"peso de {old_kg:.3f} kg a {new_kg:.3f} kg "
-                f"(la línea ya estaba Terminada; corregido por {quien})."
+                f"Corregido — {self.product_description} "
+                f"(Caja #{self.daily_sequence}): {actor_name} cambió "
+                f"el peso de {old_kg:.3f} kg a {new_kg:.3f} kg."
             )
         )
+        self._maybe_post_dispatch_zero_note(actor_name)
 
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
@@ -546,10 +805,7 @@ class PreparationDayLine(models.Model):
                     lambda s: s.product_id == line.product_product_id
                 )
                 if summary:
-                    summary.total_done_kg = round(
-                        max(0.0, summary.total_done_kg - line.actual_kg),
-                        3,
-                    )
+                    summary._add_done_kg(-line.actual_kg)
                 # Limpiar la cantidad ejecutada en el picking.
                 # sudo(): el operario puede no tener permisos
                 # de escritura directa sobre stock.move.line.
@@ -558,9 +814,12 @@ class PreparationDayLine(models.Model):
                     line.stock_move_id.sudo().with_context(
                         skip_inverse_visual_qty=True,
                     ).move_line_ids.write({'quantity': 0})
-                line.with_context(skip_auto_save=True).write(
-                    {'is_done': False, 'actual_kg': 0.0}
-                )
+                line.with_context(skip_auto_save=True).write({
+                    'is_done': False,
+                    'actual_kg': 0.0,
+                    'done_by_employee_id': False,
+                    'done_date': False,
+                })
         return True
 
 
@@ -674,7 +933,7 @@ class PreparationDay(models.Model):
     )
     draft_count = fields.Integer(
         string='Cotizaciones pendientes',
-        compute='_compute_box_reconciliation',
+        compute='_compute_draft_count',
         help='Cotizaciones (draft/sent) que podrían ser cajas si se confirman.',
     )
 
@@ -1181,12 +1440,13 @@ class PreparationDay(models.Model):
         el trabajo ya hecho en las demás sesiones de esta corrida —
         relanzar tumbaría TODO lo reparado hasta ese punto.
 
-        Desde 2026-10-31 (#4, David/Tech Lead, caso real sesión 218)
-        también borra, como segundo paso, una sesión draft/loaded sin
-        líneas/claims/historial de pesaje cuya fecha quedó fuera del
-        rango hoy..hoy+N de arriba — dentro de ese rango una sesión
-        vacía es normal (recién creada por adelantado, o por el
-        tablet para la de mañana) y nunca se toca.
+        Desde 2026-10-31 (#4, David/Tech Lead, caso real sesión 218;
+        corrección de rango 2026-11-01) también borra, como segundo
+        paso, una sesión draft/loaded sin líneas/claims/historial de
+        pesaje en CUALQUIER fecha, excepto hoy, mañana (solo si ya se
+        pasó la hora de corte del tablet) y cualquiera con write_date
+        de menos de 30 minutos — ver el comentario junto al segundo
+        paso, más abajo, para el detalle completo.
         """
         max_sessions, max_orders = _get_cron_repair_limits(self.env)
         today = _current_session_date(self.env)
@@ -1430,24 +1690,31 @@ class PreparationDay(models.Model):
                         Session.date,
                     )
 
-        # Limpieza de sesiones vacías (#4, David/Tech Lead 2026-10-31,
-        # ajuste de rango de Tech Lead tras el caso real de la sesión
-        # 218): SOLO fuera del rango hoy..hoy+days_ahead que la fase
-        # de arriba usa para crear sesiones por adelantado y que el
-        # tablet usa para la sesión de mañana (switch-hour, #12) —
-        # dentro de ese rango una sesión vacía es normal y NUNCA se
-        # toca, o este mismo cron la borraría y la volvería a crear
-        # cada 10 min (quema numeración de PK/PICK y le cambia el id).
+        # Limpieza de sesiones vacías (#4, David/Tech Lead 2026-10-31;
+        # corrección de rango, Tech Lead/David 2026-11-01, caso real:
+        # la vacía del 2-nov no desaparecía y reaparecía al llegar un
+        # pedido — el objetivo original ERA justo que desapareciera).
+        # El rango hoy..hoy+days_ahead de la fase de arriba es solo
+        # para CREAR por adelantado, no es terreno protegido para el
+        # borrado — un pedido nuevo para una fecha sin sesión la
+        # recrea por e2 (_ensure_session_for_date), así que borrar acá
+        # nunca es definitivo. Las únicas protegidas son:
+        #   - la de HOY (today) — la jornada en curso;
+        #   - la de MAÑANA (today+1) SOLO si ya se pasó la hora de
+        #     corte del tablet (_is_past_picking_switch_hour, #12): el
+        #     tablet puede estar entrando ahí mismo, aunque todavía no
+        #     tenga líneas;
+        #   - cualquiera con write_date de menos de 30 minutos (gracia
+        #     contra carreras: recién creada por el tablet o por e2,
+        #     todavía sin su primera línea).
         # Nunca una sesión 'done', nunca con líneas, nunca con un
         # claim (incluido uno 'stopped' sin dueño activo — sigue
         # siendo trabajo hecho), nunca con historial de pesaje
         # (guapante.picking.log), y nunca si todavía hay pedidos
         # elegibles sin cargar para esa fecha (mismo dominio que la
         # reparación de arriba) — eso es una sesión rota a medio
-        # reparar, no una vacía de verdad; borrarla la perdería para
-        # siempre porque, al estar fuera del rango, la fase de
-        # creación nunca la recrearía. Mismo tope max_sessions que ya
-        # limita la fase de creación/reparación, por corrida.
+        # reparar, no una vacía de verdad. Mismo tope max_sessions que
+        # ya limita la fase de creación/reparación, por corrida.
         #
         # 'guapante.preparation.day.product.claim' solo existe si
         # ist_preparation_day_picking está instalado — se verifica
@@ -1457,12 +1724,15 @@ class PreparationDay(models.Model):
         has_claim_model = (
             'guapante.preparation.day.product.claim' in self.env.registry
         )
+        protected_dates = [today]
+        if _is_past_picking_switch_hour(self.env):
+            protected_dates.append(today + timedelta(days=1))
+        grace_cutoff = fields.Datetime.now() - timedelta(minutes=30)
         EmptySessions = self.sudo().search([
             ('state', 'in', ('draft', 'loaded')),
             ('line_ids', '=', False),
-            '|',
-            ('date', '<', today),
-            ('date', '>', today + timedelta(days=days_ahead)),
+            ('date', 'not in', protected_dates),
+            ('write_date', '<=', grace_cutoff),
         ], order='date', limit=max_sessions)
         for Session in EmptySessions:
             try:
@@ -1492,10 +1762,10 @@ class PreparationDay(models.Model):
                         continue
                     _logger.info(
                         'Guapante: cron de respaldo borra la sesión '
-                        'vacía %s (id=%s) — fuera del rango hoy..hoy+'
-                        '%d, sin líneas, sin claims, sin historial de '
-                        'pesaje y sin pedidos elegibles pendientes.',
-                        Session.date, Session.id, days_ahead,
+                        'vacía %s (id=%s) — no es hoy ni mañana '
+                        'protegida, sin líneas, sin claims, sin '
+                        'historial de pesaje y sin pedidos elegibles '
+                        'pendientes.', Session.date, Session.id,
                     )
                     Session.unlink()
             except _PG_CONCURRENCY_ERRORS as exc:
@@ -1682,10 +1952,32 @@ class PreparationDay(models.Model):
 
     @api.depends('line_ids.is_done')
     def _compute_global_progress(self) -> None:
-        """Calcula el progreso global de toda la sesión."""
+        """Calcula el progreso global de toda la sesión.
+
+        Una sola consulta agregada para TODO el lote de self (Tech
+        Lead, 2026-11-02) — la versión anterior recorría
+        session.line_ids por cada sesión, y el ORM resuelve cada
+        acceso como un search propio: 144 consultas para pintar una
+        página de 80 sesiones (medido en staging_main). _read_group
+        agrupado por (wizard_id, is_done) da total y hechas en una
+        sola pasada, sin importar cuántas sesiones traiga self.
+        """
+        counts = {}
+        if self.ids:
+            groups = self.env['guapante.preparation.day.line']._read_group(
+                [('wizard_id', 'in', self.ids)],
+                groupby=['wizard_id', 'is_done'],
+                aggregates=['__count'],
+            )
+            for wizard, is_done, count in groups:
+                entry = counts.setdefault(wizard.id, {'total': 0, 'done': 0})
+                entry['total'] += count
+                if is_done:
+                    entry['done'] += count
         for session in self:
-            total = len(session.line_ids)
-            done = len(session.line_ids.filtered(lambda l: l.is_done))
+            entry = counts.get(session.id, {'total': 0, 'done': 0})
+            total = entry['total']
+            done = entry['done']
             session.total_lines = total
             session.done_lines = done
             session.pending_lines = total - done
@@ -1695,10 +1987,11 @@ class PreparationDay(models.Model):
 
     @api.depends('date', 'line_ids', 'line_ids.sale_order_id')
     def _compute_box_reconciliation(self) -> None:
-        """Conciliación de cajas: confirmadas vs cotizaciones pendientes.
+        """Conciliación de cajas: so_count/box_diff/box_match.
 
-        El valor real de este indicador es mostrar cotizaciones
-        draft/sent que podrían convertirse en cajas adicionales.
+        draft_count (cotizaciones pendientes) vive en su PROPIO
+        compute (_compute_draft_count, Tech Lead 2026-11-02) — ver su
+        docstring para el porqué.
 
         so_count (corrección #5, David 2026-10-31): con líneas reales
         ya cargadas, son la fuente de verdad — distinct sale_order_id
@@ -1711,13 +2004,30 @@ class PreparationDay(models.Model):
         NO dependen de so_count en ningún lado (ambos fijos en
         0/True desde antes de esta corrección), así que este cambio no
         les afecta.
+
+        so_count vía consulta agregada (Tech Lead, 2026-11-02): una
+        sola _read_group para TODO el lote de self, sin recorrer
+        line_ids — mismo hallazgo de rendimiento que
+        _compute_global_progress. Agrupa SOLO por wizard_id, nunca
+        también por is_done: un pedido con líneas en distintos estados
+        de is_done contaría dos veces si el distinct de sale_order_id
+        se partiera por subgrupo.
         """
+        sessions_with_lines = self.filtered('line_ids')
+        so_counts = {}
+        if sessions_with_lines:
+            groups = self.env['guapante.preparation.day.line']._read_group(
+                [('wizard_id', 'in', sessions_with_lines.ids)],
+                groupby=['wizard_id'],
+                aggregates=['sale_order_id:count_distinct'],
+            )
+            so_counts = {wizard.id: count for wizard, count in groups}
+
         for session in self:
             if not session.date:
                 session.so_count = 0
                 session.box_diff = 0
                 session.box_match = True
-                session.draft_count = 0
                 continue
 
             dt_start, dt_end = _date_to_utc_range(
@@ -1725,9 +2035,7 @@ class PreparationDay(models.Model):
             )
 
             if session.line_ids:
-                session.so_count = len(
-                    session.line_ids.mapped('sale_order_id')
-                )
+                session.so_count = so_counts.get(session.id, 0)
             else:
                 # Pickings PICK (internal) de órdenes activas para la
                 # fecha. Excluir pickings cancelados Y órdenes
@@ -1746,10 +2054,28 @@ class PreparationDay(models.Model):
             session.box_diff = 0
             session.box_match = True
 
-            # Cotizaciones pendientes (draft/sent) que podrían
-            # llegar si el cliente confirma.
-            # Buscan por expected_date (fecha estimada de entrega
-            # calculada por Odoo) o date_order (fecha de creación).
+    @api.depends('date')
+    def _compute_draft_count(self) -> None:
+        """Cotizaciones pendientes (draft/sent) que podrían convertirse
+        en cajas si el cliente confirma.
+
+        Compute PROPIO, separado de _compute_box_reconciliation (Tech
+        Lead, 2026-11-02): antes vivían juntos, y como Odoo calcula de
+        una vez todos los campos de un mismo compute, pedir so_count
+        (lo que hace la lista de Sesiones) disparaba también esta
+        búsqueda de sale.order por sesión — aunque draft_count no se
+        muestra en ninguna vista hoy (confirmado por grep). Separarlo
+        hace que esta búsqueda solo corra donde de verdad se lee/
+        muestra draft_count, sin arrastrar su costo a la lista.
+
+        Mismo cálculo de siempre, sin cambios: por expected_date
+        (fecha estimada de entrega) o date_order (fecha de creación).
+        """
+        for session in self:
+            if not session.date:
+                session.draft_count = 0
+                continue
+            dt_start, dt_end = _date_to_utc_range(self.env, session.date)
             DraftOrders = self.env['sale.order'].sudo().search([
                 ('state', 'in', ('draft', 'sent')),
                 '|',
@@ -1806,14 +2132,20 @@ class PreparationDay(models.Model):
         con otra lista ya registrada para este modelo (la embebida en
         el form no cuenta — es ad hoc del campo, no una vista
         registrada) podría ganar una distinta a
-        view_preparation_day_line_list y dejarla sin uso."""
+        view_preparation_day_line_list y dejarla sin uso.
+
+        search_view_id fijado igual (Entrega A del buscador, David/Tech
+        Lead, 2026-11-01): filtros pendientes/terminadas y agrupar por
+        producto/cliente/zona/caja sobre esta misma lista."""
         self.ensure_one()
         list_view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
+        search_view = self.env.ref('ist_preparation_day.view_preparation_day_line_search')
         return {
             'name': 'Líneas de picking',
             'type': 'ir.actions.act_window',
             'res_model': 'guapante.preparation.day.line',
             'views': [(list_view.id, 'list')],
+            'search_view_id': [search_view.id, search_view.name],
             'domain': [('wizard_id', '=', self.id)],
             'target': 'current',
         }
@@ -2086,7 +2418,13 @@ class PreparationDay(models.Model):
         preparation line as done.
         """
         Line = self.env['guapante.preparation.day.line'].browse(line_id)
-        if not Line or Line.is_done or Line.actual_kg <= 0:
+        # E7 (David/Tech Lead, 2026-11-02): ya no exige actual_kg>0 —
+        # 0 es un despacho válido ("sin stock", el cliente pidió un
+        # producto que no hay). El campo de peso nunca llega
+        # pre-llenado en 0 por defecto (siempre empieza vacío); 0 solo
+        # existe si el operario lo tecleó a propósito. Negativos ya
+        # quedan bloqueados antes de este punto, en write().
+        if not Line or Line.is_done:
             return False
 
         # Identificación por PIN (Fase 1, 2026-10-19 — migrada a este módulo 2026-10-21):
@@ -2145,16 +2483,22 @@ class PreparationDay(models.Model):
 
         # Marcar como hecho usando skip_auto_save para evitar que
         # el override de write() vuelva a llamar este método.
-        Line.with_context(skip_auto_save=True).write({'is_done': True})
+        # done_by_employee_id (Tech Lead, 2026-11-02): Employee ya
+        # resuelto arriba (operario de PIN en Picking) — False si esta
+        # llamada corrió sin request (shell/tests).
+        Line.with_context(skip_auto_save=True).write({
+            'is_done': True,
+            'done_by_employee_id': Employee.id,
+            'done_date': fields.Datetime.now(),
+        })
+        Line._maybe_post_dispatch_zero_note(Employee.name or self.env.user.name)
 
         # Actualizar total_done_kg en el resumen del producto
         Summary = self.summary_ids.filtered(
             lambda s: s.product_id == Line.product_product_id
         )
         if Summary:
-            Summary.total_done_kg = round(
-                Summary.total_done_kg + Line.actual_kg, 3,
-            )
+            Summary._add_done_kg(Line.actual_kg)
 
         # Log de rendimiento por operario
         LastLog = self.env['guapante.picking.log'].search([
@@ -2225,14 +2569,61 @@ class PreparationDay(models.Model):
                 self._propagate_weight_to_chain(dest, weight)
 
     def action_mark_done(self) -> bool:
-        """Mark session as done."""
+        """Mark session as done.
+
+        Nota automática (E5, David/Tech Lead, 2026-11-02): quién y
+        cuándo — simétrica con la de action_reopen(). Nunca toca
+        stock ni resúmenes acá: eso ya se actualizó línea por línea,
+        en el momento en que cada una se pesó (_sync_weight_to_stock +
+        Summary._add_done_kg, dentro de _register_weight_from_
+        productos_tab/action_save_line_weight) — para cuando se llega
+        a 'done', todo lo que hay que sincronizar ya está aplicado.
+        """
         self.state = 'done'
         self.date_done = fields.Datetime.now()
+        self.sudo().message_post(
+            body=f'Operación finalizada por {self.env.user.name}.'
+        )
         return False
 
     def action_reopen(self) -> bool:
-        """Reopen a finished session to allow adding new orders."""
+        """Reopen a finished session to allow adding new orders.
+
+        E5 (David/Tech Lead, 2026-11-02): solo cambia state y
+        date_done — NUNCA toca line_ids ni summary_ids. No hace
+        falta: el estado de cada línea (is_done, actual_kg, done_by,
+        done_date) y su stock/resumen ya quedaron consistentes al
+        pesarse, independientemente de si la sesión está 'done' o
+        'loaded' (ver action_mark_done) — reabrir solo LEVANTA los
+        guards que bloqueaban corregir/deshacer líneas mientras la
+        sesión estaba cerrada (action_undo_line de Picking, el
+        bloqueo de stock_picking.write() al mover un PICK hacia esta
+        sesión), nunca recalcula nada desde cero.
+
+        date_done se limpia: ya no está Finalizada, hasta el próximo
+        cierre (automático o manual) que la vuelva a estampar.
+
+        Reapertura y re-cierre NO son simétricos — ojo con esto al dar
+        soporte: el auto-cierre (pending_total==0 → action_mark_done())
+        solo vive en el camino de "primer guardado" de una línea
+        (_register_weight_from_productos_tab/action_save_line_weight),
+        nunca en _register_weight_correction (a propósito: una
+        corrección no reabre nada, no reevalúa auto-finish). Entonces
+        si, tras reabrir, el administrador solo CORRIGE pesos de
+        líneas ya Terminadas (sin desmarcar/re-marcar ninguna), el
+        auto-cierre nunca se vuelve a disparar — la sesión queda
+        'loaded' indefinidamente hasta que alguien pulse manualmente
+        "Finalizar Operación" (ya visible para cualquier state==
+        'loaded', sin cambios).
+        """
         self.state = 'loaded'
+        self.date_done = False
+        self.sudo().message_post(
+            body=(
+                f'Operación reabierta por {self.env.user.name} — usa '
+                '"Actualizar pedidos" si hay pedidos tardíos que recoger.'
+            )
+        )
         return False
 
     def action_export_excel(self) -> dict:
@@ -2293,6 +2684,25 @@ class PreparationDaySummary(models.Model):
         digits=(5, 1),
         store=True,
     )
+
+    def _add_done_kg(self, delta: float) -> None:
+        """Read-modify-write de total_done_kg bajo lock explícito
+        (David/Tech Lead, 2026-11-02): sin ownership, dos líneas
+        DISTINTAS del mismo producto pueden terminarse/corregirse casi
+        a la vez por dos operarios — ambas tocan este mismo registro de
+        resumen. SELECT ... FOR UPDATE antes de leer, para no basar el
+        nuevo valor en un snapshot que la otra escritura ya dejó
+        obsoleto (no alcanza con confiar en el reintento por
+        serialización de Postgres)."""
+        self.ensure_one()
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT id FROM guapante_preparation_day_summary '
+            'WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        self.invalidate_recordset(['total_done_kg'])
+        self.total_done_kg = round(max(0.0, self.total_done_kg + delta), 3)
 
     @api.depends(
         'wizard_id.line_ids.is_done',

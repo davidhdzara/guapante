@@ -26,10 +26,16 @@
                             <div class="o_searchview_input_container d-flex flex-grow-1">
                                 <input type="text"
                                        class="o_searchview_input o_input flex-grow-1 border-0"
-                                       placeholder="Buscar producto…"
+                                       placeholder="Buscar producto o cliente…"
                                        t-model="state.searchText"/>
                             </div>
                         </div>
+                    </div>
+                    <div class="form-check form-switch d-flex align-items-center mb-0 text-nowrap">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="picking_my_products_switch"
+                               t-model="state.showAllClaims"/>
+                        <label class="form-check-label ms-1" for="picking_my_products_switch">Todos</label>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
@@ -55,17 +61,26 @@
                 <t t-foreach="statusOrder" t-as="status" t-key="status">
                     <div class="d-flex flex-column w-25">
                         <div class="d-flex align-items-center mb-2 text-muted" style="height: 24px;">
-                            <button t-if="status === 'done'" type="button"
+                            <button t-if="status === 'done' || status === 'stopped'" type="button"
                                     class="btn btn-link p-0 text-muted text-decoration-none d-flex align-items-center gap-1"
-                                    t-on-click="toggleDoneGroup">
-                                <i t-attf-class="fa #{state.foldedDone ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
+                                    t-on-click="() => this.toggleGroup(status)">
+                                <i t-attf-class="fa #{isGroupFolded(status) ? 'fa-chevron-right' : 'fa-chevron-down'}"/>
                                 <strong t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
                             </button>
                             <strong t-else="" t-esc="statusLabels[status] + ' (' + groupedClaims[status].length + ')'"/>
                         </div>
-                        <t t-if="status !== 'done' || !state.foldedDone">
+                        <t t-if="!isGroupFolded(status)">
                             <t t-foreach="groupedClaims[status]" t-as="claim" t-key="claim.id">
-                                <div t-attf-class="o_mrp_display_record card border rounded m-0 mb-2 #{status === 'in_progress' &amp;&amp; !claim.is_mine ? 'o_disabled' : ''}">
+                                <!-- Tarjeta clicable completa, cualquier estado (E3, 2026-11-02):
+                                     abre Nivel 2 directo, sin asignar ni retomar — el servidor
+                                     (action_open_lines_kanban) no exige dueño. Sin o_disabled: nadie
+                                     tiene nada que no pueda ver (E1/E3), nada se atenúa. El
+                                     card-footer entero para la propagación (t-on-click.stop en el
+                                     div, no en cada botón/menú uno por uno: mismo efecto, cubre
+                                     también los clics internos del Dropdown del engranaje, que no
+                                     se puede interceptar botón por botón desde afuera). -->
+                                <div class="o_mrp_display_record card border rounded m-0 mb-2 cursor-pointer"
+                                     t-on-click="() => this.onContinue(claim)">
                                     <div class="card-header">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <span class="h6 mb-0 text-truncate" t-esc="claim.product_tmpl_name"/>
@@ -82,14 +97,19 @@
                                             <t t-else="">Asignado a: <t t-esc="claim.assigned_employee_name"/></t>
                                         </li>
                                         <li t-if="status === 'stopped'" class="list-group-item text-danger">
-                                            <t t-esc="stopReasonLabels[claim.stop_reason] || claim.stop_reason"/> — detenido por <t t-esc="claim.stopped_by_employee_name"/>
+                                            <t t-esc="stopReasonLabels[claim.stop_reason] || claim.stop_reason"/> — detenido por <t t-if="claim.stopped_by_me">mí</t><t t-else=""><t t-esc="claim.stopped_by_employee_name"/></t>
+                                        </li>
+                                        <li t-if="status === 'done' and claim.done_by_employee_name" class="list-group-item">
+                                            Terminado por <t t-esc="claim.done_by_employee_name"/> (<t t-esc="claim.done_time_label"/>)
                                         </li>
                                     </ul>
-                                    <div class="card-footer d-flex justify-content-between align-items-center">
+                                    <div class="card-footer d-flex justify-content-between align-items-center"
+                                         t-on-click.stop="() => {}">
                                         <button t-if="status === 'pending'" type="button" class="btn btn-primary" t-on-click="() => this.onAssign(claim)">Asignarme</button>
                                         <button t-if="status === 'in_progress' and claim.is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onContinue(claim)">Continuar</button>
                                         <button t-if="status === 'stopped'" type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
                                         <span t-if="status === 'done'"/>
+                                        <button t-if="status === 'stopped'" type="button" class="btn btn-outline-secondary" t-on-click="() => this.onUnstop(claim)">Liberar</button>
                                         <PickingClaimGearMenu t-if="status === 'in_progress' and claim.is_mine"
                                                                onScrap="() => this.onScrap(claim)"
                                                                onStop="() => this.onStop(claim)"

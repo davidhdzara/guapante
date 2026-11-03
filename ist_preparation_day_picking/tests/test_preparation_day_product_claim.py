@@ -3,6 +3,7 @@ import uuid
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+import odoo.sql_db as sql_db
 from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
@@ -12,6 +13,7 @@ from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_
 )
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     CLAIM_STALE_MARGIN_SECONDS,
+    IDLE_TIMEOUT_PARAM_KEY,
     PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     set_active_prep_operator,
 )
@@ -355,8 +357,10 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertIn(self.operator_a.name, last_message.body)
 
     def test_action_assign_does_not_post_chatter(self):
-        """Tech Lead, punto 5: Asignar NO va al chatter (con 30-60
-        productos por día inundaría los mensajes de pesaje)."""
+        """Punto 5 de Tech Lead (vigente aún con (4b), 2026-11-02 —
+        David aclaró que tomar un producto nunca tomado antes es
+        ruido: la tarjeta de L1 ya muestra "Asignado a", y quien lo
+        toma queda registrado al pesar, en la nota "Terminado")."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         messages_before = len(session.message_ids)
@@ -395,6 +399,101 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
             claim.action_resume()
         self.assertGreater(len(session.message_ids), messages_before)
+
+    # ── action_unstop ("Liberar" un Detenido, entrega 2, 2026-11-02) ──
+
+    def test_action_unstop_requires_active_operator(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with self.assertRaises(UserError):
+            claim.action_unstop()
+
+    def test_action_unstop_allowed_by_any_operator_without_ownership(self):
+        """A diferencia de action_release()/action_stop(), un Detenido no
+        tiene dueño — cualquier operario con NIP vigente puede liberarlo,
+        no solo quien lo detuvo."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()  # no debe lanzar
+        self.assertEqual(claim.status, 'pending')
+
+    def test_action_unstop_clears_stop_fields_without_assigning_anyone(self):
+        """A diferencia de action_resume(), liberar NO toma el claim para
+        quien lo libera — vuelve a Pendiente sin dueño."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()
+        self.assertFalse(claim.stop_reason)
+        self.assertFalse(claim.stopped_by_employee_id)
+        self.assertFalse(
+            claim.assigned_employee_id,
+            'Liberar no debe asignarle el claim a quien lo libera',
+        )
+
+    def test_action_unstop_rejects_if_not_stopped(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            with self.assertRaises(UserError):
+                claim.action_unstop()
+
+    def test_action_unstop_rejects_if_claim_done(self):
+        """Mismo caso borde que action_resume(): las líneas ya quedaron
+        is_done por otra vía mientras el claim seguía con stop_reason."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            with self.assertRaises(UserError):
+                claim.action_unstop()
+
+    def test_action_unstop_posts_chatter_with_releaser_reason_and_stopper(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        messages_before = len(session.message_ids)
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            claim.action_unstop()
+        self.assertGreater(len(session.message_ids), messages_before)
+        last_message = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(self.operator_b.name, last_message.body)
+        self.assertIn('Sin stock', last_message.body)
+        self.assertIn(self.operator_a.name, last_message.body)
+
+    def test_action_unstop_notifies_bus(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        BusModel = self.env.registry['bus.bus']
+        with patch.object(BusModel, '_sendone') as mock_sendone:
+            with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+                claim.action_unstop()
+        mock_sendone.assert_called_once_with(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated',
+            {'claim_id': claim.id},
+        )
 
     def test_stopped_claims_have_no_cap_can_take_a_fourth(self):
         """Aclaración de David (#8, vía Tech Lead, 2026-10-31): un
@@ -488,9 +587,12 @@ class TestPreparationDayProductClaim(TestPreparationDay):
     def _run_cron(self):
         self.Claim._cron_release_abandoned_claims()
 
-    def test_f1_active_claim_hidden_from_other_operator(self):
-        """Un claim En progreso con actividad reciente NO debe aparecer
-        en absoluto para otro operario — ni la tarjeta ni el nombre."""
+    def test_f1_active_claim_visible_to_other_operator(self):
+        """E3 (David/Tech Lead, 2026-11-02 — rediseño "operarios
+        administradores absolutos de Picking"): un claim En progreso de
+        OTRO operario es visible para todos, con nombre — la ocultación
+        que existía acá antes de E3 se eliminó junto con el resto de
+        las restricciones de ownership (ver E1)."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         mock_a = self._request_as(self.operator_a)
@@ -500,13 +602,16 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         mock_b = self._request_as(self.operator_b)
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
-        self.assertNotIn(claim.id, [c['id'] for c in visible])
+        by_id = {c['id']: c for c in visible}
+        self.assertIn(claim.id, by_id)
+        self.assertEqual(
+            by_id[claim.id]['assigned_employee_id'][0], self.operator_a.id,
+        )
 
     def test_f1_stale_claim_visible_to_other_operator_before_cron(self):
-        """Un claim En progreso sin actividad real desde hace más del
-        umbral (operario que se fue sin cerrar sesión o perdió
-        conexión) se trata como visible para TODOS, aunque la
-        liberación real en base de datos todavía no haya corrido."""
+        """Visible para todos sin importar actividad/staleness (E3) —
+        incluso ANTES de que el cron corra y libere de verdad el claim
+        abandonado en base de datos (ese otro mecanismo no cambia)."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         mock_a = self._request_as(self.operator_a)
@@ -523,9 +628,61 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             visible = self.Claim.get_claims_for_level1_display(session.id)
         self.assertIn(claim.id, [c['id'] for c in visible])
 
+    def test_f1_zero_timeout_stale_claim_still_visible_to_other_operator(self):
+        """Fila 3 del backlog (David/Tech Lead, 2026-11-01) + E3
+        (2026-11-02): con el parámetro de inactividad en 0 ("sin
+        bloqueo") el claim nunca se trata como abandonado para el CRON
+        de liberación — pero la visibilidad en el L1 ya no depende de
+        eso ni de ningún otro estado: sigue viéndose para otro operario
+        igual que uno con actividad reciente."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        claim.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        mock_b = self._request_as(self.operator_b)
+        with patch(REQUEST_PATCH_TARGET, mock_b):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        self.assertIn(claim.id, [c['id'] for c in visible])
+
+    def test_f1_zero_timeout_cron_releases_nothing(self):
+        """Mismo parámetro en 0: el cron de liberación no debe tocar
+        ningún claim En progreso, sin importar qué tan vieja sea su
+        última actividad."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_a = self._request_as(self.operator_a)
+        with patch(REQUEST_PATCH_TARGET, mock_a):
+            claim.action_assign()
+        claim.sudo().write({
+            'last_activity': fields.Datetime.now() - timedelta(
+                seconds=STALE_SECONDS,
+            ),
+        })
+
+        self._run_cron()
+        claim.invalidate_recordset()
+
+        self.assertEqual(claim.status, 'in_progress')
+        self.assertEqual(claim.assigned_employee_id, self.operator_a)
+
     def test_f1_admin_sees_all_claims_with_names(self):
-        """Administrador ve TODO, activo o abandonado, con el nombre de
-        quien lo tiene — nunca aplica la regla de ocultamiento."""
+        """Ve TODO, activo o abandonado, con el nombre de quien lo
+        tiene — ya no es un privilegio de administrador (E3): cualquier
+        operario ve exactamente lo mismo, este test solo confirma que
+        tampoco cambia para admin."""
         self.env.user.sudo().write({
             'groups_id': [(4, self.env.ref(
                 'ist_preparation_day_picking.group_preparation_admin'
@@ -589,6 +746,271 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         with patch(REQUEST_PATCH_TARGET, mock_b):
             visible = self.Claim.get_claims_for_level1_display(session.id)
         self.assertIn(claim.id, [c['id'] for c in visible])
+
+    # ── "Mis productos": touched_by_me (Tech Lead/David, 2026-11-02) ──
+
+    def test_touched_by_me_true_when_in_progress_mine(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_for_pending_claim(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_true_when_i_stopped_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_when_other_operator_stopped_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_true_when_i_weighed_a_line_of_a_done_product(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertTrue(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_when_someone_else_finished_it(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_b.id,
+            'done_date': fields.Datetime.now(),
+        })
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_false_for_done_product_from_before_4a(self):
+        """Dato previo a 4a (sin done_by_employee_id) — nunca se cuenta
+        como mío, aunque yo sea quien lo mira."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['touched_by_me'])
+
+    def test_touched_by_me_uses_a_bounded_number_of_queries(self):
+        """Tech Lead: UNA consulta agrupada sobre las líneas del lote
+        para "terminado por mí", nunca una búsqueda por claim (serían
+        hasta ~100 por sesión)."""
+        products = [
+            self.env['product.product'].create({
+                'name': f'Producto Touched By Me Test {i}', 'type': 'consu',
+            })
+            for i in range(5)
+        ]
+        for product in products:
+            self._create_confirmed_order(qty=1.0, product=product)
+        session = self._create_session()
+        session.action_load()
+        self.assertEqual(len(session.product_claim_ids), 5)
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            before = sql_db.sql_counter
+            self.Claim.get_claims_for_level1_display(session.id)
+            after = sql_db.sql_counter
+        self.assertLessEqual(
+            after - before, 20,
+            "El número de queries no debe crecer con la cantidad de "
+            "claims Terminados — una sola consulta agrupada, no una "
+            "por claim.",
+        )
+
+    # ── customer_names_summary, buscador de Nivel 1 por cliente (E6,
+    # David/Tech Lead, 2026-11-02) ──
+
+    def test_customer_names_summary_includes_pending_and_done_customers(self):
+        """El resumen trae clientes de TODAS las líneas del producto —
+        Pendientes Y Terminadas — alguien puede buscar un cliente cuyo
+        pedido ya se despachó."""
+        other_partner = self.env['res.partner'].create({
+            'name': 'Cliente Buscador Despachado',
+        })
+        self._create_confirmed_order(qty=1.0, partner=other_partner)
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        done_line = session.line_ids.filtered(
+            lambda l: l.main_customer_name == other_partner.name
+        )
+        done_line.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+        })
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        summary = by_id[claim.id]['customer_names_summary']
+        self.assertIn(other_partner.name, summary)
+        self.assertIn(self.partner.name, summary)
+
+    def test_customer_names_summary_deduplicates_same_customer(self):
+        """Dos líneas del mismo cliente (dos Cajas) no repiten su nombre
+        en el resumen."""
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        summary = by_id[claim.id]['customer_names_summary']
+        self.assertEqual(summary.count(self.partner.name), 1)
+
+    def test_customer_names_summary_distinguishes_different_products(self):
+        """El resumen de un producto no mezcla clientes de OTRO producto
+        de la misma sesión."""
+        other_product = self.env['product.product'].create({
+            'name': 'Producto Buscador Cliente B', 'type': 'consu',
+        })
+        other_partner = self.env['res.partner'].create({
+            'name': 'Cliente Buscador Producto B',
+        })
+        self._create_confirmed_order(qty=1.0, partner=self.partner)
+        self._create_confirmed_order(
+            qty=1.0, product=other_product, partner=other_partner,
+        )
+        session = self._create_session()
+        session.action_load()
+        claims = session.product_claim_ids
+        claim_a = claims.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        claim_b = claims.filtered(
+            lambda c: c.product_tmpl_id == other_product.product_tmpl_id
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertNotIn(other_partner.name, by_id[claim_a.id]['customer_names_summary'])
+        self.assertIn(self.partner.name, by_id[claim_a.id]['customer_names_summary'])
+        self.assertNotIn(self.partner.name, by_id[claim_b.id]['customer_names_summary'])
+        self.assertIn(other_partner.name, by_id[claim_b.id]['customer_names_summary'])
+
+    # ── "Terminado por X (hh:mm)" (E3, David/Tech Lead, 2026-11-02) ──
+
+    def test_level1_done_shows_who_finished_it_and_when(self):
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': fields.Datetime.now(),
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_b)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertEqual(
+            by_id[claim.id]['done_by_employee_name'], self.operator_a.name,
+        )
+        self.assertRegex(by_id[claim.id]['done_time_label'], r'^\d{2}:\d{2}$')
+
+    def test_level1_done_shows_most_recent_finisher_when_two_operators(self):
+        """Dos líneas del MISMO producto (dos pedidos/Cajas distintas),
+        pesadas por operarios distintos en momentos distintos — el
+        reparto sale de la línea con el done_date MÁS RECIENTE, no del
+        primero que pesó ni del orden de creación de la línea. Dos
+        pedidos separados, no un solo qty=2.0 (que da una sola línea de
+        2 kg, no dos Cajas) — mismo patrón que test_line_write_
+        notifies_bus_once_per_session_not_per_line."""
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        self.assertEqual(len(claim), 1, 'un solo claim para el mismo producto')
+        self.assertEqual(len(session.line_ids), 2, 'una línea por pedido')
+        line_first, line_second = session.line_ids[0], session.line_ids[1]
+        now = fields.Datetime.now()
+        line_first.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_a.id,
+            'done_date': now - timedelta(minutes=10),
+        })
+        line_second.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 1.0,
+            'done_by_employee_id': self.operator_b.id,
+            'done_date': now,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertEqual(
+            by_id[claim.id]['done_by_employee_name'], self.operator_b.name,
+            'debe ganar quien pesó la línea más reciente, no el primero',
+        )
+
+    def test_level1_done_before_4a_shows_no_finisher_data(self):
+        """Dato previo a 4a (sin done_by_employee_id/done_date) — nunca
+        se inventa un nombre u hora, los dos campos quedan en False."""
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        session.line_ids.with_context(skip_auto_save=True).write({
+            'is_done': True, 'actual_kg': 2.0,
+        })
+        self.assertEqual(claim.status, 'done')
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['done_by_employee_name'])
+        self.assertFalse(by_id[claim.id]['done_time_label'])
+
+    def test_level1_pending_shows_no_finisher_data(self):
+        """Un claim que ni siquiera está Terminado nunca trae datos de
+        reparto — guard por status, no solo por falta de líneas done."""
+        session = self._load_session_with_product(qty=1.0)
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET, self._request_as(self.operator_a)):
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+        self.assertFalse(by_id[claim.id]['done_by_employee_name'])
+        self.assertFalse(by_id[claim.id]['done_time_label'])
 
     def test_f1_identification_failure_does_not_orphan_claim(self):
         """Corrección de Tech Lead sobre el primer diseño (punto A): una

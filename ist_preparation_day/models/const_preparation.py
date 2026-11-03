@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
+import logging
 import time
+
+_logger = logging.getLogger(__name__)
 
 # Clave de sesión de navegador para la identificación por PIN del operario en el paso de
 # pesaje (Preparation Day) — constante única, importada por el controlador de
@@ -12,8 +15,22 @@ PREP_OPERATOR_SESSION_KEY = 'guapante_prep_employee_id'
 PREP_OPERATOR_LAST_ACTIVITY_KEY = 'guapante_prep_employee_last_activity'
 
 # 5 minutos. Decisión de David/Tech Lead para Picking: el tablet vuelve solo a la
-# pantalla de NIP si nadie confirma una acción real en ese lapso.
+# pantalla de NIP si nadie confirma una acción real en ese lapso. Default y
+# fallback de IDLE_TIMEOUT_PARAM_KEY (fila 3 del backlog, David/Tech Lead,
+# 2026-11-01) — nunca se usa directo en el código, solo como respaldo cuando
+# el parámetro falta o es inválido (ver get_idle_timeout_seconds).
 PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300
+
+# Parámetro del sistema (ir.config_parameter) para personalizar el timeout
+# de inactividad de Picking sin tocar código. 0 = SIN BLOQUEO: la tablet
+# queda identificada con el último operario indefinidamente.
+#
+# RIESGO (David/Tech Lead, 2026-11-01, fila 3 del backlog): sin bloqueo, si
+# alguien se aleja sin "Terminar" ni identificarse de nuevo, cualquier peso
+# que registre otro operario que use esa misma tablet se le atribuye al
+# que quedó identificado — quien apague el bloqueo (valor 0) o lo alargue
+# mucho asume ese riesgo a propósito.
+IDLE_TIMEOUT_PARAM_KEY = 'ist_preparation_day.idle_timeout_seconds'
 
 # Margen extra (Tech Lead, 2026-10-31, plan f1) sobre PREP_OPERATOR_IDLE_TIMEOUT_SECONDS
 # antes de tratar un claim "En progreso" como abandonado (visible para otros
@@ -37,6 +54,33 @@ PREP_OPERATOR_PIN_MAX_FAILURES = 5
 PREP_OPERATOR_PIN_LOCKOUT_SECONDS = 60
 
 
+def get_idle_timeout_seconds(env):
+    """Lee IDLE_TIMEOUT_PARAM_KEY (segundos) — 0 significa sin bloqueo.
+    Un valor no numérico o negativo se ignora con un warning y se usa
+    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS (el default histórico): un
+    parámetro mal escrito nunca debe tumbar Picking."""
+    raw = env['ir.config_parameter'].sudo().get_param(
+        IDLE_TIMEOUT_PARAM_KEY, PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+    )
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        _logger.warning(
+            'Guapante: %s tiene un valor no numérico (%r) — se usa el '
+            'default de %s segundos.', IDLE_TIMEOUT_PARAM_KEY, raw,
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+        return PREP_OPERATOR_IDLE_TIMEOUT_SECONDS
+    if value < 0:
+        _logger.warning(
+            'Guapante: %s tiene un valor negativo (%s) — se usa el '
+            'default de %s segundos.', IDLE_TIMEOUT_PARAM_KEY, value,
+            PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
+        )
+        return PREP_OPERATOR_IDLE_TIMEOUT_SECONDS
+    return value
+
+
 def get_active_prep_operator_id(env, session, refresh=True):
     """Devuelve el employee_id identificado en esta sesión de navegador, o False si
     no hay ninguno, si pasaron más de PREP_OPERATOR_IDLE_TIMEOUT_SECONDS desde la
@@ -47,6 +91,11 @@ def get_active_prep_operator_id(env, session, refresh=True):
     Tech Lead): un timer solo en JS no cubre pantalla apagada, app cerrada o
     conexión caída — el próximo request del operario siguiente debe encontrar la
     sesión ya vencida, no heredar al operario anterior.
+
+    El timeout real lo decide get_idle_timeout_seconds(env) (fila 3 del
+    backlog, 2026-11-01) — 0 deshabilita por completo este chequeo de
+    tiempo, dejando la sesión identificada indefinidamente (ver el
+    riesgo documentado en IDLE_TIMEOUT_PARAM_KEY).
 
     refresh=False es para lecturas de solo consulta (ej. el watchdog del cliente
     preguntando "¿sigo activo?" para decidir si redirige a la pantalla de NIP) —
@@ -70,8 +119,11 @@ def get_active_prep_operator_id(env, session, refresh=True):
     employee_id = session.get(PREP_OPERATOR_SESSION_KEY)
     if not employee_id:
         return False
+    idle_timeout = get_idle_timeout_seconds(env)
     last_activity = session.get(PREP_OPERATOR_LAST_ACTIVITY_KEY)
-    if not last_activity or (time.time() - last_activity) > PREP_OPERATOR_IDLE_TIMEOUT_SECONDS:
+    if not last_activity or (
+        idle_timeout and (time.time() - last_activity) > idle_timeout
+    ):
         clear_active_prep_operator(session)
         return False
     Employee = env['hr.employee'].sudo().browse(employee_id)

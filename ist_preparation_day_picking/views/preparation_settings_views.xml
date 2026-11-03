@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Formulario propio, no una inherit de base.res_config_settings_view_form
+         (ese es para el modelo res.config.settings, este es
+         guapante.preparation.settings) — mismo js_class="base_settings" para
+         que se vea y comporte igual que un Ajustes nativo (ver docstring del
+         modelo en models/preparation_settings.py). -->
+    <record id="view_guapante_preparation_settings_form" model="ir.ui.view">
+        <field name="name">guapante.preparation.settings.view.form</field>
+        <field name="model">guapante.preparation.settings</field>
+        <field name="arch" type="xml">
+            <form string="Ajustes de Preparación" class="oe_form_configuration" js_class="base_settings">
+                <app data-string="Preparación" string="Preparación" name="ist_preparation_day_picking">
+                    <block title="Bloqueo por inactividad" id="prep_idle_lock">
+                        <setting help="Con el bloqueo activo, a los N minutos sin actividad se cierra la sesión del operario en la tablet de Picking y sus productos en progreso se liberan para que otro operario los tome. Desactivado, la tablet queda identificada con el último operario indefinidamente y un producto en progreso abandonado no se libera solo.">
+                            <field name="prep_idle_lock_enabled"/>
+                            <div class="content-group mt-2" invisible="not prep_idle_lock_enabled">
+                                <div class="row">
+                                    <label for="prep_idle_lock_minutes" class="col-lg-4 o_light_label"/>
+                                    <field name="prep_idle_lock_minutes" class="col-lg-2"/>
+                                    <div class="col-lg-6 d-inline-block">minutos</div>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_guapante_preparation_settings" model="ir.actions.act_window">
+        <field name="name">Ajustes</field>
+        <field name="res_model">guapante.preparation.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+    </record>
+
+    <!-- Preparación › Configuración › Ajustes. "Configuración"
+         (menu_preparation_day_config) ya existe — se define en
+         hr_employee_config_views.xml, con "Operarios autorizados" y
+         "Modelos de notas" como hermanos — no se crea un segundo menú
+         "Configuración" acá (hallazgo de Tech Lead, 2026-11-02),
+         "Ajustes" solo cuelga de ese mismo menú, primero entre sus
+         hermanos (sequence 1, antes de Operarios autorizados en 10 y
+         Modelos de notas en 20). El grupo del padre ya es
+         group_preparation_admin — Mauricio lo tiene, no necesita
+         base.group_system para esto (decisión de David, 2026-11-02). -->
+    <menuitem
+        id="menu_preparation_settings"
+        name="Ajustes"
+        parent="menu_preparation_day_config"
+        action="action_guapante_preparation_settings"
+        groups="group_preparation_admin"
+        sequence="1"
+    />
+</odoo>

@@ -101,6 +101,40 @@ class TestStockPickingBlockDoneDestination(TransactionCase):
             'si el destino está cerrado, el picking conserva su fecha',
         )
 
+    def test_moving_to_reopened_destination_session_allowed(self):
+        """E5 (David/Tech Lead, 2026-11-02): el bloqueo mira state==
+        'done' en vivo — tras action_reopen() el destino ya no está
+        'done', así que el mismo write() que antes rechazaba ahora
+        debe pasar sin tocar nada más (sin cambio de código acá, solo
+        confirma que action_reopen() lo desbloquea solo)."""
+        order, pick = self._create_confirmed_order(self.day_a)
+        self._load_session(self.day_a)
+        SessionB = self.env[
+            'guapante.preparation.day'
+        ]._ensure_session_for_date(self.day_b)
+        SessionB.action_mark_done()
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        with self.assertRaises(UserError):
+            pick.scheduled_date = dt_start_b
+        pick.invalidate_recordset(['scheduled_date'])
+
+        # action_reopen() exige group_preparation_admin cuando Picking
+        # está instalado (override en ese módulo) — este test corre
+        # como TransactionCase simple, sin ese grupo por defecto.
+        admin_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_admin',
+            raise_if_not_found=False,
+        )
+        if admin_group:
+            self.env.user.sudo().write({'groups_id': [(4, admin_group.id)]})
+        SessionB.action_reopen()
+
+        pick.scheduled_date = dt_start_b  # ya no debe lanzar UserError
+
+        pick.invalidate_recordset(['scheduled_date'])
+        self.assertEqual(pick.scheduled_date, dt_start_b)
+
     def test_moving_from_done_origin_without_lines_to_open_destination_allowed(self):
         """Condición 2 de Tech Lead: origen 'done' pero SIN líneas
         (la orden entró después del cierre, e2 solo dejó nota) → debe

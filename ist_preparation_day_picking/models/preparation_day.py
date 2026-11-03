@@ -9,43 +9,21 @@ from odoo.exceptions import AccessError
 
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _DEFAULT_TZ,
+    _is_past_picking_switch_hour,
 )
 
 _logger = logging.getLogger(__name__)
 
-# Hora de corte configurable (hora Bogotá) desde la que el TABLET de
-# Picking resuelve "mañana" en vez de "hoy" — corrección #12, David
+# _PICKING_SWITCH_HOUR_PARAM_KEY/_DEFAULT y _get_picking_switch_hour
+# viven ahora en ist_preparation_day (corrección del ajuste #4, Tech
+# Lead/David 2026-11-01) — ver el comentario junto a su definición ahí.
+# Esta función (_picking_session_date) sigue siendo la única que
+# resuelve a dónde entra el TABLET de Picking — corrección #12, David
 # tras probar en staging_main 2026-10-31: la operación real empieza a
 # las 22:00 del día anterior. Solo afecta a dónde entra el tablet
-# (_picking_session_date, usada ÚNICAMENTE por
-# action_resolve_picking_handoff); NUNCA a _current_session_date del
-# cron de respaldo ni al corte 00:30 de action_confirm — esos siguen
-# intactos.
-_PICKING_SWITCH_HOUR_PARAM_KEY = (
-    'ist_preparation_day_picking.picking_switch_hour'
-)
-_PICKING_SWITCH_HOUR_DEFAULT = '21:00'
-
-
-def _get_picking_switch_hour(env) -> tuple:
-    """(hour, minute) de corte configurable para _picking_session_date
-    — ver _PICKING_SWITCH_HOUR_PARAM_KEY."""
-    raw = env['ir.config_parameter'].sudo().get_param(
-        _PICKING_SWITCH_HOUR_PARAM_KEY, default=_PICKING_SWITCH_HOUR_DEFAULT,
-    )
-    try:
-        hour_str, minute_str = raw.split(':')
-        hour, minute = int(hour_str), int(minute_str)
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            raise ValueError(f'hora/minuto fuera de rango: {raw!r}')
-        return hour, minute
-    except (ValueError, AttributeError):
-        _logger.warning(
-            'Guapante: parámetro %s inválido (%r), usando default %s',
-            _PICKING_SWITCH_HOUR_PARAM_KEY, raw, _PICKING_SWITCH_HOUR_DEFAULT,
-        )
-        hour_str, minute_str = _PICKING_SWITCH_HOUR_DEFAULT.split(':')
-        return int(hour_str), int(minute_str)
+# (usada ÚNICAMENTE por action_resolve_picking_handoff); NUNCA a
+# _current_session_date del cron de respaldo ni al corte 00:30 de
+# action_confirm — esos siguen intactos.
 
 
 def _picking_session_date(env):
@@ -65,9 +43,7 @@ def _picking_session_date(env):
     ).astimezone(local_tz)
     today = local_dt.date()
 
-    switch_hour, switch_minute = _get_picking_switch_hour(env)
-    past_switch = (local_dt.hour, local_dt.minute) >= (switch_hour, switch_minute)
-    if not past_switch:
+    if not _is_past_picking_switch_hour(env):
         return today
 
     TodaySession = env['guapante.preparation.day'].sudo().search(
@@ -176,6 +152,29 @@ class PreparationDay(models.Model):
             return
         Claim = self.env['guapante.preparation.day.product.claim']
         Claim._ensure_claims_for_templates(self, line.product_id)
+
+    def action_reopen(self) -> bool:
+        """Solo group_preparation_admin puede reabrir (E5, Tech Lead,
+        2026-11-02) — CORE no puede referenciar ese grupo (vive acá,
+        en un módulo que depende de CORE), así que el check vive en
+        este override, antes de llamar a super(). Mismo patrón que
+        action_view_product_claims() (arriba): has_group() + AccessError
+        de un vistazo, en vez de un decorador o un campo computado.
+
+        Solo bloquea esta llamada — el botón del form ya queda oculto
+        para quien no tiene el grupo (ver la vista), esto es la
+        defensa en profundidad para RPC directo. Si este módulo se
+        desinstala, el check desaparece con él y queda el
+        comportamiento de CORE (sin restricción), igual que el resto
+        de los overrides de esta clase.
+        """
+        if not self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin'
+        ):
+            raise AccessError(
+                'Solo un administrador puede reabrir una operación cerrada.'
+            )
+        return super().action_reopen()
 
     def action_save_line_weight(self, line_id: int) -> bool:
         """Extiende action_save_line_weight() del padre con dos cosas de

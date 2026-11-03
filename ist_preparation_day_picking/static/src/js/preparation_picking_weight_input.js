@@ -83,10 +83,22 @@ export class PickingWeightInput extends Component {
             return;
         }
         const value = isInteger ? parseInt(normalized, 10) : parseFloat(normalized);
-        if (value <= 0) {
+        // E7 (David/Tech Lead, 2026-11-02): "despacho en 0" — el
+        // cliente pidió un producto que no hay, el operario lo
+        // despacha en 0 y la línea queda Terminada igual (antes se
+        // bloqueaba acá con "mayor que cero"). Solo se rechaza un
+        // valor negativo; vacío/espacios/coma o punto sueltos ya
+        // fallan arriba en pattern.test() (DECIMAL_PATTERN/
+        // INTEGER_PATTERN exigen al menos un dígito), y ningún patrón
+        // admite un signo "-" inicial, así que un negativo nunca pasa
+        // de esa validación — este chequeo numérico es solo defensa
+        // en profundidad (verificado contra "", " ", ",", ".", "0",
+        // "00", "0,0", "-0", "0 kg": todos ya se resuelven bien antes
+        // de llegar aquí).
+        if (value < 0) {
             this.state.error = isInteger
-                ? "Ingresa al menos 1 unidad."
-                : "El peso debe ser mayor que cero.";
+                ? "La cantidad no puede ser negativa."
+                : "El peso no puede ser negativo.";
             if (this.weightInputRef.el) {
                 this.weightInputRef.el.focus();
             }

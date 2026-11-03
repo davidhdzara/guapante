@@ -32,6 +32,7 @@
         'views/hr_employee_config_views.xml',
         'views/preparation_day_product_claim_views.xml',
         'views/preparation_day_note_template_views.xml',
+        'views/preparation_settings_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -43,6 +44,7 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_claim_menu.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_weight_input.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_note_dialog.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_search_utils.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.xml',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.xml',

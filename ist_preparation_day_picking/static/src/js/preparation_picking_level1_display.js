@@ -11,6 +11,7 @@ import {
 import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingClaimGearMenu } from "./preparation_picking_claim_menu";
+import { normalizeSearchText } from "./preparation_picking_search_utils";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -65,8 +66,26 @@ export class PickingClaimsDisplay extends Component {
             wizardId: null,
             hasLines: false,
             claims: [],
-            foldedDone: true,
+            // Terminado y Detenido empiezan plegados (Tech Lead,
+            // 2026-11-02 — un Detenido escondido sin pista de que
+            // existe sería un riesgo operativo, por eso el encabezado
+            // SIEMPRE muestra el contador "Detenido (N)" con el mismo
+            // chevron clickeable, plegado o no). Pendiente/En progreso
+            // nunca entran acá — toggleGroup() las deja siempre
+            // expandidas porque el objeto solo trae estas dos claves.
+            foldedGroups: { done: true, stopped: true },
             searchText: "",
+            // "Mis productos + Pendientes" / "Todos" (E3, David/Tech
+            // Lead, 2026-11-02 — reemplaza el toggle anterior
+            // "Mis productos"/"Todos"): arranca en la vista restringida
+            // (false) — a diferencia del toggle viejo, ESTA vista nunca
+            // deja la pantalla vacía (los Pendientes siempre entran), así
+            // que ya no hace falta arrancar en "Todos" para que el
+            // operario pueda tomar un producto sin tocar nada. "Todos"
+            // (true) muestra TODO sin filtrar, incluido En progreso ajeno,
+            // sin atenuar — nadie tiene nada que no pueda ver (E1/E3). No
+            // se recuerda entre sesiones — siempre arranca restringida.
+            showAllClaims: false,
             loaded: false,
         });
         // Punto (a), heredado de la implementación kanban: nunca tocar
@@ -154,6 +173,15 @@ export class PickingClaimsDisplay extends Component {
                 ? claim.assigned_employee_id[1] : "";
             claim.stopped_by_employee_name = claim.stopped_by_employee_id
                 ? claim.stopped_by_employee_id[1] : "";
+            // "Detenido por mí" (E3, 2026-11-02) — igual que "Asignado a
+            // mí", comparado contra el operario YA identificado en esta
+            // estación (operatorState, cargado en onWillStart), no un
+            // campo nuevo del servidor: el servidor ya manda el id real
+            // en stopped_by_employee_id, alcanza con compararlo acá.
+            claim.stopped_by_me = Boolean(
+                claim.stopped_by_employee_id
+                && claim.stopped_by_employee_id[0] === operatorState.employeeId
+            );
         }
         this.state.claims = claims;
         this.state.loaded = true;
@@ -161,14 +189,58 @@ export class PickingClaimsDisplay extends Component {
 
     get groupedClaims() {
         const groups = { pending: [], in_progress: [], stopped: [], done: [] };
-        const search = this.state.searchText.trim().toLowerCase();
+        // E6 (David/Tech Lead, 2026-11-02): busca por producto O cliente
+        // (customer_names_summary, calculado en el servidor — ver
+        // get_claims_for_level1_display), sin distinguir acentos.
+        const search = normalizeSearchText(this.state.searchText);
         for (const claim of this.state.claims) {
-            if (search && !claim.product_tmpl_name.toLowerCase().includes(search)) {
+            if (search) {
+                const haystack = normalizeSearchText(
+                    claim.product_tmpl_name + " " + (claim.customer_names_summary || "")
+                );
+                if (!haystack.includes(search)) {
+                    continue;
+                }
+                // Con texto de búsqueda, el buscador ignora "Mis
+                // productos + Pendientes" (preferencia de David, vía
+                // Tech Lead) — busca en TODO para no esconder una
+                // coincidencia real detrás del filtro.
+            } else if (
+                !this.state.showAllClaims
+                && !claim.touched_by_me
+                && claim.status !== "pending"
+            ) {
+                // "Mis productos + Pendientes" (E3, 2026-11-02): vista
+                // por defecto — lo que YO toqué (touched_by_me,
+                // calculado en el servidor) MÁS todos los Pendientes
+                // (de nadie todavía, le sirven a cualquiera). "Todos"
+                // (showAllClaims) no filtra nada — ya no hay ninguna
+                // regla de privacidad que aplicar, el servidor manda
+                // todo sin filtrar (E1/E3).
                 continue;
             }
             groups[claim.status].push(claim);
         }
         return groups;
+    }
+
+    // E6: un grupo plegable (done/stopped) se despliega SOLO mientras
+    // haya texto de búsqueda y tenga coincidencias — nunca se escribe
+    // en state.foldedGroups al buscar, así que al borrar el texto el
+    // grupo vuelve exactamente al plegado/desplegado que el usuario
+    // había elegido antes de buscar (preferencia intacta, no hay nada
+    // que "restaurar" porque nunca se tocó).
+    isGroupFolded(status) {
+        if (!(status in this.state.foldedGroups)) {
+            return false;
+        }
+        if (
+            normalizeSearchText(this.state.searchText)
+            && this.groupedClaims[status].length
+        ) {
+            return false;
+        }
+        return this.state.foldedGroups[status];
     }
 
     onBusNotif() {
@@ -203,8 +275,8 @@ export class PickingClaimsDisplay extends Component {
         });
     }
 
-    toggleDoneGroup() {
-        this.state.foldedDone = !this.state.foldedDone;
+    toggleGroup(status) {
+        this.state.foldedGroups[status] = !this.state.foldedGroups[status];
     }
 
     async _callClaim(method, claimId, args = []) {
@@ -248,6 +320,11 @@ export class PickingClaimsDisplay extends Component {
         }
     }
 
+    // Doble entrada desde E3 (2026-11-02): el botón "Continuar" (solo
+    // En progreso + mía) Y el click en CUALQUIER parte de la tarjeta,
+    // de cualquier estado — mismo método, mismo action_open_lines_
+    // kanban() sin ningún chequeo de dueño del lado servidor, así que
+    // no hace falta distinguir de dónde vino la llamada.
     async onContinue(claim) {
         const result = await this._callClaim("action_open_lines_kanban", claim.id);
         if (result) {
@@ -257,6 +334,15 @@ export class PickingClaimsDisplay extends Component {
 
     async onRelease(claim) {
         const ok = await this._callClaim("action_release", claim.id);
+        if (ok !== null) {
+            await this.loadRecords();
+        }
+    }
+
+    async onUnstop(claim) {
+        // Igual que onRelease: queda en Nivel 1 (vuelve a Pendiente,
+        // sin dueño), no abre ninguna acción — solo recarga.
+        const ok = await this._callClaim("action_unstop", claim.id);
         if (ok !== null) {
             await this.loadRecords();
         }

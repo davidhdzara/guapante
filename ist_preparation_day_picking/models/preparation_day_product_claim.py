@@ -8,8 +8,8 @@ from odoo.http import request
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
     CLAIM_STALE_MARGIN_SECONDS,
-    PREP_OPERATOR_IDLE_TIMEOUT_SECONDS,
     get_active_prep_operator_id,
+    get_idle_timeout_seconds,
 )
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _PG_CONCURRENCY_ERRORS,
@@ -266,52 +266,114 @@ class PreparationDayProductClaim(models.Model):
         claims sin filtrar para detectar conflictos; filtrar ahí los
         dejaría ciegos.
 
-        Regla: Administrador ve todo (con el nombre de quien lo tiene,
-        igual que siempre). Pendiente/Detenido/Terminado SIEMPRE visibles
-        para todos — la regla de ocultar solo aplica a En progreso (Tech
-        Lead, corrección 2: Detenido es una pausa JUSTIFICADA por un
-        operario, no abandono; se verifica por `status`, no solo por
-        `assigned_employee_id`, para no depender de que action_stop()
-        siga limpiándolo — defensa en profundidad). Un operario normal
-        no ve en absoluto un claim En progreso de OTRO operario — ni el
-        nombre ni la tarjeta — salvo que ya quedó abandonado (instante
-        efectivo, ver _effective_last_activity, más viejo que
-        PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS):
-        ese caso se trata como visible para todos, aunque la liberación
-        real en base de datos la haga el cron por separado (ventana corta
-        de hasta 5 minutos entre que se ve "libre" y se puede tomar de
-        verdad — aceptado por Tech Lead). Su propio claim en progreso
-        siempre se ve.
+        Sin filtro de visibilidad (E3, David/Tech Lead, 2026-11-02 —
+        rediseño "operarios administradores absolutos de Picking"):
+        TODOS los claims de la sesión, de cualquier estado y dueño,
+        salen siempre — incluido En progreso ajeno. La ocultación de En
+        progreso de otro operario que vivía acá (ver historial de este
+        método antes de E3) quedó descartada junto con el resto de las
+        restricciones de ownership eliminadas en E1 — ningún operario
+        tiene nada que no pueda ver.
 
         El refresco por bus NO cambia (picking_claim_updated /
         onBusNotif() ya dispara loadRecords() en cualquier cambio) — solo
         cambia QUÉ devuelve este método, nunca el mecanismo.
+
+        Además de CLAIM_DISPLAY_FIELDS, cada dict trae:
+        - `touched_by_me` (toggle "Mis productos" del L1, Tech Lead/
+          David 2026-11-02): si YO tengo el claim en progreso, lo
+          detuve, o pesé al menos una línea de un producto ya Terminado.
+        - `done_by_employee_name`/`done_time_label` (tarjeta "Terminado
+          por X (hh:mm)", E3): nombre y hora (zona del usuario) de quien
+          pesó la línea MÁS RECIENTE de un producto Terminado — False en
+          ambos si el producto no tiene ninguna línea con done_date (p.
+          ej. terminado antes de 4a, sin ese dato), nunca un valor
+          inventado.
+        - `customer_names_summary` (buscador de Nivel 1, E6, David/Tech
+          Lead, 2026-11-02): nombres de cliente distintos (join con ', ',
+          orden alfabético para que el resultado sea estable) de TODAS
+          las líneas del producto, Terminadas y Pendientes por igual —
+          alguien puede buscar un cliente cuyo pedido ya se despachó. No
+          se guarda en el modelo (se recalcula en cada lectura, igual que
+          touched_by_me) — el dataset es el de una sola sesión.
+        Ninguno sale de un `.read()` — los tres se calculan acá con la
+        MISMA consulta agrupada sobre las líneas del lote (ver más
+        abajo), nunca una consulta nueva por tarjeta.
         """
         self._check_picking_access()
         Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
-        is_admin = self.env.user.has_group(
-            'ist_preparation_day_picking.group_preparation_admin'
-        )
         my_employee_id = (
             get_active_prep_operator_id(self.env, request.session, refresh=False)
             if request else False
         )
-        stale_cutoff = fields.Datetime.now() - timedelta(
-            seconds=(
-                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
-            ),
+        records = Claims.read(CLAIM_DISPLAY_FIELDS)
+
+        # "Mis productos" + "Terminado por X (hh:mm)" + resumen de
+        # clientes del buscador (L1, Tech Lead/David 2026-11-02, E3/E6):
+        # UNA sola consulta sobre TODAS las líneas del lote (no solo las
+        # de productos ya Terminados) sirve para las tres cosas — nunca
+        # una búsqueda por claim (serían hasta ~100 por sesión).
+        # search_read (no _read_group): necesitamos la IDENTIDAD del
+        # último pesaje (quién + cuándo), no solo un conteo — agregar
+        # done_by_employee_id y done_date por separado no garantiza que
+        # vengan del MISMO renglón. Un producto terminado antes de 4a
+        # (sin done_by_employee_id) no cuenta como "mío" ni aporta dato
+        # de reparto — no hay dato que lo respalde, no se inventa.
+        my_done_tmpl_ids = set()
+        last_finisher_by_tmpl = {}
+        customer_names_by_tmpl = {}
+        all_lines = self.env['guapante.preparation.day.line'].sudo().search_read(
+            domain=[('wizard_id', '=', wizard_id)],
+            fields=[
+                'product_id', 'main_customer_name',
+                'done_by_employee_id', 'done_date',
+            ],
         )
-        Visible = self.env['guapante.preparation.day.product.claim']
-        for claim in Claims:
-            effective = claim._effective_last_activity()
-            if (
-                is_admin
-                or claim.status != 'in_progress'
-                or claim.assigned_employee_id.id == my_employee_id
-                or (effective and effective < stale_cutoff)
-            ):
-                Visible |= claim
-        return Visible.read(CLAIM_DISPLAY_FIELDS)
+        for line in all_lines:
+            if not line['product_id']:
+                continue
+            tmpl_id = line['product_id'][0]
+            if line['main_customer_name']:
+                customer_names_by_tmpl.setdefault(tmpl_id, set()).add(
+                    line['main_customer_name']
+                )
+            if line['done_by_employee_id']:
+                employee_id, employee_name = line['done_by_employee_id']
+                if my_employee_id and employee_id == my_employee_id:
+                    my_done_tmpl_ids.add(tmpl_id)
+                current = last_finisher_by_tmpl.get(tmpl_id)
+                if not current or line['done_date'] > current['done_date']:
+                    last_finisher_by_tmpl[tmpl_id] = {
+                        'employee_name': employee_name,
+                        'done_date': line['done_date'],
+                    }
+        for record in records:
+            tmpl_id = record['product_tmpl_id'][0] if record['product_tmpl_id'] else False
+            record['touched_by_me'] = bool(my_employee_id) and (
+                record['is_mine']
+                or (
+                    record['stopped_by_employee_id']
+                    and record['stopped_by_employee_id'][0] == my_employee_id
+                )
+                or (record['status'] == 'done' and tmpl_id in my_done_tmpl_ids)
+            )
+            finisher = (
+                last_finisher_by_tmpl.get(tmpl_id)
+                if record['status'] == 'done' else None
+            )
+            record['done_by_employee_name'] = (
+                finisher['employee_name'] if finisher else False
+            )
+            record['done_time_label'] = (
+                fields.Datetime.context_timestamp(
+                    self.env.user, finisher['done_date'],
+                ).strftime('%H:%M')
+                if finisher else False
+            )
+            record['customer_names_summary'] = ', '.join(
+                sorted(customer_names_by_tmpl.get(tmpl_id, set()))
+            )
+        return records
 
     # ── Acciones ──
 
@@ -444,6 +506,68 @@ class PreparationDayProductClaim(models.Model):
         )
         self._notify_bus()
         return self.action_open_lines_kanban()
+
+    def action_unstop(self) -> bool:
+        """"Liberar" un Detenido (entrega 2, Tech Lead/David, 2026-11-02):
+        a diferencia de action_resume(), NO lo toma para quien lo libera
+        — solo quita el motivo y vuelve a Pendiente, sin dueño, para que
+        cualquiera lo tome después con Asignarme. Mismo motivo que
+        action_resume() para no exigir ownership: un Detenido no tiene
+        dueño, así que cualquier operario con NIP vigente puede hacerlo."""
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = self._require_active_operator()
+
+        # Mismo flush_recordset()/SELECT ... FOR UPDATE que el resto del
+        # archivo. Se bloquea también stopped_by_employee_id porque el
+        # chatter necesita su valor de ANTES de limpiarlo (punto 2 de
+        # Tech Lead) — leerlo de la fila bloqueada es la misma garantía
+        # de concurrencia que ya usa action_assign() con assigned_employee_id.
+        self.flush_recordset()
+        self.env.cr.execute(
+            'SELECT stop_reason, stopped_by_employee_id FROM '
+            'guapante_preparation_day_product_claim WHERE id = %s FOR UPDATE',
+            (self.id,),
+        )
+        row = self.env.cr.fetchone()
+        locked_stop_reason, locked_stopped_by_id = row if row else (False, False)
+        if not locked_stop_reason:
+            self.invalidate_recordset(['stop_reason'])
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya no está detenido — '
+                'actualiza la pantalla.'
+            )
+        # Mismo caso borde que action_resume(): si las líneas ya quedaron
+        # is_done por otra vía mientras seguía con stop_reason puesto, no
+        # revive — ya está Terminado.
+        Lines = self._get_lines()
+        if Lines and all(line.is_done for line in Lines):
+            raise UserError(
+                f'{self.product_tmpl_id.name} ya está terminado — '
+                'actualiza la pantalla.'
+            )
+        ReleasingEmployee = self.env['hr.employee'].sudo().browse(employee_id)
+        StoppedByEmployee = (
+            self.env['hr.employee'].sudo().browse(locked_stopped_by_id)
+            if locked_stopped_by_id else False
+        )
+        self.write({
+            'stop_reason': False,
+            'stopped_by_employee_id': False,
+        })
+        reason_label = dict(STOP_REASONS).get(
+            locked_stop_reason, locked_stop_reason,
+        )
+        stopped_by_name = StoppedByEmployee.name if StoppedByEmployee else 'nadie'
+        self.wizard_id.sudo().message_post(
+            body=(
+                f"Liberado — {self.product_tmpl_id.name}: vuelve a "
+                f"Pendiente (por {ReleasingEmployee.name}; estaba "
+                f"detenido por {reason_label}, por {stopped_by_name})."
+            ),
+        )
+        self._notify_bus()
+        return True
 
     def action_release(self) -> bool:
         self.ensure_one()
@@ -724,8 +848,8 @@ class PreparationDayProductClaim(models.Model):
     def _cron_release_abandoned_claims(self) -> None:
         """Plan f1 (Tech Lead, 2026-10-31) — libera de verdad en base de
         datos los claims En progreso que get_claims_for_level1_display ya
-        trata como abandonados (mismo umbral: PREP_OPERATOR_IDLE_TIMEOUT_
-        SECONDS + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
+        trata como abandonados (mismo umbral: get_idle_timeout_seconds(env)
+        + CLAIM_STALE_MARGIN_SECONDS sin actividad, mismo instante
         efectivo — ver _effective_last_activity). Corre cada 5 minutos,
         no es el mecanismo de visibilidad (eso ya lo cubre el método de
         lectura) — es la red de seguridad que de verdad libera el
@@ -739,14 +863,20 @@ class PreparationDayProductClaim(models.Model):
         filtrar por status es la verificación explícita, no un supuesto
         sobre cómo se comporta otro método.
 
+        Timeout 0 ("sin bloqueo", fila 3 del backlog, 2026-11-01): no
+        libera nada — sale temprano. Igual que en
+        get_claims_for_level1_display, no tiene sentido colapsar el
+        umbral a solo CLAIM_STALE_MARGIN_SECONDS.
+
         Mismo patrón que _cron_repair_missing_orders (e4, preparation_day.py):
         savepoint por claim, un error de concurrencia se atrapa LOCAL
         (nunca se relanza — no debe tumbar el trabajo ya hecho en otros
         claims de esta misma corrida)."""
+        idle_timeout = get_idle_timeout_seconds(self.env)
+        if not idle_timeout:
+            return
         stale_cutoff = fields.Datetime.now() - timedelta(
-            seconds=(
-                PREP_OPERATOR_IDLE_TIMEOUT_SECONDS + CLAIM_STALE_MARGIN_SECONDS
-            ),
+            seconds=idle_timeout + CLAIM_STALE_MARGIN_SECONDS,
         )
         Claims = self.sudo().search([('status', '=', 'in_progress')])
         Claims = Claims.filtered(

@@ -111,6 +111,15 @@
                 <field name="name"/>
                 <field name="date"/>
                 <field name="so_count" string="Cajas"/>
+                <!-- Punto 3 (Tech Lead, 2026-11-02): reusa done_lines/total_lines,
+                     ya computados en batch por _compute_global_progress (mismo
+                     campo detrás de global_progress_pct en el kanban) — sin
+                     agregar ningún campo ni búsqueda nueva por fila. -->
+                <field name="total_lines" column_invisible="1"/>
+                <field name="done_lines"
+                       string="Líneas"
+                       widget="progressbar"
+                       options="{'current_value': 'done_lines', 'max_value': 'total_lines', 'editable': false}"/>
                 <field name="state"
                        widget="badge"
                        decoration-muted="state == 'draft'"
@@ -289,7 +298,12 @@
         <field name="name">guapante.preparation.day.line.list</field>
         <field name="model">guapante.preparation.day.line</field>
         <field name="arch" type="xml">
-            <list string="Líneas de picking" create="0" edit="0" delete="0" decoration-muted="is_done">
+            <!-- decoration-danger="dispatch_note" (E7, David/Tech Lead,
+                 2026-11-02): resalta las líneas "despachadas en 0" (sin
+                 stock) — dispatch_note es un compute que solo trae texto
+                 cuando is_done y actual_kg==0 (ver el modelo). -->
+            <list string="Líneas de picking" create="0" edit="0" delete="0"
+                  decoration-muted="is_done" decoration-danger="dispatch_note">
                 <field name="daily_sequence" string="Caja #"/>
                 <field name="order_name" string="Orden"/>
                 <field name="product_description" string="Producto"/>
@@ -299,7 +313,41 @@
                 <field name="customer_uom_label" string="En" optional="show"/>
                 <field name="actual_kg" string="Peso" digits="[10,3]"/>
                 <field name="is_done" string="Terminado"/>
+                <field name="dispatch_note" string="Nota"/>
             </list>
+        </field>
+    </record>
+
+    <!-- Entrega A del buscador (David/Tech Lead, 2026-11-01) — vista de
+         búsqueda nativa para la acción del botón "Líneas" de la sesión.
+         Campos de búsqueda: producto, caja #, pedido, cliente. Filtros:
+         pendientes/terminadas. Agrupar por: producto, cliente, zona,
+         caja. "Operario" queda fuera de esta entrega — la línea no
+         guarda quién la pesó (ver _get_lines() en
+         PreparationDayProductClaim: el claim relaciona lineas por
+         product_id dentro del wizard, no hay FK línea→empleado; el
+         historial vive aparte en guapante.picking.log, sin link al id
+         de la línea). Agregar "operario" requeriría un campo nuevo, no
+         es "solo XML" — reportado a Tech Lead antes de implementarlo. -->
+    <record id="view_preparation_day_line_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.line.search</field>
+        <field name="model">guapante.preparation.day.line</field>
+        <field name="arch" type="xml">
+            <search string="Buscar líneas de picking">
+                <field name="product_description" string="Producto"/>
+                <field name="daily_sequence" string="Caja #"/>
+                <field name="order_name" string="Pedido"/>
+                <field name="main_customer_name" string="Cliente"/>
+                <separator/>
+                <filter string="Pendientes" name="filter_pending" domain="[('is_done', '=', False)]"/>
+                <filter string="Terminadas" name="filter_done" domain="[('is_done', '=', True)]"/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Producto" name="group_product" context="{'group_by': 'product_id'}"/>
+                    <filter string="Cliente" name="group_customer" context="{'group_by': 'main_customer_name'}"/>
+                    <filter string="Zona" name="group_zone" context="{'group_by': 'zone_name'}"/>
+                    <filter string="Caja #" name="group_daily_sequence" context="{'group_by': 'daily_sequence'}"/>
+                </group>
+            </search>
         </field>
     </record>
 

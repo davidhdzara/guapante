@@ -12,13 +12,14 @@ import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingWeightInput } from "./preparation_picking_weight_input";
 import { PickingNoteDialog } from "./preparation_picking_note_dialog";
+import { matchesLineSearch } from "./preparation_picking_search_utils";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
 const LINE_FIELDS = [
     "daily_sequence", "is_done", "needs_weighing", "estimated_kg",
     "expected_kg_per_unit", "actual_kg", "main_customer_name", "zone_name",
-    "customer_qty_display", "customer_uom_label", "claim_is_mine",
+    "customer_qty_display", "customer_uom_label",
     "no_variant_attribute_value_ids", "qty_uom_label",
 ];
 
@@ -26,6 +27,11 @@ const LINE_FIELDS = [
 // punto b.1): evita falsos avisos de "despachas menos" por residuos de
 // coma flotante (ej. 2.5 - 2.3 !== 0.2 exacto en JS).
 const round3 = (n) => Math.round(n * 1000) / 1000;
+
+// Debounce de 'reload' (Tech Lead, 2026-11-02): el canal es de toda la
+// sesión — una renumeración + varias líneas nuevas pueden mandar varios
+// 'reload' seguidos; colapsarlos evita varias verificaciones redundantes.
+const RELOAD_DEBOUNCE_MS = 400;
 
 // Nivel 2 de Picking como client action propio (especificación visual,
 // David 2026-10-23 — misma decisión final que Nivel 1, ver
@@ -53,12 +59,15 @@ export class PickingLinesDisplay extends Component {
             productTmplId: null,
             lines: [],
             foldedDone: true,
+            searchText: "",
             loaded: false,
             noteTemplates: [],
         });
         this.isDestroyed = false;
         this.channel = null;
+        this._reloadDebounceTimer = null;
         this.onOperationFinished = this.onOperationFinished.bind(this);
+        this.onBusReload = this.onBusReload.bind(this);
 
         onWillStart(async () => {
             // Punto 3 (Tech Lead, 2026-10-31): mismo chequeo que Nivel 1
@@ -86,12 +95,22 @@ export class PickingLinesDisplay extends Component {
             this.channel = `guapante_preparation_day-${this.state.wizardId}`;
             await this.busService.addChannel(this.channel);
             this.busService.subscribe("picking_operation_finished", this.onOperationFinished);
+            // Punto 2 (Tech Lead, 2026-11-02): este canal es de toda la
+            // sesión — un pedido nuevo de CUALQUIER producto manda
+            // 'reload' acá también, no solo a Nivel 1. onBusReload()
+            // filtra por relevancia antes de tocar state.lines.
+            this.busService.subscribe("reload", this.onBusReload);
         });
         onWillUnmount(() => {
             this.isDestroyed = true;
+            if (this._reloadDebounceTimer) {
+                clearTimeout(this._reloadDebounceTimer);
+                this._reloadDebounceTimer = null;
+            }
             if (this.channel) {
                 this.busService.deleteChannel(this.channel);
                 this.busService.unsubscribe("picking_operation_finished", this.onOperationFinished);
+                this.busService.unsubscribe("reload", this.onBusReload);
             }
         });
     }
@@ -192,12 +211,36 @@ export class PickingLinesDisplay extends Component {
         this.state.loaded = true;
     }
 
+    // E6 (David/Tech Lead, 2026-11-02): un solo buscador para Caja #
+    // y cliente — ver matchesLineSearch() para la regla exacta de "#"
+    // vs. número suelto vs. texto normal.
+    _matchesSearch(line) {
+        return matchesLineSearch(
+            line.daily_sequence, line.main_customer_name, this.state.searchText,
+        );
+    }
+
     get pendingLines() {
-        return this.state.lines.filter((line) => !line.is_done);
+        return this.state.lines.filter(
+            (line) => !line.is_done && this._matchesSearch(line)
+        );
     }
 
     get doneLines() {
-        return this.state.lines.filter((line) => line.is_done);
+        return this.state.lines.filter(
+            (line) => line.is_done && this._matchesSearch(line)
+        );
+    }
+
+    // Igual que isGroupFolded() en Nivel 1: el grupo "Terminado" se
+    // despliega solo mientras haya coincidencias de la búsqueda ahí —
+    // nunca se toca state.foldedDone al buscar, así que al borrar el
+    // texto vuelve exactamente al plegado/desplegado que tenía antes.
+    isDoneFolded() {
+        if (this.state.searchText.trim() && this.doneLines.length) {
+            return false;
+        }
+        return this.state.foldedDone;
     }
 
     onOperationFinished() {
@@ -210,6 +253,59 @@ export class PickingLinesDisplay extends Component {
     async _closeAndReturnToNip() {
         await clearOperator();
         await this.actionService.doAction(PICKING_APP_ACTION_XMLID, { clearBreadcrumbs: true });
+    }
+
+    // Punto 2 (Tech Lead, 2026-11-02): "El Nivel 2 se actualiza solo" —
+    // no se puede llamar loadLines() directo en cada 'reload' (ese canal
+    // es de toda la sesión, dispara por pedidos de OTROS productos la
+    // mayoría de las veces). Primero se filtra por relevancia
+    // (_checkForRelevantReload) y recién ahí se reemplaza state.lines —
+    // reemplazo que, además, ya es seguro hoy: onConfirmWeight hace
+    // exactamente lo mismo en cada confirmación (Pendiente o Terminada,
+    // E2) y no borra el
+    // texto sin confirmar de las demás tarjetas (ver mensaje a Tech
+    // Lead, 2026-11-02 — PickingWeightInput no resincroniza state.text
+    // desde props tras el setup() inicial, y OWL reutiliza la instancia
+    // mientras el t-key=line.id siga en la lista).
+    onBusReload() {
+        if (this.isDestroyed) {
+            return;
+        }
+        if (this._reloadDebounceTimer) {
+            clearTimeout(this._reloadDebounceTimer);
+        }
+        this._reloadDebounceTimer = setTimeout(() => {
+            this._reloadDebounceTimer = null;
+            this._checkForRelevantReload();
+        }, RELOAD_DEBOUNCE_MS);
+    }
+
+    async _checkForRelevantReload() {
+        if (this.isDestroyed) {
+            return;
+        }
+        // Comparación por conjunto de ids, no por conteo (Tech Lead,
+        // 2026-11-02): una reubicación + un pedido nuevo al mismo tiempo
+        // deja el conteo igual pero cambia qué líneas corresponden —
+        // un searchCount no lo detecta.
+        const currentIds = await this.orm.search(
+            "guapante.preparation.day.line",
+            [
+                ["wizard_id", "=", this.state.wizardId],
+                ["product_id", "=", this.state.productTmplId],
+            ],
+        );
+        if (this.isDestroyed) {
+            return;
+        }
+        const knownIds = this.state.lines.map((line) => line.id);
+        const sameSet = (
+            currentIds.length === knownIds.length &&
+            new Set(currentIds).size === new Set([...currentIds, ...knownIds]).size
+        );
+        if (!sameSet) {
+            await this.loadLines();
+        }
     }
 
     onClickRefresh() {
@@ -271,6 +367,18 @@ export class PickingLinesDisplay extends Component {
     //    aquí como en el 1). Comparación redondeada a 3 decimales para
     //    no disparar por residuos de coma flotante.
     async onConfirmWeight(line, value) {
+        // E2 (David/Tech Lead, 2026-11-02 — Terminadas editables sin
+        // botón Deshacer): mismo valor que ya estaba registrado (Enter
+        // sin cambios sobre una Terminada, input precargado con
+        // actual_kg) — no-op también en el cliente, antes de cualquier
+        // alerta o viaje al servidor. El servidor ya lo trataría como
+        // no-op (new_kg == old_kg no dispara corrección ni undo), pero
+        // sin este corte temprano el operario vería "Despachas menos de
+        // lo pedido" sobre un valor que en realidad no cambió.
+        if (line.is_done && round3(value) === round3(line.actual_kg)) {
+            return;
+        }
+        const wasPending = !line.is_done;
         if (line.needs_weighing && line.expected_kg_per_unit > 0) {
             const expectedWeight = line.estimated_kg * line.expected_kg_per_unit;
             const outOfRange = (
@@ -333,9 +441,14 @@ export class PickingLinesDisplay extends Component {
             // línea pendiente de ESTE producto, volver solo a Nivel 1 —
             // salvo que este mismo guardado también haya cerrado la
             // OPERACIÓN completa (todas las líneas de la sesión, no solo
-            // las de este producto). El write() de arriba, cuando es la
-            // última línea pendiente de TODA la sesión, ya deja
-            // self.state = 'done' en el servidor dentro de la misma
+            // las de este producto). wasPending (E2, 2026-11-02): una
+            // corrección sobre una línea que YA estaba Terminada nunca
+            // navega sola — sin esto, corregir el peso de la única línea
+            // de un producto que ya no tenía pendientes volvía a Nivel 1
+            // aunque nada nuevo se hubiera completado. El write() de
+            // arriba, cuando es la última línea pendiente de TODA la
+            // sesión, ya deja self.state = 'done' en el servidor dentro
+            // de la misma
             // transacción (action_save_line_weight → action_mark_done),
             // antes de que esta llamada retorne — así que leer el estado
             // acá es una señal confiable, no una carrera contra el bus.
@@ -343,7 +456,7 @@ export class PickingLinesDisplay extends Component {
             // ('picking_operation_finished' → onOperationFinished) se
             // encarga de volver al NIP; encadenar _backToLevel1() encima
             // duplicaría la navegación.
-            if (this.pendingLines.length === 0) {
+            if (wasPending && this.pendingLines.length === 0) {
                 const [wizard] = await this.orm.read(
                     "guapante.preparation.day", [this.state.wizardId], ["state"],
                 );
@@ -351,18 +464,6 @@ export class PickingLinesDisplay extends Component {
                     await this._backToLevel1();
                 }
             }
-        } catch (error) {
-            await this._handleError(error);
-        }
-    }
-
-    async onUndo(line) {
-        try {
-            await this.orm.call(
-                "guapante.preparation.day.line", "action_undo_line", [[line.id]],
-                { context: { guapante_picking_flow: true } },
-            );
-            await this.loadLines();
         } catch (error) {
             await this._handleError(error);
         }
