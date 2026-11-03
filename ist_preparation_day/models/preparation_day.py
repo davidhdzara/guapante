@@ -1379,36 +1379,17 @@ class PreparationDay(models.Model):
         for order, _old_number, new_number in changes:
             order.sudo().daily_sequence = new_number
 
-        # Nota corta individual en el picking de cada caja renumerada
-        # (Tech Lead, condición 6 del plan) — la consulta quien tiene
-        # la caja física en mano. La nota-resumen de la sesión va
-        # aparte, una sola, con tope de lista.
-        for order, old_number, new_number in changes:
-            Picking = order.picking_ids.filtered(
-                lambda p: (
-                    p.picking_type_code == 'internal'
-                    and p.state not in ('done', 'cancel')
-                )
-            )
-            if Picking:
-                Picking.sudo().message_post(
-                    body=f'Caja #{old_number} pasó a #{new_number}.',
-                )
-
-        max_listed = 10
-        listed = [
-            f'#{old_number}→#{new_number} ({order.name})'
-            for order, old_number, new_number in changes[:max_listed]
-        ]
-        summary_text = ', '.join(listed)
-        extra = len(changes) - len(listed)
-        if extra > 0:
-            summary_text += f'… y {extra} más'
+        # UNA sola nota-resumen en el chatter de la sesión, sin el
+        # detalle caja por caja (David/Tech Lead, 2026-11-03): las
+        # notas individuales "Caja #N pasó a #M" en el picking de cada
+        # caja eran ruido — se quitan. El conteo ya garantiza N>0 (el
+        # "if not changes: return" de arriba corta antes si no hay
+        # ningún cambio).
+        count = len(changes)
+        noun = 'caja' if count == 1 else 'cajas'
+        verb = 'Renumerada' if count == 1 else 'Renumeradas'
         self.sudo().message_post(
-            body=(
-                f'Cajas renumeradas por llegada o salida de un pedido: '
-                f'{summary_text}.'
-            ),
+            body=f'{verb} {count} {noun} por llegada o salida de un pedido.',
         )
 
     @api.model
