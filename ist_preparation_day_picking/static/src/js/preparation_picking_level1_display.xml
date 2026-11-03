@@ -100,7 +100,8 @@
                                             <t t-esc="stopReasonLabels[claim.stop_reason] || claim.stop_reason"/> — detenido por <t t-if="claim.stopped_by_me">mí</t><t t-else=""><t t-esc="claim.stopped_by_employee_name"/></t>
                                         </li>
                                         <li t-if="status === 'done' and claim.done_by_employee_name" class="list-group-item">
-                                            Terminado por <t t-esc="claim.done_by_employee_name"/> (<t t-esc="claim.done_time_label"/>)
+                                            Terminado por <t t-esc="claim.done_by_employee_name"/>
+                                            <small class="d-block text-muted" t-esc="claim.done_time_label"/>
                                         </li>
                                     </ul>
                                     <div class="card-footer d-flex justify-content-between align-items-center"
