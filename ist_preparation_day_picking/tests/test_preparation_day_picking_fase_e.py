@@ -239,15 +239,18 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
             'claim en curso de product_weight',
         )
 
-    def test_renumbering_changes_number_but_never_touches_claim_in_progress(self):
-        """e3 + condición 3 del plan (Tech Lead, 2026-10-29/30): una
-        caja con claim EN CURSO pero sin línea pesada es FLEXIBLE —
-        puede cambiar de número mientras el operario trabaja. El
-        algoritmo solo debe tocar daily_sequence, nunca el claim."""
-        # order_a se CREA primero (id más bajo) pero se confirma AL
-        # FINAL — las flexibles se ordenan por sale_id, así que al
-        # llegar desplaza a order_b (creado y confirmado antes, con
-        # id más alto) de su lugar #1.
+    def test_new_arrival_never_touches_number_of_claim_in_progress(self):
+        """Eliminación de _guapante_renumber_session (David/Tech Lead,
+        2026-11-03, incidente S15245): una caja con claim EN CURSO
+        pero sin línea pesada YA NO puede cambiar de número cuando
+        llega una orden nueva — el append-only nunca toca lo ya
+        asignado, pase lo que pase con los claims de Nivel 1 de
+        Picking. order_a, aunque se CREÓ primero (id más bajo), se
+        confirma AL FINAL — bajo el algoritmo viejo esto la habría
+        hecho desplazar a order_b de su #1 por tener sale_id más
+        bajo; ahora solo demuestra que el orden de creación es
+        irrelevante: a order_a le toca el siguiente MAX+1 disponible,
+        nunca el lugar de otra."""
         order_a = self._create_order(product=self.product_unit, qty=1.0)
 
         order_b, date_val = self._confirm_order(
@@ -280,14 +283,19 @@ class TestPreparationDayPickingFaseE2(TestPreparationDay):
         order_b.invalidate_recordset()
         order_a.invalidate_recordset()
 
-        self.assertEqual(order_a.daily_sequence, 1)
         self.assertEqual(
-            order_b.daily_sequence, 2,
-            'order_b debía bajar al #2 — el número SÍ cambia',
+            order_b.daily_sequence, 1,
+            'order_b NUNCA se toca, con o sin claim en curso — '
+            'append-only puro',
+        )
+        self.assertEqual(
+            order_a.daily_sequence, 2,
+            'order_a toma MAX+1 = #2, nunca desplaza a order_b aunque '
+            'su sale_id sea más bajo',
         )
         self.assertEqual(
             (ClaimB.status, ClaimB.assigned_employee_id.id),
             claim_b_snapshot,
-            'el claim en curso no debe tocarse aunque el número de '
-            'su caja sí cambie',
+            'el claim en curso tampoco se toca — ahora ni siquiera '
+            'cambia el número de su caja',
         )
