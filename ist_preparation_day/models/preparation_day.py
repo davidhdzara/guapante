@@ -2582,10 +2582,7 @@ class PreparationDay(models.Model):
         self.state = 'done'
         self.date_done = fields.Datetime.now()
         self.sudo().message_post(
-            body=(
-                f'Operación finalizada por {self.env.user.name} '
-                f'el {fields.Datetime.now()}.'
-            )
+            body=f'Operación finalizada por {self.env.user.name}.'
         )
         return False
 
@@ -2623,9 +2620,8 @@ class PreparationDay(models.Model):
         self.date_done = False
         self.sudo().message_post(
             body=(
-                f'Operación reabierta por {self.env.user.name} '
-                f'el {fields.Datetime.now()} — usa "Actualizar '
-                'pedidos" si hay pedidos tardíos que recoger.'
+                f'Operación reabierta por {self.env.user.name} — usa '
+                '"Actualizar pedidos" si hay pedidos tardíos que recoger.'
             )
         )
         return False

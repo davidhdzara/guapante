@@ -564,22 +564,6 @@ class PreparationDayLine(models.Model):
         string='Madurez / Tamaño',
     )
 
-    # Para el botón "Corregir" de Nivel 2 (terminada): solo visible
-    # mientras el claim de esta línea siga siendo mío — una vez
-    # Terminado el producto completo, el claim se libera y Corregir deja
-    # de estar disponible (Tech Lead: "Terminado es solo lectura desde
-    # Picking", mismo _check_picking_ownership que ya lo exige en el
-    # servidor — este campo solo evita mostrar un botón que el servidor
-    # igual va a rechazar).
-    claim_is_mine = fields.Boolean(compute='_compute_claim_is_mine')
-
-    def _compute_claim_is_mine(self) -> None:
-        for line in self:
-            Claim = line.wizard_id.product_claim_ids.filtered(
-                lambda c: c.product_tmpl_id == line.product_id
-            )
-            line.claim_is_mine = bool(Claim and Claim.is_mine)
-
     # Espejo de is_done con labels legibles — el kanban de Picking agrupa
     # por este campo en vez de por is_done directo, porque Odoo no deja
     # poner labels custom a un group_by de un Boolean (sale "No"/"Sí"
