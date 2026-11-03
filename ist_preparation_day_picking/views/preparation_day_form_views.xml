@@ -21,6 +21,32 @@
             <button name="action_reopen" position="attributes">
                 <attribute name="groups">ist_preparation_day_picking.group_preparation_admin</attribute>
             </button>
+            <!-- Punto 6.1 (David/Tech Lead, 2026-11-03): la pestaña
+                 "Productos" del form (line_ids embebido) NUNCA había
+                 recibido el patrón de dos nodos/groups complementarios
+                 que ya usa view_preparation_day_line_list_picking
+                 (c00a0f5/E4) para el botón "Líneas" — David probó
+                 justo en esta pestaña y encontró actual_kg editable
+                 para CUALQUIERA (sin groups) e is_done fijo en
+                 readonly="1" sin excepción para admin. Mismo patrón
+                 acá, apuntando al campo anidado dentro de line_ids
+                 (Odoo busca <field name="X"> en todo el arch, sin
+                 importar que esté dentro de un one2many). -->
+            <field name="actual_kg" position="attributes">
+                <attribute name="readonly">1</attribute>
+                <attribute name="groups">!ist_preparation_day_picking.group_preparation_admin</attribute>
+            </field>
+            <field name="actual_kg" position="after">
+                <field name="actual_kg" digits="[10,3]" string="Peso"
+                       groups="ist_preparation_day_picking.group_preparation_admin"/>
+            </field>
+            <field name="is_done" position="attributes">
+                <attribute name="groups">!ist_preparation_day_picking.group_preparation_admin</attribute>
+            </field>
+            <field name="is_done" position="after">
+                <field name="is_done" string="Terminado"
+                       groups="ist_preparation_day_picking.group_preparation_admin"/>
+            </field>
         </field>
     </record>
 

@@ -635,8 +635,9 @@ class PreparationDayLine(models.Model):
                         # cual (1).
                         if is_picking_flow and line.wizard_id.state == 'done':
                             raise UserError(
-                                'La operación está cerrada. Pide a un '
-                                'administrador que la reabra.'
+                                'La operación está cerrada. Reabre la '
+                                'sesión (botón «Reabrir Sesión») para '
+                                'poder corregir esta línea.'
                             )
                         line._register_weight_correction(
                             old_kg, operator_employee_id,
