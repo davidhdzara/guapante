@@ -334,19 +334,52 @@
         <field name="model">guapante.preparation.day.line</field>
         <field name="arch" type="xml">
             <search string="Buscar líneas de picking">
-                <field name="product_description" string="Producto"/>
-                <field name="daily_sequence" string="Caja #"/>
-                <field name="order_name" string="Pedido"/>
-                <field name="main_customer_name" string="Cliente"/>
-                <separator/>
-                <filter string="Pendientes" name="filter_pending" domain="[('is_done', '=', False)]"/>
-                <filter string="Terminadas" name="filter_done" domain="[('is_done', '=', True)]"/>
-                <group expand="0" string="Agrupar Por">
-                    <filter string="Producto" name="group_product" context="{'group_by': 'product_id'}"/>
-                    <filter string="Cliente" name="group_customer" context="{'group_by': 'main_customer_name'}"/>
-                    <filter string="Zona" name="group_zone" context="{'group_by': 'zone_name'}"/>
-                    <filter string="Caja #" name="group_daily_sequence" context="{'group_by': 'daily_sequence'}"/>
-                </group>
+            <!-- Punto 5 (David/Tech Lead, 2026-11-03): cobertura
+                 columna-por-columna de view_preparation_day_line_list,
+                 estilo el desplegable de la conciliación bancaria de
+                 Contabilidad (filtros + agrupar por en la flecha de la
+                 barra, no tanto texto libre). "Operario" entra ahora
+                 porque done_by_employee_id ya existe en el modelo
+                 (llegó después de eb4958f, el día que se escribió el
+                 comentario de más abajo seguía siendo cierto, ya no).
+                 Columnas sin filtro/agrupación propios, y por qué:
+                   - customer_qty_display ("Pidió"): Char ARMADO
+                     (cantidad + unidad en un solo texto para mostrar),
+                     no un valor limpio — buscarlo sería hacer match de
+                     substring contra una etiqueta compuesta, no
+                     filtrar por una dimensión real.
+                   - actual_kg ("Peso"): numérico libre, sin un filtro
+                     exacto útil en general — el caso real que SÍ pide
+                     David (peso en 0 / "sin stock") ya queda cubierto
+                     por filter_zero_stock, que filtra sobre is_done +
+                     actual_kg = 0 (la misma condición de la que se
+                     calcula dispatch_note — ese campo es un compute
+                     sin store, no es buscable en un domain).
+                 Todas las demás columnas (caja #, pedido, producto,
+                 cliente, zona, unidad de despacho, terminado, nota,
+                 operario) tienen ahora campo de búsqueda y/o filtro
+                 y/o agrupación. -->
+            <field name="product_description" string="Producto"/>
+            <field name="daily_sequence" string="Caja #"/>
+            <field name="order_name" string="Pedido"/>
+            <field name="main_customer_name" string="Cliente"/>
+            <field name="zone_name" string="Zona"/>
+            <field name="done_by_employee_id" string="Operario"/>
+            <separator/>
+            <filter string="Pendientes" name="filter_pending" domain="[('is_done', '=', False)]"/>
+            <filter string="Terminadas" name="filter_done" domain="[('is_done', '=', True)]"/>
+            <filter string="Despachadas en 0 (sin stock)" name="filter_zero_stock"
+                    domain="[('is_done', '=', True), ('actual_kg', '=', 0)]"/>
+            <group expand="0" string="Agrupar Por">
+                <filter string="Producto" name="group_product" context="{'group_by': 'product_id'}"/>
+                <filter string="Cliente" name="group_customer" context="{'group_by': 'main_customer_name'}"/>
+                <filter string="Zona" name="group_zone" context="{'group_by': 'zone_name'}"/>
+                <filter string="Caja #" name="group_daily_sequence" context="{'group_by': 'daily_sequence'}"/>
+                <filter string="Pedido" name="group_order" context="{'group_by': 'order_name'}"/>
+                <filter string="Estado" name="group_status" context="{'group_by': 'is_done'}"/>
+                <filter string="Unidad de despacho" name="group_uom" context="{'group_by': 'customer_uom_label'}"/>
+                <filter string="Operario que la terminó" name="group_done_by" context="{'group_by': 'done_by_employee_id'}"/>
+            </group>
             </search>
         </field>
     </record>
