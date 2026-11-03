@@ -413,12 +413,15 @@ class TestPreparationDayRelocation(TransactionCase):
         ids_param = set(params[0]) if params else set()
         self.assertEqual(ids_param, {session_a.id, session_b.id})
 
-    def test_relocation_recompacts_origin_flexible_boxes(self):
-        """e3, ajuste 1 de Tech Lead (2026-10-30): la reubicación
-        renumera TAMBIÉN el origen — las flexibles que quedan se
-        recompactan al número que deja libre la orden que se fue; la
-        fija de la sesión origen no se toca; el destino recibe su
-        propio número correcto."""
+    def test_relocation_never_touches_other_orders_numbers(self):
+        """Eliminación de _guapante_renumber_session (David/Tech Lead,
+        2026-11-03, tras el incidente de S15245): la reubicación de UN
+        pedido nunca debe tocar el número de ningún otro — ni en el
+        origen (donde antes se "recompactaban" las flexibles que
+        quedaban, pisando números ya mostrados/impresos) ni en el
+        destino (donde antes un recién llegado reshuffleaba todo lo
+        no pesado). El hueco que deja la orden que se va permanece —
+        nunca se inventa un número para taparlo."""
         order_1, pick_1 = self._create_confirmed_order(self.day_a)
         order_2, _pick_2 = self._create_confirmed_order(self.day_a)
         order_3, _pick_3 = self._create_confirmed_order(self.day_a)
@@ -433,7 +436,7 @@ class TestPreparationDayRelocation(TransactionCase):
         # solo, sin peso, ahora exige un peso > 0 ya puesto (track_done
         # en CORE) — Caja #2 "ya pesada" necesita el peso para ser
         # fiel a lo que simula.
-        line_2.sudo().write({'actual_kg': 1.0, 'is_done': True})  # Caja #2 ya pesada — FIJA.
+        line_2.sudo().write({'actual_kg': 1.0, 'is_done': True})  # Caja #2 ya pesada.
 
         dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
         pick_1.write({'scheduled_date': dt_start_b})  # order_1 se va.
@@ -444,16 +447,56 @@ class TestPreparationDayRelocation(TransactionCase):
         order_3.invalidate_recordset()
 
         self.assertEqual(
-            order_2.daily_sequence, 2, 'la fija del origen no se toca',
+            order_2.daily_sequence, 2,
+            'la ya pesada en el origen nunca se toca',
         )
         self.assertEqual(
-            order_3.daily_sequence, 1,
-            'la flexible que queda en el origen se recompacta al '
-            'número que deja libre la que se fue',
+            order_3.daily_sequence, 3,
+            'la que queda sin pesar en el origen MANTIENE su número — '
+            'el hueco que deja la que se fue (#1) queda permanente, '
+            'nunca se recompacta',
         )
         self.assertEqual(
             order_1.daily_sequence, 1,
-            'en el destino, order_1 es la única orden — le toca #1',
+            'en el destino, order_1 es la única orden — le toca MAX+1 = #1',
+        )
+
+    def test_relocation_new_order_in_destination_never_touches_existing(self):
+        """Regresión directa del incidente S15245 (David, 2026-11-03):
+        un pedido que llega al destino por reubicación debe tomar
+        MAX(destino)+1 de forma limpia, sin reshufflear ninguna de las
+        órdenes que ya estaban en esa sesión destino, estén pesadas o
+        no."""
+        order_a, _pick_a = self._create_confirmed_order(self.day_b)
+        order_b, _pick_b = self._create_confirmed_order(self.day_b)
+        self._load_session(self.day_b)
+        self.assertEqual(order_a.daily_sequence, 1)
+        self.assertEqual(order_b.daily_sequence, 2)
+
+        order_incoming, pick_incoming = self._create_confirmed_order(self.day_a)
+        self._load_session(self.day_a)
+        self.assertEqual(order_incoming.daily_sequence, 1)
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        pick_incoming.write({'scheduled_date': dt_start_b})
+
+        order_a.invalidate_recordset()
+        order_b.invalidate_recordset()
+        order_incoming.invalidate_recordset()
+
+        self.assertEqual(order_a.daily_sequence, 1, 'no se toca al llegar uno nuevo')
+        self.assertEqual(order_b.daily_sequence, 2, 'no se toca al llegar uno nuevo')
+        self.assertEqual(
+            order_incoming.daily_sequence, 3,
+            'el que llega toma MAX(destino)+1 = #3, nunca desplaza a los que ya estaban',
+        )
+
+        note = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        ).message_ids.sorted('id', reverse=True)[0]
+        self.assertIn(
+            'Caja #3', note.body,
+            'la nota del chatter debe mostrar el número NUEVO (#3), no el viejo (#1)',
         )
 
     # ── DEF-01: pedido de varias líneas/productos no debe reventar ──

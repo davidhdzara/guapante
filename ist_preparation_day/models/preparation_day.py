@@ -1147,15 +1147,6 @@ class PreparationDay(models.Model):
                 if NewSession.id != OldSession.id:
                     NewSession.sudo().message_post(body=note)
 
-                # e3 (Tech Lead, ajuste 1): la reubicación renumera en
-                # AMBAS sesiones — el destino, porque ganó una
-                # flexible, y el origen, porque perdió una y sus
-                # flexibles restantes se recompactan a los números
-                # libres que deja.
-                OldSession._guapante_renumber_session()
-                if NewSession.id != OldSession.id:
-                    NewSession._guapante_renumber_session()
-
                 self.env['bus.bus']._sendone(
                     f'guapante_preparation_day-{OldSession.id}', 'reload', {},
                 )
@@ -1284,114 +1275,6 @@ class PreparationDay(models.Model):
             (tuple(ids),),
         )
         sessions.invalidate_recordset()
-
-    def _guapante_renumber_session(self) -> None:
-        """Renumera las cajas FLEXIBLES de self — plan de carga
-        automática, paso e3 (2026-10-29).
-
-        FIJAS = órdenes con alguna línea is_done=True en esta sesión:
-        conservan su daily_sequence para siempre, nunca se reasignan.
-        Una orden entrante nunca puede llegar ya pesada
-        (_guapante_check_no_weighed_lines lo garantiza antes de
-        reubicar), así que toda FIJA es necesariamente una que ya
-        estaba en la sesión.
-
-        CANCELADAS (Tech Lead, 2026-10-30) también cuentan como
-        ocupadas para siempre, igual que las FIJAS — el diseño del
-        sistema (ver _guapante_max_daily_sequence_on_date) es que un
-        número de caja NUNCA se reutiliza, ni el de una orden
-        cancelada; sin esto, cancelar un pedido liberaría su número
-        para que otro lo tomara, dejando dos caja. Se buscan aparte
-        porque una orden cancelada normalmente ya NO tiene líneas en
-        self.line_ids (se limpian en el próximo action_load) — no
-        aparecen en Orders de abajo.
-
-        FLEXIBLES = el resto: se reparten los números libres
-        (1..N menos los ocupados, con N = fijas + canceladas +
-        flexibles) en orden de sale_id ascendente — mismo criterio
-        que _assign_daily_sequences. Si un número ocupado alto deja
-        huecos bajos sin cubrir, el hueco queda — no se comprime.
-
-        self debe llegar con el lock (FOR UPDATE) ya tomado por el
-        llamador (_guapante_add_confirmed_order o
-        _guapante_relocate_picking) — este método no lo toma de nuevo,
-        corre dentro del mismo savepoint.
-
-        Excepción deliberada al "nunca se reutiliza": el server action
-        action_reset_daily_sequence (stock_picking.py) pone
-        daily_sequence=0 a propósito — un pedido reseteado así deja de
-        contar como ocupado acá (es una herramienta administrativa de
-        reinicio total del día, no un camino normal).
-        """
-        self.ensure_one()
-        Orders = self.line_ids.mapped('sale_order_id')
-        if not Orders:
-            return
-
-        DoneLines = self.line_ids.filtered('is_done')
-        fixed_order_ids = set(DoneLines.mapped('sale_order_id').ids)
-        FixedOrders = Orders.filtered(lambda o: o.id in fixed_order_ids)
-        # Una orden cancelada puede seguir teniendo una línea viva en
-        # self.line_ids hasta el próximo action_load() (la limpieza es
-        # perezosa, no reactiva al cancelar) — se excluye acá para no
-        # contarla dos veces: ya cuenta como ocupada más abajo vía
-        # cancelled_numbers, nunca como flexible.
-        FlexibleOrders = (Orders - FixedOrders).filtered(
-            lambda o: o.state != 'cancel'
-        ).sorted('id')
-        if not FlexibleOrders:
-            return
-
-        dt_start, dt_end = _date_to_utc_range(self.env, self.date)
-        CancelledPickings = self.env['stock.picking'].sudo().search([
-            ('scheduled_date', '>=', dt_start),
-            ('scheduled_date', '<', dt_end),
-            ('picking_type_code', '=', 'internal'),
-            ('sale_id', '!=', False),
-            ('sale_id.daily_sequence', '>', 0),
-            ('sale_id.state', '=', 'cancel'),
-        ])
-        cancelled_numbers = {
-            n for n in CancelledPickings.mapped('sale_id.daily_sequence') if n
-        }
-
-        # Unión de conjuntos, no suma de conteos (Tech Lead,
-        # 2026-10-30): una orden cancelada que YA estaba pesada antes
-        # de cancelarse cae en FixedOrders Y en cancelled_numbers a la
-        # vez (mismo número) — sumar len(FixedOrders) + len(cancelled_
-        # numbers) la contaría dos veces e inflaría total, repartiendo
-        # un número de más a alguna flexible. occupied ya deduplica
-        # por valor; total se calcula sobre ESE conjunto, no sobre los
-        # conteos de origen.
-        occupied = set(FixedOrders.mapped('daily_sequence')) | cancelled_numbers
-        total = len(occupied) + len(FlexibleOrders)
-        available = sorted(
-            n for n in range(1, total + 1) if n not in occupied
-        )
-
-        changes = []
-        for order, new_number in zip(FlexibleOrders, available):
-            old_number = order.daily_sequence
-            if old_number != new_number:
-                changes.append((order, old_number, new_number))
-        if not changes:
-            return
-
-        for order, _old_number, new_number in changes:
-            order.sudo().daily_sequence = new_number
-
-        # UNA sola nota-resumen en el chatter de la sesión, sin el
-        # detalle caja por caja (David/Tech Lead, 2026-11-03): las
-        # notas individuales "Caja #N pasó a #M" en el picking de cada
-        # caja eran ruido — se quitan. El conteo ya garantiza N>0 (el
-        # "if not changes: return" de arriba corta antes si no hay
-        # ningún cambio).
-        count = len(changes)
-        noun = 'caja' if count == 1 else 'cajas'
-        verb = 'Renumerada' if count == 1 else 'Renumeradas'
-        self.sudo().message_post(
-            body=f'{verb} {count} {noun} por llegada o salida de un pedido.',
-        )
 
     @api.model
     def _cron_repair_missing_orders(self) -> None:
@@ -1598,7 +1481,6 @@ class PreparationDay(models.Model):
                             Session, Line, add=True,
                         )
                         Session._guapante_after_incremental_add(Line)
-                    Session._guapante_renumber_session()
                     self.env['bus.bus']._sendone(
                         f'guapante_preparation_day-{Session.id}',
                         'reload', {},
@@ -1607,23 +1489,31 @@ class PreparationDay(models.Model):
                     # Una reparación significa que un disparador
                     # falló — visible y auditable (Tech Lead), no
                     # silenciosa como el resto del log de este cron.
+                    # Incluye la Caja # final de cada pedido (David/
+                    # Tech Lead, 2026-11-03, tras el incidente de
+                    # renumeración) — cada pedido recibió MAX+1 de la
+                    # fecha vía _assign_daily_sequences arriba, nunca
+                    # se reasigna después.
                     max_listed = 10
-                    names = RepairedOrders.mapped('name')
-                    listed_text = ', '.join(names[:max_listed])
-                    extra = len(names) - max_listed
+                    labeled = [
+                        f'{o.name} (Caja #{o.daily_sequence})'
+                        for o in RepairedOrders
+                    ]
+                    listed_text = ', '.join(labeled[:max_listed])
+                    extra = len(labeled) - max_listed
                     if extra > 0:
                         listed_text += f'… y {extra} más'
                     Session.sudo().message_post(
                         body=(
                             f'El respaldo automático agregó '
-                            f'{len(names)} orden(es) que no habían '
+                            f'{len(labeled)} orden(es) que no habían '
                             f'entrado: {listed_text}.'
                         ),
                     )
                     _logger.info(
                         'Guapante: cron de respaldo agregó %d '
                         'orden(es) a la sesión %s: %s',
-                        len(names), Session.date, listed_text,
+                        len(labeled), Session.date, listed_text,
                     )
             except _PG_CONCURRENCY_ERRORS as exc:
                 # Deliberadamente NO se relanza (a diferencia de e2/
@@ -1880,10 +1770,18 @@ class PreparationDay(models.Model):
                 for Line in NewLines:
                     Day._guapante_patch_summary(Day, Line, add=True)
                     Day._guapante_after_incremental_add(Line)
-                # e3: la orden entrante recibió un número append-only
-                # arriba — ahora se reparte el lugar FLEXIBLE que le
-                # corresponde de verdad entre todas las no pesadas.
-                Day._guapante_renumber_session()
+                # e3 (David/Tech Lead, 2026-11-03, tras el incidente de
+                # renumeración): el número append-only que la orden
+                # recibió arriba vía _assign_daily_sequences es el
+                # definitivo — ya no se reparte/reshuffle entre las no
+                # pesadas. Nota por pedido con su Caja # final, para
+                # que quede visible y auditable igual que antes.
+                Day.sudo().message_post(
+                    body=(
+                        f'Pedido {order.name} confirmado — tomó la '
+                        f'Caja #{order.daily_sequence}.'
+                    ),
+                )
                 self.env['bus.bus']._sendone(
                     f'guapante_preparation_day-{Day.id}', 'reload', {},
                 )
