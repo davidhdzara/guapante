@@ -86,7 +86,7 @@
                                     Unidad no soportada — avisa a un administrador.
                                 </span>
                                 <PickingWeightInput t-else=""
-                                                     value="line.actual_kg"
+                                                     value="line.is_done ? line.actual_kg : null"
                                                      onConfirm="(value) => this.onConfirmWeight(line, value)"
                                                      integer="line.qty_uom_label === 'und'"
                                                      placeholder="line.qty_uom_label === 'und' ? 'Unidades' : 'Peso (kg)'"/>
@@ -139,8 +139,14 @@
                                     <span t-if="!line.qty_uom_label" class="text-danger small">
                                         Unidad no soportada — avisa a un administrador.
                                     </span>
+                                    <!-- E8 (David/Tech Lead, 2026-11-03): value con ternario
+                                         sobre is_done (acá y en la tarjeta Pendiente arriba) —
+                                         actual_kg es Float y vale 0.0 tanto en una línea sin
+                                         pesar como en un despacho real en 0; lo que distingue
+                                         "sin pesar" (input vacío) de "pesado en 0" (input
+                                         muestra 0) es is_done, nunca actual_kg por sí solo. -->
                                     <PickingWeightInput t-else=""
-                                                         value="line.actual_kg"
+                                                         value="line.is_done ? line.actual_kg : null"
                                                          onConfirm="(value) => this.onConfirmWeight(line, value)"
                                                          integer="line.qty_uom_label === 'und'"
                                                          placeholder="line.qty_uom_label === 'und' ? 'Unidades' : 'Peso (kg)'"/>
