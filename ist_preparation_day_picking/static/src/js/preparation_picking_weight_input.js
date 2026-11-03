@@ -46,7 +46,16 @@ export class PickingWeightInput extends Component {
 
     setup() {
         this.state = useState({
-            text: this.props.value ? String(this.props.value) : "",
+            // E7 (David/Tech Lead, 2026-11-03): 0 es un valor válido
+            // ("despacho en 0", sin stock) — NO usar truthiness acá,
+            // `0 ? ... : ""` lo trataría igual que null/undefined y
+            // dejaría el campo vacío justo cuando el componente se
+            // recrea con props.value=0 (ej. la tarjeta salta de
+            // Pendiente a Terminado, otro t-foreach, OWL instancia de
+            // nuevo este componente y vuelve a correr setup()).
+            text: (
+                this.props.value !== undefined && this.props.value !== null
+            ) ? String(this.props.value) : "",
             error: "",
             submitting: false,
         });
