@@ -107,7 +107,16 @@
         <field name="name">guapante.preparation.day.tree</field>
         <field name="model">guapante.preparation.day</field>
         <field name="arch" type="xml">
-            <list string="Sesiones de Preparación">
+            <!-- default_order, no _order del modelo (David/Tech Lead,
+                 2026-11-03): la lista debe verse ordenada por fecha
+                 programada ascendente (la más antigua arriba) por
+                 defecto, pero _order='create_date desc' del modelo se
+                 deja intacto — nada más depende de él (verificado por
+                 grep: todo lookup de este modelo filtra por date=X con
+                 limit=1, nunca por el orden de varias filas). El
+                 usuario sigue pudiendo reordenar manualmente por
+                 columna o agrupar, igual que antes. -->
+            <list string="Sesiones de Preparación" default_order="date asc, id asc">
                 <field name="name"/>
                 <field name="date"/>
                 <field name="so_count" string="Cajas"/>
