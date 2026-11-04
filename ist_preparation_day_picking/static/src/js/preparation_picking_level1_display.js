@@ -1,5 +1,5 @@
 import { registry } from "@web/core/registry";
-import { Component, useState, onWillStart, onWillUnmount } from "@odoo/owl";
+import { Component, useState, onWillStart, onMounted, onWillUnmount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
@@ -12,6 +12,15 @@ import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingClaimGearMenu } from "./preparation_picking_claim_menu";
 import { normalizeSearchText } from "./preparation_picking_search_utils";
+import { formatDuration } from "./preparation_picking_time_format";
+
+// Contadores L1 (lote 2B, Tech Lead 2026-11-04): un único reloj
+// compartido para TODAS las tarjetas, no un setInterval por tarjeta
+// (podrían ser decenas tiqueando a la vez). tickCount vive en
+// state solo para que las tarjetas que lo leen (getLiveCounterLabel)
+// vuelvan a renderizar cada segundo — su valor no se usa para nada
+// más que esa dependencia reactiva.
+const L1_COUNTER_TICK_MS = 1000;
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -87,6 +96,7 @@ export class PickingClaimsDisplay extends Component {
             // se recuerda entre sesiones — siempre arranca restringida.
             showAllClaims: false,
             loaded: false,
+            tickCount: 0,
         });
         // Punto (a), heredado de la implementación kanban: nunca tocar
         // el estado tras desmontar.
@@ -94,6 +104,13 @@ export class PickingClaimsDisplay extends Component {
         this.channel = null;
         this.onBusNotif = this.onBusNotif.bind(this);
         this.onOperationFinished = this.onOperationFinished.bind(this);
+        // Ancla del reloj compartido: performance.now() en el instante
+        // en que state.claims se llenó por última vez (loadRecords) —
+        // nunca el reloj de la tablet. getLiveCounterLabel() suma el
+        // delta desde esta ancla a claim.time_working_s/time_stopped_s
+        // (ya calculados por el servidor hasta ESE instante).
+        this._claimsLoadedPerfNow = performance.now();
+        this._tickIntervalId = null;
 
         onWillStart(async () => {
             // Punto 3 (Tech Lead, 2026-10-31): sin operario identificado
@@ -120,8 +137,16 @@ export class PickingClaimsDisplay extends Component {
                 this.busService.subscribe("picking_operation_finished", this.onOperationFinished);
             }
         });
+        onMounted(() => {
+            this._tickIntervalId = window.setInterval(() => {
+                this.state.tickCount++;
+            }, L1_COUNTER_TICK_MS);
+        });
         onWillUnmount(() => {
             this.isDestroyed = true;
+            if (this._tickIntervalId) {
+                window.clearInterval(this._tickIntervalId);
+            }
             if (this.channel) {
                 this.busService.deleteChannel(this.channel);
                 this.busService.unsubscribe("picking_claim_updated", this.onBusNotif);
@@ -184,7 +209,31 @@ export class PickingClaimsDisplay extends Component {
             );
         }
         this.state.claims = claims;
+        this._claimsLoadedPerfNow = performance.now();
         this.state.loaded = true;
+    }
+
+    // Contadores L1: in_progress -> time_working_s; stopped ->
+    // time_stopped_s (ambos ya calculados por get_claims_for_level1_
+    // display, sección "contadores L1" de 4/7). Se lee state.tickCount
+    // sin usarlo para nada más que registrar la dependencia reactiva —
+    // es lo que hace que esta tarjeta vuelva a pintarse cada segundo.
+    //
+    // Simplificación conocida (E3): si DOS operarios tienen 'working'
+    // abierto sobre el MISMO claim a la vez, el total real sube al
+    // doble de rápido entre refrescos — este tick local solo suma a
+    // ritmo de 1x hasta el próximo loadRecords() (bus), que corrige el
+    // valor exacto. Visual únicamente, nunca el dato que se reporta.
+    getLiveCounterLabel(claim) {
+        void this.state.tickCount;
+        const elapsedSincePerfLoad = (performance.now() - this._claimsLoadedPerfNow) / 1000;
+        if (claim.status === "in_progress") {
+            return formatDuration((claim.time_working_s || 0) + elapsedSincePerfLoad);
+        }
+        if (claim.status === "stopped") {
+            return formatDuration((claim.time_stopped_s || 0) + elapsedSincePerfLoad);
+        }
+        return "";
     }
 
     get groupedClaims() {
