@@ -47,25 +47,22 @@
                 <field name="is_done" string="Terminado"
                        groups="ist_preparation_day_picking.group_preparation_admin"/>
             </field>
-            <!-- Punto 5 (PROTOTIPO, David/Tech Lead, 2026-11-03): View
-                 embebida vía <widget> (sin campo propio) con buscador
-                 nativo (filtros + agrupar por, d3b3335) reutilizando
-                 view_preparation_day_line_list_picking — mismo
-                 mecanismo que BankRecViewEmbedder en la conciliación
-                 bancaria de Contabilidad (list_view_ref/search_view_ref
-                 por xmlid en el context, visto en
-                 _prepare_embedded_views_data de bank_rec_widget.py).
-                 Se agrega DEBAJO de la lista nativa de line_ids, sin
-                 tocarla ni quitarla — así la pestaña nunca queda peor
-                 que hoy mientras se evalúa en navegador si la edición
-                 inline (actual_kg/is_done para admin) sigue
-                 funcionando dentro de la View embebida; si no
-                 funciona, el fallback es dejar esta View solo como
-                 buscador/filtro y la edición se sigue haciendo en la
-                 lista de arriba y/o el botón "Líneas". NO sincronizado
-                 al host todavía — pendiente veredicto de Tech Lead. -->
-            <field name="line_ids" position="after">
+            <!-- Punto 5 (David/Tech Lead, 2026-11-04): David probó el
+                 prototipo del 2026-11-03 (widget agregado DEBAJO de la
+                 lista nativa) y lo rechazó — quedaba como una segunda
+                 lista, no lo que pedía (una sola lista, estilo
+                 conciliación bancaria). Ahora la View embebida
+                 REEMPLAZA visualmente a la lista nativa: va como
+                 PRIMER hijo de la página (antes de line_ids), y
+                 line_ids se deja invisible="1" (NO se borra el field
+                 — sigue cargando el o2m por si algo más lo necesita,
+                 solo se oculta de la UI). Sin <group> envolvente para
+                 que ocupe el ancho completo de la pestaña. -->
+            <field name="line_ids" position="before">
                 <widget name="preparation_day_productos_embedder"/>
+            </field>
+            <field name="line_ids" position="attributes">
+                <attribute name="invisible">1</attribute>
             </field>
         </field>
     </record>

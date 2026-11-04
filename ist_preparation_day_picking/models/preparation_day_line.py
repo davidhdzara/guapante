@@ -118,6 +118,21 @@ class PreparationDayLine(models.Model):
             # línea — un pesaje en lote de varias líneas de la misma
             # sesión no debe mandar N notificaciones idénticas.
             self._notify_picking_claims_bus()
+            # Punto 5 (fix, David/Tech Lead, 2026-11-04): desde que la
+            # pestaña Productos usa una View embebida independiente
+            # (ver preparation_day_productos_embedder.js) en vez del
+            # o2m nativo, editar una línea ahí ya NO comparte
+            # datapoint con el form de la sesión — total_lines/
+            # pending_lines/global_progress_pct (@api.depends
+            # ('line_ids.is_done') en preparation_day.py) quedaban
+            # viejos en el header hasta recargar a mano. Reutiliza el
+            # MISMO bus.bus 'reload' que ya escucha
+            # guapante_live_refresh (LiveRefreshAnchor, ya montado en
+            # ese form) — sin plumbing nuevo en el cliente.
+            for wizard_id in self.mapped('wizard_id').ids:
+                self.env['bus.bus']._sendone(
+                    f'guapante_preparation_day-{wizard_id}', 'reload', {},
+                )
         # El aviso de "operación completa terminó" (punto 4 de Tech Lead)
         # NO vive acá: action_mark_done() del padre corre DESPUÉS de que
         # el write de is_done=True (el que dispara este método) ya

@@ -622,16 +622,26 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         """El Nivel 1 tiene que enterarse de un pesaje hecho en el kanban
         de líneas, no solo de las acciones del propio claim — si no, los
         demás tablets siguen viendo 'En progreso' y el contador de
-        pendientes viejo hasta recargar a mano."""
+        pendientes viejo hasta recargar a mano. Desde el fix de Punto 5
+        (2026-11-04) también manda 'reload' para que el header/stat
+        buttons del form se refresquen cuando la línea se edita desde
+        la View embebida de la pestaña Productos (ver
+        _notify_picking_claims_bus / el bloque de 'reload' en write())."""
         session = self._load_session_with_product()
         BusModel = self.env.registry['bus.bus']
         with patch.object(BusModel, '_sendone') as mock_sendone:
             session.line_ids.with_context(skip_auto_save=True).write({
                 'is_done': True, 'actual_kg': 2.0,
             })
-        mock_sendone.assert_called_once_with(
+        self.assertEqual(mock_sendone.call_count, 2)
+        mock_sendone.assert_any_call(
             f'guapante_preparation_day-{session.id}',
             'picking_claim_updated',
+            {},
+        )
+        mock_sendone.assert_any_call(
+            f'guapante_preparation_day-{session.id}',
+            'reload',
             {},
         )
 
@@ -649,7 +659,10 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             session.line_ids.with_context(skip_auto_save=True).write({
                 'is_done': True, 'actual_kg': 1.0,
             })
-        mock_sendone.assert_called_once()
+        # 2 líneas de la MISMA sesión -> 2 eventos (uno
+        # 'picking_claim_updated', uno 'reload'), no 4 — uno por sesión
+        # afectada por cada tipo de evento, nunca uno por línea.
+        self.assertEqual(mock_sendone.call_count, 2)
 
     # ── Visibilidad entre operarios y abandono (plan f1, 2026-10-31) ──
 
