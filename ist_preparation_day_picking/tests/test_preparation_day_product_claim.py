@@ -63,6 +63,7 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
+        self.Interval = self.env['guapante.preparation.interval']
 
     def _request_as(self, employee):
         """Devuelve un mock de `request` con ese operario ya identificado
@@ -1297,3 +1298,106 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             'cuán viejo sea su write_date',
         )
         self.assertEqual(claim.stop_reason, 'sin_stock')
+
+    # ── Contadores L1 de tiempo (Fase 2, commit 4/7, Tech Lead
+    #    2026-11-04) ──
+    #
+    # Los intervalos de estos tests se crean por ORM directo (mismo
+    # criterio que test_preparation_interval_cron.py) porque necesitan
+    # start_dt/last_touched_dt fijos sin depender de mockear
+    # fields.Datetime.now() a través de un flujo completo de acciones
+    # — son tests de caja blanca sobre la AGREGACIÓN
+    # (_get_time_counters_by_claim), no sobre cómo se abren/cierran los
+    # intervalos (eso ya lo cubren 2/7 y 3/7).
+
+    def _create_interval(self, claim, kind, employee=None, start_dt=None,
+                          last_touched_dt=None, end_dt=None, duration_s=None):
+        vals = {
+            'wizard_id': claim.wizard_id.id,
+            'claim_id': claim.id,
+            'employee_id': employee.id if employee else False,
+            'kind': kind,
+            'start_dt': start_dt,
+            'last_touched_dt': last_touched_dt or start_dt,
+        }
+        if end_dt is not None:
+            vals['end_dt'] = end_dt
+            vals['duration_s'] = duration_s
+        return self.Interval.sudo().create(vals)
+
+    def test_level1_time_counters_sum_two_operators_on_same_claim_capped(self):
+        """Bajo E3 nada impide que dos operarios distintos tengan Nivel
+        2 abierto sobre el MISMO producto a la vez — time_working_s
+        debe sumar el tiempo transcurrido CAPEADO de cada uno, más lo
+        que ya hay cerrado, no solo el de uno. idle_timeout por
+        default (PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300s)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = fields.Datetime.now()
+
+        # Cerrado: cuenta tal cual, sin tope ni cálculo — ya tiene su
+        # duration_s fijado al cerrar.
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=1000),
+            end_dt=now - timedelta(seconds=880), duration_s=120,
+        )
+        # Operario A: abierto, última actividad hace 400s — con tope de
+        # 300s, el margen de gracia ya se agotó hace 100s, así que el
+        # tope cae en (last_touched_dt + 300) = now - 100, no en "now".
+        # elapsed = (now - 100) - (now - 600) = 500s.
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=600),
+            last_touched_dt=now - timedelta(seconds=400),
+        )
+        # Operario B: abierto, última actividad hace solo 50s — dentro
+        # del margen de gracia (300s), el tope no recorta nada: el
+        # elapsed es directo now - start_dt = 200s.
+        self._create_interval(
+            claim, 'working', employee=self.operator_b,
+            start_dt=now - timedelta(seconds=200),
+            last_touched_dt=now - timedelta(seconds=50),
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 500 + 200)
+        self.assertEqual(by_id[claim.id]['time_stopped_s'], 0)
+
+    def test_level1_time_counters_zero_idle_timeout_caps_working_at_last_touched(self):
+        """Fila 3 del backlog: con el parámetro en 0 ("sin bloqueo") el
+        tope min(ahora, last_touched_dt + 0) colapsa a last_touched_dt
+        — cero margen de gracia, el contador en vivo de 'working' no
+        avanza ni un segundo más allá de la última actividad real.
+        'stopped' abierto, en cambio, nunca lleva tope — sigue
+        contando hasta "ahora" sin importar este parámetro."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = fields.Datetime.now()
+
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=300),
+            last_touched_dt=now - timedelta(seconds=120),
+        )
+        self._create_interval(
+            claim, 'stopped',
+            start_dt=now - timedelta(seconds=90),
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        # working: tope = last_touched_dt (now - 120), elapsed = 300 -
+        # 120 = 180s — nunca los 300s completos desde que se abrió.
+        self.assertEqual(by_id[claim.id]['time_working_s'], 180)
+        # stopped: sin tope, elapsed ~ 90s (now - start_dt), sin verse
+        # afectado por IDLE_TIMEOUT_PARAM_KEY=0.
+        self.assertAlmostEqual(
+            by_id[claim.id]['time_stopped_s'], 90, delta=5,
+        )

@@ -162,8 +162,16 @@ class PreparationDayIdentificationController(http.Controller):
         # preparation.interval' vive en ist_preparation_day_picking,
         # igual que el claim arriba — mismo chequeo de instalación.
         if employee_id and 'guapante.preparation.interval' in request.env:
-            request.env['guapante.preparation.interval'].sudo()._close_open_working_for_employee(
-                employee_id, 'session_closed', fields.Datetime.now(),
+            Interval = request.env['guapante.preparation.interval'].sudo()
+            # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04):
+            # el tiempo es dato secundario — un fallo acá nunca debe
+            # impedir que /clear_operator complete y libere el NIP
+            # (clear_active_prep_operator, abajo).
+            Interval._run_isolated(
+                f'_close_open_working_for_employee empleado={employee_id}',
+                lambda: Interval._close_open_working_for_employee(
+                    employee_id, 'session_closed', fields.Datetime.now(),
+                ),
             )
         clear_active_prep_operator(request.session)
         return {'success': True}

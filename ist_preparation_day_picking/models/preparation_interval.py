@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 import logging
+from datetime import timedelta
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+from odoo.addons.ist_preparation_day.models.const_preparation import (
+    get_idle_timeout_seconds,
+)
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _PG_CONCURRENCY_ERRORS,
 )
@@ -319,6 +323,114 @@ class PreparationInterval(models.Model):
             else:
                 vals['zero_lines_done'] = self.zero_lines_done + 1
         self.sudo().write(vals)
+
+    # ── Aislamiento de fallos (Fase 2, commit 4/7 — Tech Lead,
+    #    2026-11-04, principio rector reforzado) ──
+
+    @api.model
+    def _run_isolated(self, label, callback):
+        """El tiempo es dato SECUNDARIO — ningún fallo inesperado de la
+        lógica de intervalos (bug, lock, IntegrityError) puede tumbar
+        el camino CRÍTICO que la rodea: pesar, entrar a Nivel 2,
+        detener, liberar, cerrar sesión. Todo punto de apertura/cierre
+        que un flujo crítico llama de paso (nunca los que SON el
+        propio punto de entrada, como esta clase para los reportes)
+        pasa por acá — ver cada llamador en preparation_day_line.py,
+        preparation_day_product_claim.py y el controlador de NIP.
+
+        SAVEPOINT (flush=True, el default de cr.savepoint()): en una
+        excepción, Odoo limpia TODO el caché del ORM antes del
+        ROLLBACK TO SAVEPOINT (ver _FlushingSavepoint.rollback() en
+        sql_db.py) — nunca queda un valor a medio escribir visible en
+        memoria para el resto de la transacción, aunque ya no esté en
+        la base. Seguro para el camino crítico que llama esto porque
+        ninguno de estos métodos escribe sobre el claim/línea/
+        empleado que trae el llamador — solo sobre filas de este
+        modelo, que el llamador nunca vuelve a leer (son "fire and
+        forget": nadie usa su valor de retorno real, por eso esto
+        devuelve None si falla).
+
+        _PG_CONCURRENCY_ERRORS NUNCA se atrapa acá — se relanza igual
+        que en el resto del proyecto (ver _cron_release_abandoned_
+        intervals): Odoo ya reintenta a nivel de petición completa, y
+        tragárselo acá dejaría un intervalo a medio escribir sin el
+        reintento normal que lo corrige."""
+        try:
+            with self.env.cr.savepoint():
+                return callback()
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: fallo aislado de intervalos (%s) — el '
+                'camino crítico que lo rodea continúa sin este dato '
+                'de tiempo.', label,
+            )
+            return None
+
+    # ── Contadores L1 (Fase 2, commit 4/7 — Tech Lead, 2026-11-04) ──
+
+    @api.model
+    def _get_time_counters_by_claim(self, wizard_id) -> dict:
+        """Tiempo en_proceso/detenido POR CLAIM, para que
+        get_claims_for_level1_display() (preparation_day_product_claim.py)
+        los pegue a cada tarjeta de Nivel 1 sin una consulta nueva por
+        producto — UNA sola lectura agrupada sobre TODOS los intervalos
+        del lote (misma idea que el resumen de clientes/touched_by_me de
+        ese método: una consulta, agregación en Python).
+
+        time_working_s suma: duration_s de cada 'working' ya CERRADO,
+        más — por cada 'working' TODAVÍA abierto (puede haber más de
+        uno por claim: bajo E3 dos operarios distintos pueden tener
+        Nivel 2 abierto sobre el MISMO producto a la vez, ver el
+        docstring de _close_open_for_claim) — el tiempo transcurrido
+        con TOPE en min(ahora, last_touched_dt + idle_timeout): el
+        contador en vivo nunca muestra más que lo que el propio
+        timeout de inactividad todavía considera "actividad real" (ver
+        get_idle_timeout_seconds) — más allá de eso ya no es tiempo
+        trabajado, es abandono que el cron de intervalos (3/7) o el de
+        claims ya se encargan de cerrar. idle_timeout=0 ("sin
+        bloqueo") colapsa el tope al propio last_touched_dt: cero
+        margen de gracia, el contador no avanza más allá de la última
+        actividad real.
+
+        time_stopped_s suma: duration_s de cada 'stopped' ya CERRADO,
+        más — el 'stopped' abierto, si lo hay — el tiempo transcurrido
+        SIN TOPE (ahora - start_dt): a diferencia de 'working', un
+        producto Detenido no tiene una señal propia de "inactividad"
+        que lo cierre solo (nadie lo "toca" — ver el docstring de la
+        clase), así que su contador en vivo crece sin límite artificial
+        mientras siga detenido.
+        """
+        idle_timeout = get_idle_timeout_seconds(self.env)
+        now = fields.Datetime.now()
+        rows = self.sudo().search_read(
+            domain=[('wizard_id', '=', wizard_id)],
+            fields=[
+                'claim_id', 'kind', 'start_dt', 'last_touched_dt',
+                'end_dt', 'duration_s',
+            ],
+        )
+        counters = {}
+        for row in rows:
+            if not row['claim_id']:
+                continue
+            bucket = counters.setdefault(
+                row['claim_id'][0], {'time_working_s': 0, 'time_stopped_s': 0},
+            )
+            key = 'time_working_s' if row['kind'] == 'working' else 'time_stopped_s'
+            if row['end_dt']:
+                bucket[key] += row['duration_s']
+                continue
+            if row['kind'] == 'working':
+                cap = min(
+                    now, row['last_touched_dt'] + timedelta(seconds=idle_timeout),
+                )
+                elapsed = max(int((cap - row['start_dt']).total_seconds()), 0)
+            else:
+                elapsed = max(int((now - row['start_dt']).total_seconds()), 0)
+            bucket[key] += elapsed
+        return counters
 
     def init(self):
         """Índice único parcial — backstop de base de datos para "un

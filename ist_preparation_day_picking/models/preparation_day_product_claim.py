@@ -296,9 +296,16 @@ class PreparationDayProductClaim(models.Model):
           alguien puede buscar un cliente cuyo pedido ya se despachó. No
           se guarda en el modelo (se recalcula en cada lectura, igual que
           touched_by_me) — el dataset es el de una sola sesión.
-        Ninguno sale de un `.read()` — los tres se calculan acá con la
-        MISMA consulta agrupada sobre las líneas del lote (ver más
-        abajo), nunca una consulta nueva por tarjeta.
+        - `time_working_s`/`time_stopped_s` (contadores L1, Fase 2,
+          commit 4/7, Tech Lead 2026-11-04): tiempo total en_proceso/
+          detenido de este producto en la sesión, en segundos — ver
+          _get_time_counters_by_claim() en preparation_interval.py para
+          el tope de un 'working' todavía abierto y por qué un
+          'stopped' abierto no lleva tope.
+        Ninguno sale de un `.read()` — se calculan acá con la MISMA
+        consulta agrupada sobre las líneas del lote (ver más abajo) o
+        sobre los intervalos del lote (_get_time_counters_by_claim),
+        nunca una consulta nueva por tarjeta.
         """
         self._check_picking_access()
         Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
@@ -322,6 +329,14 @@ class PreparationDayProductClaim(models.Model):
         my_done_tmpl_ids = set()
         last_finisher_by_tmpl = {}
         customer_names_by_tmpl = {}
+        # Contadores L1 de tiempo (Fase 2, commit 4/7, Tech Lead
+        # 2026-11-04): UNA sola consulta agrupada más (igual criterio
+        # que la de abajo) — nunca una por tarjeta. Ver el docstring de
+        # _get_time_counters_by_claim para el tope de 'working' abierto
+        # y por qué 'stopped' abierto no lleva tope.
+        time_counters_by_claim = self.env[
+            'guapante.preparation.interval'
+        ]._get_time_counters_by_claim(wizard_id)
         all_lines = self.env['guapante.preparation.day.line'].sudo().search_read(
             domain=[('wizard_id', '=', wizard_id)],
             fields=[
@@ -373,6 +388,11 @@ class PreparationDayProductClaim(models.Model):
             record['customer_names_summary'] = ', '.join(
                 sorted(customer_names_by_tmpl.get(tmpl_id, set()))
             )
+            counters = time_counters_by_claim.get(
+                record['id'], {'time_working_s': 0, 'time_stopped_s': 0},
+            )
+            record['time_working_s'] = counters['time_working_s']
+            record['time_stopped_s'] = counters['time_stopped_s']
         return records
 
     # ── Acciones ──
@@ -563,8 +583,16 @@ class PreparationDayProductClaim(models.Model):
         # estuviera adentro queda cerrado con este evento.
         now = fields.Datetime.now()
         Interval = self.env['guapante.preparation.interval']
-        Interval._close_open_for_claim(self, 'stopped', 'released', now)
-        Interval._close_open_for_claim(self, 'working', 'released', now)
+
+        def _close_stopped_and_working():
+            Interval._close_open_for_claim(self, 'stopped', 'released', now)
+            Interval._close_open_for_claim(self, 'working', 'released', now)
+        # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
+        # tiempo es dato secundario — un fallo acá nunca debe tumbar
+        # la liberación misma (ya escrita arriba).
+        Interval._run_isolated(
+            f'action_unstop claim={self.id}', _close_stopped_and_working,
+        )
         reason_label = dict(STOP_REASONS).get(
             locked_stop_reason, locked_stop_reason,
         )
@@ -649,8 +677,16 @@ class PreparationDayProductClaim(models.Model):
             'last_activity': False,
         })
         end_dt = None if use_last_touched else fields.Datetime.now()
-        self.env['guapante.preparation.interval']._close_open_for_claim(
-            self, 'working', close_reason, end_dt,
+        Interval = self.env['guapante.preparation.interval']
+        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
+        # dato secundario — un fallo acá nunca debe tumbar la
+        # liberación del claim (ya escrita arriba) ni el aviso de bus
+        # de abajo.
+        Interval._run_isolated(
+            f'_close_open_for_claim claim={self.id} {close_reason}',
+            lambda: Interval._close_open_for_claim(
+                self, 'working', close_reason, end_dt,
+            ),
         )
         self._notify_bus()
 
@@ -727,16 +763,24 @@ class PreparationDayProductClaim(models.Model):
         # informativo (employee_id = quien detiene, no es el reloj de
         # nadie — ver docstring del modelo).
         Interval = self.env['guapante.preparation.interval']
-        Interval._close_open_for_claim(self, 'working', 'stopped', now)
-        Interval.sudo().create({
-            'wizard_id': self.wizard_id.id,
-            'claim_id': self.id,
-            'employee_id': employee_id,
-            'kind': 'stopped',
-            'stop_reason': reason,
-            'start_dt': now,
-            'last_touched_dt': now,
-        })
+
+        def _close_working_and_open_stopped():
+            Interval._close_open_for_claim(self, 'working', 'stopped', now)
+            Interval.sudo().create({
+                'wizard_id': self.wizard_id.id,
+                'claim_id': self.id,
+                'employee_id': employee_id,
+                'kind': 'stopped',
+                'stop_reason': reason,
+                'start_dt': now,
+                'last_touched_dt': now,
+            })
+        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
+        # dato secundario — un fallo acá nunca debe tumbar el Detener
+        # mismo (ya escrito arriba, stop_reason/stopped_by_employee_id).
+        Interval._run_isolated(
+            f'action_stop claim={self.id}', _close_working_and_open_stopped,
+        )
         cross_operator_note = ''
         if current_owner_id != employee_id:
             Owner = self.env['hr.employee'].sudo().browse(current_owner_id)
@@ -844,7 +888,15 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        self.env['guapante.preparation.interval']._open_working(self, employee_id)
+        Interval = self.env['guapante.preparation.interval']
+        # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
+        # tiempo es dato secundario — un fallo de _open_working nunca
+        # debe impedir entrar a Nivel 2 (lo que este método devuelve
+        # abajo).
+        Interval._run_isolated(
+            f'_open_working claim={self.id} empleado={employee_id}',
+            lambda: Interval._open_working(self, employee_id),
+        )
         return {
             'type': 'ir.actions.client',
             'tag': 'guapante_picking_level2',
@@ -878,14 +930,24 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        Open = self.env['guapante.preparation.interval'].sudo().search([
-            ('employee_id', '=', employee_id),
-            ('claim_id', '=', self.id),
-            ('kind', '=', 'working'),
-            ('end_dt', '=', False),
-        ], limit=1)
-        if Open:
-            Open._close('left', fields.Datetime.now())
+        Interval = self.env['guapante.preparation.interval']
+
+        def _close_my_open_interval():
+            Open = Interval.sudo().search([
+                ('employee_id', '=', employee_id),
+                ('claim_id', '=', self.id),
+                ('kind', '=', 'working'),
+                ('end_dt', '=', False),
+            ], limit=1)
+            if Open:
+                Open._close('left', fields.Datetime.now())
+        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
+        # dato secundario — un fallo acá nunca debe impedir la
+        # navegación ("← Productos"/Cerrar) que este método acompaña.
+        Interval._run_isolated(
+            f'action_close_my_interval claim={self.id} '
+            f'empleado={employee_id}', _close_my_open_interval,
+        )
         return True
 
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,

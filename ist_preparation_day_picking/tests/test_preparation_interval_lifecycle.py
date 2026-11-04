@@ -277,6 +277,35 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(interval.first_weigh_dt, interval.start_dt)
         self.assertEqual(interval.lines_done, 1)
 
+    def test_open_working_failure_does_not_block_the_weighing(self):
+        """Tech Lead, revisión de 4/7 (principio rector reforzado,
+        2026-11-04): el tiempo es dato SECUNDARIO. Si _open_working
+        (acá disparado como respaldo desde _handle_weighing, por
+        pesar sin pasar antes por Nivel 2 — ver el test de arriba)
+        lanza una excepción inesperada, el pesaje real (is_done/
+        actual_kg, escrito por super().write() ANTES de llegar a los
+        intervalos en PreparationDayLine.write()) debe quedar
+        guardado igual — _run_isolated aísla el fallo en su propio
+        SAVEPOINT y sigue, sin tumbar lo que ya se guardó."""
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[0]
+
+        IntervalModel = self.env.registry['guapante.preparation.interval']
+        with patch.object(
+            IntervalModel, '_open_working',
+            side_effect=Exception('boom: fallo simulado de intervalos'),
+        ):
+            self._weigh(line, self.operator_a, 2.5)
+
+        line.invalidate_recordset()
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 2.5)
+        # Se pierde el dato de TIEMPO de este pesaje (nunca se pudo
+        # abrir el intervalo) — eso es lo esperado, nunca el pesaje.
+        self.assertFalse(self._open_working(self.operator_a))
+
     def test_two_consecutive_weighings_same_operator_increments_lines_done_twice(self):
         """Nota de Tech Lead (revisión del commit 2/7): el read-modify-
         write de lines_done/kg_done en _register_weighing no tiene

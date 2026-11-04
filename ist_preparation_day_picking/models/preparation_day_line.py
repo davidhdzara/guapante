@@ -119,10 +119,20 @@ class PreparationDayLine(models.Model):
             for line, claim, was_done in weighing_snapshots:
                 if not claim:
                     continue
-                Interval._handle_weighing(
-                    claim, actor_employee_id,
-                    (not was_done) and line.is_done,
-                    line.actual_kg,
+                # _run_isolated (Tech Lead, revisión de 4/7,
+                # 2026-11-04): el tiempo es dato secundario — un fallo
+                # de _handle_weighing nunca debe tumbar el pesaje que
+                # ya se guardó arriba (super().write()).
+                Interval._run_isolated(
+                    f'_handle_weighing claim={claim.id} '
+                    f'empleado={actor_employee_id}',
+                    lambda claim=claim, was_done=was_done, line=line: (
+                        Interval._handle_weighing(
+                            claim, actor_employee_id,
+                            (not was_done) and line.is_done,
+                            line.actual_kg,
+                        )
+                    ),
                 )
         if 'is_done' in vals or 'actual_kg' in vals:
             self._maybe_release_finished_claim()
@@ -513,7 +523,16 @@ class PreparationDayLine(models.Model):
         for claim in Claims:
             Lines = claim._get_lines()
             if Lines and all(line.is_done for line in Lines):
-                Interval._close_open_for_claim(claim, 'working', 'finished', now)
+                # _run_isolated (Tech Lead, revisión de 4/7): el cierre
+                # del intervalo de ESTE claim nunca debe tumbar el
+                # cierre de los demás claims del lote, ni el pesaje que
+                # disparó todo esto.
+                Interval._run_isolated(
+                    f'_close_open_for_claim claim={claim.id} finished',
+                    lambda claim=claim: Interval._close_open_for_claim(
+                        claim, 'working', 'finished', now,
+                    ),
+                )
 
     def _notify_picking_claims_bus(self) -> None:
         Bus = self.env['bus.bus']
