@@ -1366,13 +1366,17 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 500 + 200)
         self.assertEqual(by_id[claim.id]['time_stopped_s'], 0)
 
-    def test_level1_time_counters_zero_idle_timeout_caps_working_at_last_touched(self):
-        """Fila 3 del backlog: con el parámetro en 0 ("sin bloqueo") el
-        tope min(ahora, last_touched_dt + 0) colapsa a last_touched_dt
-        — cero margen de gracia, el contador en vivo de 'working' no
-        avanza ni un segundo más allá de la última actividad real.
-        'stopped' abierto, en cambio, nunca lleva tope — sigue
-        contando hasta "ahora" sin importar este parámetro."""
+    def test_level1_time_counters_zero_idle_timeout_means_no_cap_at_all(self):
+        """Fila 3 del backlog, corrección de Tech Lead (revisión de
+        4/7, 2026-11-04): con el parámetro en 0 ("sin bloqueo NI
+        abandono") la regla es la CONTRARIA a lo que parece a primera
+        vista — SIN tope, cuenta hasta "ahora" sin recortar nada. La
+        primera versión de este commit colapsaba el tope a
+        last_touched_dt (cero margen de gracia), lo que congelaba el
+        contador de un operario que sigue trabajando sin haber pesado
+        todavía — justo lo que "sin bloqueo" promete que NO pasa.
+        'stopped' abierto se comporta igual que siempre: sin tope,
+        sin importar este parámetro (nunca lo tuvo)."""
         self.env['ir.config_parameter'].sudo().set_param(
             IDLE_TIMEOUT_PARAM_KEY, '0',
         )
@@ -1393,11 +1397,38 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         visible = self.Claim.get_claims_for_level1_display(session.id)
         by_id = {c['id']: c for c in visible}
 
-        # working: tope = last_touched_dt (now - 120), elapsed = 300 -
-        # 120 = 180s — nunca los 300s completos desde que se abrió.
-        self.assertEqual(by_id[claim.id]['time_working_s'], 180)
+        # working: SIN tope con idle_timeout=0 — elapsed ~ 300s
+        # (ahora - start_dt), no los 180s que daría recortar en
+        # last_touched_dt.
+        self.assertAlmostEqual(
+            by_id[claim.id]['time_working_s'], 300, delta=5,
+        )
         # stopped: sin tope, elapsed ~ 90s (now - start_dt), sin verse
-        # afectado por IDLE_TIMEOUT_PARAM_KEY=0.
+        # afectado por IDLE_TIMEOUT_PARAM_KEY=0 (nunca lo estuvo).
         self.assertAlmostEqual(
             by_id[claim.id]['time_stopped_s'], 90, delta=5,
         )
+
+    def test_level1_time_counters_positive_idle_timeout_still_caps_working(self):
+        """Confirma que la corrección de arriba NO rompe el caso
+        normal (idle_timeout > 0, el default de producción, 300s):
+        el tope min(ahora, last_touched_dt + idle_timeout) sigue
+        aplicando tal cual — mismo escenario que
+        test_level1_time_counters_sum_two_operators_on_same_claim_capped,
+        aislado acá para un solo operario."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = fields.Datetime.now()
+
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=600),
+            last_touched_dt=now - timedelta(seconds=400),
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        # idle_timeout default = 300s. tope = (now-400)+300 = now-100.
+        # elapsed = (now-100) - (now-600) = 500s.
+        self.assertEqual(by_id[claim.id]['time_working_s'], 500)

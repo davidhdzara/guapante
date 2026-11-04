@@ -389,10 +389,16 @@ class PreparationInterval(models.Model):
         timeout de inactividad todavía considera "actividad real" (ver
         get_idle_timeout_seconds) — más allá de eso ya no es tiempo
         trabajado, es abandono que el cron de intervalos (3/7) o el de
-        claims ya se encargan de cerrar. idle_timeout=0 ("sin
-        bloqueo") colapsa el tope al propio last_touched_dt: cero
-        margen de gracia, el contador no avanza más allá de la última
-        actividad real.
+        claims ya se encargan de cerrar. idle_timeout=0 ("sin bloqueo
+        NI abandono" — corrección de Tech Lead, revisión de 4/7,
+        2026-11-04) es el caso contrario a lo que parece a primera
+        vista: NO hay tope, cuenta hasta ahora sin recortar — "sin
+        bloqueo" significa que NADA se considera abandonado nunca
+        (ver get_idle_timeout_seconds/_cron_release_abandoned_claims),
+        así que congelar el contador en last_touched_dt + 0 congelaba
+        a un operario que sigue trabajando sin haber pesado todavía
+        (ej. acomodando varias cajas antes del primer pesaje) — justo
+        lo que este parámetro en 0 promete NO hacer.
 
         time_stopped_s suma: duration_s de cada 'stopped' ya CERRADO,
         más — el 'stopped' abierto, si lo hay — el tiempo transcurrido
@@ -423,8 +429,13 @@ class PreparationInterval(models.Model):
                 bucket[key] += row['duration_s']
                 continue
             if row['kind'] == 'working':
-                cap = min(
-                    now, row['last_touched_dt'] + timedelta(seconds=idle_timeout),
+                # idle_timeout=0 ("sin bloqueo") = SIN tope (Tech Lead,
+                # corrección de 4/7): nunca lo recorta a last_touched_dt,
+                # que congelaría a alguien que sigue trabajando sin
+                # haber pesado todavía — ver el docstring de arriba.
+                cap = (
+                    min(now, row['last_touched_dt'] + timedelta(seconds=idle_timeout))
+                    if idle_timeout > 0 else now
                 )
                 elapsed = max(int((cap - row['start_dt']).total_seconds()), 0)
             else:
