@@ -34,6 +34,10 @@
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        <!-- Cronómetro L2 (lote 2B, Tech Lead 2026-11-04):
+                             "arriba, junto a Actualizar/Cerrar" — ver
+                             preparation_picking_visit_timer.js. -->
+                        <PickingVisitTimer claimId="state.claimId"/>
                         <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
                         <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
                             <i class="fa fa-lg fa-sign-out me-md-1"/><span class="d-none d-md-inline">Cerrar</span>

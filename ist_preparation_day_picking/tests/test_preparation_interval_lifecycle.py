@@ -129,6 +129,65 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(len(self._open_working(self.operator_a)), 1)
         self.assertEqual(len(self._open_working(self.operator_b)), 1)
 
+    # ── get_my_open_interval (lectura de solo consulta, lote 2B —
+    #    fuente de start_dt/server_now para el cronómetro de Nivel 2) ──
+
+    def test_get_my_open_interval_returns_start_dt_and_server_now(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
+            self._enter_l2(claim, self.operator_a)
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 3, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                result = claim.get_my_open_interval()
+
+        self.assertEqual(result['start_dt'], datetime(2026, 11, 4, 10, 0, 0))
+        self.assertEqual(result['server_now'], datetime(2026, 11, 4, 10, 3, 0))
+
+    def test_get_my_open_interval_returns_false_start_dt_when_nothing_open(self):
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            result = claim.get_my_open_interval()
+        self.assertFalse(result['start_dt'])
+        self.assertTrue(result['server_now'])
+
+    def test_get_my_open_interval_scoped_to_own_employee_only(self):
+        """E3: dos operarios con Nivel 2 abierto sobre el MISMO claim a
+        la vez — cada cronómetro debe ver solo el propio, nunca el del
+        otro (mismo criterio de alcance que action_close_my_interval)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
+            self._enter_l2(claim, self.operator_a)
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 1, 0)
+            self._enter_l2(claim, self.operator_b)
+
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            result_a = claim.get_my_open_interval()
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+            result_b = claim.get_my_open_interval()
+
+        self.assertEqual(result_a['start_dt'], datetime(2026, 11, 4, 10, 0, 0))
+        self.assertEqual(result_b['start_dt'], datetime(2026, 11, 4, 10, 1, 0))
+
+    def test_get_my_open_interval_without_active_operator_returns_false(self):
+        """Sin operario identificado (NIP vencido entre medio) — nunca
+        revienta, solo informa que no hay nada que mostrar; el cliente
+        ya maneja ese mensaje en otros caminos (_handleError)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        mock_request = MagicMock()
+        mock_request.session = {}
+        with patch(REQUEST_PATCH_TARGET_CLAIM, mock_request):
+            result = claim.get_my_open_interval()
+        self.assertFalse(result['start_dt'])
+
     # ── El ejemplo exacto confirmado por Tech Lead (condición (b),
     #    2026-11-04): 20:05 entra, 20:06:30 y 20:08:10 pesa, se aleja sin
     #    cerrar nada — un cierre no explícito (acá, simulando el cron de
@@ -540,6 +599,43 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
             result = claim.action_close_my_interval()
         self.assertTrue(result)
+
+    def test_close_then_reenter_same_claim_opens_new_interval_with_new_start(self):
+        """Punto 2a (Tech Lead, 2026-11-04, revisión de diseño 2B): si
+        "← Productos" cerrara el intervalo en fire-and-forget y el
+        cliente navegara antes de que el write llegara al servidor,
+        un reingreso inmediato al mismo producto podría encontrar el
+        intervalo TODAVÍA abierto y reutilizarlo (como en
+        test_open_working_reentry_same_claim_does_not_duplicate) en
+        vez de abrir uno nuevo — el cronómetro de la nueva visita no
+        volvería a 00:00. Este test fija el orden correcto en el
+        servidor (cierre ya confirmado antes de la reapertura): el
+        segundo intervalo es una fila DISTINTA, con su propio
+        start_dt, nunca el mismo que el primero."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
+            self._enter_l2(claim, self.operator_a)
+        first = self._open_working(self.operator_a)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first.start_dt, datetime(2026, 11, 4, 10, 0, 0))
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 5, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_close_my_interval()
+        first.invalidate_recordset()
+        self.assertTrue(first.end_dt)
+        self.assertEqual(first.close_reason, 'left')
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 10, 0)
+            self._enter_l2(claim, self.operator_a)
+        second = self._open_working(self.operator_a)
+        self.assertEqual(len(second), 1)
+        self.assertNotEqual(second.id, first.id)
+        self.assertEqual(second.start_dt, datetime(2026, 11, 4, 10, 10, 0))
 
     def test_finishing_last_line_closes_working_of_every_viewer(self):
         """E3 (sin ownership): bajo _close_finished_intervals, terminar

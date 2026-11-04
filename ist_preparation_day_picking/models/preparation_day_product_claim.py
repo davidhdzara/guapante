@@ -950,6 +950,47 @@ class PreparationDayProductClaim(models.Model):
         )
         return True
 
+    def get_my_open_interval(self) -> dict:
+        """Fase 2 (lote 2B, Tech Lead 2026-11-04) — lectura de solo
+        consulta para el cronómetro de Nivel 2: fuente de verdad del
+        start_dt del intervalo 'working' ABIERTO de este operario
+        sobre este claim, más la hora del servidor en el mismo
+        instante, para que el cliente calcule el tiempo transcurrido
+        sin depender del reloj de la tablet. UN solo mecanismo tanto
+        para la carga inicial de Nivel 2 como para cada
+        resincronización (bus 'reload', visibilitychange) — nunca dos
+        caminos distintos para leer lo mismo.
+
+        refresh=False (mismo criterio que _compute_is_mine arriba):
+        una resincronización pasiva en segundo plano no debe extender
+        la ventana de inactividad del operario — si lo hiciera, dejar
+        la pestaña abierta nunca vencería la sesión.
+
+        Nunca escribe nada. Si no hay intervalo abierto (ya se cerró
+        por otra vía, o el operario solo entró a mirar sin pesar),
+        start_dt viene en False — el cronómetro del cliente se queda
+        en 00:00 sin tiquear, nunca inventa un inicio."""
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
+            if request else False
+        )
+        server_now = fields.Datetime.now()
+        if not employee_id:
+            return {'start_dt': False, 'server_now': server_now}
+        Interval = self.env['guapante.preparation.interval']
+        open_interval = Interval.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('claim_id', '=', self.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        return {
+            'start_dt': open_interval.start_dt if open_interval else False,
+            'server_now': server_now,
+        }
+
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,
     #    no solo en action_load; nunca borrar un claim con líneas, aunque
     #    estén todas done — solo los que no tienen ninguna) ──
