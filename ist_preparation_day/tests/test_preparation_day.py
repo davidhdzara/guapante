@@ -3,9 +3,12 @@ import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from psycopg2 import IntegrityError
+
 from odoo import fields
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
+from odoo.tools import mute_logger
 
 from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_controller import (
     PreparationDayIdentificationController,
@@ -1053,6 +1056,39 @@ class TestPreparationDay(TransactionCase):
 
         self.assertEqual(line.done_by_employee_id, employee)
         self.assertTrue(line.done_date)
+
+    def test_done_by_employee_id_blocks_employee_unlink(self):
+        """Fase 2, punto 4 (David, 2026-11-04): un empleado que pesó al
+        menos una línea es historia — ondelete='restrict' en
+        done_by_employee_id debe impedir borrarlo (nunca 'set null' en
+        silencio). A este nivel (commit de esquema, sin la guarda
+        amigable de hr_employee.py todavía) el unlink falla con un
+        error de integridad crudo; el mensaje claro para el usuario
+        llega en el commit de esa guarda."""
+        employee = self.env['hr.employee'].create({
+            'name': 'Operario Restrict Test',
+            'l10n_co_ne_payment_method': '10',
+            'is_guapante_prep_operator': True,
+        })
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+        mock_request = MagicMock()
+        mock_request.session = {}
+        set_active_prep_operator(mock_request.session, employee.id)
+        with patch(
+            'odoo.addons.ist_preparation_day.models.preparation_day.request',
+            mock_request,
+        ):
+            session.action_save_line_weight(line.id)
+        self.assertEqual(line.done_by_employee_id, employee)
+
+        with self.assertRaises(IntegrityError):
+            with mute_logger('odoo.sql_db'):
+                with self.env.cr.savepoint():
+                    employee.unlink()
 
     def test_register_weight_from_productos_tab_stamps_employee_from_user(self):
         """Edición inline desde Productos (sin PIN): done_by_employee_id

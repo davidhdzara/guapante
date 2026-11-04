@@ -271,6 +271,11 @@ class PreparationDayLine(models.Model):
         string='Sesión',
         required=True,
         ondelete='cascade',
+        # Fase 2 (Tech Lead, 2026-11-04): Seq Scan confirmado en 127k-128k
+        # filas (sin índice hasta hoy) — tanto el buscador de la sesión
+        # como los reportes e intervalos nuevos filtran por wizard_id en
+        # cada lectura. `-u` crea el índice solo, sin backfill.
+        index=True,
     )
     product_id = fields.Many2one(
         'product.template',
@@ -384,6 +389,14 @@ class PreparationDayLine(models.Model):
         string='Completado por',
         readonly=True,
         copy=False,
+        # Fase 2, punto 4 (David, 2026-11-04): un empleado que se retira
+        # es historia, nunca se borra — se archiva. ondelete='restrict'
+        # (el default de un Many2one opcional es 'set null', que
+        # borraría en silencio quién pesó cada línea) obliga a archivar
+        # en vez de eliminar; el mensaje claro para quien lo intente
+        # vive en hr_employee.py (ist_preparation_day_picking), que
+        # también cubre guapante.preparation.interval.
+        ondelete='restrict',
     )
     done_date = fields.Datetime(
         string='Completado el',

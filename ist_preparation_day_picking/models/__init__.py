@@ -6,3 +6,4 @@ from . import preparation_day_product_claim_conflict_wizard
 from . import preparation_day_scrap
 from . import preparation_day_note_template
 from . import preparation_settings
+from . import preparation_interval
