@@ -3,12 +3,9 @@ import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
-from psycopg2 import IntegrityError
-
 from odoo import fields
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
-from odoo.tools import mute_logger
 
 from odoo.addons.ist_preparation_day.controllers.preparation_day_identification_controller import (
     PreparationDayIdentificationController,
@@ -1061,10 +1058,12 @@ class TestPreparationDay(TransactionCase):
         """Fase 2, punto 4 (David, 2026-11-04): un empleado que pesó al
         menos una línea es historia — ondelete='restrict' en
         done_by_employee_id debe impedir borrarlo (nunca 'set null' en
-        silencio). A este nivel (commit de esquema, sin la guarda
-        amigable de hr_employee.py todavía) el unlink falla con un
-        error de integridad crudo; el mensaje claro para el usuario
-        llega en el commit de esa guarda."""
+        silencio). Desde el commit 7/7 (guarda amigable en
+        hr_employee.py) el unlink falla con UserError, no con el
+        IntegrityError crudo de Postgres que daba antes de esa guarda
+        — ver test_hr_employee_unlink_guard.py para la cobertura
+        dedicada de ese guard (mensaje, empleado sin historial sí se
+        puede borrar)."""
         employee = self.env['hr.employee'].create({
             'name': 'Operario Restrict Test',
             'l10n_co_ne_payment_method': '10',
@@ -1085,10 +1084,8 @@ class TestPreparationDay(TransactionCase):
             session.action_save_line_weight(line.id)
         self.assertEqual(line.done_by_employee_id, employee)
 
-        with self.assertRaises(IntegrityError):
-            with mute_logger('odoo.sql_db'):
-                with self.env.cr.savepoint():
-                    employee.unlink()
+        with self.assertRaises(UserError):
+            employee.unlink()
 
     def test_register_weight_from_productos_tab_stamps_employee_from_user(self):
         """Edición inline desde Productos (sin PIN): done_by_employee_id

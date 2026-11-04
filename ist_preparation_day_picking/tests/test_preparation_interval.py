@@ -2,7 +2,7 @@
 from psycopg2 import IntegrityError
 
 from odoo import fields
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests.common import tagged
 from odoo.tools import mute_logger
 
@@ -106,13 +106,12 @@ class TestPreparationInterval(TestPreparationDayProductClaim):
         self.assertTrue(second)
 
     def test_employee_restrict_blocks_unlink_with_interval(self):
-        """ondelete='restrict' en employee_id — a este nivel (commit 1,
-        sin la guarda amigable de hr_employee.py todavía) el unlink
-        debe fallar con un error de integridad, nunca borrar en
-        silencio. El mensaje claro para el usuario llega en el commit
-        de la guarda de unlink()."""
+        """ondelete='restrict' en employee_id — desde el commit 7/7
+        (guarda amigable en hr_employee.py) el unlink falla con
+        UserError, nunca borra en silencio. Ver
+        test_preparation_interval_unlink_guard.py para la cobertura
+        dedicada de ese guard (mensaje, empleado sin intervalos sí se
+        puede borrar)."""
         self.Interval.create(self._interval_vals(employee=self.operator_a))
-        with self.assertRaises(IntegrityError):
-            with mute_logger('odoo.sql_db'):
-                with self.env.cr.savepoint():
-                    self.operator_a.unlink()
+        with self.assertRaises(UserError):
+            self.operator_a.unlink()

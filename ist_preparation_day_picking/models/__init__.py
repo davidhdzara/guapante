@@ -10,3 +10,4 @@ from . import preparation_interval
 from . import preparation_operator_report
 from . import preparation_product_demand_report
 from . import preparation_interval_report
+from . import hr_employee
