@@ -100,6 +100,17 @@
             <list position="attributes">
                 <attribute name="edit">1</attribute>
                 <attribute name="editable">bottom</attribute>
+                <!-- David, 2026-11-04: el o2m nativo que esta View
+                     reemplaza en la pestaña Productos nunca tuvo
+                     engranaje de "Exportar" — es una View completa
+                     (web/static/src/views/list/export_all/export_all.js,
+                     isDisplayed de export-all-menu en el registro
+                     cogMenu) que lo agrega por defecto a cualquier
+                     lista standalone, a menos que export_xlsx="false"
+                     esté en el arch. Acotado a ESTA vista (la del
+                     widget embebido) — la lista de la acción "Líneas"
+                     sigue con su Exportar normal, sin tocar. -->
+                <attribute name="export_xlsx">false</attribute>
             </list>
             <field name="daily_sequence" position="attributes">
                 <attribute name="readonly">1</attribute>

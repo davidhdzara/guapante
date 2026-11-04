@@ -1,7 +1,7 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component } from "@odoo/owl";
+import { Component, useSubEnv } from "@odoo/owl";
 import { View } from "@web/views/view";
 
 // Punto 5 (prototipo, David/Tech Lead, 2026-11-03): pestaña "Productos"
@@ -32,10 +32,38 @@ import { View } from "@web/views/view";
 // viewId=false y searchViewId=false, list y search resuelven a
 // view_preparation_day_line_list_picking (11121) y
 // view_preparation_day_line_search (11118), no a las vistas del día.
+// Fix 2 (David, 2026-11-04 — "el segundo engrane al lado del
+// buscador no debería ir ahí", probado en navegador): el mismo
+// mecanismo de herencia de env.config de arriba también filtraba
+// env.config.actionId/actionType del action PADRE (Preparación del
+// Día, un ir.actions.act_window real) hacia esta View hija — eso
+// activa dos entradas del registro cogMenu que no tienen nada que
+// ver con esta lista embebida: "insert-embedded-view-menu" (Knowledge,
+// exige env.config.actionId truthy) y "spreadsheet-cog-menu"
+// (exige env.config.actionType === "ir.actions.act_window"). La
+// lista nativa que esto reemplaza nunca tuvo ninguna de las dos
+// porque un field o2m embebido en un form jamás arma su propio
+// control panel. useSubEnv con actionId/actionType reseteados a su
+// default (ver getDefaultConfig() en web/static/src/views/view.js)
+// apaga ambas sin tocar nada del resto del config heredado
+// (searchMenuTypes, etc. siguen funcionando igual). export_xlsx se
+// apaga aparte, por atributo de arch, en
+// view_preparation_day_line_list_picking (no es un tema de
+// env.config, es isDisplayed de export-all-menu leyendo el arch).
 export class PreparationDayProductosEmbedder extends Component {
     static template = "ist_preparation_day_picking.PreparationDayProductosEmbedder";
     static components = { View };
     static props = ["*"];
+
+    setup() {
+        useSubEnv({
+            config: {
+                ...this.env.config,
+                actionId: false,
+                actionType: false,
+            },
+        });
+    }
 
     get viewProps() {
         return {
