@@ -31,6 +31,19 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         self.Report = self.env['guapante.preparation.interval.report']
         self.Day = self.env['guapante.preparation.day']
 
+    def _far_today(self):
+        """Fecha lejana para fixtures de sesión (Tech Lead, endurecimiento
+        de tests, 2026-11-04) — NUNCA context_today real: hoy puede ya
+        tener una sesión real (ej. una prueba en vivo de David en
+        staging_dev) y _check_unique_date no permite una segunda para la
+        misma fecha. +200 días — offset distinto al de
+        test_preparation_operator_report.py (+210) y test_preparation_
+        product_demand_report.py (+220) para que ni los 3 archivos de
+        reportes puedan pisarse entre sí."""
+        return fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']), days=200,
+        )
+
     def _session(self, date):
         return self.Day.create({'date': date})
 
@@ -61,7 +74,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
     # ── Solo intervalos cerrados ──
 
     def test_open_interval_never_appears(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -75,7 +88,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         self.assertFalse(rows)
 
     def test_closed_interval_appears(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -97,7 +110,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         self.env['ir.config_parameter'].sudo().set_param(
             REPORTS_START_DATE_PARAM_KEY, str(cutoff.date()),
         )
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         before = cutoff - timedelta(days=1)
@@ -122,7 +135,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
     # ── duration_s / duration_avg_s / kind ──
 
     def test_duration_sum_and_avg_grouped_by_kind(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -154,7 +167,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
     def test_time_to_first_weigh_null_when_never_weighed(self):
         """Working sin pesaje (first_weigh_dt vacío): NULL, no 0 — un
         avg sobre NULLs los ignora, no los trata como cero."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -177,7 +190,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
     # ── time_without_lines_s ──
 
     def test_time_without_lines_only_counts_working_with_zero_lines(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -205,7 +218,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
     # ── NULL ratio para stopped / denominador 0 ──
 
     def test_time_per_kg_and_box_null_for_stopped_or_zero_denominator(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         claim = self._claim(session, self.product_weight)
         now = fields.Datetime.now()
@@ -248,7 +261,7 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         en su propio empleado+producto+jornada, para poder probar la
         ponderación total Y por cada una de las 3 dimensiones de
         agrupación (operario, producto, jornada) con el MISMO fixture."""
-        day1 = fields.Date.context_today(self.env["sale.order"])
+        day1 = self._far_today()
         day2 = fields.Date.add(day1, days=1)
         session1 = self._session(day1)
         session2 = self._session(day2)

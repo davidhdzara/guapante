@@ -25,6 +25,16 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
         self.Day = self.env['guapante.preparation.day']
         self._next_box = 0
 
+    def _far_today(self):
+        """Fecha lejana para fixtures de sesión (Tech Lead, endurecimiento
+        de tests, 2026-11-04) — NUNCA context_today real, ver el mismo
+        helper en test_preparation_interval_report.py (+200 días). +220
+        acá — distinto por archivo para que ni los 3 de reportes puedan
+        pisarse entre sí."""
+        return fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']), days=220,
+        )
+
     def _session(self, date):
         return self.Day.create({'date': date})
 
@@ -49,7 +59,7 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
     def test_pending_lines_excluded(self):
         """Reporte 2 también se basa en is_done=True — una línea sin
         terminar nunca es "demanda" todavía."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         self._line(session, self.product_weight, actual_kg=0.0, is_done=False)
 
@@ -63,7 +73,7 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
         self.assertFalse(rows)
 
     def test_line_done_and_zero_counted_separately(self):
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         self._line(session, self.product_weight, actual_kg=4.0)
         self._line(session, self.product_weight, actual_kg=0.0)
@@ -81,7 +91,7 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
         """Diferencia explícita con el Reporte 1: una línea Terminada
         ANTES del parámetro reports_start_date SÍ cuenta aquí — la
         demanda histórica de un producto no se recorta."""
-        cutoff = fields.Date.context_today(self.env["sale.order"])
+        cutoff = self._far_today()
         self.env['ir.config_parameter'].sudo().set_param(
             REPORTS_START_DATE_PARAM_KEY, str(cutoff),
         )
@@ -98,7 +108,7 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
     def test_sale_order_id_count_distinct(self):
         """2 líneas del mismo pedido + 1 línea de otro pedido, mismo
         producto: pedidos distintos = 2, no 3."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         order1 = self._box()
         self._line(session, self.product_weight, actual_kg=1.0, sale_order=order1)
@@ -114,7 +124,7 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
     def test_wizard_id_count_distinct_across_sessions(self):
         """El mismo producto aparece en 2 jornadas distintas: jornadas
         distintas = 2."""
-        day1 = fields.Date.context_today(self.env["sale.order"])
+        day1 = self._far_today()
         day2 = fields.Date.add(day1, days=1)
         session1 = self._session(day1)
         session2 = self._session(day2)

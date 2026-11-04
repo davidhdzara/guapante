@@ -404,7 +404,14 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         # escritura que haría un admin desde Preparación.
         line.write({'actual_kg': 1.0})
         self.assertTrue(line.is_done)
-        self.assertFalse(self.Interval.search([]))
+        # Acotado a la sesión propia del test (Tech Lead, endurecimiento
+        # 2026-11-04): sin dominio, este assert choca con cualquier
+        # intervalo real que ya exista en la base (ej. una prueba en
+        # vivo de David en staging_dev) — el punto del test es que ESTA
+        # sesión no abrió nada, no que la tabla entera esté vacía.
+        self.assertFalse(
+            self.Interval.search([('wizard_id', '=', session.id)])
+        )
 
     # ── Cierres explícitos vs. no explícitos (condición (b)) ──
 

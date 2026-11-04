@@ -28,6 +28,16 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         self.Day = self.env['guapante.preparation.day']
         self._next_box = 0
 
+    def _far_today(self):
+        """Fecha lejana para fixtures de sesión (Tech Lead, endurecimiento
+        de tests, 2026-11-04) — NUNCA context_today real, ver el mismo
+        helper en test_preparation_interval_report.py (+200 días). +210
+        acá — distinto por archivo para que ni los 3 de reportes puedan
+        pisarse entre sí."""
+        return fields.Date.add(
+            fields.Date.context_today(self.env['sale.order']), days=210,
+        )
+
     def _session(self, date):
         return self.Day.create({'date': date})
 
@@ -60,7 +70,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         """Dos cajas Terminadas del mismo operario/jornada: una pesada
         (kg > 0) y una en 0 (E7, sin stock) — line_done y line_zero
         deben contarse por separado, nunca mezcladas."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         self._line(
             session, self.product_weight, self.operator_a,
@@ -85,7 +95,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         wizard_id+daily_sequence)" — dos productos TERMINADOS dentro de
         LA MISMA caja (mismo sale_order_id) cuentan como 1 caja, no 2;
         una tercera línea en otra caja sí suma una caja más."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         box1 = self._box()
         self._line(
@@ -111,7 +121,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         """Una línea sin terminar (done_by_employee_id vacío) no es un
         picking de nadie todavía — nunca debe aparecer en el reporte
         de operario."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         self._line(
             session, self.product_weight, employee=None,
@@ -127,7 +137,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         """Fase 2, punto 4 (David, 2026-11-04): un empleado archivado
         sigue siendo historia real — nunca se excluye de este
         reporte, aunque ya no pueda operar Picking hoy."""
-        today = fields.Date.context_today(self.env["sale.order"])
+        today = self._far_today()
         session = self._session(today)
         self._line(
             session, self.product_weight, self.operator_a,
@@ -146,7 +156,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         """Fase 2, commit 5/7 (Tech Lead): reports_start_date filtra
         por done_date — una línea Terminada antes del parámetro queda
         fuera, una terminada después queda dentro, sin excepción."""
-        cutoff = fields.Date.context_today(self.env["sale.order"])
+        cutoff = self._far_today()
         self.env['ir.config_parameter'].sudo().set_param(
             REPORTS_START_DATE_PARAM_KEY, str(cutoff),
         )
@@ -170,7 +180,7 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         """Agrupación por operario y jornada (día) — base de la vista
         pivot por defecto del Reporte 1. Dos jornadas distintas, dos
         operarios: cada combinación suma solo lo suyo."""
-        day1 = fields.Date.context_today(self.env["sale.order"])
+        day1 = self._far_today()
         day2 = fields.Date.add(day1, days=1)
         session1 = self._session(day1)
         session2 = self._session(day2)
