@@ -148,7 +148,7 @@ class PreparationIntervalReport(models.Model):
         )
 
     @api.model
-    def read_group(self, domain, fields_list, groupby, offset=0, limit=None,
+    def read_group(self, domain, fields, groupby, offset=0, limit=None,
                    orderby=False, lazy=True):
         """Razón ponderada correcta para time_per_kg_s/time_per_box_s
         (Tech Lead, 2026-11-04) — mismo patrón que price_average en
@@ -165,6 +165,19 @@ class PreparationIntervalReport(models.Model):
         había pedido como medida propia (condición explícita de Tech
         Lead).
 
+        Firma IDÉNTICA a la del core (Model.read_group, verificado
+        leyendo odoo/models.py en el host: domain, fields, groupby,
+        offset=0, limit=None, orderby=False, lazy=True) — el cliente
+        de Odoo 18 llama por kwargs (fields=, groupby=, lazy=...) vía
+        call_kw; un parámetro con otro nombre (`fields_list`, el bug
+        real) revienta con TypeError en cuanto el pivote o cualquier
+        vista agrupada llama de verdad, aunque los tests lo hayan
+        llamado siempre posicional y nunca lo vieran. Sombrear acá el
+        módulo `odoo.fields` con el parámetro es seguro — igual que
+        hace el propio core — porque el scope del parámetro no sale
+        de este método, y el cuerpo de abajo nunca necesita el
+        módulo.
+
         Cubre pivot (orm.readGroup → read_group) Y listas agrupadas
         con su fila de total (orm.webReadGroup → web_read_group →
         _web_read_group → read_group — _web_read_group es un simple
@@ -177,14 +190,14 @@ class PreparationIntervalReport(models.Model):
         por diseño del método base."""
         requested = {
             name: denom for name, denom in _RATIO_MEASURES.items()
-            if f'{name}:avg' in fields_list
+            if f'{name}:avg' in fields
         }
         if not requested:
             return super().read_group(
-                domain, fields_list, groupby, offset, limit, orderby, lazy,
+                domain, fields, groupby, offset, limit, orderby, lazy,
             )
 
-        forced_fields = list(fields_list)
+        forced_fields = list(fields)
         forced_names = set()
         for denom in {'duration_s', *requested.values()}:
             spec = f'{denom}:sum'

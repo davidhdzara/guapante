@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from odoo import fields
+from odoo.api import call_kw
 from odoo.tests.common import tagged
 
 from odoo.addons.ist_preparation_day.models.const_preparation import (
@@ -380,3 +381,66 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         )
         self.assertEqual(groups[0]['duration_s'], 110)
         self.assertNotIn('time_per_kg_s', groups[0])
+
+    # ── Bug real de producción (Tech Lead, 2026-11-04): el camino de
+    #    kwargs del cliente, NUNCA el posicional de los tests de arriba ──
+    #
+    # David reventó "Tiempo por producto" en staging_dev con TypeError:
+    # read_group() got an unexpected keyword argument 'fields' — el
+    # override nombraba su parámetro `fields_list`, pero el pivote/la
+    # lista agrupada del cliente llaman por kwargs (domain=, fields=,
+    # groupby=, lazy=...) vía odoo.api.call_kw, nunca posicional. TODOS
+    # los tests de arriba llaman `.read_group(domain, [...], [...])`
+    # posicional — por eso nunca lo vieron, aunque prueban bien la
+    # lógica de la razón ponderada. Estos 3 tests reproducen el camino
+    # REAL (call_kw con kwargs) para que un regreso de este bug (o uno
+    # igual en otro método) sí truene la suite.
+
+    def test_read_group_via_call_kw_kwargs_path_matches_pivot(self):
+        row1, row2 = self._build_weighted_ratio_fixture()
+        domain = [('id', 'in', [row1.id, row2.id])]
+
+        result = call_kw(
+            self.Report.sudo(), 'read_group', [],
+            {
+                'domain': domain, 'fields': ['time_per_kg_s:avg'],
+                'groupby': [], 'lazy': False,
+            },
+        )
+        self.assertAlmostEqual(result[0]['time_per_kg_s'], 110 / 51, places=6)
+
+    def test_read_group_via_call_kw_kwargs_path_plain_measure_grouped(self):
+        """Mismo camino de kwargs, pero sin medida ponderada —
+        confirma que el passthrough (no solo la rama de la razón)
+        también sobrevive a kwargs, agrupado."""
+        row1, row2 = self._build_weighted_ratio_fixture()
+        domain = [('id', 'in', [row1.id, row2.id])]
+
+        result = call_kw(
+            self.Report.sudo(), 'read_group', [],
+            {
+                'domain': domain, 'fields': ['duration_s:sum'],
+                'groupby': ['employee_id'], 'lazy': False,
+            },
+        )
+        self.assertEqual(len(result), 2)
+
+    def test_web_read_group_via_call_kw_kwargs_path(self):
+        """Condición 2 de Tech Lead, pero por kwargs — el camino de
+        lista agrupada con fila de total que usa el cliente real
+        (orm.webReadGroup → web_read_group → _web_read_group →
+        read_group)."""
+        row1, row2 = self._build_weighted_ratio_fixture()
+        domain = [('id', 'in', [row1.id, row2.id])]
+
+        result = call_kw(
+            self.Report.sudo(), 'web_read_group', [],
+            {
+                'domain': domain, 'fields': ['time_per_kg_s:avg'],
+                'groupby': [], 'lazy': False,
+            },
+        )
+        self.assertEqual(result['length'], 1)
+        self.assertAlmostEqual(
+            result['groups'][0]['time_per_kg_s'], 110 / 51, places=6,
+        )
