@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 
 from odoo.api import call_kw
 from odoo.tests.common import tagged
-from odoo.tools import safe_eval
+from odoo.tools.safe_eval import safe_eval
 
 from .test_preparation_day_product_claim import TestPreparationDayProductClaim
 
