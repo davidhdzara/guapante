@@ -537,6 +537,19 @@ class PreparationDayProductClaim(models.Model):
         self.wizard_id.sudo().message_post(
             body=f"Retomado — {self.product_tmpl_id.name}: por {Employee.name}.",
         )
+        # Fase 2 (bug encontrado por Odoo Engineer, 2026-11-04): a
+        # diferencia de action_unstop(), esto NO cerraba el intervalo
+        # 'stopped' que action_stop() dejó abierto — quedaba huérfano
+        # para siempre (nunca lo cierra el cron de abandono de claims,
+        # que solo mira status='in_progress'). end_dt=now() (acción
+        # explícita del operario, igual que el resto del archivo) —
+        # nunca last_touched_dt, que en un 'stopped' es siempre igual a
+        # start_dt (ver el campo en preparation_interval.py).
+        Interval = self.env['guapante.preparation.interval']
+        Interval._run_isolated(
+            f'action_resume claim={self.id}',
+            lambda: Interval._close_open_for_claim(self, 'stopped', 'resumed', now),
+        )
         self._notify_bus()
         return self.action_open_lines_kanban()
 

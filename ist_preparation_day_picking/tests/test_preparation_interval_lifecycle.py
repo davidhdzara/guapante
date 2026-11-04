@@ -493,6 +493,57 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(Stopped.end_dt, datetime(2026, 11, 4, 14, 30, 0))
         self.assertEqual(Stopped.duration_s, 6 * 3600 + 30 * 60)
 
+    def test_action_resume_closes_the_open_stopped_interval(self):
+        """Fase 2, lote B (bug encontrado por Odoo Engineer, 2026-11-04):
+        a diferencia de action_unstop(), action_resume() no cerraba el
+        'stopped' que action_stop() dejó abierto — quedaba huérfano para
+        siempre (el cron de abandono de claims solo mira status=
+        'in_progress', nunca lo iba a tocar). close_reason='resumed'
+        (nuevo, distinto de 'released': acá alguien SE TOMA el
+        producto, no lo libera sin dueño)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 8, 0, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_assign()
+                claim.action_stop('sin_stock')
+
+            mock_now.return_value = datetime(2026, 11, 4, 8, 20, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+                claim.action_resume()
+
+        Stopped = self.Interval.search([
+            ('claim_id', '=', claim.id), ('kind', '=', 'stopped'),
+        ])
+        self.assertEqual(len(Stopped), 1)
+        self.assertEqual(Stopped.close_reason, 'resumed')
+        self.assertEqual(Stopped.end_dt, datetime(2026, 11, 4, 8, 20, 0))
+        self.assertEqual(Stopped.duration_s, 20 * 60)
+
+    def test_action_resume_failure_does_not_block_resuming(self):
+        """Mismo principio rector que el resto del archivo (4/7): un
+        fallo inesperado al cerrar el 'stopped' nunca debe impedir que
+        Retomar haga su trabajo real (stop_reason limpio, claim
+        asignado)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_assign()
+            claim.action_stop('sin_stock')
+
+        IntervalModel = self.env.registry['guapante.preparation.interval']
+        with patch.object(
+            IntervalModel, '_close_open_for_claim',
+            side_effect=Exception('boom: fallo simulado de intervalos'),
+        ):
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+                claim.action_resume()
+
+        claim.invalidate_recordset()
+        self.assertEqual(claim.assigned_employee_id, self.operator_b)
+        self.assertFalse(claim.stop_reason)
+
     def test_stopped_interval_duration_independent_of_stopper_working_interval(self):
         """Verifica que el tiempo Detenido no se mezcla con el
         'working' de quien detiene: son DOS filas separadas, cada una

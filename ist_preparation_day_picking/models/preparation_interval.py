@@ -20,6 +20,7 @@ CLOSE_REASONS = [
     ('left', 'Salió de Nivel 2'),
     ('switched', 'Cambió de producto'),
     ('stopped', 'Detenido'),
+    ('resumed', 'Retomado'),
     ('released', 'Liberado'),
     ('finished', 'Producto terminado'),
     ('idle', 'Inactividad (cierre por cron)'),
