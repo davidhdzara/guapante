@@ -16,18 +16,33 @@
          corrimiento por horario de verano — America/Bogota no lo
          tiene, mismo supuesto que _date_to_utc_range en
          ist_preparation_day), nunca cada 5 minutos como el cron de
-         claims: solo cierra intervalos de una JORNADA ANTERIOR (regla
-         de la jornada: el día calendario completo, sin corte), nunca
-         toca nada de HOY sin importar a qué hora corra.
+         claims.
+
+         Regla (David/Tech Lead, 2026-11-04, commit 3b/7 — corrección
+         de la versión original de 3/7, que comparaba contra la
+         medianoche de HOY y dejaba hasta ~24h un intervalo abandonado
+         de madrugada): a las 10:00 se cierra TODO intervalo aún
+         abierto con start_dt anterior a ese instante, sin excepción
+         por jornada — "abandonada SIEMPRE a las 10:00", nunca más
+         tarde. Ver el docstring de _cron_release_abandoned_intervals()
+         para el detalle de por qué cerrar incluso el de alguien
+         trabajando a esa hora es seguro (el siguiente pesaje o entrada
+         a Nivel 2 reabre uno nuevo, no se pierde nada).
 
          nextcall fijo a "mañana 15:00 UTC" desde que se instala/
          actualiza este módulo — ancla el cron a las 10:00 Bogotá de
          ahí en adelante (Odoo reprograma nextcall += interval_number
          días sobre el valor anterior, no sobre "ahora").
 
-         noupdate="1": mismo motivo que el cron de claims — un ajuste
-         manual de David desde Ajustes no se pisa con una actualización
-         del módulo.
+         noupdate="1" (mismo motivo que el cron de claims): un ajuste
+         manual de David desde Ajustes no se pisa con un -u del módulo.
+         Para cambiar la hora a mano: Ajustes → Técnico → Automatización
+         → Acciones Planificadas → "Guapante: cerrar intervalos de
+         Picking abandonados" → editar el campo "Próxima Ejecución" a
+         la fecha/hora deseada EN UTC (hora Bogotá + 5h, sin horario de
+         verano) — Odoo vuelve a sumar interval_number días sobre ese
+         valor en cada corrida siguiente, así que ese único cambio
+         reancla el cron a la nueva hora de ahí en adelante.
          ============================================================ -->
     <record id="ir_cron_guapante_release_abandoned_intervals" model="ir.cron">
         <field name="name">Guapante: cerrar intervalos de Picking abandonados</field>

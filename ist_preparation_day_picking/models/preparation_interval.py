@@ -6,8 +6,6 @@ from odoo.exceptions import ValidationError
 
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _PG_CONCURRENCY_ERRORS,
-    _current_session_date,
-    _date_to_utc_range,
 )
 
 from .preparation_day_product_claim import STOP_REASONS
@@ -358,18 +356,23 @@ class PreparationInterval(models.Model):
         (ej. abrió una tarjeta Pendiente/Detenida/Terminada bajo E3 sin
         pasar por Asignarme/Retomar) — ese claim nunca entra al dominio
         de ese cron, así que su intervalo quedaría abierto para siempre
-        sin esto. Corre una vez al día (10:00 Bogotá, ver el ir.cron) —
-        a diferencia del cron de claims, la granularidad fina no
-        importa acá: cualquier intervalo todavía abierto de una JORNADA
-        ANTERIOR es, por definición, abandonado.
+        sin esto. Corre una vez al día (10:00 Bogotá, ver el ir.cron).
 
-        Regla de la jornada (David, 2026-10-29) — nunca toca nada de
-        HOY, sin importar a qué hora corra: se compara start_dt contra
-        el INICIO (medianoche Bogotá, en UTC) del día calendario de
-        hoy, igual que _date_to_utc_range/_current_session_date ya
-        usan en ist_preparation_day. kind='working' y kind='stopped'
-        por igual — un 'stopped' informativo que nadie liberó también
-        queda abandonado de una jornada a otra.
+        Regla corregida (David/Tech Lead, 2026-11-04, commit 3b/7 —
+        "abandonada SIEMPRE a las 10:00 de la jornada"): a las 10:00 se
+        cierra TODO intervalo aún abierto con start_dt anterior a este
+        instante, SIN excepción por jornada. La versión anterior
+        comparaba contra la medianoche de hoy ("nunca toca nada de
+        hoy") — eso dejaba un intervalo abierto a la 01:00 del día D sin
+        cerrar hasta el cron del día D+1 (~24h abierto), cuando debía
+        cerrarse YA en el cron de las 10:00 de ESE MISMO día D. Es
+        seguro cerrar incluso el de alguien trabajando a esa hora: el
+        siguiente pesaje reabre uno nuevo vía el respaldo de
+        _handle_weighing, y volver a entrar a Nivel 2 hace
+        _open_working — no se pierde nada, solo se corta el intervalo
+        en dos. kind='working' y kind='stopped' por igual — un
+        'stopped' informativo que nadie liberó también queda
+        abandonado.
 
         end_dt=last_touched_dt (condición (b), nunca la hora en que
         corrió el cron) — ver _close(). Mismo patrón que
@@ -379,11 +382,10 @@ class PreparationInterval(models.Model):
         _PG_CONCURRENCY_ERRORS atrapado LOCAL (nunca relanzado — Odoo
         ya reintenta a nivel de petición completa; relanzar tumbaría lo
         ya cerrado en esta misma corrida)."""
-        today = _current_session_date(self.env)
-        dt_start_today, _dt_end_today = _date_to_utc_range(self.env, today)
+        now = fields.Datetime.now()
         Open = self.sudo().search([
             ('end_dt', '=', False),
-            ('start_dt', '<', dt_start_today),
+            ('start_dt', '<', now),
         ])
         for interval in Open:
             try:

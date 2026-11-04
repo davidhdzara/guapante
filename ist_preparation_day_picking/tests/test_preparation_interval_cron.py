@@ -24,8 +24,10 @@ class TestPreparationIntervalCron(TestPreparationDayProductClaim):
         self.Interval = self.env['guapante.preparation.interval']
 
     def _create_interval(self, claim, kind, employee=None, days_ago=0,
-                          end_dt=None, close_reason=None):
-        touched = fields.Datetime.now() - timedelta(days=days_ago)
+                          start_dt=None, end_dt=None, close_reason=None):
+        touched = start_dt if start_dt is not None else (
+            fields.Datetime.now() - timedelta(days=days_ago)
+        )
         vals = {
             'wizard_id': claim.wizard_id.id,
             'claim_id': claim.id,
@@ -70,13 +72,39 @@ class TestPreparationIntervalCron(TestPreparationDayProductClaim):
         self.assertEqual(interval.close_reason, 'idle')
         self.assertTrue(interval.end_dt)
 
-    def test_cron_leaves_todays_open_interval_untouched(self):
-        """Regla de la jornada (David, 2026-10-29): nunca toca nada de
-        HOY, sin importar a qué hora corra el cron."""
+    def test_cron_closes_early_morning_interval_from_same_calendar_day(self):
+        """Regla corregida (David/Tech Lead, 2026-11-04, commit 3b/7 —
+        "abandonada SIEMPRE a las 10:00"): un intervalo abierto de
+        madrugada DEL MISMO día calendario en que corre el cron (ej.
+        tablet muerta a la 01:00) también se cierra — la versión
+        anterior lo dejaba abierto ~24h más, hasta el cron del día
+        siguiente, por comparar contra la medianoche de hoy en vez de
+        contra "ahora"."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
+        early_morning = fields.Datetime.now() - timedelta(hours=3)
         interval = self._create_interval(
-            claim, 'working', employee=self.operator_a, days_ago=0,
+            claim, 'working', employee=self.operator_a,
+            start_dt=early_morning,
+        )
+
+        self.Interval._cron_release_abandoned_intervals()
+
+        interval.invalidate_recordset()
+        self.assertEqual(interval.close_reason, 'idle')
+        self.assertEqual(interval.end_dt, early_morning)
+
+    def test_cron_leaves_interval_started_after_cron_moment_untouched(self):
+        """Borde de la condición start_dt < ahora: un intervalo cuyo
+        start_dt es POSTERIOR al instante en que corre el cron (ej. se
+        abrió literalmente mientras corría la corrida anterior, o un
+        reloj desincronizado) no se toca — todavía no puede ser
+        "abandonado" si ni siquiera empezó antes de este chequeo."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        future = fields.Datetime.now() + timedelta(minutes=5)
+        interval = self._create_interval(
+            claim, 'working', employee=self.operator_a, start_dt=future,
         )
 
         self.Interval._cron_release_abandoned_intervals()
