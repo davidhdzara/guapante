@@ -1,6 +1,8 @@
 /** @odoo-module **/
 
-import { Component, useState, onWillStart, onMounted, onWillUnmount } from "@odoo/owl";
+import {
+    Component, useState, onWillStart, onWillUpdateProps, onMounted, onWillUnmount,
+} from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { deserializeDateTime } from "@web/core/l10n/dates";
 
@@ -51,6 +53,17 @@ export class PickingVisitTimer extends Component {
         this.onBusReload = this.onBusReload.bind(this);
 
         onWillStart(() => this._resync());
+        // Defensa adicional (Tech Lead, revisión de 2/4): el padre
+        // monta este componente solo con t-if="state.claimId" (nunca
+        // debería recibir un claimId distinto en vida, Nivel 2 se
+        // remonta entero al cambiar de producto), pero si algún día
+        // cambiara de todos modos, resincroniza en vez de quedarse con
+        // el intervalo del claim anterior.
+        onWillUpdateProps((nextProps) => {
+            if (nextProps.claimId !== this.props.claimId) {
+                return this._resync(nextProps.claimId);
+            }
+        });
         onMounted(() => {
             this._tickIntervalId = window.setInterval(() => this._tick(), TICK_MS);
             document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -109,12 +122,17 @@ export class PickingVisitTimer extends Component {
         }, RESYNC_DEBOUNCE_MS);
     }
 
-    async _resync() {
+    async _resync(claimId = this.props.claimId) {
+        if (!claimId) {
+            this.state.hasOpenInterval = false;
+            this.state.elapsedSeconds = 0;
+            return;
+        }
         let result;
         try {
             result = await this.orm.call(
                 "guapante.preparation.day.product.claim", "get_my_open_interval",
-                [[this.props.claimId]],
+                [[claimId]],
             );
         } catch {
             // El cronómetro es dato secundario (mismo criterio que
