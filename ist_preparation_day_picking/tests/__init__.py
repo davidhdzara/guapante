@@ -13,3 +13,6 @@ from . import test_preparation_settings
 from . import test_preparation_interval
 from . import test_preparation_interval_lifecycle
 from . import test_preparation_interval_cron
+from . import test_preparation_operator_report
+from . import test_preparation_product_demand_report
+from . import test_preparation_interval_report

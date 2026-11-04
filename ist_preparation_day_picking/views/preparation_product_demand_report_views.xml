@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Fase 2, commit 5/7 (Tech Lead, 2026-11-04) — Reporte 2
+         "Productos más solicitados". SIN filtro de reports_start_date
+         (ver preparation_product_demand_report.py). Menuitem + ACL van
+         en 6/7. -->
+
+    <record id="view_preparation_product_demand_report_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.product.demand.report.list</field>
+        <field name="model">guapante.preparation.product.demand.report</field>
+        <field name="arch" type="xml">
+            <list string="Productos más solicitados" create="false" edit="false">
+                <field name="product_tmpl_id"/>
+                <field name="line_done" sum="Líneas despachadas"/>
+                <field name="line_zero" sum="Líneas en 0"/>
+                <field name="kg" sum="Kg"/>
+                <field name="sale_order_id" string="Pedidos" sum="Pedidos distintos"/>
+                <field name="wizard_id" string="Jornadas" sum="Jornadas distintas"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_preparation_product_demand_report_pivot" model="ir.ui.view">
+        <field name="name">guapante.preparation.product.demand.report.pivot</field>
+        <field name="model">guapante.preparation.product.demand.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Productos más solicitados" disable_linking="true">
+                <field name="product_tmpl_id" type="row"/>
+                <field name="line_done" type="measure"/>
+                <field name="line_zero" type="measure"/>
+                <field name="kg" type="measure"/>
+                <field name="sale_order_id" type="measure"/>
+                <field name="wizard_id" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_preparation_product_demand_report_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.product.demand.report.graph</field>
+        <field name="model">guapante.preparation.product.demand.report</field>
+        <field name="arch" type="xml">
+            <graph string="Productos más solicitados" type="bar">
+                <field name="product_tmpl_id"/>
+                <field name="kg" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_preparation_product_demand_report_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.product.demand.report.search</field>
+        <field name="model">guapante.preparation.product.demand.report</field>
+        <field name="arch" type="xml">
+            <search string="Productos más solicitados">
+                <field name="product_tmpl_id"/>
+                <filter name="group_product" string="Producto"
+                        context="{'group_by': 'product_tmpl_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_preparation_product_demand_report" model="ir.actions.act_window">
+        <field name="name">Productos más solicitados</field>
+        <field name="res_model">guapante.preparation.product.demand.report</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_preparation_product_demand_report_search"/>
+        <field name="context">{'search_default_group_product': 1}</field>
+    </record>
+</odoo>

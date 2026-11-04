@@ -7,3 +7,6 @@ from . import preparation_day_scrap
 from . import preparation_day_note_template
 from . import preparation_settings
 from . import preparation_interval
+from . import preparation_operator_report
+from . import preparation_product_demand_report
+from . import preparation_interval_report

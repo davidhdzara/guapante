@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Fase 2, commit 5/7 (Tech Lead, 2026-11-04) — Reporte 1 "Pickings
+         por operario". Menuitem + ACL van en 6/7 (ver preparation_
+         operator_report.py). -->
+
+    <record id="view_preparation_operator_report_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.operator.report.list</field>
+        <field name="model">guapante.preparation.operator.report</field>
+        <field name="arch" type="xml">
+            <list string="Pickings por operario" create="false" edit="false">
+                <field name="date"/>
+                <field name="employee_id"/>
+                <field name="product_tmpl_id"/>
+                <field name="line_done" sum="Líneas hechas"/>
+                <field name="line_zero" sum="Líneas en 0"/>
+                <field name="box_count" sum="Cajas"/>
+                <field name="kg" sum="Kg"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_preparation_operator_report_pivot" model="ir.ui.view">
+        <field name="name">guapante.preparation.operator.report.pivot</field>
+        <field name="model">guapante.preparation.operator.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Pickings por operario" disable_linking="true">
+                <field name="employee_id" type="row"/>
+                <field name="date" type="col" interval="day"/>
+                <field name="line_done" type="measure"/>
+                <field name="line_zero" type="measure"/>
+                <field name="box_count" type="measure"/>
+                <field name="kg" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_preparation_operator_report_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.operator.report.graph</field>
+        <field name="model">guapante.preparation.operator.report</field>
+        <field name="arch" type="xml">
+            <graph string="Pickings por operario" type="bar">
+                <field name="employee_id"/>
+                <field name="line_done" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_preparation_operator_report_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.operator.report.search</field>
+        <field name="model">guapante.preparation.operator.report</field>
+        <field name="arch" type="xml">
+            <search string="Pickings por operario">
+                <field name="employee_id"/>
+                <field name="product_tmpl_id"/>
+                <filter name="group_employee" string="Operario"
+                        context="{'group_by': 'employee_id'}"/>
+                <filter name="group_product" string="Producto"
+                        context="{'group_by': 'product_tmpl_id'}"/>
+                <separator/>
+                <filter name="group_date_day" string="Jornada (día)"
+                        context="{'group_by': 'date:day'}"/>
+                <filter name="group_date_month" string="Jornada (mes)"
+                        context="{'group_by': 'date:month'}"/>
+                <filter name="group_date_year" string="Jornada (año)"
+                        context="{'group_by': 'date:year'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_preparation_operator_report" model="ir.actions.act_window">
+        <field name="name">Pickings por operario</field>
+        <field name="res_model">guapante.preparation.operator.report</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_preparation_operator_report_search"/>
+        <!-- Default de pivot/gráfico: fijado en el arch de cada vista
+             (type="row"/"col"/"measure") — agrupado por operario y
+             jornada (día); "producto" queda disponible como filtro
+             manual, no es el default (Tech Lead: "producto
+             opcional"). search_default_* solo afecta a la vista de
+             lista (el pivote ya trae su propio default del arch). -->
+        <field name="context">{
+            'search_default_group_employee': 1,
+            'search_default_group_date_day': 1,
+        }</field>
+    </record>
+</odoo>
