@@ -277,6 +277,47 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(interval.first_weigh_dt, interval.start_dt)
         self.assertEqual(interval.lines_done, 1)
 
+    def test_two_consecutive_weighings_same_operator_increments_lines_done_twice(self):
+        """Nota de Tech Lead (revisión del commit 2/7): el read-modify-
+        write de lines_done/kg_done en _register_weighing no tiene
+        lock de fila explícito — es seguro porque un operario tiene un
+        solo 'working' abierto a la vez y el flujo real del tablet es
+        síncrono (ver el comentario ampliado en _register_weighing).
+        Dos pesajes SEGUIDOS del mismo operario sobre el mismo
+        intervalo deben sumar, no pisarse: tres Cajas, se pesan dos y
+        la tercera queda pendiente (para que el claim no termine y
+        _close_finished_intervals no cierre el intervalo antes de
+        poder observarlo) — lines_done termina en 2."""
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        lines = session.line_ids
+        self._enter_l2(claim, self.operator_a)
+        self._weigh(lines[0], self.operator_a, 1.0)
+        self._weigh(lines[1], self.operator_a, 1.0)
+        interval = self._open_working(self.operator_a)
+        self.assertEqual(len(interval), 1)
+        self.assertEqual(interval.lines_done, 2)
+        self.assertEqual(interval.kg_done, 2.0)
+
+    def test_admin_edit_from_productos_tab_does_not_touch_intervals(self):
+        """Nota de Tech Lead (revisión del commit 2/7): la edición de
+        admin desde la pestaña Productos de Preparación (sin
+        guapante_picking_flow en contexto — no viene del tablet) NO
+        debe abrir ni tocar ningún intervalo — ese pesaje no tiene
+        operario físico identificado por PIN, no hay reloj de nadie
+        que registrar."""
+        session = self._load_session_with_product()
+        line = session.line_ids[0]
+        # Sin with_context(guapante_picking_flow=True) — la misma
+        # escritura que haría un admin desde Preparación.
+        line.write({'actual_kg': 1.0})
+        self.assertTrue(line.is_done)
+        self.assertFalse(self.Interval.search([]))
+
     # ── Cierres explícitos vs. no explícitos (condición (b)) ──
 
     def test_action_stop_closes_working_and_opens_informational_stopped(self):

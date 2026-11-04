@@ -1,8 +1,18 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _PG_CONCURRENCY_ERRORS,
+    _current_session_date,
+    _date_to_utc_range,
+)
+
 from .preparation_day_product_claim import STOP_REASONS
+
+_logger = logging.getLogger(__name__)
 
 CLOSE_REASONS = [
     ('left', 'Salió de Nivel 2'),
@@ -284,7 +294,21 @@ class PreparationInterval(models.Model):
         SOLO se incrementan si `is_new_completion` (is_done pasó de
         False a True en ESTA escritura) — una corrección sobre una
         línea YA Terminada no cuenta como una nueva (Fase 2: "corregir
-        y volver a pesar una caja... no cuenta como una nueva")."""
+        y volver a pesar una caja... no cuenta como una nueva").
+
+        Read-modify-write sin lock de fila explícito (nota de Tech
+        Lead, revisión del commit 2/7): es seguro sin uno porque un
+        operario tiene como máximo UN intervalo 'working' abierto a la
+        vez (índice único parcial + pg_advisory_xact_lock en
+        _open_working) — dos pesajes "seguidos" del mismo operario
+        sobre el mismo intervalo llegan SIEMPRE serializados por el
+        propio advisory lock (toda escritura de Picking de ESE
+        operario pasa por _check_picking_ownership(), que también
+        exige identificarse, y el flujo real del tablet es síncrono:
+        un pesaje a la vez). No es el mismo riesgo que el incidente de
+        numeración de cajas (dos operarios DISTINTOS decidiendo sobre
+        la MISMA fila) — acá el "mismo operario, dos pesajes" nunca es
+        concurrente de verdad."""
         self.ensure_one()
         now = fields.Datetime.now()
         vals = {'last_touched_dt': now}
@@ -320,3 +344,73 @@ class PreparationInterval(models.Model):
             WHERE end_dt IS NULL AND kind = 'working'
             '''
         )
+
+    # ── Cron diario de abandono (Fase 2, commit 3/7 — Tech Lead,
+    #    2026-11-04) ──
+
+    @api.model
+    def _cron_release_abandoned_intervals(self) -> None:
+        """Red de seguridad DIARIA — NO el mecanismo principal (eso lo
+        cubren los puntos de apertura/cierre del commit 2/7). Cubre el
+        caso que el cron de 5 minutos de claims
+        (_cron_release_abandoned_claims) no alcanza: un operario que
+        entró a Nivel 2 de un claim que NUNCA llegó a 'in_progress'
+        (ej. abrió una tarjeta Pendiente/Detenida/Terminada bajo E3 sin
+        pasar por Asignarme/Retomar) — ese claim nunca entra al dominio
+        de ese cron, así que su intervalo quedaría abierto para siempre
+        sin esto. Corre una vez al día (10:00 Bogotá, ver el ir.cron) —
+        a diferencia del cron de claims, la granularidad fina no
+        importa acá: cualquier intervalo todavía abierto de una JORNADA
+        ANTERIOR es, por definición, abandonado.
+
+        Regla de la jornada (David, 2026-10-29) — nunca toca nada de
+        HOY, sin importar a qué hora corra: se compara start_dt contra
+        el INICIO (medianoche Bogotá, en UTC) del día calendario de
+        hoy, igual que _date_to_utc_range/_current_session_date ya
+        usan en ist_preparation_day. kind='working' y kind='stopped'
+        por igual — un 'stopped' informativo que nadie liberó también
+        queda abandonado de una jornada a otra.
+
+        end_dt=last_touched_dt (condición (b), nunca la hora en que
+        corrió el cron) — ver _close(). Mismo patrón que
+        _cron_release_abandoned_claims/_cron_repair_missing_orders:
+        SAVEPOINT POR FILA, con el estado releído bajo FOR UPDATE (por
+        si algo más lo cerró entre el search y el lock) y
+        _PG_CONCURRENCY_ERRORS atrapado LOCAL (nunca relanzado — Odoo
+        ya reintenta a nivel de petición completa; relanzar tumbaría lo
+        ya cerrado en esta misma corrida)."""
+        today = _current_session_date(self.env)
+        dt_start_today, _dt_end_today = _date_to_utc_range(self.env, today)
+        Open = self.sudo().search([
+            ('end_dt', '=', False),
+            ('start_dt', '<', dt_start_today),
+        ])
+        for interval in Open:
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        'SELECT last_touched_dt FROM '
+                        'guapante_preparation_interval '
+                        'WHERE id = %s AND end_dt IS NULL FOR UPDATE',
+                        (interval.id,),
+                    )
+                    row = self.env.cr.fetchone()
+                    if not row:
+                        # Ya se cerró por otra vía entre el search y el
+                        # lock — nada que hacer.
+                        continue
+                    locked_last_touched = row[0]
+                    interval.invalidate_recordset(['last_touched_dt'])
+                    interval._close('idle', locked_last_touched)
+            except _PG_CONCURRENCY_ERRORS as exc:
+                _logger.info(
+                    'Guapante: cierre automático de intervalos — '
+                    'intervalo %s ocupado (%s), se reintenta en la '
+                    'próxima corrida.',
+                    interval.id, exc.__class__.__name__,
+                )
+            except Exception:
+                _logger.exception(
+                    'Guapante: cierre automático de intervalos — no '
+                    'se pudo cerrar el intervalo %s.', interval.id,
+                )

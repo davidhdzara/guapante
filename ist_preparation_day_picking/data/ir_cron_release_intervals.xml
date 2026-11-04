@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- ============================================================
+         CRON: Cierre automático de intervalos de Picking abandonados
+         (Fase 2, commit 3/7, Tech Lead 2026-11-04). Red de seguridad
+         diaria, NO el mecanismo principal (eso lo cubren los puntos de
+         apertura/cierre del commit 2/7) — cubre el caso que el cron de
+         5 minutos de claims (ir_cron_guapante_release_abandoned_claims)
+         no alcanza: un operario que entró a Nivel 2 de un claim que
+         NUNCA llegó a 'in_progress' (ej. abrió una tarjeta Pendiente/
+         Detenida/Terminada bajo E3 sin pasar por Asignarme/Retomar) —
+         ese claim nunca entra al dominio de ese cron, así que su
+         intervalo quedaría abierto para siempre sin esto.
+
+         Corre UNA vez al día, a las 10:00 hora Bogotá (15:00 UTC, sin
+         corrimiento por horario de verano — America/Bogota no lo
+         tiene, mismo supuesto que _date_to_utc_range en
+         ist_preparation_day), nunca cada 5 minutos como el cron de
+         claims: solo cierra intervalos de una JORNADA ANTERIOR (regla
+         de la jornada: el día calendario completo, sin corte), nunca
+         toca nada de HOY sin importar a qué hora corra.
+
+         nextcall fijo a "mañana 15:00 UTC" desde que se instala/
+         actualiza este módulo — ancla el cron a las 10:00 Bogotá de
+         ahí en adelante (Odoo reprograma nextcall += interval_number
+         días sobre el valor anterior, no sobre "ahora").
+
+         noupdate="1": mismo motivo que el cron de claims — un ajuste
+         manual de David desde Ajustes no se pisa con una actualización
+         del módulo.
+         ============================================================ -->
+    <record id="ir_cron_guapante_release_abandoned_intervals" model="ir.cron">
+        <field name="name">Guapante: cerrar intervalos de Picking abandonados</field>
+        <field name="model_id" ref="model_guapante_preparation_interval"/>
+        <field name="code">model._cron_release_abandoned_intervals()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).strftime('%Y-%m-%d') + ' 15:00:00'"/>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>
