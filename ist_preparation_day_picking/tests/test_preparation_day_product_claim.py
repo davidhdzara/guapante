@@ -1365,6 +1365,12 @@ class TestPreparationDayProductClaim(TestPreparationDay):
 
         self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 500 + 200)
         self.assertEqual(by_id[claim.id]['time_stopped_s'], 0)
+        # 3b/4: solo B sigue tiqueando (dentro del margen de gracia) —
+        # A ya está congelado por el tope (margen agotado hace 100s) y
+        # el cerrado no cuenta nunca. El cronómetro L1 del cliente debe
+        # multiplicar su tick por 1, no por los 2 'working' abiertos
+        # que hay en total.
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 1)
 
     def test_level1_time_counters_zero_idle_timeout_means_no_cap_at_all(self):
         """Fila 3 del backlog, corrección de Tech Lead (revisión de
@@ -1408,6 +1414,11 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         self.assertAlmostEqual(
             by_id[claim.id]['time_stopped_s'], 90, delta=5,
         )
+        # 3b/4: con idle_timeout=0 el 'working' nunca se congela —
+        # sigue tiqueando siempre. El 'stopped' tiquea siempre, con o
+        # sin este parámetro (nunca tuvo tope).
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 1)
+        self.assertEqual(by_id[claim.id]['time_stopped_open_count'], 1)
 
     def test_level1_time_counters_positive_idle_timeout_still_caps_working(self):
         """Confirma que la corrección de arriba NO rompe el caso
@@ -1432,3 +1443,34 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         # idle_timeout default = 300s. tope = (now-400)+300 = now-100.
         # elapsed = (now-100) - (now-600) = 500s.
         self.assertEqual(by_id[claim.id]['time_working_s'], 500)
+        # 3b/4: el margen de gracia ya se agotó hace 100s — este
+        # 'working' está CONGELADO (el servidor ya lo topó), open_count
+        # en 0 para que el cronómetro L1 del cliente no siga subiéndolo
+        # en pantalla hasta el próximo refresh.
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 0)
+
+    def test_level1_time_counters_open_count_counts_every_still_ticking_worker(self):
+        """Contraparte de test_level1_time_counters_sum_two_operators_
+        on_same_claim_capped: acá los DOS operarios están dentro del
+        margen de gracia (ninguno congelado) — open_count debe ser 2,
+        no 1, para que el cronómetro L1 tiquee al doble de la velocidad
+        real (E3, punto 3 de Tech Lead en la revisión de 3/4)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = fields.Datetime.now()
+
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=200),
+            last_touched_dt=now - timedelta(seconds=50),
+        )
+        self._create_interval(
+            claim, 'working', employee=self.operator_b,
+            start_dt=now - timedelta(seconds=100),
+            last_touched_dt=now - timedelta(seconds=10),
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 2)

@@ -421,9 +421,21 @@ class PreparationInterval(models.Model):
         for row in rows:
             if not row['claim_id']:
                 continue
-            bucket = counters.setdefault(
-                row['claim_id'][0], {'time_working_s': 0, 'time_stopped_s': 0},
-            )
+            bucket = counters.setdefault(row['claim_id'][0], {
+                'time_working_s': 0, 'time_stopped_s': 0,
+                # lote 2B, 3b/4 (Tech Lead, revisión de 3/4): cuántos
+                # intervalos abiertos de este tipo están TODAVÍA
+                # tiqueando en este instante (no congelados por el
+                # tope de idle_timeout) — el cronómetro L1 del cliente
+                # multiplica su tick de 1s/s por este número en vez de
+                # sumar siempre a ritmo 1x, para no: (a) seguir subiendo
+                # en pantalla un 'working' ya congelado por el servidor
+                # (abandonado, esperando el cron), ni (b) quedarse
+                # corto cuando hay más de un operario con 'working'
+                # abierto sobre el MISMO claim (E3) — el servidor suma
+                # los dos, el cliente debe tiquear al doble.
+                'time_working_open_count': 0, 'time_stopped_open_count': 0,
+            })
             key = 'time_working_s' if row['kind'] == 'working' else 'time_stopped_s'
             if row['end_dt']:
                 bucket[key] += row['duration_s']
@@ -433,13 +445,20 @@ class PreparationInterval(models.Model):
                 # corrección de 4/7): nunca lo recorta a last_touched_dt,
                 # que congelaría a alguien que sigue trabajando sin
                 # haber pesado todavía — ver el docstring de arriba.
+                still_ticking = (
+                    idle_timeout <= 0
+                    or now < row['last_touched_dt'] + timedelta(seconds=idle_timeout)
+                )
                 cap = (
                     min(now, row['last_touched_dt'] + timedelta(seconds=idle_timeout))
                     if idle_timeout > 0 else now
                 )
                 elapsed = max(int((cap - row['start_dt']).total_seconds()), 0)
+                if still_ticking:
+                    bucket['time_working_open_count'] += 1
             else:
                 elapsed = max(int((now - row['start_dt']).total_seconds()), 0)
+                bucket['time_stopped_open_count'] += 1
             bucket[key] += elapsed
         return counters
 

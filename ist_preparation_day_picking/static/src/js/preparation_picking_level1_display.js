@@ -1,5 +1,5 @@
 import { registry } from "@web/core/registry";
-import { Component, useState, onWillStart, onMounted, onWillUnmount } from "@odoo/owl";
+import { Component, useState, onWillStart, onWillUnmount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
@@ -137,11 +137,6 @@ export class PickingClaimsDisplay extends Component {
                 this.busService.subscribe("picking_operation_finished", this.onOperationFinished);
             }
         });
-        onMounted(() => {
-            this._tickIntervalId = window.setInterval(() => {
-                this.state.tickCount++;
-            }, L1_COUNTER_TICK_MS);
-        });
         onWillUnmount(() => {
             this.isDestroyed = true;
             if (this._tickIntervalId) {
@@ -210,7 +205,32 @@ export class PickingClaimsDisplay extends Component {
         }
         this.state.claims = claims;
         this._claimsLoadedPerfNow = performance.now();
+        this._syncTickInterval();
         this.state.loaded = true;
+    }
+
+    // 3b/4 (Tech Lead, revisión de 3/4): el reloj compartido solo
+    // corre mientras haya al menos una tarjeta cuyo contador siga
+    // tiqueando de verdad — ni cuando no hay ninguna in_progress/
+    // stopped, ni cuando las que hay ya están congeladas (open_count
+    // en 0, ver _get_time_counters_by_claim). Re-renderizar ~100
+    // tarjetas cada segundo sin necesidad es el costo que esto evita
+    // en tablets modestas. Se reevalúa en cada loadRecords() (carga
+    // inicial y cada refresh por bus), nunca queda corriendo de más
+    // ni de menos tiempo del que hace falta.
+    _syncTickInterval() {
+        const needsTick = this.state.claims.some((claim) => (
+            (claim.status === "in_progress" && claim.time_working_open_count > 0)
+            || (claim.status === "stopped" && claim.time_stopped_open_count > 0)
+        ));
+        if (needsTick && !this._tickIntervalId) {
+            this._tickIntervalId = window.setInterval(() => {
+                this.state.tickCount++;
+            }, L1_COUNTER_TICK_MS);
+        } else if (!needsTick && this._tickIntervalId) {
+            window.clearInterval(this._tickIntervalId);
+            this._tickIntervalId = null;
+        }
     }
 
     // Contadores L1: in_progress -> time_working_s; stopped ->
@@ -219,19 +239,25 @@ export class PickingClaimsDisplay extends Component {
     // sin usarlo para nada más que registrar la dependencia reactiva —
     // es lo que hace que esta tarjeta vuelva a pintarse cada segundo.
     //
-    // Simplificación conocida (E3): si DOS operarios tienen 'working'
-    // abierto sobre el MISMO claim a la vez, el total real sube al
-    // doble de rápido entre refrescos — este tick local solo suma a
-    // ritmo de 1x hasta el próximo loadRecords() (bus), que corrige el
-    // valor exacto. Visual únicamente, nunca el dato que se reporta.
+    // 3b/4: el tick local se multiplica por time_working_open_count/
+    // time_stopped_open_count (cuántos intervalos abiertos de ese tipo
+    // siguen tiqueando AHORA, calculado en el servidor) en vez de
+    // sumar siempre a ritmo 1x — así: (a) un contador ya congelado por
+    // el tope de idle_timeout (open_count=0) no sigue subiendo en
+    // pantalla hasta el próximo refresh, y (b) dos operarios con
+    // 'working' abierto sobre el MISMO claim (E3, open_count=2) tiquean
+    // al doble, igual que el total real. Siempre visual — el dato que
+    // se reporta (5/7) sale siempre del servidor, nunca de este tick.
     getLiveCounterLabel(claim) {
         void this.state.tickCount;
         const elapsedSincePerfLoad = (performance.now() - this._claimsLoadedPerfNow) / 1000;
         if (claim.status === "in_progress") {
-            return formatDuration((claim.time_working_s || 0) + elapsedSincePerfLoad);
+            const openCount = claim.time_working_open_count || 0;
+            return formatDuration((claim.time_working_s || 0) + elapsedSincePerfLoad * openCount);
         }
         if (claim.status === "stopped") {
-            return formatDuration((claim.time_stopped_s || 0) + elapsedSincePerfLoad);
+            const openCount = claim.time_stopped_open_count || 0;
+            return formatDuration((claim.time_stopped_s || 0) + elapsedSincePerfLoad * openCount);
         }
         return "";
     }

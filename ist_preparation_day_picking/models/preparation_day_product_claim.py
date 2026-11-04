@@ -302,6 +302,11 @@ class PreparationDayProductClaim(models.Model):
           _get_time_counters_by_claim() en preparation_interval.py para
           el tope de un 'working' todavía abierto y por qué un
           'stopped' abierto no lleva tope.
+        - `time_working_open_count`/`time_stopped_open_count` (lote 2B,
+          3b/4): cuántos intervalos abiertos de cada tipo siguen
+          tiqueando AHORA (no congelados por el tope de idle_timeout)
+          — el cronómetro L1 del cliente multiplica su tick local por
+          esto en vez de sumar siempre a ritmo 1x.
         Ninguno sale de un `.read()` — se calculan acá con la MISMA
         consulta agrupada sobre las líneas del lote (ver más abajo) o
         sobre los intervalos del lote (_get_time_counters_by_claim),
@@ -388,11 +393,19 @@ class PreparationDayProductClaim(models.Model):
             record['customer_names_summary'] = ', '.join(
                 sorted(customer_names_by_tmpl.get(tmpl_id, set()))
             )
-            counters = time_counters_by_claim.get(
-                record['id'], {'time_working_s': 0, 'time_stopped_s': 0},
-            )
+            counters = time_counters_by_claim.get(record['id'], {
+                'time_working_s': 0, 'time_stopped_s': 0,
+                'time_working_open_count': 0, 'time_stopped_open_count': 0,
+            })
             record['time_working_s'] = counters['time_working_s']
             record['time_stopped_s'] = counters['time_stopped_s']
+            # lote 2B, 3b/4: cuántos intervalos abiertos de cada tipo
+            # siguen tiqueando AHORA mismo — el cronómetro L1 del
+            # cliente multiplica su tick local por esto en vez de
+            # sumar siempre a ritmo 1x (ver docstring de
+            # _get_time_counters_by_claim).
+            record['time_working_open_count'] = counters['time_working_open_count']
+            record['time_stopped_open_count'] = counters['time_stopped_open_count']
         return records
 
     # ── Acciones ──
