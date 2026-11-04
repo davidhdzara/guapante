@@ -29,11 +29,17 @@
 
     <!-- "Reportes" (David/Tech Lead, 2026-10-29): vacío por ahora, lo
          llena la Fase 2 — se deja el lugar ya ordenado en el menú para
-         no reordenar otra vez cuando llegue ese contenido. -->
+         no reordenar otra vez cuando llegue ese contenido.
+         groups="group_preparation_admin" agregado en 6/7 (Tech Lead,
+         2026-11-04): ya tiene contenido (los 5 reportes de preparation_
+         day_reports_menus.xml) y ninguno es para el operario — ver ACL
+         en ir.model.access.csv (admin solo lectura, operario sin
+         acceso a los 4 modelos). -->
     <menuitem
         id="menu_preparation_day_reports"
         name="Reportes"
         parent="ist_preparation_day.menu_preparation_day_root"
+        groups="group_preparation_admin"
         sequence="50"
     />
 
