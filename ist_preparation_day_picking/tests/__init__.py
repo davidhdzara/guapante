@@ -11,3 +11,4 @@ from . import test_picking_switch_hour
 from . import test_preparation_day_cron_cleanup_claims
 from . import test_preparation_settings
 from . import test_preparation_interval
+from . import test_preparation_interval_lifecycle

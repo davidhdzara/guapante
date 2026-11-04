@@ -51,6 +51,14 @@ class PreparationDayLine(models.Model):
         # dueño del claim ANTES de que _maybe_release_finished_claim()
         # (más abajo) pueda soltarlo.
         cross_operator_notes = []
+        # Fase 2 (Tech Lead, 2026-11-04): (línea, claim, is_done VIEJO)
+        # de cada línea tocada, para registrar el pesaje en el
+        # intervalo 'working' abierto del actor DESPUÉS de
+        # super().write() (necesita el is_done NUEVO para saber si fue
+        # una terminación nueva o una corrección). Mismo bucle que ya
+        # resuelve actor_employee_id para cross_operator_notes — no se
+        # duplica la resolución.
+        weighing_snapshots = []
         if (
             'actual_kg' in vals
             and self.env.context.get('guapante_picking_flow')
@@ -67,6 +75,7 @@ class PreparationDayLine(models.Model):
                     Claim = line.wizard_id.product_claim_ids.filtered(
                         lambda c: c.product_tmpl_id == line.product_id
                     )
+                    weighing_snapshots.append((line, Claim, line.is_done))
                     owner = Claim.assigned_employee_id if Claim else False
                     if owner and owner.id != actor_employee_id:
                         cross_operator_notes.append((
@@ -105,8 +114,19 @@ class PreparationDayLine(models.Model):
                         f"asignado a {owner.name}."
                     ),
                 )
+        if weighing_snapshots:
+            Interval = self.env['guapante.preparation.interval']
+            for line, claim, was_done in weighing_snapshots:
+                if not claim:
+                    continue
+                Interval._handle_weighing(
+                    claim, actor_employee_id,
+                    (not was_done) and line.is_done,
+                    line.actual_kg,
+                )
         if 'is_done' in vals or 'actual_kg' in vals:
             self._maybe_release_finished_claim()
+            self._close_finished_intervals()
         if 'is_done' in vals:
             # El Nivel 1 no se entera solo — _notify_bus() en el modelo de
             # claim solo corre en sus propias acciones (Asignarme, Detener,
@@ -467,6 +487,33 @@ class PreparationDayLine(models.Model):
                 'assigned_employee_id': False,
                 'assigned_date': False,
             })
+
+    def _close_finished_intervals(self) -> None:
+        """Fase 2 (Tech Lead, 2026-11-04): cierra el intervalo 'working'
+        abierto de CUALQUIER operario que siga en Nivel 2 de un
+        producto que justo quedó sin líneas pendientes — a propósito
+        SIN el filtro de `assigned_employee_id != False` que usa
+        _maybe_release_finished_claim() (esa es la nota narrativa de
+        "Terminado", que necesita un dueño para contar la historia;
+        esto es tiempo, y bajo E3 cualquiera puede terminar la última
+        línea de un producto que no es suyo o que nunca tuvo dueño).
+        close_reason='finished', end_dt=now() — el producto se cerró
+        en este instante, es un evento real para cualquiera que
+        estuviera adentro."""
+        templates = self.mapped('product_id')
+        wizard_ids = self.mapped('wizard_id').ids
+        if not templates or not wizard_ids:
+            return
+        Claims = self.env['guapante.preparation.day.product.claim'].sudo().search([
+            ('wizard_id', 'in', wizard_ids),
+            ('product_tmpl_id', 'in', templates.ids),
+        ])
+        now = fields.Datetime.now()
+        Interval = self.env['guapante.preparation.interval']
+        for claim in Claims:
+            Lines = claim._get_lines()
+            if Lines and all(line.is_done for line in Lines):
+                Interval._close_open_for_claim(claim, 'working', 'finished', now)
 
     def _notify_picking_claims_bus(self) -> None:
         Bus = self.env['bus.bus']

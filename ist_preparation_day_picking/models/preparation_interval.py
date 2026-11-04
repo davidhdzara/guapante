@@ -126,6 +126,178 @@ class PreparationInterval(models.Model):
                     'solo un intervalo de detención puede quedar sin uno.'
                 )
 
+    # ── Apertura/cierre (Fase 2, commit 2/7 — Tech Lead, 2026-11-04) ──
+    #
+    # Nunca lo llama el operario ni ninguna pantalla por ORM directo —
+    # todo pasa por estos métodos desde los mismos puntos del servidor
+    # que ya existen para entrar a Nivel 2 / asignar / detener / liberar
+    # / terminar (ver preparation_day_product_claim.py y
+    # preparation_day_line.py). Principio rector: NINGÚN error visible
+    # al operario por un intervalo huérfano o una carrera — el único
+    # UserError de todo este archivo es el constraint de arriba
+    # (kind='working' sin employee_id), que es un error de programación
+    # interno, no algo que un operario pueda disparar desde la UI.
+
+    @api.model
+    def _open_working(self, claim, employee_id):
+        """Único punto de apertura de un intervalo 'working' — lo llama
+        action_open_lines_kanban() (el único lugar por el que se entra
+        a Nivel 2, sea por Asignarme/Retomar/Continuar o por clic
+        directo en cualquier tarjeta) y, como respaldo, write() de
+        PreparationDayLine si llega un pesaje sin haber pasado por ahí.
+
+        pg_advisory_xact_lock por employee_id (condición (a), Tech
+        Lead): serializa dos aperturas casi simultáneas del MISMO
+        operario (dos tablets con el mismo PIN, o un RPC duplicado) —
+        se libera solo al terminar la transacción, nunca hay que
+        soltarlo a mano. El índice único parcial de init() queda como
+        backstop si esto fallara por algún motivo; en ese caso el
+        IntegrityError NUNCA debe llegar a la pantalla del operario —
+        lo trata quien llame esto, no este método.
+
+        Si el operario YA tiene un 'working' abierto en OTRO producto,
+        lo cierra como 'switched' con end_dt=su propio last_touched_dt
+        (nunca now() — no es una salida explícita, es un cambio de
+        foco que el sistema detecta, no algo que el operario "hizo
+        ahora"). Si ya lo tiene abierto en ESTE MISMO producto
+        (reentrada — ej. F5, o Continuar sobre lo que ya tenía
+        abierto), lo reutiliza tal cual, nunca lo duplica ni lo
+        reinicia.
+        """
+        self.env.cr.execute(
+            'SELECT pg_advisory_xact_lock(hashtext(%s))',
+            (f'guapante_preparation_interval_employee_{employee_id}',),
+        )
+        now = fields.Datetime.now()
+        Open = self.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        if Open:
+            if Open.claim_id == claim:
+                return Open
+            Open._close('switched', Open.last_touched_dt)
+            # flush_recordset() (mismo patrón que el resto del archivo
+            # antes de SQL crudo, ej. action_assign): el write() de
+            # _close() arriba queda en caché del ORM hasta el próximo
+            # flush — sin esto, el INSERT de abajo corre con la fila
+            # vieja aún visible como "abierta" (end_dt IS NULL) para el
+            # índice único parcial, y Postgres rechaza la inserción con
+            # un IntegrityError real (bug encontrado por los tests de
+            # este commit) — justo lo que el principio rector prohíbe.
+            Open.flush_recordset()
+        return self.sudo().create({
+            'wizard_id': claim.wizard_id.id,
+            'claim_id': claim.id,
+            'employee_id': employee_id,
+            'kind': 'working',
+            'start_dt': now,
+            'last_touched_dt': now,
+        })
+
+    def _close(self, close_reason, end_dt):
+        """Cierre de UN intervalo. Idempotente (no-op si ya estaba
+        cerrado) — varios de los puntos que llaman esto pueden coincidir
+        en el mismo intervalo (ej. una carrera entre Detener y el cron),
+        nunca debe pisar un cierre anterior ni sumarle duración dos
+        veces. `end_dt` SIEMPRE lo decide quien llama: now() para una
+        salida explícita (Detener/Liberar/Terminar/Cerrar sesión/"←
+        Productos"), last_touched_dt para switched/idle/cron (ver el
+        campo en la definición de arriba — nunca now() ahí, para no
+        inflar el tiempo de alguien que se fue sin avisar)."""
+        self.ensure_one()
+        if self.end_dt:
+            return
+        duration = max(int((end_dt - self.start_dt).total_seconds()), 0)
+        self.sudo().write({
+            'end_dt': end_dt,
+            'duration_s': duration,
+            'close_reason': close_reason,
+        })
+
+    @api.model
+    def _close_open_for_claim(self, claim, kind, close_reason, end_dt):
+        """Cierra TODOS los intervalos abiertos de este tipo para este
+        claim — puede ser más de uno: bajo E3 (sin ownership) nada
+        impide que dos operarios distintos tengan Nivel 2 abierto sobre
+        el MISMO producto a la vez, y un evento externo (Detener/
+        Liberar/Terminar) le pone fin al trabajo de TODOS ellos sobre
+        ese producto en este instante, no solo al de uno.
+
+        `end_dt=None` (solo lo usa el cron de abandono de claims, vía
+        _release_claim(use_last_touched=True)): cada intervalo cierra
+        con SU PROPIO last_touched_dt, nunca con una hora común — un
+        cierre no explícito nunca inventa una hora de fin igual para
+        todos."""
+        Open = self.sudo().search([
+            ('claim_id', '=', claim.id),
+            ('kind', '=', kind),
+            ('end_dt', '=', False),
+        ])
+        for interval in Open:
+            interval._close(close_reason, end_dt if end_dt is not None else interval.last_touched_dt)
+
+    @api.model
+    def _close_open_working_for_employee(self, employee_id, close_reason, end_dt):
+        """Cierra el 'working' abierto de ESTE operario, sea cual sea
+        el claim — lo usa /clear_operator (Cerrar sesión / Cerrar):
+        cerrar la sesión del operario es un evento sobre LA PERSONA,
+        no sobre un producto en particular, a diferencia de
+        _close_open_for_claim (arriba), que es sobre el producto.
+        Devuelve True si había algo que cerrar (informativo, no se usa
+        para decidir nada)."""
+        Open = self.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        if Open:
+            Open._close(close_reason, end_dt)
+        return bool(Open)
+
+    @api.model
+    def _handle_weighing(self, claim, employee_id, is_new_completion, actual_kg):
+        """Registra un pesaje/corrección dentro del intervalo 'working'
+        abierto de este operario sobre este claim — lo llama write() de
+        PreparationDayLine en cada escritura de actual_kg bajo
+        guapante_picking_flow. Si el intervalo esperado no existe o es
+        de OTRO producto (no debería pasar si el cliente siempre entra
+        por action_open_lines_kanban antes de pesar — ver el docstring
+        de _open_working), lo abre/cambia acá mismo como respaldo:
+        first_weigh_dt quedará en start_dt en ese caso, honesto —no hay
+        cómo saber cuánto esperó antes de este pesaje sin haber entrado
+        a Nivel 2 primero."""
+        Open = self.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        if not Open or Open.claim_id != claim:
+            Open = self._open_working(claim, employee_id)
+        Open._register_weighing(is_new_completion, actual_kg)
+
+    def _register_weighing(self, is_new_completion, actual_kg):
+        """Un pesaje/corrección SIEMPRE actualiza last_touched_dt (es la
+        definición misma de "actividad real" — ver el campo) y fija
+        first_weigh_dt una sola vez. lines_done/zero_lines_done/kg_done
+        SOLO se incrementan si `is_new_completion` (is_done pasó de
+        False a True en ESTA escritura) — una corrección sobre una
+        línea YA Terminada no cuenta como una nueva (Fase 2: "corregir
+        y volver a pesar una caja... no cuenta como una nueva")."""
+        self.ensure_one()
+        now = fields.Datetime.now()
+        vals = {'last_touched_dt': now}
+        if not self.first_weigh_dt:
+            vals['first_weigh_dt'] = now
+        if is_new_completion:
+            vals['lines_done'] = self.lines_done + 1
+            if actual_kg:
+                vals['kg_done'] = self.kg_done + actual_kg
+            else:
+                vals['zero_lines_done'] = self.zero_lines_done + 1
+        self.sudo().write(vals)
+
     def init(self):
         """Índice único parcial — backstop de base de datos para "un
         solo intervalo working abierto por operario" (Tech Lead,

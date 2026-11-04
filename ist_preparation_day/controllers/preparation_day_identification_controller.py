@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from odoo import http
+from odoo import fields, http
 from odoo.http import request
 
 from ..models.const_preparation import (
@@ -153,5 +153,17 @@ class PreparationDayIdentificationController(http.Controller):
             request.env[
                 'guapante.preparation.day.product.claim'
             ].sudo()._release_claims_for_employee(employee_id)
+        # Fase 2 (Tech Lead, 2026-11-04): cierra el intervalo 'working'
+        # abierto de este operario, sea cual sea el claim — "Cerrar
+        # sesión"/"Cerrar" es un evento sobre LA PERSONA, no sobre un
+        # producto (a diferencia de _release_claims_for_employee,
+        # arriba, que solo libera lo que tiene asignado). Explícito:
+        # end_dt=now(), close_reason='session_closed'. 'guapante.
+        # preparation.interval' vive en ist_preparation_day_picking,
+        # igual que el claim arriba — mismo chequeo de instalación.
+        if employee_id and 'guapante.preparation.interval' in request.env:
+            request.env['guapante.preparation.interval'].sudo()._close_open_working_for_employee(
+                employee_id, 'session_closed', fields.Datetime.now(),
+            )
         clear_active_prep_operator(request.session)
         return {'success': True}
