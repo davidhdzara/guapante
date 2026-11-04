@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import odoo.sql_db as sql_db
@@ -1325,129 +1325,93 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             vals['duration_s'] = duration_s
         return self.Interval.sudo().create(vals)
 
-    def test_level1_time_counters_sum_two_operators_on_same_claim_capped(self):
-        """Bajo E3 nada impide que dos operarios distintos tengan Nivel
-        2 abierto sobre el MISMO producto a la vez — time_working_s
-        debe sumar el tiempo transcurrido CAPEADO de cada uno, más lo
-        que ya hay cerrado, no solo el de uno. idle_timeout por
-        default (PREP_OPERATOR_IDLE_TIMEOUT_SECONDS = 300s)."""
+    def test_level1_time_counters_working_uncapped_like_stopped(self):
+        """Fase 2, lote B ("sin tope L1", Tech Lead 2026-11-04): el
+        tope de idle_timeout sobre 'working' se eliminó — se comporta
+        exactamente igual que 'stopped', siempre tiqueando sin recorte
+        mientras el servidor no lo haya cerrado. time_working_s suma
+        el tiempo transcurrido COMPLETO de cada 'working' abierto
+        (nunca el tiempo recortado al "margen de gracia" que existía
+        antes), más lo que ya hay cerrado. Reloj fijo (nunca el real)
+        — esta cuenta ya no tiene ningún tope que neutralice el drift
+        de ejecutar el test en un instante real distinto."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
-        now = fields.Datetime.now()
+        now = datetime(2026, 11, 4, 20, 0, 0)
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = now
+            # Cerrado: cuenta tal cual, sin tope ni cálculo.
+            self._create_interval(
+                claim, 'working', employee=self.operator_a,
+                start_dt=now - timedelta(seconds=1000),
+                end_dt=now - timedelta(seconds=880), duration_s=120,
+            )
+            # Operario A: abierto hace 600s, última actividad hace
+            # 400s — bajo el diseño anterior esto se congelaba a los
+            # 300s (500s); ahora cuenta el tiempo COMPLETO: 600s.
+            self._create_interval(
+                claim, 'working', employee=self.operator_a,
+                start_dt=now - timedelta(seconds=600),
+                last_touched_dt=now - timedelta(seconds=400),
+            )
+            # Operario B: abierto hace 200s, última actividad hace 50s
+            # — ya estaba dentro del margen de gracia antes, así que
+            # el resultado para B no cambia (200s).
+            self._create_interval(
+                claim, 'working', employee=self.operator_b,
+                start_dt=now - timedelta(seconds=200),
+                last_touched_dt=now - timedelta(seconds=50),
+            )
 
-        # Cerrado: cuenta tal cual, sin tope ni cálculo — ya tiene su
-        # duration_s fijado al cerrar.
-        self._create_interval(
-            claim, 'working', employee=self.operator_a,
-            start_dt=now - timedelta(seconds=1000),
-            end_dt=now - timedelta(seconds=880), duration_s=120,
-        )
-        # Operario A: abierto, última actividad hace 400s — con tope de
-        # 300s, el margen de gracia ya se agotó hace 100s, así que el
-        # tope cae en (last_touched_dt + 300) = now - 100, no en "now".
-        # elapsed = (now - 100) - (now - 600) = 500s.
-        self._create_interval(
-            claim, 'working', employee=self.operator_a,
-            start_dt=now - timedelta(seconds=600),
-            last_touched_dt=now - timedelta(seconds=400),
-        )
-        # Operario B: abierto, última actividad hace solo 50s — dentro
-        # del margen de gracia (300s), el tope no recorta nada: el
-        # elapsed es directo now - start_dt = 200s.
-        self._create_interval(
-            claim, 'working', employee=self.operator_b,
-            start_dt=now - timedelta(seconds=200),
-            last_touched_dt=now - timedelta(seconds=50),
-        )
-
-        visible = self.Claim.get_claims_for_level1_display(session.id)
+            visible = self.Claim.get_claims_for_level1_display(session.id)
         by_id = {c['id']: c for c in visible}
 
-        self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 500 + 200)
+        self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 600 + 200)
         self.assertEqual(by_id[claim.id]['time_stopped_s'], 0)
-        # 3b/4: solo B sigue tiqueando (dentro del margen de gracia) —
-        # A ya está congelado por el tope (margen agotado hace 100s) y
-        # el cerrado no cuenta nunca. El cronómetro L1 del cliente debe
-        # multiplicar su tick por 1, no por los 2 'working' abiertos
-        # que hay en total.
-        self.assertEqual(by_id[claim.id]['time_working_open_count'], 1)
+        # Los dos siguen tiqueando siempre — sin tope, nunca se
+        # congelan (antes A hubiera dado 0 acá, ya congelado).
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 2)
 
-    def test_level1_time_counters_zero_idle_timeout_means_no_cap_at_all(self):
-        """Fila 3 del backlog, corrección de Tech Lead (revisión de
-        4/7, 2026-11-04): con el parámetro en 0 ("sin bloqueo NI
-        abandono") la regla es la CONTRARIA a lo que parece a primera
-        vista — SIN tope, cuenta hasta "ahora" sin recortar nada. La
-        primera versión de este commit colapsaba el tope a
-        last_touched_dt (cero margen de gracia), lo que congelaba el
-        contador de un operario que sigue trabajando sin haber pesado
-        todavía — justo lo que "sin bloqueo" promete que NO pasa.
-        'stopped' abierto se comporta igual que siempre: sin tope,
-        sin importar este parámetro (nunca lo tuvo)."""
+    def test_level1_time_counters_working_uncapped_regardless_of_idle_timeout_param(self):
+        """get_idle_timeout_seconds ya NO influye en esta cuenta — el
+        mismo escenario da el mismo resultado sin tope tanto con el
+        parámetro en 0 ("sin bloqueo") como en un valor positivo (el
+        default de producción, 300s): la eliminación del tope es
+        incondicional, no depende de este parámetro (a diferencia del
+        diseño anterior, donde sí lo decidía)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = datetime(2026, 11, 4, 20, 0, 0)
+
+        def _scenario():
+            self.Interval.sudo().search([('claim_id', '=', claim.id)]).unlink()
+            with patch('odoo.fields.Datetime.now') as mock_now:
+                mock_now.return_value = now
+                self._create_interval(
+                    claim, 'working', employee=self.operator_a,
+                    start_dt=now - timedelta(seconds=600),
+                    last_touched_dt=now - timedelta(seconds=400),
+                )
+                visible = self.Claim.get_claims_for_level1_display(session.id)
+            return {c['id']: c for c in visible}[claim.id]
+
         self.env['ir.config_parameter'].sudo().set_param(
             IDLE_TIMEOUT_PARAM_KEY, '0',
         )
-        session = self._load_session_with_product()
-        claim = session.product_claim_ids
-        now = fields.Datetime.now()
+        result_zero = _scenario()
 
-        self._create_interval(
-            claim, 'working', employee=self.operator_a,
-            start_dt=now - timedelta(seconds=300),
-            last_touched_dt=now - timedelta(seconds=120),
+        # 100s < los 400s transcurridos desde la última actividad: bajo
+        # el diseño ANTERIOR esto sí hubiera topado (300s, no 600) —
+        # un valor positivo que de verdad distingue el comportamiento
+        # viejo del nuevo, no uno que coincida por casualidad.
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '100',
         )
-        self._create_interval(
-            claim, 'stopped',
-            start_dt=now - timedelta(seconds=90),
-        )
+        result_positive = _scenario()
 
-        visible = self.Claim.get_claims_for_level1_display(session.id)
-        by_id = {c['id']: c for c in visible}
-
-        # working: SIN tope con idle_timeout=0 — elapsed ~ 300s
-        # (ahora - start_dt), no los 180s que daría recortar en
-        # last_touched_dt.
-        self.assertAlmostEqual(
-            by_id[claim.id]['time_working_s'], 300, delta=5,
-        )
-        # stopped: sin tope, elapsed ~ 90s (now - start_dt), sin verse
-        # afectado por IDLE_TIMEOUT_PARAM_KEY=0 (nunca lo estuvo).
-        self.assertAlmostEqual(
-            by_id[claim.id]['time_stopped_s'], 90, delta=5,
-        )
-        # 3b/4: con idle_timeout=0 el 'working' nunca se congela —
-        # sigue tiqueando siempre. El 'stopped' tiquea siempre, con o
-        # sin este parámetro (nunca tuvo tope).
-        self.assertEqual(by_id[claim.id]['time_working_open_count'], 1)
-        self.assertEqual(by_id[claim.id]['time_stopped_open_count'], 1)
-
-    def test_level1_time_counters_positive_idle_timeout_still_caps_working(self):
-        """Confirma que la corrección de arriba NO rompe el caso
-        normal (idle_timeout > 0, el default de producción, 300s):
-        el tope min(ahora, last_touched_dt + idle_timeout) sigue
-        aplicando tal cual — mismo escenario que
-        test_level1_time_counters_sum_two_operators_on_same_claim_capped,
-        aislado acá para un solo operario."""
-        session = self._load_session_with_product()
-        claim = session.product_claim_ids
-        now = fields.Datetime.now()
-
-        self._create_interval(
-            claim, 'working', employee=self.operator_a,
-            start_dt=now - timedelta(seconds=600),
-            last_touched_dt=now - timedelta(seconds=400),
-        )
-
-        visible = self.Claim.get_claims_for_level1_display(session.id)
-        by_id = {c['id']: c for c in visible}
-
-        # idle_timeout default = 300s. tope = (now-400)+300 = now-100.
-        # elapsed = (now-100) - (now-600) = 500s.
-        self.assertEqual(by_id[claim.id]['time_working_s'], 500)
-        # 3b/4: el margen de gracia ya se agotó hace 100s — este
-        # 'working' está CONGELADO (el servidor ya lo topó), open_count
-        # en 0 para que el cronómetro L1 del cliente no siga subiéndolo
-        # en pantalla hasta el próximo refresh.
-        self.assertEqual(by_id[claim.id]['time_working_open_count'], 0)
+        for result in (result_zero, result_positive):
+            self.assertEqual(result['time_working_s'], 600)
+            self.assertEqual(result['time_working_open_count'], 1)
 
     def test_level1_time_counters_open_count_counts_every_still_ticking_worker(self):
         """Contraparte de test_level1_time_counters_sum_two_operators_

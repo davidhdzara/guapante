@@ -41,8 +41,15 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.Interval = self.env['guapante.preparation.interval']
 
     def _enter_l2(self, claim, employee):
+        """'Entrar a Nivel 2' en el flujo real (Fase 2, lote B,
+        rediseño de continuidad): hoy ES Asignarme — action_open_
+        lines_kanban() por sí sola ya NO abre el intervalo, salvo la
+        excepción acotada del propio dueño sin intervalo (ver su
+        docstring, probada aparte más abajo). Los fixtures de este
+        archivo siempre parten de un claim 'pending', así que
+        action_assign() es el equivalente correcto a "entrar"."""
         with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(employee)):
-            claim.action_open_lines_kanban()
+            claim.action_assign()
 
     def _weigh(self, line, employee, kg):
         mock_request = self._request_as(employee)
@@ -75,11 +82,18 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(interval.last_touched_dt, datetime(2026, 11, 4, 20, 5, 0))
 
     def test_open_working_reentry_same_claim_does_not_duplicate(self):
+        """Reentrada real sobre un claim ya propio (Tech Lead,
+        excepción acotada de B.2a): "Continuar" (action_open_lines_
+        kanban directo, sin volver a pasar por Asignarme — eso
+        reventaría con "ya se asignó", ver action_assign) sobre un
+        claim que YA es mío y ya tiene 'working' abierto no debe
+        duplicar ni reabrir nada."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         self._enter_l2(claim, self.operator_a)
         first = self._open_working(self.operator_a)
-        self._enter_l2(claim, self.operator_a)
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            claim.action_open_lines_kanban()
         second = self._open_working(self.operator_a)
         self.assertEqual(first, second)
         self.assertEqual(
@@ -90,9 +104,62 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         )
 
     def test_open_working_switch_closes_previous_as_switched_with_last_touched(self):
+        """Switch real bajo el nuevo diseño (Tech Lead, B.2a): ya no
+        se da por "Continuar" sobre otro producto (eso ya no abre
+        nada) — se da cuando el operario tenía un 'working' de
+        RESPALDO abierto en un producto SIN dueño (pesaje ad-hoc bajo
+        E3) y luego Asignarme lo toma a él mismo para OTRO producto:
+        _open_working() cierra el primero como 'switched' con su
+        propio last_touched_dt antes de abrir el nuevo."""
         product_b = self.env['product.product'].create({
             'name': 'Producto Switch Test',
             'type': 'consu',
+        })
+        self._create_confirmed_order(qty=1.0, product=product_b)
+        self._create_confirmed_order(qty=1.0, product=product_b)
+        session = self._load_session_with_product()
+        claim_a = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        claim_b = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == product_b.product_tmpl_id
+        )
+        lines_b = claim_b._get_lines()
+        self.assertEqual(len(lines_b), 2)
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
+            # Pesaje ad-hoc sobre B sin Asignarme (claim_b sigue
+            # 'pending') — respaldo de _handle_weighing abre el
+            # 'working' acá. Una sola de las 2 líneas: el claim no
+            # termina, el intervalo sigue abierto para el switch.
+            self._weigh(lines_b[0], self.operator_a, 1.0)
+            interval_b = self._open_working(self.operator_a)
+            self.assertEqual(interval_b.claim_id, claim_b)
+            self.assertFalse(interval_b.end_dt)
+
+            mock_now.return_value = datetime(2026, 11, 4, 10, 3, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim_a.action_assign()
+
+        interval_b.invalidate_recordset()
+        self.assertEqual(interval_b.close_reason, 'switched')
+        # Nunca now() del cambio de foco (10:03) — su propio
+        # last_touched_dt, que nunca se tocó después de abrir (10:00).
+        self.assertEqual(interval_b.end_dt, datetime(2026, 11, 4, 10, 0, 0))
+        self.assertEqual(interval_b.duration_s, 0)
+
+        interval_a = self._open_working(self.operator_a)
+        self.assertEqual(interval_a.claim_id, claim_a)
+        self.assertEqual(interval_a.start_dt, datetime(2026, 11, 4, 10, 3, 0))
+
+    def test_two_employees_open_working_on_different_claims_both_succeed(self):
+        """Bajo el nuevo diseño (Fase 2, lote B), dos operarios ya NO
+        pueden tener 'working' abierto sobre el MISMO claim a la vez
+        (la apertura normal queda condicionada a ser el dueño) — pero
+        sí, cada uno, sobre SU PROPIO claim distinto, sin
+        interferirse."""
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Dos Operarios', 'type': 'consu',
         })
         self._create_confirmed_order(qty=1.0, product=product_b)
         session = self._load_session_with_product()
@@ -102,30 +169,8 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         claim_b = session.product_claim_ids.filtered(
             lambda c: c.product_tmpl_id == product_b.product_tmpl_id
         )
-        with patch('odoo.fields.Datetime.now') as mock_now:
-            mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
-            self._enter_l2(claim_a, self.operator_a)
-            interval_a = self._open_working(self.operator_a)
-
-            mock_now.return_value = datetime(2026, 11, 4, 10, 3, 0)
-            self._enter_l2(claim_b, self.operator_a)
-
-        interval_a.invalidate_recordset()
-        self.assertEqual(interval_a.close_reason, 'switched')
-        # Nunca now() del cambio de foco (10:03) — su propio
-        # last_touched_dt, que nunca se tocó después de abrir (10:00).
-        self.assertEqual(interval_a.end_dt, datetime(2026, 11, 4, 10, 0, 0))
-        self.assertEqual(interval_a.duration_s, 0)
-
-        interval_b = self._open_working(self.operator_a)
-        self.assertEqual(interval_b.claim_id, claim_b)
-        self.assertEqual(interval_b.start_dt, datetime(2026, 11, 4, 10, 3, 0))
-
-    def test_two_employees_open_working_simultaneously_both_succeed(self):
-        session = self._load_session_with_product()
-        claim = session.product_claim_ids
-        self._enter_l2(claim, self.operator_a)
-        self._enter_l2(claim, self.operator_b)
+        self._enter_l2(claim_a, self.operator_a)
+        self._enter_l2(claim_b, self.operator_b)
         self.assertEqual(len(self._open_working(self.operator_a)), 1)
         self.assertEqual(len(self._open_working(self.operator_b)), 1)
 
@@ -156,22 +201,33 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertTrue(result['server_now'])
 
     def test_get_my_open_interval_scoped_to_own_employee_only(self):
-        """E3: dos operarios con Nivel 2 abierto sobre el MISMO claim a
-        la vez — cada cronómetro debe ver solo el propio, nunca el del
-        otro (mismo criterio de alcance que action_close_my_interval)."""
+        """Cada cronómetro ve solo el propio intervalo, nunca el de
+        otro operario — demostrado con cada uno en su propio claim
+        (bajo el nuevo diseño, dos operarios ya no comparten 'working'
+        abierto en el MISMO claim — ver test_two_employees_open_
+        working_on_different_claims_both_succeed)."""
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Scoped Test', 'type': 'consu',
+        })
+        self._create_confirmed_order(qty=1.0, product=product_b)
         session = self._load_session_with_product()
-        claim = session.product_claim_ids
+        claim_a = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        claim_b = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == product_b.product_tmpl_id
+        )
         with patch('odoo.fields.Datetime.now') as mock_now:
             mock_now.return_value = datetime(2026, 11, 4, 10, 0, 0)
-            self._enter_l2(claim, self.operator_a)
+            self._enter_l2(claim_a, self.operator_a)
         with patch('odoo.fields.Datetime.now') as mock_now:
             mock_now.return_value = datetime(2026, 11, 4, 10, 1, 0)
-            self._enter_l2(claim, self.operator_b)
+            self._enter_l2(claim_b, self.operator_b)
 
         with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
-            result_a = claim.get_my_open_interval()
+            result_a = claim_a.get_my_open_interval()
         with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
-            result_b = claim.get_my_open_interval()
+            result_b = claim_b.get_my_open_interval()
 
         self.assertEqual(result_a['start_dt'], datetime(2026, 11, 4, 10, 0, 0))
         self.assertEqual(result_b['start_dt'], datetime(2026, 11, 4, 10, 1, 0))
@@ -440,15 +496,26 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(Stopped.stop_reason, 'sin_stock')
 
     def test_action_unstop_closes_both_stopped_and_any_open_working(self):
-        session = self._load_session_with_product()
+        # Dos Cajas (no qty=2.0 en una sola — ver el mismo comentario
+        # en los tests de pesaje más abajo): pesar solo UNA deja el
+        # claim sin terminar, para que siga 'stopped' (si terminara,
+        # action_unstop() rechazaría con "ya está terminado").
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
         claim = session.product_claim_ids
+        lines = session.line_ids
         with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
             claim.action_assign()
             claim.action_stop('sin_stock')
-        # Bajo E3, cualquiera puede entrar a Nivel 2 de un Detenido
-        # (ver action_open_lines_kanban) — operator_b entra a mirar
-        # mientras sigue Detenido.
-        self._enter_l2(claim, self.operator_b)
+        # Bajo E3, cualquiera puede pesar/corregir una línea de un
+        # Detenido sin pasar por Retomar (_check_picking_ownership ya
+        # no exige dueño) — action_stop() cerró el 'working' de todos
+        # al detener, así que esta corrección ad-hoc de operator_b
+        # dispara el respaldo de _handle_weighing (nadie tiene
+        # 'working' abierto en este claim todavía).
+        self._weigh(lines[0], self.operator_b, 1.0)
         working_b = self._open_working(self.operator_b)
         self.assertTrue(working_b)
 
@@ -687,34 +754,101 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertTrue(first.end_dt)
         self.assertEqual(first.close_reason, 'left')
 
+        # "Continuar" (action_open_lines_kanban directo) — el claim
+        # sigue siendo mío (action_close_my_interval no lo libera),
+        # así que NO vuelvo a pasar por Asignarme (eso reventaría con
+        # "ya se asignó"): la excepción acotada del dueño sin
+        # intervalo (B.2a) es la que reabre acá.
         with patch('odoo.fields.Datetime.now') as mock_now:
             mock_now.return_value = datetime(2026, 11, 4, 10, 10, 0)
-            self._enter_l2(claim, self.operator_a)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_open_lines_kanban()
         second = self._open_working(self.operator_a)
         self.assertEqual(len(second), 1)
         self.assertNotEqual(second.id, first.id)
         self.assertEqual(second.start_dt, datetime(2026, 11, 4, 10, 10, 0))
 
-    def test_finishing_last_line_closes_working_of_every_viewer(self):
-        """E3 (sin ownership): bajo _close_finished_intervals, terminar
-        la última línea cierra el 'working' de CUALQUIERA que esté
-        adentro, no solo del dueño — a propósito sin el filtro de
-        assigned_employee_id que sí tiene _maybe_release_finished_claim."""
+    def test_finishing_last_line_closes_the_working_interval(self):
+        """_close_finished_intervals cierra TODO 'working' abierto del
+        claim al terminar la última línea — defensivo ante más de uno
+        abierto a la vez, aunque bajo el nuevo diseño (Fase 2, lote B)
+        eso ya no se da en el flujo normal (un claim 'in_progress'
+        tiene un solo dueño, y el respaldo de pesaje nunca abre un
+        segundo 'working' si ya hay uno de otro operario — ver el
+        ajuste de atribución cruzada más abajo). Caso simple: el
+        'working' del dueño se cierra como 'finished' al terminar."""
         session = self._load_session_with_product(qty=1.0)
         claim = session.product_claim_ids
         line = session.line_ids[0]
         self._enter_l2(claim, self.operator_a)
-        self._enter_l2(claim, self.operator_b)
         working_a = self._open_working(self.operator_a)
-        working_b = self._open_working(self.operator_b)
         self.assertTrue(working_a)
-        self.assertTrue(working_b)
 
         self._weigh(line, self.operator_a, 1.0)
 
         working_a.invalidate_recordset()
-        working_b.invalidate_recordset()
         self.assertEqual(working_a.close_reason, 'finished')
-        self.assertEqual(working_b.close_reason, 'finished')
         self.assertTrue(working_a.end_dt)
-        self.assertTrue(working_b.end_dt)
+
+    def test_cross_operator_weighing_on_owners_claim_gets_no_credit(self):
+        """Ajuste de atribución cruzada (Tech Lead, B.2, respaldo/
+        atribución en _handle_weighing): si B pesa/corrige sobre un
+        claim cuyo 'working' abierto es de A (el dueño), esa pesaje NO
+        abre un intervalo propio para B ni le toca nada al de A — el
+        reparto por operario sigue viniendo de done_by_employee_id en
+        la línea (Reporte 1), nunca de este intervalo. El pesaje REAL
+        (is_done/actual_kg) se guarda igual — el tiempo es dato
+        secundario, nunca bloquea el camino crítico."""
+        self._create_confirmed_order(qty=1.0)
+        self._create_confirmed_order(qty=1.0)
+        session = self._create_session()
+        session.action_load()
+        claim = session.product_claim_ids
+        lines = session.line_ids
+        self._enter_l2(claim, self.operator_a)
+        interval_a = self._open_working(self.operator_a)
+        touched_before = interval_a.last_touched_dt
+        lines_done_before = interval_a.lines_done
+
+        self._weigh(lines[0], self.operator_b, 1.0)
+
+        self.assertFalse(self._open_working(self.operator_b))
+        interval_a.invalidate_recordset()
+        self.assertEqual(interval_a.last_touched_dt, touched_before)
+        self.assertEqual(interval_a.lines_done, lines_done_before)
+        self.assertTrue(lines[0].is_done)
+
+    def test_other_operator_backup_open_on_different_claim_does_not_touch_my_working(self):
+        """"Entrar a otro producto bajo E3 no corta mi propio
+        cronómetro" (cobertura obligatoria de B.2, Tech Lead): el
+        respaldo de B sobre un producto DISTINTO, sin dueño, no toca
+        para nada el 'working' que A tiene abierto en el suyo."""
+        product_c = self.env['product.product'].create({
+            'name': 'Producto C sin dueño', 'type': 'consu',
+        })
+        # Dos Cajas (no una sola — ver el mismo comentario en el test
+        # de switch): pesar solo UNA deja claim_c sin terminar, para
+        # que el 'working' de respaldo de B siga abierto cuando el
+        # test lo observa (si claim_c terminara, _close_finished_
+        # intervals lo cerraría como 'finished' en el mismo write()).
+        self._create_confirmed_order(qty=1.0, product=product_c)
+        self._create_confirmed_order(qty=1.0, product=product_c)
+        session = self._load_session_with_product()
+        claim_a = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == self.product_weight.product_tmpl_id
+        )
+        claim_c = session.product_claim_ids.filtered(
+            lambda c: c.product_tmpl_id == product_c.product_tmpl_id
+        )
+        line_c = claim_c._get_lines()[0]
+        self._enter_l2(claim_a, self.operator_a)
+        interval_a = self._open_working(self.operator_a)
+        start_before = interval_a.start_dt
+
+        self._weigh(line_c, self.operator_b, 1.0)
+
+        interval_a.invalidate_recordset()
+        self.assertFalse(interval_a.end_dt)
+        self.assertEqual(interval_a.start_dt, start_before)
+        interval_c = self._open_working(self.operator_b)
+        self.assertEqual(interval_c.claim_id, claim_c)

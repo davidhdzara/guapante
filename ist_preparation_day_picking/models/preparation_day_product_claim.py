@@ -485,6 +485,17 @@ class PreparationDayProductClaim(models.Model):
             'assigned_date': now,
             'last_activity': now,
         })
+        # Fase 2, lote B (Tech Lead, 2026-11-04): Asignarme es un
+        # momento en que el operario pasa a ser dueño REAL del claim —
+        # abre el 'working' acá mismo, con el mismo `now` de arriba
+        # (nunca un fields.Datetime.now() nuevo). _run_isolated: el
+        # tiempo es dato secundario, un fallo acá nunca debe impedir
+        # quedarse asignado.
+        Interval = self.env['guapante.preparation.interval']
+        Interval._run_isolated(
+            f'_open_working claim={self.id} empleado={employee_id}',
+            lambda: Interval._open_working(self, employee_id, now),
+        )
         self._notify_bus()
         return self.action_open_lines_kanban()
 
@@ -537,18 +548,25 @@ class PreparationDayProductClaim(models.Model):
         self.wizard_id.sudo().message_post(
             body=f"Retomado — {self.product_tmpl_id.name}: por {Employee.name}.",
         )
-        # Fase 2 (bug encontrado por Odoo Engineer, 2026-11-04): a
-        # diferencia de action_unstop(), esto NO cerraba el intervalo
-        # 'stopped' que action_stop() dejó abierto — quedaba huérfano
-        # para siempre (nunca lo cierra el cron de abandono de claims,
-        # que solo mira status='in_progress'). end_dt=now() (acción
-        # explícita del operario, igual que el resto del archivo) —
-        # nunca last_touched_dt, que en un 'stopped' es siempre igual a
-        # start_dt (ver el campo en preparation_interval.py).
+        # Fase 2, lote B (Tech Lead, 2026-11-04): cierre del 'stopped'
+        # (bug encontrado por Odoo Engineer — a diferencia de
+        # action_unstop(), esto no lo cerraba, quedaba huérfano para
+        # siempre: el cron de abandono de claims solo mira status=
+        # 'in_progress') + apertura del 'working' del nuevo dueño, EN
+        # UN SOLO _run_isolated con el MISMO `now` para ambas
+        # escrituras — end_dt del 'stopped' == start_dt del 'working',
+        # sin hueco ni solape entre los dos. end_dt=now() (acción
+        # explícita del operario) — nunca last_touched_dt, que en un
+        # 'stopped' es siempre igual a start_dt (ver el campo en
+        # preparation_interval.py).
         Interval = self.env['guapante.preparation.interval']
+
+        def _close_stopped_and_open_working():
+            Interval._close_open_for_claim(self, 'stopped', 'resumed', now)
+            Interval._open_working(self, employee_id, now)
+
         Interval._run_isolated(
-            f'action_resume claim={self.id}',
-            lambda: Interval._close_open_for_claim(self, 'stopped', 'resumed', now),
+            f'action_resume claim={self.id}', _close_stopped_and_open_working,
         )
         self._notify_bus()
         return self.action_open_lines_kanban()
@@ -901,28 +919,42 @@ class PreparationDayProductClaim(models.Model):
         (preparation_picking_idle_watcher.js) — mismo motivo que en
         action_view_product_claims (preparation_day.py).
 
-        Fase 2 (Tech Lead, 2026-11-04): ÚNICO punto de apertura de un
-        intervalo 'working' (ver guapante.preparation.interval._open_
-        working) — Asignarme/Retomar terminan llamando este método, y
-        la tarjeta de CUALQUIER estado en el L1 también lo llama
-        directo (onContinue, sin pasar por asignar/retomar), así que
-        acá cubre los tres caminos sin tocar el cliente para esto. Se
-        abre SIEMPRE, sin importar el estado del claim — entrar a
-        corregir un producto ya Terminado también es trabajo real que
-        debe contar.
+        Fase 2, lote B (Tech Lead, 2026-11-04 — rediseño de
+        continuidad): YA NO es el punto de apertura general — ese rol
+        pasó a action_assign()/action_resume() (el momento real en que
+        alguien se vuelve dueño del claim), justamente para que salir
+        y volver a entrar a Nivel 2 (L2→L1→L2) NUNCA reinicie el
+        cronómetro — ya no hay nada que (re)abrir en el camino normal,
+        porque nada lo cierra al salir tampoco (ver preparation_
+        picking_level2_display.js, onClickBackToLevel1).
+
+        Excepción acotada (Tech Lead, revisión de B.2a): si el ACTOR
+        es el DUEÑO actual (`assigned_employee_id == actor`, status
+        'in_progress') y no tiene un 'working' abierto en ESTE claim,
+        lo abre acá — cubre al dueño reentrando sobre un claim cuyo
+        intervalo ya se cerró por otra vía (cron de intervalos/cierre
+        de sesión) mientras el claim seguía vivo, y el caso de
+        migración (un claim que ya estaba 'in_progress' ANTES de
+        desplegar este lote nunca tuvo intervalo). Nunca duplica si ya
+        hay uno abierto (_open_working reutiliza). Cualquier otro caso
+        (no es el dueño, o el claim no está 'in_progress' — mirar/
+        corregir un producto pendiente/detenido/terminado bajo E3) NO
+        abre ni cierra nada: ver esos casos, es el respaldo de
+        _handle_weighing() el que decide si un pesaje ahí cuenta.
         """
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        Interval = self.env['guapante.preparation.interval']
-        # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
-        # tiempo es dato secundario — un fallo de _open_working nunca
-        # debe impedir entrar a Nivel 2 (lo que este método devuelve
-        # abajo).
-        Interval._run_isolated(
-            f'_open_working claim={self.id} empleado={employee_id}',
-            lambda: Interval._open_working(self, employee_id),
-        )
+        if self.status == 'in_progress' and self.assigned_employee_id.id == employee_id:
+            Interval = self.env['guapante.preparation.interval']
+            # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
+            # tiempo es dato secundario — un fallo de _open_working nunca
+            # debe impedir entrar a Nivel 2 (lo que este método devuelve
+            # abajo).
+            Interval._run_isolated(
+                f'_open_working claim={self.id} empleado={employee_id}',
+                lambda: Interval._open_working(self, employee_id),
+            )
         return {
             'type': 'ir.actions.client',
             'tag': 'guapante_picking_level2',

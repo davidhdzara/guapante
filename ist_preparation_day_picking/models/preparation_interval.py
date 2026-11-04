@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import timedelta
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
-from odoo.addons.ist_preparation_day.models.const_preparation import (
-    get_idle_timeout_seconds,
-)
 from odoo.addons.ist_preparation_day.models.preparation_day import (
     _PG_CONCURRENCY_ERRORS,
 )
@@ -152,12 +148,23 @@ class PreparationInterval(models.Model):
     # interno, no algo que un operario pueda disparar desde la UI.
 
     @api.model
-    def _open_working(self, claim, employee_id):
-        """Único punto de apertura de un intervalo 'working' — lo llama
-        action_open_lines_kanban() (el único lugar por el que se entra
-        a Nivel 2, sea por Asignarme/Retomar/Continuar o por clic
-        directo en cualquier tarjeta) y, como respaldo, write() de
-        PreparationDayLine si llega un pesaje sin haber pasado por ahí.
+    def _open_working(self, claim, employee_id, now=None):
+        """Único punto de apertura de un intervalo 'working' — lo llaman
+        action_assign()/action_resume() (Fase 2, lote B: único momento
+        en que alguien pasa a ser dueño real del claim), el caso
+        acotado de action_open_lines_kanban() para el propio dueño sin
+        intervalo abierto (migración/reentrada tras un cierre del
+        cron), y, como respaldo, _handle_weighing() si llega un pesaje
+        sin que ninguno de esos caminos lo haya abierto antes.
+
+        `now` opcional (Fase 2, lote B, Tech Lead — "mismo instante,
+        sin hueco ni solape"): quien llama esto y ya calculó su propio
+        `now` para otra escritura relacionada (ej. action_resume()
+        cerrando el 'stopped') lo pasa acá para que el cierre de una
+        cosa y la apertura de esta OTRA compartan el mismo valor
+        exacto — nunca dos fields.Datetime.now() distintos por
+        microsegundos de diferencia. Si no se pasa (caso normal, ej.
+        action_assign() sin nada que cerrar), se calcula acá mismo.
 
         pg_advisory_xact_lock por employee_id (condición (a), Tech
         Lead): serializa dos aperturas casi simultáneas del MISMO
@@ -181,7 +188,7 @@ class PreparationInterval(models.Model):
             'SELECT pg_advisory_xact_lock(hashtext(%s))',
             (f'guapante_preparation_interval_employee_{employee_id}',),
         )
-        now = fields.Datetime.now()
+        now = now or fields.Datetime.now()
         Open = self.sudo().search([
             ('employee_id', '=', employee_id),
             ('kind', '=', 'working'),
@@ -271,24 +278,64 @@ class PreparationInterval(models.Model):
 
     @api.model
     def _handle_weighing(self, claim, employee_id, is_new_completion, actual_kg):
-        """Registra un pesaje/corrección dentro del intervalo 'working'
-        abierto de este operario sobre este claim — lo llama write() de
+        """Registra un pesaje/corrección — lo llama write() de
         PreparationDayLine en cada escritura de actual_kg bajo
-        guapante_picking_flow. Si el intervalo esperado no existe o es
-        de OTRO producto (no debería pasar si el cliente siempre entra
-        por action_open_lines_kanban antes de pesar — ver el docstring
-        de _open_working), lo abre/cambia acá mismo como respaldo:
-        first_weigh_dt quedará en start_dt en ese caso, honesto —no hay
-        cómo saber cuánto esperó antes de este pesaje sin haber entrado
-        a Nivel 2 primero."""
-        Open = self.sudo().search([
+        guapante_picking_flow. Fase 2, lote B (ajuste de Tech Lead
+        sobre el respaldo original, 2026-11-04 — "tiempo en el
+        producto, no tiempo pesando", ownership real importa):
+
+        1. Si el ACTOR ya tiene un 'working' abierto en ESTE MISMO
+           claim, registra ahí — camino normal (dueño pesando lo
+           suyo).
+        2. Si no, pero ESTE claim ya tiene un 'working' abierto de
+           OTRO operario (el dueño real, o un respaldo previo de un
+           tercero): el pesaje del actor NO le abre nada propio ni le
+           toca nada al de ese otro — es una corrección ad-hoc bajo
+           E3 (cualquiera puede pesar cualquier cosa), pero el tiempo
+           de ESE intervalo le pertenece a quien lo abrió, nunca se
+           reparte ni se reatribuye. El reparto por operario de ESTE
+           pesaje puntual sigue viniendo de done_by_employee_id en la
+           línea (Reporte 1), no de este intervalo.
+        3. Si no hay NADA abierto en este claim pero el actor YA tiene
+           un 'working' abierto en OTRO claim (su propio trabajo real
+           en curso), tampoco se toca nada — una corrección ad-hoc de
+           paso no debe interrumpir ni "cambiar de foco" la sesión
+           real del actor en otro producto.
+        4. Solo si NO hay nada abierto en este claim Y el actor no
+           tiene nada abierto en otro, se abre un 'working' de
+           respaldo para el actor acá mismo (comportamiento original,
+           acotado a este único caso) — first_weigh_dt quedará en
+           start_dt, honesto: no hay cómo saber cuánto esperó antes de
+           este pesaje sin haber entrado a Nivel 2 primero.
+
+        En los casos 2 y 3, el pesaje REAL (is_done/actual_kg) ya se
+        guardó en super().write() antes de llegar acá — no perder
+        tiempo nunca bloquea ni revierte eso, es dato secundario."""
+        OwnOnThisClaim = self.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('claim_id', '=', claim.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        if OwnOnThisClaim:
+            OwnOnThisClaim._register_weighing(is_new_completion, actual_kg)
+            return
+        AnyOpenOnThisClaim = self.sudo().search([
+            ('claim_id', '=', claim.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        if AnyOpenOnThisClaim:
+            return
+        ActorOpenElsewhere = self.sudo().search([
             ('employee_id', '=', employee_id),
             ('kind', '=', 'working'),
             ('end_dt', '=', False),
         ], limit=1)
-        if not Open or Open.claim_id != claim:
-            Open = self._open_working(claim, employee_id)
-        Open._register_weighing(is_new_completion, actual_kg)
+        if ActorOpenElsewhere:
+            return
+        New = self._open_working(claim, employee_id)
+        New._register_weighing(is_new_completion, actual_kg)
 
     def _register_weighing(self, is_new_completion, actual_kg):
         """Un pesaje/corrección SIEMPRE actualiza last_touched_dt (es la
@@ -382,34 +429,27 @@ class PreparationInterval(models.Model):
 
         time_working_s suma: duration_s de cada 'working' ya CERRADO,
         más — por cada 'working' TODAVÍA abierto (puede haber más de
-        uno por claim: bajo E3 dos operarios distintos pueden tener
-        Nivel 2 abierto sobre el MISMO producto a la vez, ver el
-        docstring de _close_open_for_claim) — el tiempo transcurrido
-        con TOPE en min(ahora, last_touched_dt + idle_timeout): el
-        contador en vivo nunca muestra más que lo que el propio
-        timeout de inactividad todavía considera "actividad real" (ver
-        get_idle_timeout_seconds) — más allá de eso ya no es tiempo
-        trabajado, es abandono que el cron de intervalos (3/7) o el de
-        claims ya se encargan de cerrar. idle_timeout=0 ("sin bloqueo
-        NI abandono" — corrección de Tech Lead, revisión de 4/7,
-        2026-11-04) es el caso contrario a lo que parece a primera
-        vista: NO hay tope, cuenta hasta ahora sin recortar — "sin
-        bloqueo" significa que NADA se considera abandonado nunca
-        (ver get_idle_timeout_seconds/_cron_release_abandoned_claims),
-        así que congelar el contador en last_touched_dt + 0 congelaba
-        a un operario que sigue trabajando sin haber pesado todavía
-        (ej. acomodando varias cajas antes del primer pesaje) — justo
-        lo que este parámetro en 0 promete NO hacer.
+        uno por claim en teoría, aunque bajo el rediseño de
+        continuidad de Fase 2/lote B ya no se da en el flujo normal —
+        ver _handle_weighing) — el tiempo transcurrido SIN TOPE (ahora
+        - start_dt), exactamente igual que 'stopped' (Tech Lead, lote
+        B, "sin tope L1" — 2026-11-04): el tope por idle_timeout que
+        tenía esta cuenta quedó eliminado — un 'working' ya no tiene
+        una señal propia de "inactividad" que lo congele en pantalla,
+        el cron de intervalos (3/7) o el de claims son el único
+        backstop real que lo cierra si de verdad se abandonó; el
+        contador en vivo nunca debe mostrar menos de lo que realmente
+        transcurrió mientras el servidor no haya decidido que ya se
+        abandonó.
 
         time_stopped_s suma: duration_s de cada 'stopped' ya CERRADO,
         más — el 'stopped' abierto, si lo hay — el tiempo transcurrido
-        SIN TOPE (ahora - start_dt): a diferencia de 'working', un
-        producto Detenido no tiene una señal propia de "inactividad"
-        que lo cierre solo (nadie lo "toca" — ver el docstring de la
-        clase), así que su contador en vivo crece sin límite artificial
-        mientras siga detenido.
+        SIN TOPE (ahora - start_dt): un producto Detenido tampoco tiene
+        una señal propia de "inactividad" que lo cierre solo (nadie lo
+        "toca" — ver el docstring de la clase), así que su contador en
+        vivo crece sin límite artificial mientras siga detenido — mismo
+        criterio que 'working' ahora.
         """
-        idle_timeout = get_idle_timeout_seconds(self.env)
         now = fields.Datetime.now()
         rows = self.sudo().search_read(
             domain=[('wizard_id', '=', wizard_id)],
@@ -441,25 +481,15 @@ class PreparationInterval(models.Model):
             if row['end_dt']:
                 bucket[key] += row['duration_s']
                 continue
-            if row['kind'] == 'working':
-                # idle_timeout=0 ("sin bloqueo") = SIN tope (Tech Lead,
-                # corrección de 4/7): nunca lo recorta a last_touched_dt,
-                # que congelaría a alguien que sigue trabajando sin
-                # haber pesado todavía — ver el docstring de arriba.
-                still_ticking = (
-                    idle_timeout <= 0
-                    or now < row['last_touched_dt'] + timedelta(seconds=idle_timeout)
-                )
-                cap = (
-                    min(now, row['last_touched_dt'] + timedelta(seconds=idle_timeout))
-                    if idle_timeout > 0 else now
-                )
-                elapsed = max(int((cap - row['start_dt']).total_seconds()), 0)
-                if still_ticking:
-                    bucket['time_working_open_count'] += 1
-            else:
-                elapsed = max(int((now - row['start_dt']).total_seconds()), 0)
-                bucket['time_stopped_open_count'] += 1
+            # Sin tope para ninguno de los dos tipos (Tech Lead, lote
+            # B): siempre tiqueando mientras siga abierto — ver el
+            # docstring de arriba.
+            elapsed = max(int((now - row['start_dt']).total_seconds()), 0)
+            open_count_key = (
+                'time_working_open_count' if row['kind'] == 'working'
+                else 'time_stopped_open_count'
+            )
+            bucket[open_count_key] += 1
             bucket[key] += elapsed
         return counters
 
