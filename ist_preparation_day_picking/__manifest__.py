@@ -50,6 +50,7 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_weight_input.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_note_dialog.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_search_utils.js',
+            'ist_preparation_day_picking/static/src/js/preparation_picking_time_format.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.xml',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level1_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.xml',
