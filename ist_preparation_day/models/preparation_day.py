@@ -237,6 +237,11 @@ class PreparationDayLog(models.Model):
             'pesaje — distinto de user_id, que siempre es la cuenta '
             'compartida operacion@donguapante.com.'
         ),
+        # Fase 2, punto 8 (Tech Lead, 2026-11-04): este log es historia
+        # real de rendimiento, igual que done_by_employee_id — el
+        # default 'set null' perdería en silencio quién fue. El mensaje
+        # claro vive en hr_employee.py (ist_preparation_day).
+        ondelete='restrict',
     )
     product_product_id = fields.Many2one(
         'product.product',
@@ -878,6 +883,10 @@ class PreparationDay(models.Model):
     responsible_employee_id = fields.Many2one(
         'hr.employee',
         string='Responsable de operación',
+        # Fase 2, punto 8 (Tech Lead, 2026-11-04): mismo criterio que
+        # done_by_employee_id — quién respondió por la sesión es
+        # historia, no se pierde en silencio al borrar el empleado.
+        ondelete='restrict',
     )
     line_ids = fields.One2many(
         'guapante.preparation.day.line',
