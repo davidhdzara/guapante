@@ -129,10 +129,19 @@ class PreparationDayLine(models.Model):
             # MISMO bus.bus 'reload' que ya escucha
             # guapante_live_refresh (LiveRefreshAnchor, ya montado en
             # ese form) — sin plumbing nuevo en el cliente.
-            for wizard_id in self.mapped('wizard_id').ids:
-                self.env['bus.bus']._sendone(
-                    f'guapante_preparation_day-{wizard_id}', 'reload', {},
-                )
+            #
+            # Acotado (Tech Lead, 2026-11-04): SOLO cuando la
+            # escritura NO viene del flujo de Picking (tablets) — ese
+            # cliente no tiene el form de la sesión abierto y ya se
+            # entera por _notify_picking_claims_bus() de arriba; sin
+            # este filtro, 'reload' se disparaba en CADA is_done de
+            # cualquier operario (~700/noche) sin que nadie en
+            # Picking lo necesitara.
+            if not self.env.context.get('guapante_picking_flow'):
+                for wizard_id in self.mapped('wizard_id').ids:
+                    self.env['bus.bus']._sendone(
+                        f'guapante_preparation_day-{wizard_id}', 'reload', {},
+                    )
         # El aviso de "operación completa terminó" (punto 4 de Tech Lead)
         # NO vive acá: action_mark_done() del padre corre DESPUÉS de que
         # el write de is_done=True (el que dispara este método) ya

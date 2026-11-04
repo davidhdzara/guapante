@@ -664,6 +664,46 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         # afectada por cada tipo de evento, nunca uno por línea.
         self.assertEqual(mock_sendone.call_count, 2)
 
+    def test_line_write_in_picking_flow_skips_reload_bus(self):
+        """Acotado (Tech Lead, 2026-11-04): el tablet de Picking no tiene
+        el form de la sesión abierto — no necesita 'reload', solo
+        'picking_claim_updated' (que ya escuchan L1/L2). Sin este
+        filtro, 'reload' se disparaba en CADA is_done de cualquier
+        operario desde Picking (~700/noche) sin que nadie ahí lo
+        necesitara; ahora solo sale cuando la escritura viene de fuera
+        del flujo de Picking (ver el test de arriba, que usa
+        skip_auto_save, NO guapante_picking_flow)."""
+        session = self._load_session_with_product()
+        line = session.line_ids[0]
+        LINE_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day_picking.models'
+            '.preparation_day_line.request'
+        )
+        # El write() de CORE (ist_preparation_day/models/preparation_day.py,
+        # track_kg) hace su PROPIO chequeo de operario vigente
+        # (get_active_prep_operator_id con refresh=True) usando SU
+        # PROPIO `request` importado — un módulo distinto del de
+        # preparation_day_line.py, así que hace falta parchear los dos
+        # (mismo patrón que REQUEST_PATCH_TARGET_LINE/_PARENT en
+        # test_preparation_day_picking_fase_d.py) o el write() real
+        # explota con "Tu sesión de operario expiró por inactividad."
+        PARENT_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day.models.preparation_day.request'
+        )
+        mock_request = self._request_as(self.operator_a)
+        BusModel = self.env.registry['bus.bus']
+        with patch(LINE_REQUEST_PATCH_TARGET, mock_request), \
+                patch(PARENT_REQUEST_PATCH_TARGET, mock_request):
+            with patch.object(BusModel, '_sendone') as mock_sendone:
+                line.with_context(guapante_picking_flow=True).write({
+                    'is_done': True, 'actual_kg': 2.0,
+                })
+        mock_sendone.assert_called_once_with(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated',
+            {},
+        )
+
     # ── Visibilidad entre operarios y abandono (plan f1, 2026-10-31) ──
 
     def _run_cron(self):
