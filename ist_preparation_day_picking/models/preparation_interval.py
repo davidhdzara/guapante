@@ -372,16 +372,33 @@ class PreparationInterval(models.Model):
         _open_working — no se pierde nada, solo se corta el intervalo
         en dos. kind='working' y kind='stopped' por igual — un
         'stopped' informativo que nadie liberó también queda
-        abandonado.
+        abandonado, aunque con una regla de fin DISTINTA — ver abajo
+        (commit 3c/7).
 
-        end_dt=last_touched_dt (condición (b), nunca la hora en que
-        corrió el cron) — ver _close(). Mismo patrón que
-        _cron_release_abandoned_claims/_cron_repair_missing_orders:
-        SAVEPOINT POR FILA, con el estado releído bajo FOR UPDATE (por
-        si algo más lo cerró entre el search y el lock) y
-        _PG_CONCURRENCY_ERRORS atrapado LOCAL (nunca relanzado — Odoo
-        ya reintenta a nivel de petición completa; relanzar tumbaría lo
-        ya cerrado en esta misma corrida)."""
+        end_dt para 'working' = last_touched_dt (condición (b), nunca
+        la hora en que corrió el cron) — ver _close().
+
+        end_dt para 'stopped' (commit 3c/7, Tech Lead 2026-11-04):
+        last_touched_dt NO sirve acá — en un 'stopped' nadie lo "toca"
+        nunca (es informativo, no el reloj de nadie — ver el docstring
+        de la clase), así que last_touched_dt == start_dt siempre y
+        duration_s saldría 0 SIEMPRE, perdiendo el tiempo detenido real
+        de un producto que nadie retomó esa noche (justo lo que David
+        quiere medir). Usa en su lugar: wizard_id.date_done si la
+        sesión ya cerró ('done' con date_done puesto) — el cierre de
+        la sesión es un límite real y conocido para "hasta cuándo
+        estuvo detenido"; si la sesión sigue abierta (sin cerrar
+        todavía, un caso más raro — normalmente la sesión ya cerró
+        para cuando corre el cron del día siguiente), usa el propio
+        instante del cron (now) como mejor aproximación disponible, en
+        vez de dejarlo en 0 o inventar otra fecha.
+
+        Mismo patrón que _cron_release_abandoned_claims/_cron_repair_
+        missing_orders: SAVEPOINT POR FILA, con el estado releído bajo
+        FOR UPDATE (por si algo más lo cerró entre el search y el
+        lock) y _PG_CONCURRENCY_ERRORS atrapado LOCAL (nunca relanzado
+        — Odoo ya reintenta a nivel de petición completa; relanzar
+        tumbaría lo ya cerrado en esta misma corrida)."""
         now = fields.Datetime.now()
         Open = self.sudo().search([
             ('end_dt', '=', False),
@@ -391,7 +408,7 @@ class PreparationInterval(models.Model):
             try:
                 with self.env.cr.savepoint():
                     self.env.cr.execute(
-                        'SELECT last_touched_dt FROM '
+                        'SELECT last_touched_dt, kind FROM '
                         'guapante_preparation_interval '
                         'WHERE id = %s AND end_dt IS NULL FOR UPDATE',
                         (interval.id,),
@@ -401,9 +418,18 @@ class PreparationInterval(models.Model):
                         # Ya se cerró por otra vía entre el search y el
                         # lock — nada que hacer.
                         continue
-                    locked_last_touched = row[0]
+                    locked_last_touched, locked_kind = row
                     interval.invalidate_recordset(['last_touched_dt'])
-                    interval._close('idle', locked_last_touched)
+                    if locked_kind == 'stopped':
+                        session = interval.wizard_id
+                        interval_end = (
+                            session.date_done
+                            if session.state == 'done' and session.date_done
+                            else now
+                        )
+                    else:
+                        interval_end = locked_last_touched
+                    interval._close('idle', interval_end)
             except _PG_CONCURRENCY_ERRORS as exc:
                 _logger.info(
                     'Guapante: cierre automático de intervalos — '

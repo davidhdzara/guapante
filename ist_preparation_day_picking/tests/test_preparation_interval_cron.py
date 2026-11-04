@@ -72,6 +72,59 @@ class TestPreparationIntervalCron(TestPreparationDayProductClaim):
         self.assertEqual(interval.close_reason, 'idle')
         self.assertTrue(interval.end_dt)
 
+    def test_cron_closes_unresumed_stopped_with_duration_from_start_not_zero(self):
+        """Tech Lead, revisión de 3b/7 (commit 3c/7): last_touched_dt de
+        un 'stopped' es siempre igual a su start_dt (nadie "toca" un
+        Detenido), así que la regla de 'working' (end_dt=last_touched_dt)
+        daría SIEMPRE duration_s=0 para 'stopped' — perdiendo el tiempo
+        detenido real que David quiere medir. La sesión sigue sin
+        cerrar (sin date_done), así que el cron debe usar su propio
+        instante (now) como fin, no 0."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        self.assertNotEqual(session.state, 'done')
+        interval = self._create_interval(claim, 'stopped', days_ago=1)
+        start_dt = interval.start_dt
+
+        before_cron = fields.Datetime.now()
+        self.Interval._cron_release_abandoned_intervals()
+        after_cron = fields.Datetime.now()
+
+        interval.invalidate_recordset()
+        self.assertEqual(interval.close_reason, 'idle')
+        # end_dt es el instante del cron (now), nunca last_touched_dt/
+        # start_dt — por eso duration_s > 0, no 0.
+        self.assertTrue(before_cron <= interval.end_dt <= after_cron)
+        self.assertGreater(interval.duration_s, 0)
+        self.assertEqual(
+            interval.duration_s,
+            int((interval.end_dt - start_dt).total_seconds()),
+        )
+
+    def test_cron_closes_stopped_with_session_done_using_date_done(self):
+        """Cuando la sesión (guapante.preparation.day) ya cerró, su
+        date_done es un límite real y conocido de "hasta cuándo estuvo
+        detenido" — mejor que el instante del cron del día siguiente,
+        que ya no tiene relación con cuándo terminó realmente la
+        jornada."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        interval = self._create_interval(claim, 'stopped', days_ago=1)
+        session.action_mark_done()
+        self.assertEqual(session.state, 'done')
+        self.assertTrue(session.date_done)
+        date_done = session.date_done
+
+        self.Interval._cron_release_abandoned_intervals()
+
+        interval.invalidate_recordset()
+        self.assertEqual(interval.close_reason, 'idle')
+        self.assertEqual(interval.end_dt, date_done)
+        self.assertEqual(
+            interval.duration_s,
+            int((date_done - interval.start_dt).total_seconds()),
+        )
+
     def test_cron_closes_early_morning_interval_from_same_calendar_day(self):
         """Regla corregida (David/Tech Lead, 2026-11-04, commit 3b/7 —
         "abandonada SIEMPRE a las 10:00"): un intervalo abierto de

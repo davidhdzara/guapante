@@ -369,6 +369,71 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
             ('end_dt', '=', False),
         ]))
 
+    def test_action_unstop_closes_stopped_interval_with_now_not_start_dt(self):
+        """Nota de Tech Lead (revisión del commit 3b/7): confirmar con
+        test que action_unstop() cierra el 'stopped' con now() — nunca
+        con su propio start_dt/last_touched_dt (que para un 'stopped'
+        son siempre iguales, ver docstring de la clase: nadie "toca"
+        un Detenido). Explícito (acción del operario), así que SÍ usa
+        la hora real de la acción, a diferencia del cron de abandono
+        (commit 3c/7), que no tiene una acción explícita que marque el
+        fin."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 8, 0, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_assign()
+                claim.action_stop('sin_stock')
+            Stopped = self.Interval.search([
+                ('claim_id', '=', claim.id), ('kind', '=', 'stopped'),
+            ])
+            self.assertEqual(Stopped.start_dt, datetime(2026, 11, 4, 8, 0, 0))
+
+            mock_now.return_value = datetime(2026, 11, 4, 14, 30, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_unstop()
+
+        Stopped.invalidate_recordset()
+        self.assertEqual(Stopped.end_dt, datetime(2026, 11, 4, 14, 30, 0))
+        self.assertEqual(Stopped.duration_s, 6 * 3600 + 30 * 60)
+
+    def test_stopped_interval_duration_independent_of_stopper_working_interval(self):
+        """Verifica que el tiempo Detenido no se mezcla con el
+        'working' de quien detiene: son DOS filas separadas, cada una
+        con su propia duración, sin que una le reste ni le sume nada a
+        la otra."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 4, 8, 0, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_assign()
+
+            mock_now.return_value = datetime(2026, 11, 4, 8, 10, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_stop('sin_stock')
+
+            mock_now.return_value = datetime(2026, 11, 4, 9, 0, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_unstop()
+
+        Working = self.Interval.search([
+            ('claim_id', '=', claim.id), ('kind', '=', 'working'),
+        ])
+        Stopped = self.Interval.search([
+            ('claim_id', '=', claim.id), ('kind', '=', 'stopped'),
+        ])
+        self.assertEqual(len(Working), 1)
+        self.assertEqual(len(Stopped), 1)
+        # El 'working' duró 10 minutos (8:00 a 8:10, cerrado por
+        # action_stop con last_touched_dt == start_dt al no haber
+        # pesado nada) — el 'stopped' duró 50 minutos (8:10 a 9:00,
+        # cerrado por action_unstop con now()) — ninguna se contamina
+        # con la otra.
+        self.assertEqual(Working.duration_s, 10 * 60)
+        self.assertEqual(Stopped.duration_s, 50 * 60)
+
     def test_action_release_closes_working_with_now_not_last_touched(self):
         session = self._load_session_with_product()
         claim = session.product_claim_ids
