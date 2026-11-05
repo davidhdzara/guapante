@@ -42,7 +42,26 @@ class PreparationOperatorReport(models.Model):
     _auto = False
     _order = 'date desc, employee_id'
 
-    employee_id = fields.Many2one('hr.employee', string='Operario', readonly=True)
+    employee_id = fields.Many2one(
+        'hr.employee', string='Operario', readonly=True,
+        # Tarea 7 (Tech Lead/David, 2026-11-05) — regla ya
+        # implementada en el write() de guapante.preparation.day.line
+        # (done_by_employee_id): es siempre quien efectivamente pesó/
+        # cerró la línea, nunca el dueño nominal del claim. Un
+        # administrador/ayudante que pesa un producto que no es suyo
+        # (E3, cualquier operario con PIN puede) SE LLEVA el crédito de
+        # la línea acá — a propósito, ver duration_s en el Reporte 3/4/5
+        # para la otra mitad de la regla (tiempo).
+        help=(
+            'Quien efectivamente pesó/cerró esta línea — no '
+            'necesariamente el dueño asignado del producto. Si un '
+            'administrador o ayudante pesa una línea que no es suya '
+            '(cualquier operario con PIN puede), el crédito de ESTA '
+            'línea queda con quien la pesó. Ver el Reporte 3/4/5 '
+            '(Tiempo trabajado) para el tiempo: ese pesaje puntual no '
+            'suma tiempo a nadie, ni a quien pesó ni al dueño.'
+        ),
+    )
     wizard_id = fields.Many2one('guapante.preparation.day', string='Sesión', readonly=True)
     date = fields.Date(string='Jornada', readonly=True)
     product_tmpl_id = fields.Many2one('product.template', string='Producto', readonly=True)

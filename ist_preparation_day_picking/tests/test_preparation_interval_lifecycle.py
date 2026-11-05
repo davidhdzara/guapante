@@ -871,7 +871,16 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         reparto por operario sigue viniendo de done_by_employee_id en
         la línea (Reporte 1), nunca de este intervalo. El pesaje REAL
         (is_done/actual_kg) se guarda igual — el tiempo es dato
-        secundario, nunca bloquea el camino crítico."""
+        secundario, nunca bloquea el camino crítico.
+
+        Tarea 7 (Tech Lead/David, 2026-11-05) — verificación de la
+        regla de atribución ya implementada, sin cambio de código: un
+        administrador/ayudante que pesa un producto que NO es suyo no
+        suma tiempo a NADIE (ya cubierto arriba: ni B abre intervalo
+        propio, ni se le toca el de A), pero el crédito de LÍNEA
+        siempre queda con quien efectivamente la cerró — acá B, nunca
+        A ni el dueño nominal del claim. Ambas mitades de la regla se
+        prueban en la MISMA escritura, no por separado."""
         self._create_confirmed_order(qty=1.0)
         self._create_confirmed_order(qty=1.0)
         session = self._create_session()
@@ -885,11 +894,15 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
 
         self._weigh(lines[0], self.operator_b, 1.0)
 
+        # Mitad 1 — tiempo: nadie se lleva crédito por este pesaje.
         self.assertFalse(self._open_working(self.operator_b))
         interval_a.invalidate_recordset()
         self.assertEqual(interval_a.last_touched_dt, touched_before)
         self.assertEqual(interval_a.lines_done, lines_done_before)
+        # Mitad 2 — línea: el crédito es de quien efectivamente pesó
+        # (B), nunca del dueño nominal del claim (A).
         self.assertTrue(lines[0].is_done)
+        self.assertEqual(lines[0].done_by_employee_id, self.operator_b)
 
     def test_other_operator_backup_open_on_different_claim_does_not_touch_my_working(self):
         """"Entrar a otro producto bajo E3 no corta mi propio
