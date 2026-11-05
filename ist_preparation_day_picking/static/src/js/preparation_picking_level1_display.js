@@ -12,6 +12,15 @@ import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingClaimGearMenu } from "./preparation_picking_claim_menu";
 import { normalizeSearchText } from "./preparation_picking_search_utils";
+import { formatDuration } from "./preparation_picking_time_format";
+
+// Contadores L1 (lote 2B, Tech Lead 2026-11-04): un único reloj
+// compartido para TODAS las tarjetas, no un setInterval por tarjeta
+// (podrían ser decenas tiqueando a la vez). tickCount vive en
+// state solo para que las tarjetas que lo leen (getLiveCounterLabel)
+// vuelvan a renderizar cada segundo — su valor no se usa para nada
+// más que esa dependencia reactiva.
+const L1_COUNTER_TICK_MS = 1000;
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
 
@@ -87,6 +96,7 @@ export class PickingClaimsDisplay extends Component {
             // se recuerda entre sesiones — siempre arranca restringida.
             showAllClaims: false,
             loaded: false,
+            tickCount: 0,
         });
         // Punto (a), heredado de la implementación kanban: nunca tocar
         // el estado tras desmontar.
@@ -94,6 +104,13 @@ export class PickingClaimsDisplay extends Component {
         this.channel = null;
         this.onBusNotif = this.onBusNotif.bind(this);
         this.onOperationFinished = this.onOperationFinished.bind(this);
+        // Ancla del reloj compartido: performance.now() en el instante
+        // en que state.claims se llenó por última vez (loadRecords) —
+        // nunca el reloj de la tablet. getLiveCounterLabel() suma el
+        // delta desde esta ancla a claim.time_working_s/time_stopped_s
+        // (ya calculados por el servidor hasta ESE instante).
+        this._claimsLoadedPerfNow = performance.now();
+        this._tickIntervalId = null;
 
         onWillStart(async () => {
             // Punto 3 (Tech Lead, 2026-10-31): sin operario identificado
@@ -122,6 +139,9 @@ export class PickingClaimsDisplay extends Component {
         });
         onWillUnmount(() => {
             this.isDestroyed = true;
+            if (this._tickIntervalId) {
+                window.clearInterval(this._tickIntervalId);
+            }
             if (this.channel) {
                 this.busService.deleteChannel(this.channel);
                 this.busService.unsubscribe("picking_claim_updated", this.onBusNotif);
@@ -184,7 +204,62 @@ export class PickingClaimsDisplay extends Component {
             );
         }
         this.state.claims = claims;
+        this._claimsLoadedPerfNow = performance.now();
+        this._syncTickInterval();
         this.state.loaded = true;
+    }
+
+    // 3b/4 (Tech Lead, revisión de 3/4): el reloj compartido solo
+    // corre mientras haya al menos una tarjeta cuyo contador siga
+    // tiqueando de verdad — ni cuando no hay ninguna in_progress/
+    // stopped, ni cuando las que hay ya están congeladas (open_count
+    // en 0, ver _get_time_counters_by_claim). Re-renderizar ~100
+    // tarjetas cada segundo sin necesidad es el costo que esto evita
+    // en tablets modestas. Se reevalúa en cada loadRecords() (carga
+    // inicial y cada refresh por bus), nunca queda corriendo de más
+    // ni de menos tiempo del que hace falta.
+    _syncTickInterval() {
+        const needsTick = this.state.claims.some((claim) => (
+            (claim.status === "in_progress" && claim.time_working_open_count > 0)
+            || (claim.status === "stopped" && claim.time_stopped_open_count > 0)
+        ));
+        if (needsTick && !this._tickIntervalId) {
+            this._tickIntervalId = window.setInterval(() => {
+                this.state.tickCount++;
+            }, L1_COUNTER_TICK_MS);
+        } else if (!needsTick && this._tickIntervalId) {
+            window.clearInterval(this._tickIntervalId);
+            this._tickIntervalId = null;
+        }
+    }
+
+    // Contadores L1: in_progress -> time_working_s; stopped ->
+    // time_stopped_s (ambos ya calculados por get_claims_for_level1_
+    // display, sección "contadores L1" de 4/7). Se lee state.tickCount
+    // sin usarlo para nada más que registrar la dependencia reactiva —
+    // es lo que hace que esta tarjeta vuelva a pintarse cada segundo.
+    //
+    // 3b/4: el tick local se multiplica por time_working_open_count/
+    // time_stopped_open_count (cuántos intervalos abiertos de ese tipo
+    // siguen tiqueando AHORA, calculado en el servidor) en vez de
+    // sumar siempre a ritmo 1x — así: (a) un contador ya congelado por
+    // el tope de idle_timeout (open_count=0) no sigue subiendo en
+    // pantalla hasta el próximo refresh, y (b) dos operarios con
+    // 'working' abierto sobre el MISMO claim (E3, open_count=2) tiquean
+    // al doble, igual que el total real. Siempre visual — el dato que
+    // se reporta (5/7) sale siempre del servidor, nunca de este tick.
+    getLiveCounterLabel(claim) {
+        void this.state.tickCount;
+        const elapsedSincePerfLoad = (performance.now() - this._claimsLoadedPerfNow) / 1000;
+        if (claim.status === "in_progress") {
+            const openCount = claim.time_working_open_count || 0;
+            return formatDuration((claim.time_working_s || 0) + elapsedSincePerfLoad * openCount);
+        }
+        if (claim.status === "stopped") {
+            const openCount = claim.time_stopped_open_count || 0;
+            return formatDuration((claim.time_stopped_s || 0) + elapsedSincePerfLoad * openCount);
+        }
+        return "";
     }
 
     get groupedClaims() {

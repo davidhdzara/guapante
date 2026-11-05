@@ -47,6 +47,23 @@
                 <field name="is_done" string="Terminado"
                        groups="ist_preparation_day_picking.group_preparation_admin"/>
             </field>
+            <!-- Punto 5 (David/Tech Lead, 2026-11-04): David probó el
+                 prototipo del 2026-11-03 (widget agregado DEBAJO de la
+                 lista nativa) y lo rechazó — quedaba como una segunda
+                 lista, no lo que pedía (una sola lista, estilo
+                 conciliación bancaria). Ahora la View embebida
+                 REEMPLAZA visualmente a la lista nativa: va como
+                 PRIMER hijo de la página (antes de line_ids), y
+                 line_ids se deja invisible="1" (NO se borra el field
+                 — sigue cargando el o2m por si algo más lo necesita,
+                 solo se oculta de la UI). Sin <group> envolvente para
+                 que ocupe el ancho completo de la pestaña. -->
+            <field name="line_ids" position="before">
+                <widget name="preparation_day_productos_embedder"/>
+            </field>
+            <field name="line_ids" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
         </field>
     </record>
 
@@ -83,6 +100,17 @@
             <list position="attributes">
                 <attribute name="edit">1</attribute>
                 <attribute name="editable">bottom</attribute>
+                <!-- David, 2026-11-04: el o2m nativo que esta View
+                     reemplaza en la pestaña Productos nunca tuvo
+                     engranaje de "Exportar" — es una View completa
+                     (web/static/src/views/list/export_all/export_all.js,
+                     isDisplayed de export-all-menu en el registro
+                     cogMenu) que lo agrega por defecto a cualquier
+                     lista standalone, a menos que export_xlsx="false"
+                     esté en el arch. Acotado a ESTA vista (la del
+                     widget embebido) — la lista de la acción "Líneas"
+                     sigue con su Exportar normal, sin tocar. -->
+                <attribute name="export_xlsx">false</attribute>
             </list>
             <field name="daily_sequence" position="attributes">
                 <attribute name="readonly">1</attribute>

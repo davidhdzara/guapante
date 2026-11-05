@@ -10,3 +10,12 @@ from . import test_migration_grace_last_activity
 from . import test_picking_switch_hour
 from . import test_preparation_day_cron_cleanup_claims
 from . import test_preparation_settings
+from . import test_preparation_interval
+from . import test_preparation_interval_lifecycle
+from . import test_preparation_interval_cron
+from . import test_preparation_operator_report
+from . import test_preparation_product_demand_report
+from . import test_preparation_interval_report
+from . import test_preparation_reports_acl
+from . import test_preparation_reports_actions_startup
+from . import test_preparation_interval_unlink_guard

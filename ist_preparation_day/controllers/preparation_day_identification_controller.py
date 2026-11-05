@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from odoo import http
+from odoo import fields, http
 from odoo.http import request
 
 from ..models.const_preparation import (
@@ -149,6 +149,35 @@ class PreparationDayIdentificationController(http.Controller):
         employee_id = get_active_prep_operator_id(
             request.env, request.session, refresh=False,
         )
+        # Fase 2, lote B (bug encontrado por Odoo Engineer, 2026-11-04
+        # — reescritura de tests de B.2): este cierre de 'working' con
+        # 'session_closed' tiene que correr ANTES de _release_claims_
+        # for_employee, abajo. _release_claim() (el núcleo de ese
+        # método) también cierra cualquier 'working' abierto del claim
+        # que libera — pero con close_reason='released', el motivo
+        # genérico de un Liberar normal. Si esto corriera DESPUÉS
+        # (como estaba), _release_claims_for_employee ya habría cerrado
+        # el intervalo primero y este _close_open_working_for_employee
+        # encontraba el campo vacío y no hacía nada — "Cerrar sesión"
+        # casi nunca quedaba registrado como tal para un operario con
+        # un claim asignado, el motivo más específico se perdía SIEMPRE
+        # detrás de uno genérico. Cerrar esto primero (con el motivo
+        # correcto) deja que _release_claims_for_employee encuentre el
+        # 'working' ya cerrado y no tenga nada que hacer en ese frente
+        # — su propia liberación del claim (assigned_employee_id=False,
+        # etc.) no depende del orden, sigue corriendo igual.
+        if employee_id and 'guapante.preparation.interval' in request.env:
+            Interval = request.env['guapante.preparation.interval'].sudo()
+            # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04):
+            # el tiempo es dato secundario — un fallo acá nunca debe
+            # impedir que /clear_operator complete y libere el NIP
+            # (clear_active_prep_operator, abajo).
+            Interval._run_isolated(
+                f'_close_open_working_for_employee empleado={employee_id}',
+                lambda: Interval._close_open_working_for_employee(
+                    employee_id, 'session_closed', fields.Datetime.now(),
+                ),
+            )
         if employee_id and 'guapante.preparation.day.product.claim' in request.env:
             request.env[
                 'guapante.preparation.day.product.claim'

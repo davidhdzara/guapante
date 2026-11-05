@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- ============================================================
+         CRON: Cierre automático de intervalos de Picking abandonados
+         (Fase 2, commit 3/7, Tech Lead 2026-11-04). Red de seguridad
+         diaria, NO el mecanismo principal (eso lo cubren los puntos de
+         apertura/cierre del commit 2/7) — cubre el caso que el cron de
+         5 minutos de claims (ir_cron_guapante_release_abandoned_claims)
+         no alcanza: un operario que entró a Nivel 2 de un claim que
+         NUNCA llegó a 'in_progress' (ej. abrió una tarjeta Pendiente/
+         Detenida/Terminada bajo E3 sin pasar por Asignarme/Retomar) —
+         ese claim nunca entra al dominio de ese cron, así que su
+         intervalo quedaría abierto para siempre sin esto.
+
+         Corre UNA vez al día, a las 10:00 hora Bogotá (15:00 UTC, sin
+         corrimiento por horario de verano — America/Bogota no lo
+         tiene, mismo supuesto que _date_to_utc_range en
+         ist_preparation_day), nunca cada 5 minutos como el cron de
+         claims.
+
+         Regla (David/Tech Lead, 2026-11-04, commit 3b/7 — corrección
+         de la versión original de 3/7, que comparaba contra la
+         medianoche de HOY y dejaba hasta ~24h un intervalo abandonado
+         de madrugada): a las 10:00 se cierra TODO intervalo aún
+         abierto con start_dt anterior a ese instante, sin excepción
+         por jornada — "abandonada SIEMPRE a las 10:00", nunca más
+         tarde. Ver el docstring de _cron_release_abandoned_intervals()
+         para el detalle de por qué cerrar incluso el de alguien
+         trabajando a esa hora es seguro (el siguiente pesaje o entrada
+         a Nivel 2 reabre uno nuevo, no se pierde nada).
+
+         nextcall fijo a "mañana 15:00 UTC" desde que se instala/
+         actualiza este módulo — ancla el cron a las 10:00 Bogotá de
+         ahí en adelante (Odoo reprograma nextcall += interval_number
+         días sobre el valor anterior, no sobre "ahora").
+
+         noupdate="1" (mismo motivo que el cron de claims): un ajuste
+         manual de David desde Ajustes no se pisa con un -u del módulo.
+         Para cambiar la hora a mano: Ajustes → Técnico → Automatización
+         → Acciones Planificadas → "Guapante: cerrar intervalos de
+         Picking abandonados" → editar el campo "Próxima Ejecución" a
+         la fecha/hora deseada EN UTC (hora Bogotá + 5h, sin horario de
+         verano) — Odoo vuelve a sumar interval_number días sobre ese
+         valor en cada corrida siguiente, así que ese único cambio
+         reancla el cron a la nueva hora de ahí en adelante.
+         ============================================================ -->
+    <record id="ir_cron_guapante_release_abandoned_intervals" model="ir.cron">
+        <field name="name">Guapante: cerrar intervalos de Picking abandonados</field>
+        <field name="model_id" ref="model_guapante_preparation_interval"/>
+        <field name="code">model._cron_release_abandoned_intervals()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).strftime('%Y-%m-%d') + ' 15:00:00'"/>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

@@ -53,6 +53,24 @@ PREP_OPERATOR_PIN_LOCKOUT_UNTIL_KEY = 'guapante_prep_pin_lockout_until'
 PREP_OPERATOR_PIN_MAX_FAILURES = 5
 PREP_OPERATOR_PIN_LOCKOUT_SECONDS = 60
 
+# Fase 2 — reportes de Picking (Tech Lead, 2026-11-04): fecha a partir de la
+# cual los reportes 1 (operario), 3, 4 y 5 (intervalos) cuentan datos —
+# ignoran todo lo anterior (de antes de que el flujo de Picking con
+# intervalos existiera, no comparable). El reporte 2 (demanda de
+# productos) es la única excepción explícita: nunca aplica este filtro.
+#
+# Las vistas SQL de esos reportes (ist_preparation_day_picking) leen este
+# parámetro DENTRO de la propia consulta, vía un subselect contra
+# ir_config_parameter — nunca interpolando el valor desde Python en cada
+# consulta (eso sí sería un riesgo de inyección; esto es SQL 100%
+# estático que subconsulta una tabla de configuración, el mismo patrón
+# que ya usa el resto del proyecto para parámetros administrables). El
+# default '2026-11-01' vive acá Y como fallback COALESCE en cada vista,
+# para que un cambio de este valor en Ajustes se refleje sin necesidad de
+# un -u que recree las vistas.
+REPORTS_START_DATE_PARAM_KEY = 'ist_preparation_day.reports_start_date'
+REPORTS_START_DATE_DEFAULT = '2026-11-01'
+
 
 def get_idle_timeout_seconds(env):
     """Lee IDLE_TIMEOUT_PARAM_KEY (segundos) — 0 significa sin bloqueo.

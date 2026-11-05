@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import odoo.sql_db as sql_db
@@ -63,6 +63,7 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             'is_guapante_prep_operator': True,
             'l10n_co_ne_payment_method': '10',
         })
+        self.Interval = self.env['guapante.preparation.interval']
 
     def _request_as(self, employee):
         """Devuelve un mock de `request` con ese operario ya identificado
@@ -622,16 +623,26 @@ class TestPreparationDayProductClaim(TestPreparationDay):
         """El Nivel 1 tiene que enterarse de un pesaje hecho en el kanban
         de líneas, no solo de las acciones del propio claim — si no, los
         demás tablets siguen viendo 'En progreso' y el contador de
-        pendientes viejo hasta recargar a mano."""
+        pendientes viejo hasta recargar a mano. Desde el fix de Punto 5
+        (2026-11-04) también manda 'reload' para que el header/stat
+        buttons del form se refresquen cuando la línea se edita desde
+        la View embebida de la pestaña Productos (ver
+        _notify_picking_claims_bus / el bloque de 'reload' en write())."""
         session = self._load_session_with_product()
         BusModel = self.env.registry['bus.bus']
         with patch.object(BusModel, '_sendone') as mock_sendone:
             session.line_ids.with_context(skip_auto_save=True).write({
                 'is_done': True, 'actual_kg': 2.0,
             })
-        mock_sendone.assert_called_once_with(
+        self.assertEqual(mock_sendone.call_count, 2)
+        mock_sendone.assert_any_call(
             f'guapante_preparation_day-{session.id}',
             'picking_claim_updated',
+            {},
+        )
+        mock_sendone.assert_any_call(
+            f'guapante_preparation_day-{session.id}',
+            'reload',
             {},
         )
 
@@ -649,7 +660,50 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             session.line_ids.with_context(skip_auto_save=True).write({
                 'is_done': True, 'actual_kg': 1.0,
             })
-        mock_sendone.assert_called_once()
+        # 2 líneas de la MISMA sesión -> 2 eventos (uno
+        # 'picking_claim_updated', uno 'reload'), no 4 — uno por sesión
+        # afectada por cada tipo de evento, nunca uno por línea.
+        self.assertEqual(mock_sendone.call_count, 2)
+
+    def test_line_write_in_picking_flow_skips_reload_bus(self):
+        """Acotado (Tech Lead, 2026-11-04): el tablet de Picking no tiene
+        el form de la sesión abierto — no necesita 'reload', solo
+        'picking_claim_updated' (que ya escuchan L1/L2). Sin este
+        filtro, 'reload' se disparaba en CADA is_done de cualquier
+        operario desde Picking (~700/noche) sin que nadie ahí lo
+        necesitara; ahora solo sale cuando la escritura viene de fuera
+        del flujo de Picking (ver el test de arriba, que usa
+        skip_auto_save, NO guapante_picking_flow)."""
+        session = self._load_session_with_product()
+        line = session.line_ids[0]
+        LINE_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day_picking.models'
+            '.preparation_day_line.request'
+        )
+        # El write() de CORE (ist_preparation_day/models/preparation_day.py,
+        # track_kg) hace su PROPIO chequeo de operario vigente
+        # (get_active_prep_operator_id con refresh=True) usando SU
+        # PROPIO `request` importado — un módulo distinto del de
+        # preparation_day_line.py, así que hace falta parchear los dos
+        # (mismo patrón que REQUEST_PATCH_TARGET_LINE/_PARENT en
+        # test_preparation_day_picking_fase_d.py) o el write() real
+        # explota con "Tu sesión de operario expiró por inactividad."
+        PARENT_REQUEST_PATCH_TARGET = (
+            'odoo.addons.ist_preparation_day.models.preparation_day.request'
+        )
+        mock_request = self._request_as(self.operator_a)
+        BusModel = self.env.registry['bus.bus']
+        with patch(LINE_REQUEST_PATCH_TARGET, mock_request), \
+                patch(PARENT_REQUEST_PATCH_TARGET, mock_request):
+            with patch.object(BusModel, '_sendone') as mock_sendone:
+                line.with_context(guapante_picking_flow=True).write({
+                    'is_done': True, 'actual_kg': 2.0,
+                })
+        mock_sendone.assert_called_once_with(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated',
+            {},
+        )
 
     # ── Visibilidad entre operarios y abandono (plan f1, 2026-10-31) ──
 
@@ -1244,3 +1298,143 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             'cuán viejo sea su write_date',
         )
         self.assertEqual(claim.stop_reason, 'sin_stock')
+
+    # ── Contadores L1 de tiempo (Fase 2, commit 4/7, Tech Lead
+    #    2026-11-04) ──
+    #
+    # Los intervalos de estos tests se crean por ORM directo (mismo
+    # criterio que test_preparation_interval_cron.py) porque necesitan
+    # start_dt/last_touched_dt fijos sin depender de mockear
+    # fields.Datetime.now() a través de un flujo completo de acciones
+    # — son tests de caja blanca sobre la AGREGACIÓN
+    # (_get_time_counters_by_claim), no sobre cómo se abren/cierran los
+    # intervalos (eso ya lo cubren 2/7 y 3/7).
+
+    def _create_interval(self, claim, kind, employee=None, start_dt=None,
+                          last_touched_dt=None, end_dt=None, duration_s=None):
+        vals = {
+            'wizard_id': claim.wizard_id.id,
+            'claim_id': claim.id,
+            'employee_id': employee.id if employee else False,
+            'kind': kind,
+            'start_dt': start_dt,
+            'last_touched_dt': last_touched_dt or start_dt,
+        }
+        if end_dt is not None:
+            vals['end_dt'] = end_dt
+            vals['duration_s'] = duration_s
+        return self.Interval.sudo().create(vals)
+
+    def test_level1_time_counters_working_uncapped_like_stopped(self):
+        """Fase 2, lote B ("sin tope L1", Tech Lead 2026-11-04): el
+        tope de idle_timeout sobre 'working' se eliminó — se comporta
+        exactamente igual que 'stopped', siempre tiqueando sin recorte
+        mientras el servidor no lo haya cerrado. time_working_s suma
+        el tiempo transcurrido COMPLETO de cada 'working' abierto
+        (nunca el tiempo recortado al "margen de gracia" que existía
+        antes), más lo que ya hay cerrado. Reloj fijo (nunca el real)
+        — esta cuenta ya no tiene ningún tope que neutralice el drift
+        de ejecutar el test en un instante real distinto."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = datetime(2026, 11, 4, 20, 0, 0)
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = now
+            # Cerrado: cuenta tal cual, sin tope ni cálculo.
+            self._create_interval(
+                claim, 'working', employee=self.operator_a,
+                start_dt=now - timedelta(seconds=1000),
+                end_dt=now - timedelta(seconds=880), duration_s=120,
+            )
+            # Operario A: abierto hace 600s, última actividad hace
+            # 400s — bajo el diseño anterior esto se congelaba a los
+            # 300s (500s); ahora cuenta el tiempo COMPLETO: 600s.
+            self._create_interval(
+                claim, 'working', employee=self.operator_a,
+                start_dt=now - timedelta(seconds=600),
+                last_touched_dt=now - timedelta(seconds=400),
+            )
+            # Operario B: abierto hace 200s, última actividad hace 50s
+            # — ya estaba dentro del margen de gracia antes, así que
+            # el resultado para B no cambia (200s).
+            self._create_interval(
+                claim, 'working', employee=self.operator_b,
+                start_dt=now - timedelta(seconds=200),
+                last_touched_dt=now - timedelta(seconds=50),
+            )
+
+            visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        self.assertEqual(by_id[claim.id]['time_working_s'], 120 + 600 + 200)
+        self.assertEqual(by_id[claim.id]['time_stopped_s'], 0)
+        # Los dos siguen tiqueando siempre — sin tope, nunca se
+        # congelan (antes A hubiera dado 0 acá, ya congelado).
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 2)
+
+    def test_level1_time_counters_working_uncapped_regardless_of_idle_timeout_param(self):
+        """get_idle_timeout_seconds ya NO influye en esta cuenta — el
+        mismo escenario da el mismo resultado sin tope tanto con el
+        parámetro en 0 ("sin bloqueo") como en un valor positivo (el
+        default de producción, 300s): la eliminación del tope es
+        incondicional, no depende de este parámetro (a diferencia del
+        diseño anterior, donde sí lo decidía)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = datetime(2026, 11, 4, 20, 0, 0)
+
+        def _scenario():
+            self.Interval.sudo().search([('claim_id', '=', claim.id)]).unlink()
+            with patch('odoo.fields.Datetime.now') as mock_now:
+                mock_now.return_value = now
+                self._create_interval(
+                    claim, 'working', employee=self.operator_a,
+                    start_dt=now - timedelta(seconds=600),
+                    last_touched_dt=now - timedelta(seconds=400),
+                )
+                visible = self.Claim.get_claims_for_level1_display(session.id)
+            return {c['id']: c for c in visible}[claim.id]
+
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '0',
+        )
+        result_zero = _scenario()
+
+        # 100s < los 400s transcurridos desde la última actividad: bajo
+        # el diseño ANTERIOR esto sí hubiera topado (300s, no 600) —
+        # un valor positivo que de verdad distingue el comportamiento
+        # viejo del nuevo, no uno que coincida por casualidad.
+        self.env['ir.config_parameter'].sudo().set_param(
+            IDLE_TIMEOUT_PARAM_KEY, '100',
+        )
+        result_positive = _scenario()
+
+        for result in (result_zero, result_positive):
+            self.assertEqual(result['time_working_s'], 600)
+            self.assertEqual(result['time_working_open_count'], 1)
+
+    def test_level1_time_counters_open_count_counts_every_still_ticking_worker(self):
+        """Contraparte de test_level1_time_counters_sum_two_operators_
+        on_same_claim_capped: acá los DOS operarios están dentro del
+        margen de gracia (ninguno congelado) — open_count debe ser 2,
+        no 1, para que el cronómetro L1 tiquee al doble de la velocidad
+        real (E3, punto 3 de Tech Lead en la revisión de 3/4)."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        now = fields.Datetime.now()
+
+        self._create_interval(
+            claim, 'working', employee=self.operator_a,
+            start_dt=now - timedelta(seconds=200),
+            last_touched_dt=now - timedelta(seconds=50),
+        )
+        self._create_interval(
+            claim, 'working', employee=self.operator_b,
+            start_dt=now - timedelta(seconds=100),
+            last_touched_dt=now - timedelta(seconds=10),
+        )
+
+        visible = self.Claim.get_claims_for_level1_display(session.id)
+        by_id = {c['id']: c for c in visible}
+
+        self.assertEqual(by_id[claim.id]['time_working_open_count'], 2)

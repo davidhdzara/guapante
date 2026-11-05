@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Fase 2, commit 5/7 (Tech Lead, 2026-11-04) — modelo compartido
+         de los Reportes 3 ("Tiempo por producto"), 4 ("Tiempo por
+         kilo") y 5 ("Tiempo por caja"): UNA vista de cada tipo
+         (lista/pivote/gráfico/búsqueda), SIN agrupación/medida fijada
+         en el arch — cada acción de abajo fija su propio default vía
+         contexto (pivot_row_groupby/pivot_column_groupby/pivot_measures
+         para pivote/gráfico, search_default_* para lista), porque los
+         3 menús comparten vista pero NUNCA comparten default (ver
+         preparation_interval_report.py). Menuitems + ACL van en 6/7. -->
+
+    <record id="view_preparation_interval_report_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.list</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <list string="Tiempo de Picking" create="false" edit="false">
+                <field name="date"/>
+                <field name="employee_id"/>
+                <field name="product_tmpl_id"/>
+                <field name="kind"/>
+                <field name="duration_s" sum="Tiempo (s)"/>
+                <field name="duration_avg_s" avg="Tiempo medio (s)"/>
+                <field name="time_to_first_weigh_s" avg="Tiempo hasta 1er pesaje (s)" optional="hide"/>
+                <field name="time_without_lines_s" sum="Tiempo sin líneas (s)" optional="hide"/>
+                <field name="kg_done" sum="Kg" optional="hide"/>
+                <field name="lines_done" sum="Líneas" optional="hide"/>
+                <field name="time_per_kg_s" avg="Seg/kg" optional="hide"/>
+                <field name="time_per_box_s" avg="Seg/caja" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_preparation_interval_report_pivot" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.pivot</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Tiempo de Picking" disable_linking="true">
+                <field name="duration_s" type="measure"/>
+                <field name="duration_avg_s" type="measure"/>
+                <field name="time_to_first_weigh_s" type="measure"/>
+                <field name="time_without_lines_s" type="measure"/>
+                <field name="kg_done" type="measure"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_kg_s" type="measure"/>
+                <field name="time_per_box_s" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_preparation_interval_report_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo de Picking" type="bar">
+                <field name="product_tmpl_id"/>
+                <field name="duration_s" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_preparation_interval_report_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.search</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <search string="Tiempo de Picking">
+                <field name="employee_id"/>
+                <field name="product_tmpl_id"/>
+                <filter name="filter_working" string="Trabajando"
+                        domain="[('kind', '=', 'working')]"/>
+                <filter name="filter_stopped" string="Detenido"
+                        domain="[('kind', '=', 'stopped')]"/>
+                <separator/>
+                <filter name="group_product" string="Producto"
+                        context="{'group_by': 'product_tmpl_id'}"/>
+                <filter name="group_employee" string="Operario"
+                        context="{'group_by': 'employee_id'}"/>
+                <filter name="group_kind" string="Tipo"
+                        context="{'group_by': 'kind'}"/>
+                <filter name="group_date_day" string="Jornada (día)"
+                        context="{'group_by': 'date:day'}"/>
+                <filter name="group_date_month" string="Jornada (mes)"
+                        context="{'group_by': 'date:month'}"/>
+                <filter name="group_date_year" string="Jornada (año)"
+                        context="{'group_by': 'date:year'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Reporte 3 — "Tiempo por producto": filas=producto, columnas=
+         working/stopped; jornada y operario quedan disponibles como
+         filtro manual (filter_*/group_*), nunca el default. -->
+    <record id="action_preparation_interval_report_3" model="ir.actions.act_window">
+        <field name="name">Tiempo por producto</field>
+        <field name="res_model">guapante.preparation.interval.report</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                El tiempo "En proceso" (working) cuenta desde que el
+                operario entra al producto hasta que termina la
+                última caja o cambia de producto — "← Productos" ya
+                no cierra el intervalo, así que incluye cualquier
+                rato que el operario navegó fuera de Nivel 2 sin
+                terminar.
+            </p>
+        </field>
+        <field name="context">{
+            'search_default_group_product': 1,
+            'search_default_group_kind': 1,
+            'pivot_row_groupby': ['product_tmpl_id'],
+            'pivot_column_groupby': ['kind'],
+            'pivot_measures': ['duration_s', 'duration_avg_s', 'time_to_first_weigh_s', 'time_without_lines_s'],
+        }</field>
+    </record>
+
+    <!-- Reporte 4 — "Tiempo por kilo": SOLO visitas working con
+         lines_done>0 y kg_done>0 (Tech Lead) — fuera de ahí la razón
+         no tiene denominador real. Filas: operario × producto. -->
+    <record id="action_preparation_interval_report_4" model="ir.actions.act_window">
+        <field name="name">Tiempo por kilo</field>
+        <field name="res_model">guapante.preparation.interval.report</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Duración "working" entre tiempo despachado (kg) —
+                incluye cualquier rato que el operario navegó fuera
+                de Nivel 2 ("← Productos" ya no cierra el intervalo),
+                así que un tiempo por kilo alto puede reflejar
+                navegación, no solo trabajo real.
+            </p>
+        </field>
+        <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
+        <field name="context">{
+            'search_default_group_employee': 1,
+            'search_default_group_product': 1,
+            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
+            'pivot_measures': ['time_per_kg_s'],
+        }</field>
+    </record>
+
+    <!-- Reporte 5 — "Tiempo por caja": igual que 4 pero por línea
+         (lines_done>0; no exige kg_done, la razón acá no lo usa). -->
+    <record id="action_preparation_interval_report_5" model="ir.actions.act_window">
+        <field name="name">Tiempo por caja</field>
+        <field name="res_model">guapante.preparation.interval.report</field>
+        <field name="view_mode">pivot,list,graph</field>
+        <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Duración "working" entre cajas terminadas — incluye
+                cualquier rato que el operario navegó fuera de Nivel
+                2 ("← Productos" ya no cierra el intervalo), así que
+                un tiempo por caja alto puede reflejar navegación, no
+                solo trabajo real.
+            </p>
+        </field>
+        <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
+        <field name="context">{
+            'search_default_group_employee': 1,
+            'search_default_group_product': 1,
+            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
+            'pivot_measures': ['time_per_box_s'],
+        }</field>
+    </record>
+</odoo>

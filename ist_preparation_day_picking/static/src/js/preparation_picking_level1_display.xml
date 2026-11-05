@@ -106,11 +106,23 @@
                                     </ul>
                                     <div class="card-footer d-flex justify-content-between align-items-center"
                                          t-on-click.stop="() => {}">
+                                        <!-- Contadores L1 (lote 2B, Tech Lead 2026-11-04): solo
+                                             in_progress/stopped tiquean (los únicos con un
+                                             intervalo abierto) — pending/done quedan exactamente
+                                             como antes (sin este <small>, un solo hijo en el
+                                             footer, misma alineación de siempre). text-muted,
+                                             sin badges de color. getLiveCounterLabel() lee
+                                             state.tickCount para refrescar con el reloj
+                                             compartido de Nivel 1, no un timer por tarjeta. -->
+                                        <small t-if="status === 'in_progress' or status === 'stopped'"
+                                               class="text-muted" t-esc="getLiveCounterLabel(claim)"/>
                                         <button t-if="status === 'pending'" type="button" class="btn btn-primary" t-on-click="() => this.onAssign(claim)">Asignarme</button>
                                         <button t-if="status === 'in_progress' and claim.is_mine" type="button" class="btn btn-secondary" t-on-click="() => this.onContinue(claim)">Continuar</button>
-                                        <button t-if="status === 'stopped'" type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
                                         <span t-if="status === 'done'"/>
-                                        <button t-if="status === 'stopped'" type="button" class="btn btn-outline-secondary" t-on-click="() => this.onUnstop(claim)">Liberar</button>
+                                        <div t-if="status === 'stopped'" class="d-flex gap-2">
+                                            <button type="button" class="btn btn-primary" t-on-click="() => this.onResume(claim)">Retomar</button>
+                                            <button type="button" class="btn btn-outline-secondary" t-on-click="() => this.onUnstop(claim)">Liberar</button>
+                                        </div>
                                         <!-- Puntos 3/8 (David/Tech Lead, 2026-11-03): el engranaje
                                              (Detener/Liberar/Desechar) ya no exige claim.is_mine —
                                              cualquier operario con NIP vigente puede Detener o

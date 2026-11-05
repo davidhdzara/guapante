@@ -296,9 +296,21 @@ class PreparationDayProductClaim(models.Model):
           alguien puede buscar un cliente cuyo pedido ya se despachó. No
           se guarda en el modelo (se recalcula en cada lectura, igual que
           touched_by_me) — el dataset es el de una sola sesión.
-        Ninguno sale de un `.read()` — los tres se calculan acá con la
-        MISMA consulta agrupada sobre las líneas del lote (ver más
-        abajo), nunca una consulta nueva por tarjeta.
+        - `time_working_s`/`time_stopped_s` (contadores L1, Fase 2,
+          commit 4/7, Tech Lead 2026-11-04): tiempo total en_proceso/
+          detenido de este producto en la sesión, en segundos — ver
+          _get_time_counters_by_claim() en preparation_interval.py para
+          el tope de un 'working' todavía abierto y por qué un
+          'stopped' abierto no lleva tope.
+        - `time_working_open_count`/`time_stopped_open_count` (lote 2B,
+          3b/4): cuántos intervalos abiertos de cada tipo siguen
+          tiqueando AHORA (no congelados por el tope de idle_timeout)
+          — el cronómetro L1 del cliente multiplica su tick local por
+          esto en vez de sumar siempre a ritmo 1x.
+        Ninguno sale de un `.read()` — se calculan acá con la MISMA
+        consulta agrupada sobre las líneas del lote (ver más abajo) o
+        sobre los intervalos del lote (_get_time_counters_by_claim),
+        nunca una consulta nueva por tarjeta.
         """
         self._check_picking_access()
         Claims = self.sudo().search([('wizard_id', '=', wizard_id)])
@@ -322,6 +334,14 @@ class PreparationDayProductClaim(models.Model):
         my_done_tmpl_ids = set()
         last_finisher_by_tmpl = {}
         customer_names_by_tmpl = {}
+        # Contadores L1 de tiempo (Fase 2, commit 4/7, Tech Lead
+        # 2026-11-04): UNA sola consulta agrupada más (igual criterio
+        # que la de abajo) — nunca una por tarjeta. Ver el docstring de
+        # _get_time_counters_by_claim para el tope de 'working' abierto
+        # y por qué 'stopped' abierto no lleva tope.
+        time_counters_by_claim = self.env[
+            'guapante.preparation.interval'
+        ]._get_time_counters_by_claim(wizard_id)
         all_lines = self.env['guapante.preparation.day.line'].sudo().search_read(
             domain=[('wizard_id', '=', wizard_id)],
             fields=[
@@ -373,6 +393,19 @@ class PreparationDayProductClaim(models.Model):
             record['customer_names_summary'] = ', '.join(
                 sorted(customer_names_by_tmpl.get(tmpl_id, set()))
             )
+            counters = time_counters_by_claim.get(record['id'], {
+                'time_working_s': 0, 'time_stopped_s': 0,
+                'time_working_open_count': 0, 'time_stopped_open_count': 0,
+            })
+            record['time_working_s'] = counters['time_working_s']
+            record['time_stopped_s'] = counters['time_stopped_s']
+            # lote 2B, 3b/4: cuántos intervalos abiertos de cada tipo
+            # siguen tiqueando AHORA mismo — el cronómetro L1 del
+            # cliente multiplica su tick local por esto en vez de
+            # sumar siempre a ritmo 1x (ver docstring de
+            # _get_time_counters_by_claim).
+            record['time_working_open_count'] = counters['time_working_open_count']
+            record['time_stopped_open_count'] = counters['time_stopped_open_count']
         return records
 
     # ── Acciones ──
@@ -452,6 +485,17 @@ class PreparationDayProductClaim(models.Model):
             'assigned_date': now,
             'last_activity': now,
         })
+        # Fase 2, lote B (Tech Lead, 2026-11-04): Asignarme es un
+        # momento en que el operario pasa a ser dueño REAL del claim —
+        # abre el 'working' acá mismo, con el mismo `now` de arriba
+        # (nunca un fields.Datetime.now() nuevo). _run_isolated: el
+        # tiempo es dato secundario, un fallo acá nunca debe impedir
+        # quedarse asignado.
+        Interval = self.env['guapante.preparation.interval']
+        Interval._run_isolated(
+            f'_open_working claim={self.id} empleado={employee_id}',
+            lambda: Interval._open_working(self, employee_id, now),
+        )
         self._notify_bus()
         return self.action_open_lines_kanban()
 
@@ -504,6 +548,26 @@ class PreparationDayProductClaim(models.Model):
         self.wizard_id.sudo().message_post(
             body=f"Retomado — {self.product_tmpl_id.name}: por {Employee.name}.",
         )
+        # Fase 2, lote B (Tech Lead, 2026-11-04): cierre del 'stopped'
+        # (bug encontrado por Odoo Engineer — a diferencia de
+        # action_unstop(), esto no lo cerraba, quedaba huérfano para
+        # siempre: el cron de abandono de claims solo mira status=
+        # 'in_progress') + apertura del 'working' del nuevo dueño, EN
+        # UN SOLO _run_isolated con el MISMO `now` para ambas
+        # escrituras — end_dt del 'stopped' == start_dt del 'working',
+        # sin hueco ni solape entre los dos. end_dt=now() (acción
+        # explícita del operario) — nunca last_touched_dt, que en un
+        # 'stopped' es siempre igual a start_dt (ver el campo en
+        # preparation_interval.py).
+        Interval = self.env['guapante.preparation.interval']
+
+        def _close_stopped_and_open_working():
+            Interval._close_open_for_claim(self, 'stopped', 'resumed', now)
+            Interval._open_working(self, employee_id, now)
+
+        Interval._run_isolated(
+            f'action_resume claim={self.id}', _close_stopped_and_open_working,
+        )
         self._notify_bus()
         return self.action_open_lines_kanban()
 
@@ -555,6 +619,24 @@ class PreparationDayProductClaim(models.Model):
             'stop_reason': False,
             'stopped_by_employee_id': False,
         })
+        # Fase 2: cierra el intervalo 'stopped' de este producto — y,
+        # por si alguien entró a verlo bajo E3 (sin ownership, Nivel 2
+        # no exige que el claim esté 'in_progress'), también cualquier
+        # 'working' que hubiera quedado abierto ahí. Liberar deja el
+        # producto disponible para cualquiera; el contexto de quien
+        # estuviera adentro queda cerrado con este evento.
+        now = fields.Datetime.now()
+        Interval = self.env['guapante.preparation.interval']
+
+        def _close_stopped_and_working():
+            Interval._close_open_for_claim(self, 'stopped', 'released', now)
+            Interval._close_open_for_claim(self, 'working', 'released', now)
+        # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
+        # tiempo es dato secundario — un fallo acá nunca debe tumbar
+        # la liberación misma (ya escrita arriba).
+        Interval._run_isolated(
+            f'action_unstop claim={self.id}', _close_stopped_and_working,
+        )
         reason_label = dict(STOP_REASONS).get(
             locked_stop_reason, locked_stop_reason,
         )
@@ -615,20 +697,41 @@ class PreparationDayProductClaim(models.Model):
         self._release_claim()
         return True
 
-    def _release_claim(self) -> None:
+    def _release_claim(self, close_reason='released', use_last_touched=False) -> None:
         """Núcleo de la liberación — SIN `request`, sin validar ownership
         (eso ya lo hizo el llamador, que sabe POR QUÉ libera): comparte el
         mismo invariante (estado limpio + aviso de bus) entre action_release()
         (el propio operario), _release_claims_for_employee() ("Cerrar") y el
         cron de abandono (plan f1, Tech Lead 2026-10-31) — un solo lugar
         que mantener si algún día esto necesita tocar algo más (ej. Fase 2
-        de tiempos)."""
+        de tiempos).
+
+        Fase 2 (condición (b), Tech Lead 2026-11-04): action_release()
+        y _release_claims_for_employee() son SIEMPRE explícitos (alguien
+        clicó Liberar, o Cerrar sesión) — usan los defaults
+        (close_reason='released', end_dt=now()). El cron de abandono de
+        claims NO es explícito — pasa close_reason='idle',
+        use_last_touched=True, para que el intervalo cierre con su
+        propio last_touched_dt (última actividad real), nunca con la
+        hora en que corrió el cron."""
         self.ensure_one()
         self.write({
             'assigned_employee_id': False,
             'assigned_date': False,
             'last_activity': False,
         })
+        end_dt = None if use_last_touched else fields.Datetime.now()
+        Interval = self.env['guapante.preparation.interval']
+        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
+        # dato secundario — un fallo acá nunca debe tumbar la
+        # liberación del claim (ya escrita arriba) ni el aviso de bus
+        # de abajo.
+        Interval._run_isolated(
+            f'_close_open_for_claim claim={self.id} {close_reason}',
+            lambda: Interval._close_open_for_claim(
+                self, 'working', close_reason, end_dt,
+            ),
+        )
         self._notify_bus()
 
     def _effective_last_activity(self):
@@ -690,12 +793,38 @@ class PreparationDayProductClaim(models.Model):
                 'nadie — actualiza la pantalla.'
             )
         Employee = self.env['hr.employee'].sudo().browse(employee_id)
+        now = fields.Datetime.now()
         self.write({
             'assigned_employee_id': False,
             'assigned_date': False,
             'stop_reason': reason,
             'stopped_by_employee_id': employee_id,
         })
+        # Fase 2: Detener cierra el trabajo de TODOS los que tuvieran
+        # Nivel 2 abierto sobre este producto en este instante (end_dt=
+        # now(), acción explícita que le pone fin al trabajo de
+        # cualquiera ahí, sea o no quien detiene) y abre un 'stopped'
+        # informativo (employee_id = quien detiene, no es el reloj de
+        # nadie — ver docstring del modelo).
+        Interval = self.env['guapante.preparation.interval']
+
+        def _close_working_and_open_stopped():
+            Interval._close_open_for_claim(self, 'working', 'stopped', now)
+            Interval.sudo().create({
+                'wizard_id': self.wizard_id.id,
+                'claim_id': self.id,
+                'employee_id': employee_id,
+                'kind': 'stopped',
+                'stop_reason': reason,
+                'start_dt': now,
+                'last_touched_dt': now,
+            })
+        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
+        # dato secundario — un fallo acá nunca debe tumbar el Detener
+        # mismo (ya escrito arriba, stop_reason/stopped_by_employee_id).
+        Interval._run_isolated(
+            f'action_stop claim={self.id}', _close_working_and_open_stopped,
+        )
         cross_operator_note = ''
         if current_owner_id != employee_id:
             Owner = self.env['hr.employee'].sudo().browse(current_owner_id)
@@ -789,9 +918,43 @@ class PreparationDayProductClaim(models.Model):
         action.currentController.action.context
         (preparation_picking_idle_watcher.js) — mismo motivo que en
         action_view_product_claims (preparation_day.py).
+
+        Fase 2, lote B (Tech Lead, 2026-11-04 — rediseño de
+        continuidad): YA NO es el punto de apertura general — ese rol
+        pasó a action_assign()/action_resume() (el momento real en que
+        alguien se vuelve dueño del claim), justamente para que salir
+        y volver a entrar a Nivel 2 (L2→L1→L2) NUNCA reinicie el
+        cronómetro — ya no hay nada que (re)abrir en el camino normal,
+        porque nada lo cierra al salir tampoco (ver preparation_
+        picking_level2_display.js, onClickBackToLevel1).
+
+        Excepción acotada (Tech Lead, revisión de B.2a): si el ACTOR
+        es el DUEÑO actual (`assigned_employee_id == actor`, status
+        'in_progress') y no tiene un 'working' abierto en ESTE claim,
+        lo abre acá — cubre al dueño reentrando sobre un claim cuyo
+        intervalo ya se cerró por otra vía (cron de intervalos/cierre
+        de sesión) mientras el claim seguía vivo, y el caso de
+        migración (un claim que ya estaba 'in_progress' ANTES de
+        desplegar este lote nunca tuvo intervalo). Nunca duplica si ya
+        hay uno abierto (_open_working reutiliza). Cualquier otro caso
+        (no es el dueño, o el claim no está 'in_progress' — mirar/
+        corregir un producto pendiente/detenido/terminado bajo E3) NO
+        abre ni cierra nada: ver esos casos, es el respaldo de
+        _handle_weighing() el que decide si un pesaje ahí cuenta.
         """
         self.ensure_one()
         self._check_picking_access()
+        employee_id = self._require_active_operator()
+        if self.status == 'in_progress' and self.assigned_employee_id.id == employee_id:
+            Interval = self.env['guapante.preparation.interval']
+            # _run_isolated (Tech Lead, revisión de 4/7, 2026-11-04): el
+            # tiempo es dato secundario — un fallo de _open_working nunca
+            # debe impedir entrar a Nivel 2 (lo que este método devuelve
+            # abajo).
+            Interval._run_isolated(
+                f'_open_working claim={self.id} empleado={employee_id}',
+                lambda: Interval._open_working(self, employee_id),
+            )
         return {
             'type': 'ir.actions.client',
             'tag': 'guapante_picking_level2',
@@ -801,6 +964,47 @@ class PreparationDayProductClaim(models.Model):
                 'guapante_picking_flow': True,
                 'claim_id': self.id,
             },
+        }
+
+    def get_my_open_interval(self) -> dict:
+        """Fase 2 (lote 2B, Tech Lead 2026-11-04) — lectura de solo
+        consulta para el cronómetro de Nivel 2: fuente de verdad del
+        start_dt del intervalo 'working' ABIERTO de este operario
+        sobre este claim, más la hora del servidor en el mismo
+        instante, para que el cliente calcule el tiempo transcurrido
+        sin depender del reloj de la tablet. UN solo mecanismo tanto
+        para la carga inicial de Nivel 2 como para cada
+        resincronización (bus 'reload', visibilitychange) — nunca dos
+        caminos distintos para leer lo mismo.
+
+        refresh=False (mismo criterio que _compute_is_mine arriba):
+        una resincronización pasiva en segundo plano no debe extender
+        la ventana de inactividad del operario — si lo hiciera, dejar
+        la pestaña abierta nunca vencería la sesión.
+
+        Nunca escribe nada. Si no hay intervalo abierto (ya se cerró
+        por otra vía, o el operario solo entró a mirar sin pesar),
+        start_dt viene en False — el cronómetro del cliente se queda
+        en 00:00 sin tiquear, nunca inventa un inicio."""
+        self.ensure_one()
+        self._check_picking_access()
+        employee_id = (
+            get_active_prep_operator_id(self.env, request.session, refresh=False)
+            if request else False
+        )
+        server_now = fields.Datetime.now()
+        if not employee_id:
+            return {'start_dt': False, 'server_now': server_now}
+        Interval = self.env['guapante.preparation.interval']
+        open_interval = Interval.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('claim_id', '=', self.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ], limit=1)
+        return {
+            'start_dt': open_interval.start_dt if open_interval else False,
+            'server_now': server_now,
         }
 
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,
@@ -940,7 +1144,12 @@ class PreparationDayProductClaim(models.Model):
                     ])
                     employee_name = claim.assigned_employee_id.name
                     product_name = claim.product_tmpl_id.name
-                    claim._release_claim()
+                    # Fase 2 (condición (b), Tech Lead 2026-11-04): este
+                    # cron NO es un cierre explícito — el intervalo
+                    # 'working' que pudiera estar abierto en este claim
+                    # cierra con su propio last_touched_dt, nunca con
+                    # la hora en que corrió el cron.
+                    claim._release_claim(close_reason='idle', use_last_touched=True)
                     claim.wizard_id.sudo().message_post(
                         body=(
                             f'Producto {product_name} liberado '

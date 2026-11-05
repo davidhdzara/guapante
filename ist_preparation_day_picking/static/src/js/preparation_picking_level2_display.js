@@ -12,6 +12,7 @@ import { PickingOperatorHeader } from "./preparation_picking_operator_header";
 import { PickingInstallMenu } from "./preparation_picking_install_menu";
 import { PickingWeightInput } from "./preparation_picking_weight_input";
 import { PickingNoteDialog } from "./preparation_picking_note_dialog";
+import { PickingVisitTimer } from "./preparation_picking_visit_timer";
 import { matchesLineSearch } from "./preparation_picking_search_utils";
 
 const PICKING_APP_ACTION_XMLID = "ist_preparation_day_picking.action_picking_app";
@@ -44,7 +45,9 @@ const RELOAD_DEBOUNCE_MS = 400;
 // adivinar qué producto era.
 export class PickingLinesDisplay extends Component {
     static template = "ist_preparation_day_picking.PickingLinesDisplay";
-    static components = { PickingOperatorHeader, PickingInstallMenu, PickingWeightInput };
+    static components = {
+        PickingOperatorHeader, PickingInstallMenu, PickingWeightInput, PickingVisitTimer,
+    };
     static props = { "*": true };
 
     setup() {
@@ -324,8 +327,8 @@ export class PickingLinesDisplay extends Component {
         this.state.foldedDone = !this.state.foldedDone;
     }
 
-    onClickBackToLevel1() {
-        this._backToLevel1();
+    async onClickBackToLevel1() {
+        await this._backToLevel1();
     }
 
     async _handleError(error) {
