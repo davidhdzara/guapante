@@ -9,8 +9,13 @@ siempre porque nada la refleja. Cubre el hook liviano de
 stock_move.py (_action_done → needs_inventory_mirror) y el cron
 _cron_mirror_inventory_to_preparation (preparation_day.py).
 
-NOTA (2026-11-05): escrito mientras staging_dev estaba inalcanzable
-— NO CORRIDO TODAVÍA. Revisar con la suite real antes de aprobar.
+NOTA (2026-11-05): corrido contra la suite real en staging_dev — 2
+fallas encontradas y corregidas: (1) el hook de stock_move.py
+excluía is_done=True, matando la comparación de la decisión (c); (2)
+el test de "validar en 0 desde Inventario" asumía un camino que Odoo
+bloquea (_sanity_check rechaza validar un traslado sin cantidades
+reservadas/pickeadas) — no hay tablet-equivalente de E7 para un PICK
+validado directo desde Inventario, se eliminó ese test.
 """
 from unittest.mock import patch
 
@@ -90,21 +95,6 @@ class TestMirrorInventoryToPreparation(TestPreparationDay):
         self.assertFalse(line.done_by_employee_id)
         self.assertFalse(line.needs_inventory_mirror)
 
-    def test_validate_from_inventory_with_zero_weight_closes_in_zero(self):
-        """E7 ('sin stock'): validar en 0 desde Inventario también
-        cierra la línea, en 0 — mismo criterio que el tablet."""
-        order = self._create_confirmed_order(qty=3.0)
-        session = self._create_session()
-        session.action_load()
-        line = self._line_for(order)
-
-        self._validate_pick_from_inventory(order, 0.0)
-        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
-
-        line.invalidate_recordset()
-        self.assertTrue(line.is_done)
-        self.assertEqual(line.actual_kg, 0.0)
-
     def test_closes_line_without_reopening_an_already_done_session(self):
         """'Sesiones cerradas → terminar línea sin reabrirla' (David/
         Tech Lead): si la sesión ya está 'done' cuando corre el cron,
@@ -165,9 +155,18 @@ class TestMirrorInventoryToPreparation(TestPreparationDay):
         self.assertIn('Diferencia de peso', last_note.body)
 
     def test_cancelled_move_after_flag_discards_without_closing(self):
-        """Si el move se cancela DESPUÉS de marcarse para espejo (ej.
-        se deshizo el traslado), el cron limpia la bandera y no cierra
-        la línea — nunca se Termina algo que nunca se completó."""
+        """Guarda defensiva de _guapante_mirror_from_inventory contra
+        un move en estado 'cancel' al momento en que corre el cron.
+
+        NOTA (encontrado al correr la suite, 2026-11-05): un move en
+        'done' NUNCA se puede cancelar vía _action_cancel() — el core
+        de Odoo lo rechaza ('Create a return...'); no existe un
+        camino real de negocio que repita exactamente "se deshizo el
+        traslado" sobre un move ya Hecho. La guarda sigue siendo
+        correcta como defensa ante un estado de BD inesperado (ej. un
+        cambio futuro de Odoo, o una corrección manual), así que el
+        test fuerza el estado directo en vez de pasar por
+        _action_cancel()."""
         order = self._create_confirmed_order(qty=3.0)
         session = self._create_session()
         session.action_load()
@@ -178,7 +177,7 @@ class TestMirrorInventoryToPreparation(TestPreparationDay):
         self.assertTrue(line.needs_inventory_mirror)
 
         move = line.stock_move_id
-        move.sudo()._action_cancel()
+        move.sudo().write({'state': 'cancel'})
 
         self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
 
