@@ -232,3 +232,39 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         self.assertEqual(group_fields, ['date', 'employee_id'])
         date_field = root.find("field[@name='date']")
         self.assertEqual(date_field.get('interval'), 'day')
+
+    def test_graph_measure_is_switchable_lines_boxes_kg_with_lines_default(self):
+        """Tarea 12 (Tech Lead/David, 2026-11-05): medida del gráfico
+        switchable entre Líneas hechas/Cajas/Kg. En Odoo 18
+        (computeReportMeasures, web/static/src/views/utils.js,
+        verificado en el fuente real) el selector de medida del
+        gráfico solo ofrece automáticamente integer/float/monetary con
+        aggregator — "Cajas" (box_count) es Char y quedaría afuera del
+        selector aunque declare aggregator='count_distinct', salvo que
+        ya venga como medida activa en el arch (bypassa el filtro de
+        tipo). Por eso las 3 deben estar declaradas como type="measure"
+        en el arch, y 'line_done' debe ser la ÚLTIMA (el cliente usa
+        el último <field type="measure"> como medida por defecto)."""
+        import xml.etree.ElementTree as ET
+
+        views = self.Report.sudo().get_views([(False, 'graph')])
+        root = ET.fromstring(views['views']['graph']['arch'])
+        measure_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') == 'measure'
+        ]
+        self.assertEqual(
+            set(measure_fields), {'line_done', 'box_count', 'kg'},
+            'las 3 medidas (Líneas hechas/Cajas/Kg) deben estar '
+            'declaradas como type="measure" en el arch del gráfico.',
+        )
+        self.assertEqual(
+            measure_fields[-1], 'line_done',
+            '"Líneas hechas" debe ser la última declarada, para '
+            'seguir siendo la medida por defecto al abrir.',
+        )
+        # box_count es Char — confirma que el campo real sigue siendo
+        # agregable (count_distinct) aunque no sea numérico; si algún
+        # día deja de tener aggregator, el gráfico lo mostraría vacío.
+        self.assertEqual(self.Report._fields['box_count'].type, 'char')
+        self.assertTrue(self.Report._fields['box_count'].aggregator)

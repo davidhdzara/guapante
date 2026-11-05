@@ -48,8 +48,25 @@
         <field name="model">guapante.preparation.operator.report</field>
         <field name="arch" type="xml">
             <graph string="Pickings por operario" type="line">
+            <!-- Tarea 12 (Tech Lead/David, 2026-11-05): medida
+                 switchable Líneas hechas/Cajas/Kg. En Odoo 18
+                 (computeReportMeasures, web/static/src/views/utils.js,
+                 verificado en el fuente real) el selector de medida
+                 del gráfico solo ofrece automáticamente campos
+                 integer/float/monetary con aggregator — "Cajas"
+                 (box_count) es Char y quedaría afuera aunque declare
+                 aggregator='count_distinct', salvo que ya venga
+                 declarado como medida activa en ESTE arch (ahí se
+                 agrega sin filtrar por tipo). "Kg" (Float+sum) ya
+                 calificaba solo, se declara igual por claridad. El
+                 gráfico solo deja UNA medida activa a la vez — "el
+                 último <field type='measure'> del arch" (graph_arch_
+                 parser.js) — por eso 'line_done' va AL FINAL, para
+                 seguir siendo el default. -->
                 <field name="date" interval="day"/>
                 <field name="employee_id"/>
+                <field name="box_count" type="measure"/>
+                <field name="kg" type="measure"/>
                 <field name="line_done" type="measure"/>
             </graph>
         </field>
@@ -98,26 +115,36 @@
              view_mode (vista por defecto de los 4 reportes), type=
              "line" en su arch — eje días, una línea por operario.
 
-             Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG encontrado:
-             en Odoo 18, el gráfico usa metaData.groupBy = groupBy
-             ACTIVO del buscador cuando hay alguno (ver graph_model.js,
+             Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG encontrado
+             y CORREGIDO (ver nota de corrección más abajo): en Odoo
+             18, el gráfico usa metaData.groupBy = groupBy ACTIVO del
+             buscador cuando hay alguno (ver graph_model.js,
              _buildMetaData: "groupBy.length ? groupBy : this.
              initialGroupBy"), nunca el orden de <field> del arch de
              la vista gráfico — eso solo es un fallback cuando no hay
-             ningún search_default activo. Con search_default_group_*
-             activos, el orden real lo decide el orden de las claves
-             de ESTE dict (se parsean con for..in, que preserva orden
-             de inserción) en _extractSearchDefaultsFromGlobalContext
-             (search_model.js). Antes 'group_employee' iba primero →
-             groupBy=[employee_id, date:day] → eje=operario, leyenda=
-             día (al revés de lo pedido). Fix: 'group_date_day' primero
-             aquí (y el mismo orden en los <filter> del buscador, por
-             consistencia) → groupBy=[date:day, employee_id] → eje=
-             fecha, leyenda=operario. Pivote no se afecta (fila/columna
-             fijas en su propio arch, no usa este groupBy). -->
+             ningún search_default activo.
+
+             El orden real de ese groupBy activo NO lo decide el orden
+             de las claves de este dict (una primera versión de este
+             comentario lo afirmaba así — INCORRECTO, corregido tras
+             leer más código): search_arch_parser.js asigna a cada
+             filtro un defaultRank = el VALOR de su search_default_*
+             (si es number) o 100; search_model.js:
+             _activateDefaultSearchItems ordena por ese defaultRank
+             con Array.sort (estable desde ES2019) — con dos valores
+             IGUALES (ej. 1 y 1, como tenía esto antes) el desempate lo
+             da el orden de inserción en this.searchItems, que sigue
+             el orden de los <filter> en el arch del BUSCADOR, no el
+             de este contexto. Fix robusto (no depender del desempate):
+             rangos EXPLÍCITOS y distintos — date_day=1 antes que
+             employee=2 — así el orden queda determinado sin importar
+             el orden de los <filter> (que de todas formas se dejó
+             igual, por claridad visual del dropdown "Agrupar por").
+             Pivote no se afecta (fila/columna fijas en su propio arch,
+             no usa este groupBy). -->
         <field name="context">{
             'search_default_group_date_day': 1,
-            'search_default_group_employee': 1,
+            'search_default_group_employee': 2,
         }</field>
     </record>
 </odoo>

@@ -344,6 +344,108 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         )
         self.assertAlmostEqual(groups[0]['time_per_box_s'], 110 / 51, places=6)
 
+    def test_weighted_ratio_grouped_by_day_and_employee_does_not_mix_groups(self):
+        """Tarea 12 (Tech Lead/David, 2026-11-05): el gráfico "Tiempo
+        por operario" expone Seg/caja y Seg/kg como medidas, bajo la
+        agrupación día × operario (la del gráfico: date:day luego
+        employee_id) — fixture de 2 operarios y 2 días, con DOS
+        intervalos en la MISMA celda (día1/operario_a) para probar que
+        ahí también es SUM/SUM y no el promedio sesgado de las 2
+        razones por fila."""
+        day1 = self._far_today()
+        day2 = fields.Date.add(day1, days=1)
+        session1 = self._session(day1)
+        session2 = self._session(day2)
+        claim1 = self._claim(session1, self.product_weight)
+        claim2 = self._claim(session2, self.product_weight)
+        now = fields.Datetime.now()
+        # día1/operario_a: 2 intervalos en la MISMA celda — 110/51,
+        # nunca avg(10, 2)=6.
+        self._interval(
+            claim1, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim1, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=100), end_dt=now, duration_s=100,
+            kg_done=50.0, lines_done=50,
+        )
+        # día1/operario_b: 1 intervalo — razón=10.
+        self._interval(
+            claim1, 'working', self.operator_b,
+            start_dt=now - timedelta(seconds=30), end_dt=now, duration_s=30,
+            kg_done=3.0, lines_done=3,
+        )
+        # día2/operario_a: 1 intervalo — razón=10.
+        self._interval(
+            claim2, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=40), end_dt=now, duration_s=40,
+            kg_done=4.0, lines_done=4,
+        )
+        # día2/operario_b: 1 intervalo — razón=10.
+        self._interval(
+            claim2, 'working', self.operator_b,
+            start_dt=now - timedelta(seconds=50), end_dt=now, duration_s=50,
+            kg_done=5.0, lines_done=5,
+        )
+
+        # Cada sesión es YA una sola jornada (date fijo por sesión) —
+        # agrupar por sesión + employee_id prueba exactamente la misma
+        # celda día×operario que el gráfico, sin depender del formato
+        # de etiqueta que read_group use para 'date:day' (ej. "05 Nov
+        # 2026" vs ISO — no es parte del contrato que este test deba
+        # fijar).
+        for measure in ('time_per_box_s', 'time_per_kg_s'):
+            with self.subTest(measure=measure):
+                groups_day1 = self.Report.sudo().read_group(
+                    [('wizard_id', '=', session1.id)],
+                    [f'{measure}:avg'], ['employee_id'],
+                )
+                by_employee_day1 = {
+                    g['employee_id'][0]: g[measure] for g in groups_day1
+                }
+                self.assertAlmostEqual(
+                    by_employee_day1[self.operator_a.id], 110 / 51, places=6,
+                )
+                self.assertNotAlmostEqual(
+                    by_employee_day1[self.operator_a.id], 6, places=3,
+                )
+                self.assertAlmostEqual(
+                    by_employee_day1[self.operator_b.id], 10.0, places=6,
+                )
+
+                groups_day2 = self.Report.sudo().read_group(
+                    [('wizard_id', '=', session2.id)],
+                    [f'{measure}:avg'], ['employee_id'],
+                )
+                by_employee_day2 = {
+                    g['employee_id'][0]: g[measure] for g in groups_day2
+                }
+                self.assertAlmostEqual(
+                    by_employee_day2[self.operator_a.id], 10.0, places=6,
+                )
+                self.assertAlmostEqual(
+                    by_employee_day2[self.operator_b.id], 10.0, places=6,
+                )
+
+                # Y la MISMA invariante con los dos ejes juntos
+                # (date:day, employee_id) — el agrupamiento real del
+                # gráfico — sin inspeccionar el formato de la etiqueta
+                # de fecha, solo que salgan 4 celdas y que la celda
+                # mixta no se pierda/colapse mal.
+                groups_both = self.Report.sudo().read_group(
+                    [('wizard_id', 'in', [session1.id, session2.id])],
+                    [f'{measure}:avg'], ['date:day', 'employee_id'],
+                    lazy=False,
+                )
+                self.assertEqual(len(groups_both), 4)
+                values = sorted(g[measure] for g in groups_both)
+                self.assertAlmostEqual(values[0], 110 / 51, places=6)
+                self.assertAlmostEqual(values[1], 10.0, places=6)
+                self.assertAlmostEqual(values[2], 10.0, places=6)
+                self.assertAlmostEqual(values[3], 10.0, places=6)
+
     def test_weighted_ratio_via_web_read_group_list_path(self):
         """Condición 2 de Tech Lead: el camino de LISTA (web_read_group
         → _web_read_group → read_group, confirmado passthrough leyendo
