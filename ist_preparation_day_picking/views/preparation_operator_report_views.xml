@@ -35,11 +35,20 @@
         </field>
     </record>
 
+    <!-- Tarea 3 (Tech Lead/David, 2026-11-05): gráfico de LÍNEAS en el
+         tiempo — eje x = jornada (día), una línea por operario. Los
+         dos campos de grupo en el arch (date, luego employee_id) le
+         dan al cliente eje + serie; "todos/uno" ya lo cubre el campo
+         employee_id del buscador (filtra a un operario específico sin
+         tocar esta vista), y "día/semana/mes" los filtros group_date_*
+         de abajo (cambian el groupby real vía el buscador, el arch
+         solo fija el default). -->
     <record id="view_preparation_operator_report_graph" model="ir.ui.view">
         <field name="name">guapante.preparation.operator.report.graph</field>
         <field name="model">guapante.preparation.operator.report</field>
         <field name="arch" type="xml">
-            <graph string="Pickings por operario" type="bar">
+            <graph string="Pickings por operario" type="line">
+                <field name="date" interval="day"/>
                 <field name="employee_id"/>
                 <field name="line_done" type="measure"/>
             </graph>
@@ -60,6 +69,8 @@
                 <separator/>
                 <filter name="group_date_day" string="Jornada (día)"
                         context="{'group_by': 'date:day'}"/>
+                <filter name="group_date_week" string="Jornada (semana)"
+                        context="{'group_by': 'date:week'}"/>
                 <filter name="group_date_month" string="Jornada (mes)"
                         context="{'group_by': 'date:month'}"/>
                 <filter name="group_date_year" string="Jornada (año)"
@@ -71,14 +82,17 @@
     <record id="action_preparation_operator_report" model="ir.actions.act_window">
         <field name="name">Pickings por operario</field>
         <field name="res_model">guapante.preparation.operator.report</field>
-        <field name="view_mode">pivot,list,graph</field>
+        <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_operator_report_search"/>
         <!-- Default de pivot/gráfico: fijado en el arch de cada vista
              (type="row"/"col"/"measure") — agrupado por operario y
              jornada (día); "producto" queda disponible como filtro
              manual, no es el default (Tech Lead: "producto
              opcional"). search_default_* solo afecta a la vista de
-             lista (el pivote ya trae su propio default del arch). -->
+             lista (el pivote ya trae su propio default del arch).
+             Tarea 3 (Tech Lead/David, 2026-11-05): gráfico primero en
+             view_mode (vista por defecto de los 4 reportes), type=
+             "line" en su arch — eje días, una línea por operario. -->
         <field name="context">{
             'search_default_group_employee': 1,
             'search_default_group_date_day': 1,

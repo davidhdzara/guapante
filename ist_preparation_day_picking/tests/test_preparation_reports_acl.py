@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Fase 2, commit 6/7 (Tech Lead, 2026-11-04) — ACL de los 4 modelos de
+"""Fase 2, commit 6/7 (Tech Lead, 2026-11-04) — ACL de los modelos de
 Fase 2 que hasta 5/7 solo se usaban por sudo() (sin exponer un solo
 menú/ACL propio): guapante.preparation.interval, .operator.report,
-.product.demand.report, .interval.report. Regla: el operario de
+.interval.report (.product.demand.report se quitó en la Tarea 3,
+Tech Lead/David, 2026-11-05). Regla: el operario de
 Picking no tiene acceso a ninguno (no ve tiempo ni reportes desde la
 pantalla de Picking — eso es trabajo de Diana/Mauricio, no del
 operario); el administrador de Preparación solo lee (nunca crea,
@@ -82,10 +83,9 @@ class TestPreparationReportsAcl(TestPreparationDayProductClaim):
 
     # ── Admin: solo lectura en los 4 modelos ──
 
-    def test_admin_can_read_the_three_reports(self):
+    def test_admin_can_read_the_two_reports(self):
         for model_name in (
             'guapante.preparation.operator.report',
-            'guapante.preparation.product.demand.report',
             'guapante.preparation.interval.report',
         ):
             self.env[model_name].with_user(self.prep_admin_user).search_read(

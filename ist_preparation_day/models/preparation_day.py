@@ -411,10 +411,13 @@ class PreparationDayLine(models.Model):
 
     # ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05): el
     # hook liviano en stock.move (_action_done, ver models/stock_move.py)
-    # solo marca esta bandera cuando el PICK de esta línea se valida
-    # por fuera del flujo de Preparación (sin 'guapante_wizard_intent'
-    # en contexto, ej. directo desde Inventario) — nunca hace el
-    # reflejo en la misma transacción. El cron propio
+    # marca esta bandera para TODA validación de un PICK con línea de
+    # Preparación asociada — no evalúa ningún flag de contexto (ej.
+    # 'guapante_wizard_intent'); confía en que Preparación NUNCA llama
+    # button_validate/_action_done por su cuenta (ver nota de dominio
+    # en models/stock_picking.py), así que este hook solo se dispara
+    # de verdad cuando algo ajeno a Preparación (Inventario) validó el
+    # traslado — nunca hace el reflejo en la misma transacción. El cron propio
     # (_cron_mirror_inventory_to_preparation) es quien la procesa y la
     # limpia, con su propia transacción y su propio FOR UPDATE —
     # "liviano" significa que el hook nunca puede tumbar ni demorar la

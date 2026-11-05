@@ -35,7 +35,6 @@
         'views/preparation_day_note_template_views.xml',
         'views/preparation_settings_views.xml',
         'views/preparation_operator_report_views.xml',
-        'views/preparation_product_demand_report_views.xml',
         'views/preparation_interval_report_views.xml',
         'views/preparation_day_reports_menus.xml',
     ],

@@ -51,7 +51,17 @@ class PreparationIntervalReport(models.Model):
     # medida summable — pivoteada con columnas=kind (default de la
     # acción del reporte 3) da los dos totales lado a lado, nunca dos
     # campos separados para lo mismo.
-    duration_s = fields.Integer(string='Tiempo (s)', readonly=True, aggregator='sum')
+    duration_s = fields.Integer(
+        string='Tiempo trabajado (s)', readonly=True, aggregator='sum',
+        help=(
+            'Duración del intervalo, en segundos — de CUALQUIER kind '
+            '("Trabajando" o "Detenido"), según la fila/columna donde '
+            'aparezca (ver el campo Tipo). En el Reporte 3, que separa '
+            'las dos columnas, esta medida es la misma bajo cada una; '
+            'el nombre refleja el uso más común (reportes 4 y 5, que '
+            'solo cuentan tiempo "Trabajando").'
+        ),
+    )
     # Mismo dato que arriba, expuesto aparte con aggregator='avg'
     # ("tiempo medio por visita") — un Float/Integer tiene UN solo
     # aggregator fijo por campo en Odoo, así que la única forma nativa
