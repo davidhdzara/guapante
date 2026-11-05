@@ -16,6 +16,7 @@
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
         'data/ir_cron_repair_sessions.xml',
+        'data/ir_cron_mirror_inventory.xml',
         'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
     ],

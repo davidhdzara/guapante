@@ -27,7 +27,16 @@ class PreparationOperatorReport(models.Model):
 
     employee_id SIN filtro de active (Fase 2, punto 4, David
     2026-11-04): un empleado archivado sigue siendo historia real —
-    nunca se excluye de este reporte."""
+    nunca se excluye de este reporte.
+
+    ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05): una
+    línea cerrada automáticamente porque su PICK se validó directo
+    desde Inventario (sin pasar por el tablet ni por Productos) nunca
+    tiene done_by_employee_id (no hubo operario) — el filtro WHERE
+    done_by_employee_id IS NOT NULL de abajo ya la excluye de este
+    reporte sin necesitar ningún cambio adicional: "Pickings por
+    operario" solo cuenta trabajo real de un operario identificado.
+    """
     _name = 'guapante.preparation.operator.report'
     _description = 'Picking — Reporte 1: pickings por operario'
     _auto = False

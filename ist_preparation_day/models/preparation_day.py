@@ -409,6 +409,27 @@ class PreparationDayLine(models.Model):
         copy=False,
     )
 
+    # ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05): el
+    # hook liviano en stock.move (_action_done, ver models/stock_move.py)
+    # solo marca esta bandera cuando el PICK de esta línea se valida
+    # por fuera del flujo de Preparación (sin 'guapante_wizard_intent'
+    # en contexto, ej. directo desde Inventario) — nunca hace el
+    # reflejo en la misma transacción. El cron propio
+    # (_cron_mirror_inventory_to_preparation) es quien la procesa y la
+    # limpia, con su propia transacción y su propio FOR UPDATE —
+    # "liviano" significa que el hook nunca puede tumbar ni demorar la
+    # validación del usuario de Inventario.
+    needs_inventory_mirror = fields.Boolean(
+        string='Pendiente de espejo (Inventario)',
+        default=False,
+        copy=False,
+        help=(
+            'Interno: el PICK de esta línea se completó por fuera de '
+            'Preparación (ej. validado directo desde Inventario) y '
+            'está pendiente de que el cron la refleje aquí.'
+        ),
+    )
+
     dispatch_note = fields.Char(
         string='Nota',
         compute='_compute_dispatch_note',
@@ -815,6 +836,127 @@ class PreparationDayLine(models.Model):
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']
         )
+
+    @api.model
+    def _cron_mirror_inventory_to_preparation(self) -> None:
+        """ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05).
+
+        Transacción propia, corre cada 2 minutos (ver data/ir_cron_
+        mirror_inventory.xml) — procesa las líneas marcadas por el
+        hook liviano de stock.move._action_done (ver models/
+        stock_move.py). Un SAVEPOINT por línea: si una falla, no tumba
+        las demás (mismo patrón que _guapante_relocate_picking).
+        """
+        Flagged = self.sudo().search([('needs_inventory_mirror', '=', True)])
+        for line in Flagged:
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        'SELECT id FROM guapante_preparation_day_line '
+                        'WHERE id = %s FOR UPDATE',
+                        (line.id,),
+                    )
+                    line.invalidate_recordset()
+                    line._guapante_mirror_from_inventory()
+            except Exception:
+                _logger.exception(
+                    'Guapante: ESPEJO Inventario→Preparación — fallo '
+                    'al reflejar la línea %d, se reintenta en la '
+                    'próxima corrida.', line.id,
+                )
+
+    def _guapante_mirror_from_inventory(self) -> None:
+        """Aplica (o descarta) el reflejo de UNA línea marcada —
+        llamado solo desde _cron_mirror_inventory_to_preparation, ya
+        con el FOR UPDATE tomado.
+
+        NUNCA llama _sync_weight_to_stock/_propagate_weight_to_chain
+        (eso volvería a escribir el move y crearía un ciclo con el
+        hook de stock_move.py) — escribe la línea directo, con
+        skip_auto_save=True para no disparar el track_kg de write().
+
+        Decisión (b) (David/Tech Lead, 2026-11-05): basta con que el
+        PICK (self.stock_move_id) esté 'done' — no se espera al
+        traslado siguiente (move_dest_ids); ese ya es dueño de su
+        propio peso vía _action_done de theme_guapante/ist_
+        preparation_day, independiente de esto.
+        """
+        self.ensure_one()
+        move = self.stock_move_id
+        if not move or move.state == 'cancel':
+            # El move se canceló después de marcarse — nunca hubo
+            # nada que reflejar.
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+        if move.state != 'done':
+            # Se marcó pero el estado retrocedió (raro) — se
+            # reintenta en la próxima corrida, sin limpiar la
+            # bandera todavía.
+            return
+
+        weight = move.quantity
+
+        if self.is_done:
+            # Decisión (c): gana quien llegó primero — el operario ya
+            # cerró esta línea (tablet o Productos) antes de que
+            # corriera el cron. Nunca se pisa is_done/actual_kg; si
+            # el peso de Inventario difiere, se deja constancia en el
+            # chatter de la sesión, sin cambiar nada más.
+            if abs(weight - self.actual_kg) > 0.001:
+                self.wizard_id.sudo().message_post(body=(
+                    f'Diferencia de peso detectada — Caja #'
+                    f'{self.daily_sequence} ({self.product_description}): '
+                    f'Preparación registró {self.actual_kg:.3f} kg, '
+                    f'Inventario confirmó {weight:.3f} kg en el mismo '
+                    f'traslado. Se mantiene el valor de Preparación (ya '
+                    f'estaba Terminada primero); revisar manualmente si '
+                    f'hace falta corregir.'
+                ))
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+
+        # Caso real: el PICK se validó desde Inventario y Preparación
+        # nunca cerró esta línea. Reflejar: mismo peso, Terminado, sin
+        # operario — done_by_employee_id vacío a propósito (Fase 2,
+        # David/Tech Lead 2026-11-05: una línea cerrada así no cuenta
+        # en "Pickings por operario", ver el filtro WHERE
+        # done_by_employee_id IS NOT NULL en preparation_operator_
+        # report.py — ya lo hace, no se tocó).
+        self.sudo().with_context(skip_auto_save=True).write({
+            'actual_kg': weight,
+            'is_done': True,
+            'done_by_employee_id': False,
+            'done_date': fields.Datetime.now(),
+            'needs_inventory_mirror': False,
+        })
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary._add_done_kg(weight)
+
+        self.wizard_id.sudo().message_post(body=(
+            f'Caja #{self.daily_sequence} ({self.product_description}) '
+            f'cerrada automáticamente — el traslado se validó desde '
+            f'Inventario (sin operario de Picking) con {weight:.3f} kg.'
+        ))
+        self._maybe_post_dispatch_zero_note('Inventario (sin operario)')
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
+
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.wizard_id.id),
+            ('is_done', '=', False),
+        ])
+        if pending_total == 0 and self.wizard_id.state != 'done':
+            self.wizard_id.action_mark_done()
 
     def action_undo_line(self) -> bool:
         """Devuelve una línea de los Hechos a Pendientes para corregirla."""
