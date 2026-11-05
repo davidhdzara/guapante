@@ -23,10 +23,18 @@
                 <field name="duration_avg_s" avg="Tiempo medio (s)"/>
                 <field name="time_to_first_weigh_s" avg="Tiempo hasta 1er pesaje (s)" optional="hide"/>
                 <field name="time_without_lines_s" sum="Tiempo sin líneas (s)" optional="hide"/>
-                <field name="kg_done" sum="Kg" optional="hide"/>
-                <field name="lines_done" sum="Líneas" optional="hide"/>
-                <field name="time_per_kg_s" avg="Seg/kg" optional="hide"/>
-                <field name="time_per_box_s" avg="Seg/caja" optional="hide"/>
+                <!-- Tarea 14 (Tech Lead/David, 2026-11-05): visibles por
+                     defecto (optional="show", no "hide") — Reportes 4/5
+                     ("Tiempo por kilo"/"Tiempo por caja") los necesitan
+                     a la vista sin que el usuario tenga que activarlos
+                     a mano; sigue siendo la misma vista compartida con
+                     el Reporte 3, que ahora simplemente los muestra
+                     también (el usuario puede ocultarlos igual, el
+                     toggle optional sigue disponible). -->
+                <field name="kg_done" sum="Kg" optional="show"/>
+                <field name="lines_done" sum="Líneas" optional="show"/>
+                <field name="time_per_kg_s" avg="Seg/kg" optional="show"/>
+                <field name="time_per_box_s" avg="Seg/caja" optional="show"/>
             </list>
         </field>
     </record>
@@ -89,6 +97,59 @@
                 <field name="time_per_box_s" type="measure"/>
                 <field name="time_per_kg_s" type="measure"/>
                 <field name="duration_s" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Tarea 14 (Tech Lead/David, 2026-11-05) — Reporte 4 "Tiempo por
+         kilo": vista gráfico PROPIA, texto aprobado tal cual: "Barras
+         verticales, eje X = producto (nombre), eje Y = Seg/kg (razón
+         ponderada SUM(duration_s)/SUM(kg_done), el mismo read_group ya
+         existente, sin promedio de promedios). Una barra por producto,
+         ordenadas de mayor a menor (el más lento por kg primero). Una
+         sola serie, sin leyenda; operario NO agrupa por defecto (queda
+         como filtro)." order="DESC" en el <graph> (verificado en el
+         fuente de Odoo 18 del host: web/static/src/views/graph/
+         graph_arch_parser.js línea 34 lo acepta como ASC/DESC;
+         graph_model.js líneas 445-458 ordena los grupos por la SUMA de
+         la medida ACTIVA — acá un único groupby/dominio, así que esa
+         suma es directamente la razón de cada producto). time_per_kg_s
+         último → medida por defecto; duration_s/kg_done/lines_done
+         también declaradas (adición de Tech Lead) para que el
+         selector de medidas del cliente las ofrezca sin tocar el
+         modelo. SIN ningún search_default_group_* activo: con un solo
+         <field> no-measure en el arch (product_tmpl_id), graph_model.js
+         cae sola al fallback de orden del arch cuando no hay groupBy
+         activo del buscador — no hace falta ningún rango explícito
+         acá (a diferencia de los Reportes 1/2, que sí tienen 2 campos
+         no-measure y necesitan desempatar). -->
+    <record id="view_preparation_interval_report_kg_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.kg.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo por kilo" type="bar" order="DESC">
+                <field name="product_tmpl_id"/>
+                <field name="duration_s" type="measure"/>
+                <field name="kg_done" type="measure"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_kg_s" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Tarea 14 — Reporte 5 "Tiempo por caja": mismo patrón que el de
+         arriba, con time_per_box_s (Seg/caja) como razón/medida por
+         defecto en vez de time_per_kg_s. -->
+    <record id="view_preparation_interval_report_box_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.box.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo por caja" type="bar" order="DESC">
+                <field name="product_tmpl_id"/>
+                <field name="duration_s" type="measure"/>
+                <field name="kg_done" type="measure"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_box_s" type="measure"/>
             </graph>
         </field>
     </record>
@@ -252,17 +313,26 @@
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
+        <!-- Tarea 14: SIN search_default_group_* — el gráfico cae sola
+             al fallback de orden del arch (product_tmpl_id) al no
+             haber ningún groupBy activo del buscador (ver comentario
+             en view_preparation_interval_report_kg_graph). Operario
+             queda disponible como filtro manual (group_employee en el
+             buscador compartido), nunca agrupado por defecto —
+             decisión explícita de David/Tech Lead. pivot_row_groupby
+             solo producto (antes empleado+producto); pivot_measures
+             ampliado con duration_s/kg_done/lines_done (adición de
+             Tech Lead) para que el selector de medidas del pivote
+             arranque con las mismas 4 que el gráfico. -->
         <field name="context">{
-            'search_default_group_employee': 1,
-            'search_default_group_product': 1,
-            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
-            'pivot_measures': ['time_per_kg_s'],
+            'pivot_row_groupby': ['product_tmpl_id'],
+            'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_kg_s'],
         }</field>
     </record>
     <record id="action_preparation_interval_report_4_view_graph" model="ir.actions.act_window.view">
         <field name="act_window_id" ref="action_preparation_interval_report_4"/>
         <field name="view_mode">graph</field>
-        <field name="view_id" ref="view_preparation_interval_report_graph"/>
+        <field name="view_id" ref="view_preparation_interval_report_kg_graph"/>
         <field name="sequence">1</field>
     </record>
     <record id="action_preparation_interval_report_4_view_pivot" model="ir.actions.act_window.view">
@@ -295,17 +365,18 @@
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
+        <!-- Tarea 14: mismo criterio que el Reporte 4 (ver su
+             comentario) — solo producto por defecto, operario queda
+             como filtro manual. -->
         <field name="context">{
-            'search_default_group_employee': 1,
-            'search_default_group_product': 1,
-            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
-            'pivot_measures': ['time_per_box_s'],
+            'pivot_row_groupby': ['product_tmpl_id'],
+            'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_box_s'],
         }</field>
     </record>
     <record id="action_preparation_interval_report_5_view_graph" model="ir.actions.act_window.view">
         <field name="act_window_id" ref="action_preparation_interval_report_5"/>
         <field name="view_mode">graph</field>
-        <field name="view_id" ref="view_preparation_interval_report_graph"/>
+        <field name="view_id" ref="view_preparation_interval_report_box_graph"/>
         <field name="sequence">1</field>
     </record>
     <record id="action_preparation_interval_report_5_view_pivot" model="ir.actions.act_window.view">

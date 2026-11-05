@@ -569,3 +569,100 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         field = self.Report._fields['duration_s']
         self.assertEqual(field.string, 'Tiempo trabajado (s)')
         self.assertTrue(field.help)
+
+    def _assert_kg_or_box_graph(self, view_xmlid, ratio_field):
+        """Tarea 14 (Tech Lead/David, 2026-11-05) — texto aprobado:
+        "Barras verticales, eje X = producto (nombre), eje Y = Seg/kg
+        (razón ponderada)... Una barra por producto, ordenadas de
+        mayor a menor (el más lento por kg primero). Una sola serie,
+        sin leyenda; operario NO agrupa por defecto." Verifica: bar +
+        order="DESC" en el arch (atributo confirmado en el fuente real
+        de Odoo 18 — web/static/src/views/graph/graph_arch_parser.js,
+        ORDERS=["ASC","DESC",...]; graph_model.js ordena los grupos
+        por la suma de la medida activa), único groupby no-measure
+        (product_tmpl_id), y la razón (time_per_kg_s/time_per_box_s)
+        como ÚLTIMA medida declarada (default), con duration_s/
+        kg_done/lines_done también declaradas (adición de Tech Lead,
+        medidas seleccionables)."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(view_xmlid)
+        root = ET.fromstring(view.arch)
+        self.assertEqual(root.get('type'), 'bar')
+        self.assertEqual(root.get('order'), 'DESC')
+        group_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') != 'measure'
+        ]
+        self.assertEqual(group_fields, ['product_tmpl_id'])
+        measure_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') == 'measure'
+        ]
+        self.assertEqual(
+            measure_fields,
+            ['duration_s', 'kg_done', 'lines_done', ratio_field],
+            f'{ratio_field} debe ser la ÚLTIMA medida declarada (el '
+            'cliente usa el último <field type="measure"> como medida '
+            'por defecto).',
+        )
+
+    def test_report_4_kg_graph_bar_desc_product_only(self):
+        self._assert_kg_or_box_graph(
+            'ist_preparation_day_picking.view_preparation_interval_report_kg_graph',
+            'time_per_kg_s',
+        )
+
+    def test_report_5_box_graph_bar_desc_product_only(self):
+        self._assert_kg_or_box_graph(
+            'ist_preparation_day_picking.view_preparation_interval_report_box_graph',
+            'time_per_box_s',
+        )
+
+    def _assert_action_groups_by_product_only(self, action_xmlid, ratio_field):
+        """Tarea 14: operario NO agrupa por defecto (queda como filtro
+        manual, group_employee sigue en el buscador compartido) — ni
+        en pivot_row_groupby ni como search_default_group_employee.
+        pivot_measures debe traer las mismas 4 medidas que el gráfico
+        (adición de Tech Lead)."""
+        from odoo.tools.safe_eval import safe_eval
+
+        action = self.env.ref(action_xmlid)
+        context = safe_eval(action.context or '{}')
+        self.assertEqual(context['pivot_row_groupby'], ['product_tmpl_id'])
+        self.assertEqual(
+            set(context['pivot_measures']),
+            {'duration_s', 'kg_done', 'lines_done', ratio_field},
+        )
+        self.assertNotIn('search_default_group_employee', context)
+        self.assertNotIn('search_default_group_product', context)
+
+    def test_report_4_action_groups_by_product_only(self):
+        self._assert_action_groups_by_product_only(
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'time_per_kg_s',
+        )
+
+    def test_report_5_action_groups_by_product_only(self):
+        self._assert_action_groups_by_product_only(
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+            'time_per_box_s',
+        )
+
+    def test_list_view_shows_kg_lines_ratios_by_default(self):
+        """Tarea 14: "lista con Producto, Tiempo trabajado, Kg, Líneas,
+        Seg/kg visibles" — la vista lista es compartida con el Reporte
+        3, así que esto se logra con optional="show" (visible por
+        defecto, igual se puede ocultar) en vez de optional="hide"."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_list'
+        )
+        root = ET.fromstring(view.arch)
+        for name in ('kg_done', 'lines_done', 'time_per_kg_s', 'time_per_box_s'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertEqual(
+                field.get('optional'), 'show',
+                f'{name}: debe ser optional="show" (visible por defecto).',
+            )

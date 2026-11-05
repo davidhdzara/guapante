@@ -141,12 +141,17 @@ class TestPreparationReportsActionsStartup(TestPreparationDayProductClaim):
         """Tarea 12 (Tech Lead/David, 2026-11-05): desde que existe el
         gráfico propio del Reporte 2 ("Tiempo por operario", línea por
         jornada/operario), el modelo guapante.preparation.interval.
-        report tiene 2 vistas gráfico — sin un view_id explícito por
-        acción (ir.actions.act_window.view, agregado en este mismo
-        commit para las 4 acciones del modelo), get_views() podría
-        resolver cualquiera de las 2 por un criterio implícito. Este
-        test confirma que cada acción abre EXACTAMENTE la que le
-        corresponde, no la del otro reporte por accidente."""
+        report tiene varias vistas gráfico — sin un view_id explícito
+        por acción (ir.actions.act_window.view, agregado en este mismo
+        commit para las acciones del modelo), get_views() podría
+        resolver cualquiera por un criterio implícito. Este test
+        confirma que cada acción abre EXACTAMENTE la que le
+        corresponde, no la de otro reporte por accidente.
+
+        Tarea 14 (Tech Lead/David, 2026-11-05): Reportes 4 y 5 suman
+        su PROPIA vista gráfico cada uno (antes compartían la bar/
+        product_tmpl_id del Reporte 3) — ordenadas DESC por la razón
+        (ver view_preparation_interval_report_kg_graph/_box_graph)."""
         expectations = {
             'ist_preparation_day_picking.action_preparation_interval_report_2': (
                 'line', ['date', 'employee_id'],
