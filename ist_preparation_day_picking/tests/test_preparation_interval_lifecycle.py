@@ -244,6 +244,104 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
             result = claim.get_my_open_interval()
         self.assertFalse(result['start_dt'])
 
+    # ── Tarea 5 (Tech Lead/David, 2026-11-05): accumulated_s de
+    #    get_my_open_interval() — suma de MIS intervalos 'working' ya
+    #    CERRADOS sobre este claim; el abierto nunca se cuenta acá
+    #    (ese elapsed lo suma el cliente con start_dt/server_now, ver
+    #    preparation_picking_visit_timer.js). ──
+
+    def test_get_my_open_interval_accumulated_s_sums_only_closed_intervals(self):
+        """Con un único 'working' abierto (recién entrado, sin cierres
+        previos) accumulated_s debe ser 0 — el elapsed del abierto lo
+        calcula el cliente, nunca este campo."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 5, 9, 0, 0)
+            self._enter_l2(claim, self.operator_a)
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 5, 9, 5, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                result = claim.get_my_open_interval()
+
+        self.assertEqual(result['accumulated_s'], 0)
+        self.assertEqual(result['start_dt'], datetime(2026, 11, 5, 9, 0, 0))
+
+    def test_get_my_open_interval_accumulated_s_persists_across_stop_resume(self):
+        """El requisito central de la Tarea 5: el acumulado del mismo
+        operario sobre el mismo claim NUNCA vuelve a 00:00 por un
+        ciclo Detener → Retomar — accumulated_s suma el 'working' que
+        Detener cierra, y un segundo ciclo sigue sumando sobre ese
+        total, nunca lo reinicia."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+
+        t0 = datetime(2026, 11, 5, 9, 0, 0)
+        t1 = datetime(2026, 11, 5, 9, 2, 0)  # 1er 'working': 120s
+        t2 = datetime(2026, 11, 5, 9, 10, 0)  # Retomar
+        t3 = datetime(2026, 11, 5, 9, 10, 50)  # 2do 'working': 50s
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = t0
+            self._enter_l2(claim, self.operator_a)
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = t1
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_stop('otro')
+
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            result_after_first_stop = claim.get_my_open_interval()
+        self.assertEqual(result_after_first_stop['accumulated_s'], 120)
+        self.assertFalse(result_after_first_stop['start_dt'])
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = t2
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_resume()
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = t3
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_stop('otro')
+
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            result_after_second_stop = claim.get_my_open_interval()
+        self.assertEqual(result_after_second_stop['accumulated_s'], 170)
+        self.assertFalse(result_after_second_stop['start_dt'])
+
+    def test_get_my_open_interval_second_operator_starts_at_zero(self):
+        """Un segundo operario que entra al MISMO claim por primera
+        vez (vía Retomar, tras un Detener del primero) no tiene
+        intervalos cerrados propios todavía — su accumulated_s es 0,
+        sin importar cuánto acumuló el primero sobre el mismo claim."""
+        session = self._load_session_with_product()
+        claim = session.product_claim_ids
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 5, 9, 0, 0)
+            self._enter_l2(claim, self.operator_a)
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 5, 9, 3, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+                claim.action_stop('otro')
+
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = datetime(2026, 11, 5, 9, 5, 0)
+            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+                claim.action_resume()
+
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_b)):
+            result_b = claim.get_my_open_interval()
+        self.assertEqual(result_b['accumulated_s'], 0)
+        self.assertEqual(result_b['start_dt'], datetime(2026, 11, 5, 9, 5, 0))
+
+        # El acumulado del operario A, dueño anterior, queda intacto.
+        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
+            result_a = claim.get_my_open_interval()
+        self.assertEqual(result_a['accumulated_s'], 180)
+
     # ── El ejemplo exacto confirmado por Tech Lead (condición (b),
     #    2026-11-04): 20:05 entra, 20:06:30 y 20:08:10 pesa, se aleja sin
     #    cerrar nada — un cierre no explícito (acá, simulando el cron de
