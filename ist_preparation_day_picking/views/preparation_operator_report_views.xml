@@ -62,11 +62,10 @@
             <search string="Pickings por operario">
                 <field name="employee_id"/>
                 <field name="product_tmpl_id"/>
-                <filter name="group_employee" string="Operario"
-                        context="{'group_by': 'employee_id'}"/>
-                <filter name="group_product" string="Producto"
-                        context="{'group_by': 'product_tmpl_id'}"/>
-                <separator/>
+                <!-- Tarea 12.0 (Tech Lead/David, 2026-11-05): "Jornada
+                     (día)" va ANTES de "Operario" aquí a propósito —
+                     ver el comentario junto a search_default_* en la
+                     acción más abajo sobre por qué el orden importa. -->
                 <filter name="group_date_day" string="Jornada (día)"
                         context="{'group_by': 'date:day'}"/>
                 <filter name="group_date_week" string="Jornada (semana)"
@@ -75,6 +74,11 @@
                         context="{'group_by': 'date:month'}"/>
                 <filter name="group_date_year" string="Jornada (año)"
                         context="{'group_by': 'date:year'}"/>
+                <separator/>
+                <filter name="group_employee" string="Operario"
+                        context="{'group_by': 'employee_id'}"/>
+                <filter name="group_product" string="Producto"
+                        context="{'group_by': 'product_tmpl_id'}"/>
             </search>
         </field>
     </record>
@@ -92,10 +96,28 @@
              lista (el pivote ya trae su propio default del arch).
              Tarea 3 (Tech Lead/David, 2026-11-05): gráfico primero en
              view_mode (vista por defecto de los 4 reportes), type=
-             "line" en su arch — eje días, una línea por operario. -->
+             "line" en su arch — eje días, una línea por operario.
+
+             Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG encontrado:
+             en Odoo 18, el gráfico usa metaData.groupBy = groupBy
+             ACTIVO del buscador cuando hay alguno (ver graph_model.js,
+             _buildMetaData: "groupBy.length ? groupBy : this.
+             initialGroupBy"), nunca el orden de <field> del arch de
+             la vista gráfico — eso solo es un fallback cuando no hay
+             ningún search_default activo. Con search_default_group_*
+             activos, el orden real lo decide el orden de las claves
+             de ESTE dict (se parsean con for..in, que preserva orden
+             de inserción) en _extractSearchDefaultsFromGlobalContext
+             (search_model.js). Antes 'group_employee' iba primero →
+             groupBy=[employee_id, date:day] → eje=operario, leyenda=
+             día (al revés de lo pedido). Fix: 'group_date_day' primero
+             aquí (y el mismo orden en los <filter> del buscador, por
+             consistencia) → groupBy=[date:day, employee_id] → eje=
+             fecha, leyenda=operario. Pivote no se afecta (fila/columna
+             fijas en su propio arch, no usa este groupBy). -->
         <field name="context">{
-            'search_default_group_employee': 1,
             'search_default_group_date_day': 1,
+            'search_default_group_employee': 1,
         }</field>
     </record>
 </odoo>

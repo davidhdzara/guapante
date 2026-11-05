@@ -121,6 +121,59 @@ class TestPreparationReportsActionsStartup(TestPreparationDayProductClaim):
                     f'{action_xmlid}: view_mode={Action.view_mode!r}',
                 )
 
+    def test_operator_report_graph_groupby_order_is_date_then_employee(self):
+        """Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG: en Odoo 18 el
+        gráfico usa el groupBy ACTIVO del buscador cuando hay algún
+        search_default_group_* (graph_model.js:_buildMetaData,
+        "groupBy.length ? groupBy : this.initialGroupBy") — el orden de
+        <field> del arch del gráfico es solo un fallback que nunca se
+        usa mientras haya defaults activos. Ese orden activo lo decide
+        el orden de las claves search_default_* en el contexto de la
+        acción (search_model.js:_extractSearchDefaultsFromGlobalContext
+        itera con for..in, que preserva orden de inserción) — por eso
+        hace falta fijar 'search_default_group_date_day' ANTES de
+        'search_default_group_employee' en el contexto, no solo en el
+        arch. Este test lee exactamente eso (contexto + arch del
+        buscador), sin levantar navegador."""
+        Action = self.env.ref(
+            'ist_preparation_day_picking.action_preparation_operator_report'
+        )
+        context = safe_eval(Action.context or '{}')
+        search_defaults = [
+            key for key in context
+            if key.startswith('search_default_group_')
+        ]
+        self.assertEqual(
+            search_defaults,
+            ['search_default_group_date_day', 'search_default_group_employee'],
+            f'Orden de claves search_default_group_* en el contexto: '
+            f'{search_defaults!r} — debe ser fecha antes de operario '
+            f'para que el gráfico abra con eje=fecha, leyenda=operario.',
+        )
+
+        search_arch = Action.search_view_id.arch
+        root = ET.fromstring(search_arch)
+        filter_names = [f.get('name') for f in root.findall('.//filter')]
+        self.assertLess(
+            filter_names.index('group_date_day'),
+            filter_names.index('group_employee'),
+            f'Orden de <filter> en el buscador: {filter_names!r} — '
+            f'"group_date_day" debe declararse antes que "group_employee" '
+            f'(consistencia con el contexto, mismo criterio de orden).',
+        )
+
+        graph_views = self.env[Action.res_model].get_views(
+            [(False, 'graph')]
+        )
+        graph_root = ET.fromstring(graph_views['views']['graph']['arch'])
+        graph_fields = [f.get('name') for f in graph_root.findall('./field')]
+        self.assertEqual(
+            graph_fields[:2], ['date', 'employee_id'],
+            f'Orden de <field> en el arch del gráfico: {graph_fields!r} — '
+            f'fecha antes de operario, para que el fallback (sin ningún '
+            f'search_default activo) también quede correcto.',
+        )
+
     def test_product_demand_report_was_fully_removed(self):
         """Tarea 3 (Tech Lead/David, 2026-11-05): "Productos más
         solicitados" se quitó completo — modelo, acción y menú no
