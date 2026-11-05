@@ -268,3 +268,115 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         # día deja de tener aggregator, el gráfico lo mostraría vacío.
         self.assertEqual(self.Report._fields['box_count'].type, 'char')
         self.assertTrue(self.Report._fields['box_count'].aggregator)
+
+    def _filter_domain(self, view_xmlid, filter_name):
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(view_xmlid)
+        root = ET.fromstring(view.arch)
+        node = root.find(f".//filter[@name='{filter_name}']")
+        self.assertIsNotNone(node, f'filtro {filter_name!r} no existe en el arch.')
+        return node.get('domain')
+
+    def test_date_filters_are_identical_to_interval_report_search(self):
+        """Tarea 13 (Tech Lead/David, 2026-11-05): mismo texto/fórmula
+        en los dos buscadores (operario vs. interval report) —
+        duplicado a propósito (dos modelos distintos, ver el
+        comentario largo en el buscador compartido de 2/3/4/5), pero
+        NUNCA debe divergir en el string. Guarda de regresión contra
+        un copy-paste que se desalinee con el tiempo; la corrección
+        matemática de cada fórmula ya se prueba a fondo en
+        test_preparation_interval_report.py, acá solo se verifica que
+        este buscador use EXACTAMENTE el mismo texto."""
+        for filter_name in (
+            'filter_yesterday', 'filter_today', 'filter_last_7_days',
+            'filter_this_month', 'filter_last_month',
+        ):
+            with self.subTest(filter=filter_name):
+                self.assertEqual(
+                    self._filter_domain(
+                        'ist_preparation_day_picking.view_preparation_operator_report_search',
+                        filter_name,
+                    ),
+                    self._filter_domain(
+                        'ist_preparation_day_picking.view_preparation_interval_report_search',
+                        filter_name,
+                    ),
+                )
+
+    def test_report_1_defaults_to_last_7_days(self):
+        from odoo.tools.safe_eval import safe_eval
+
+        action = self.env.ref(
+            'ist_preparation_day_picking.action_preparation_operator_report'
+        )
+        context = safe_eval(action.context or '{}')
+        self.assertEqual(context.get('search_default_filter_last_7_days'), 1)
+
+    def test_categ_id_groups_lines_by_category(self):
+        """Tarea 13: mismo criterio que en test_preparation_interval_
+        report.py, pero contra el _table_query propio de este modelo
+        (LEFT JOIN product_template distinto, línea en vez de
+        intervalo) — se prueba acá también en vez de asumir que
+        "ya se probó en el otro modelo" cubre este join."""
+        categ_a = self.env['product.category'].create({'name': 'Categoría A (test op)'})
+        categ_b = self.env['product.category'].create({'name': 'Categoría B (test op)'})
+        self.product_weight.product_tmpl_id.categ_id = categ_a.id
+        self.product_unit.product_tmpl_id.categ_id = categ_b.id
+
+        today = self._far_today()
+        session = self._session(today)
+        self._line(
+            session, self.product_weight, self.operator_a,
+            actual_kg=3.5, done_date=fields.Datetime.now(),
+        )
+        self._line(
+            session, self.product_unit, self.operator_a,
+            actual_kg=1.0, done_date=fields.Datetime.now(),
+        )
+
+        rows = self.Report.sudo().read_group(
+            [('wizard_id', '=', session.id)], ['kg:sum'],
+            ['categ_id'],
+        )
+        by_categ = {r['categ_id'][0]: r['kg'] for r in rows}
+        self.assertAlmostEqual(by_categ[categ_a.id], 3.5)
+        self.assertAlmostEqual(by_categ[categ_b.id], 1.0)
+
+    def test_product_search_matches_by_name_or_internal_reference(self):
+        """Mismo filter_domain declarado en el arch de este buscador
+        (relativo a guapante.preparation.operator.report, no a
+        product.template directo) — probado contra filas reales del
+        reporte, no contra product.template suelto."""
+        self.product_weight.product_tmpl_id.default_code = 'REF-TEST-13-OP'
+        today = self._far_today()
+        session = self._session(today)
+        self._line(
+            session, self.product_weight, self.operator_a,
+            actual_kg=3.5, done_date=fields.Datetime.now(),
+        )
+        self._line(
+            session, self.product_unit, self.operator_a,
+            actual_kg=1.0, done_date=fields.Datetime.now(),
+        )
+
+        def search_by(term):
+            return self.Report.sudo().search([
+                '|',
+                ('product_tmpl_id.name', 'ilike', term),
+                ('product_tmpl_id.default_code', 'ilike', term),
+            ])
+
+        by_name = search_by(self.product_weight.product_tmpl_id.name)
+        self.assertTrue(
+            all(r.product_tmpl_id == self.product_weight.product_tmpl_id
+                for r in by_name)
+        )
+        self.assertTrue(by_name)
+
+        by_ref = search_by('REF-TEST-13-OP')
+        self.assertTrue(by_ref)
+        self.assertTrue(
+            all(r.product_tmpl_id == self.product_weight.product_tmpl_id
+                for r in by_ref)
+        )

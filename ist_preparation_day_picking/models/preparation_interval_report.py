@@ -58,6 +58,9 @@ class PreparationIntervalReport(models.Model):
         ),
     )
     product_tmpl_id = fields.Many2one('product.template', string='Producto', readonly=True)
+    # Tarea 13 (Tech Lead/David, 2026-11-05): categoría ESTÁNDAR del
+    # catálogo (product.template.categ_id), nada propio de Guapante.
+    categ_id = fields.Many2one('product.category', string='Categoría', readonly=True)
     wizard_id = fields.Many2one('guapante.preparation.day', string='Sesión', readonly=True)
     date = fields.Date(string='Jornada', readonly=True)
     kind = fields.Selection(
@@ -128,6 +131,7 @@ class PreparationIntervalReport(models.Model):
             'start_dt', 'duration_s', 'kg_done', 'lines_done', 'first_weigh_dt',
         ],
         'guapante.preparation.day': ['date'],
+        'product.template': ['categ_id'],
     }
 
     @property
@@ -138,6 +142,7 @@ class PreparationIntervalReport(models.Model):
                 pi.id AS id,
                 pi.employee_id AS employee_id,
                 pi.product_tmpl_id AS product_tmpl_id,
+                pt.categ_id AS categ_id,
                 pi.wizard_id AS wizard_id,
                 pd.date AS date,
                 pi.kind AS kind,
@@ -164,6 +169,7 @@ class PreparationIntervalReport(models.Model):
                 END AS time_per_box_s
             FROM guapante_preparation_interval pi
             JOIN guapante_preparation_day pd ON pd.id = pi.wizard_id
+            LEFT JOIN product_template pt ON pt.id = pi.product_tmpl_id
             WHERE pi.end_dt IS NOT NULL
               AND pi.start_dt >= COALESCE(
                   (SELECT value::timestamp FROM ir_config_parameter

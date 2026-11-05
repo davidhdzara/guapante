@@ -160,14 +160,73 @@
         <field name="arch" type="xml">
             <search string="Tiempo de Picking">
                 <field name="employee_id"/>
-                <field name="product_tmpl_id"/>
+                <!-- Tarea 13 (Tech Lead/David, 2026-11-05): "producto
+                     en específico" — product.template.name_search()
+                     nativo (verificado en el fuente del host,
+                     product/models/product_template.py) solo busca
+                     por name, NUNCA por default_code (referencia
+                     interna) — sin filter_domain, escribir una
+                     referencia acá no encuentra nada. filter_domain
+                     con 'self' es el mecanismo nativo de Odoo para
+                     esto (sin tocar name_search del modelo, que es
+                     compartido con todo el sistema, no solo este
+                     reporte) — se combina con fecha/categoría como
+                     cualquier otro campo del buscador (AND implícito
+                     entre campos distintos). -->
+                <field name="product_tmpl_id"
+                       filter_domain="['|', ('product_tmpl_id.name', 'ilike', self), ('product_tmpl_id.default_code', 'ilike', self)]"/>
+                <field name="categ_id"/>
                 <filter name="filter_working" string="Trabajando"
                         domain="[('kind', '=', 'working')]"/>
                 <filter name="filter_stopped" string="Detenido"
                         domain="[('kind', '=', 'stopped')]"/>
                 <separator/>
+                <!-- Tarea 13 — rango rápido (texto de David: "yo
+                     debería poder mirar por el día... podría poner
+                     rango de fechas"). Filtros PLANOS con
+                     context_today() (odoo/fields.py:2323) — NUNCA
+                     type="dateFilter": ese widget especializado (ver
+                     web/static/src/search/utils/dates.js,
+                     getPeriodOptions) solo genera granularidad mes/
+                     trimestre/año, nunca día — no hay forma de que
+                     abra exactamente en "Hoy" con ese mecanismo.
+                     context_today() es matemáticamente igual a
+                     _current_session_date (ist_preparation_day/
+                     models/preparation_day.py): las dos convierten
+                     fields.Datetime.now() a env.user.tz y sacan
+                     .date() — mismo criterio de jornada, verificado
+                     leyendo las dos fuentes. relativedelta también
+                     está en los globals estándar de evaluación de
+                     domain (odoo/tools/view_validation.py). Quitables
+                     como cualquier filtro, combinables con categoría/
+                     producto (AND implícito). -->
+                <filter name="filter_yesterday" string="Ayer"
+                        domain="[('date', '=', (context_today() - relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_today" string="Hoy"
+                        domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_7_days" string="Última semana"
+                        domain="[('date', '&gt;=', (context_today() - relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_month" string="Este mes"
+                        domain="[('date', '&gt;=', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_month" string="Mes anterior"
+                        domain="[('date', '&gt;=', (context_today().replace(day=1) - relativedelta(months=1)).strftime('%Y-%m-%d')),
+                                 ('date', '&lt;', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <!-- Widget especializado nativo de Odoo (mes/
+                     trimestre/año con navegación, distinto de los
+                     filtros planos de arriba) — David puede combinar
+                     los dos. Rango LIBRE (cualquier dos fechas): lo
+                     cubre "Agregar filtro personalizado" del buscador
+                     (search_bar_menu.js: onAddCustomFilterClick →
+                     searchModel.spawnCustomFilterDialog(), nativo de
+                     cualquier vista, sin declarar nada en este arch) —
+                     documentado en la ayuda de cada reporte. -->
+                <filter name="date_filter" string="Jornada" date="date"/>
+                <separator/>
                 <filter name="group_product" string="Producto"
                         context="{'group_by': 'product_tmpl_id'}"/>
+                <filter name="group_categ" string="Categoría"
+                        context="{'group_by': 'categ_id'}"/>
                 <filter name="group_employee" string="Operario"
                         context="{'group_by': 'employee_id'}"/>
                 <filter name="group_kind" string="Tipo"
@@ -205,7 +264,13 @@
                 cualquier rato que el operario navegó fuera de Nivel 2
                 sin terminar ("← Productos" ya no cierra el
                 intervalo), así que puede incluir navegación, no solo
-                trabajo real.
+                trabajo real. Abre en "Última semana" (quitable);
+                "Hoy"/"Ayer"/categoría/producto están disponibles como
+                filtro manual. La jornada de la noche, desde las
+                21:00, cuenta como el día siguiente (corte del
+                tablet) — lo trabajado esa noche no sale en "Hoy" si
+                lo revisás esa misma noche. Para un rango de fechas
+                libre: Filtros → Agregar filtro personalizado.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working')]</field>
@@ -217,10 +282,16 @@
              solo, el de los <filter> del buscador compartido (que
              acá NO se reordena: sigue sirviendo a 3/4/5 con su propio
              orden). date_day=1 antes que employee=2 → eje=fecha,
-             leyenda=operario. -->
+             leyenda=operario. Tarea 13: default "Última semana" (un
+             solo día sería un punto en un gráfico de serie temporal,
+             decisión de David) — search_default_filter_last_7_days,
+             sin rango numérico porque filter_last_7_days es un filtro
+             PLANO (domain fijo), no un groupBy — no entra en el
+             mecanismo de defaultRank/Array.sort de arriba. -->
         <field name="context">{
             'search_default_group_date_day': 1,
             'search_default_group_employee': 2,
+            'search_default_filter_last_7_days': 1,
             'pivot_row_groupby': ['employee_id'],
             'pivot_column_groupby': ['date:day'],
             'pivot_measures': ['duration_s'],
@@ -260,12 +331,22 @@
                 última caja o cambia de producto — "← Productos" ya
                 no cierra el intervalo, así que incluye cualquier
                 rato que el operario navegó fuera de Nivel 2 sin
-                terminar.
+                terminar. Abre en "Hoy" (quitable); categoría/
+                producto/rango de mes-trimestre-año están disponibles
+                como filtro manual. La jornada de la noche, desde las
+                21:00, cuenta como el día siguiente (corte del
+                tablet) — lo trabajado esa noche no sale en "Hoy" si
+                lo revisás esa misma noche. Para un rango de fechas
+                libre: Filtros → Agregar filtro personalizado.
             </p>
         </field>
+        <!-- Tarea 13: default "Hoy" (filtro PLANO, domain fijo —
+             search_default_filter_today no es un groupBy, no entra
+             en el mecanismo de defaultRank). -->
         <field name="context">{
             'search_default_group_product': 1,
             'search_default_group_kind': 1,
+            'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
             'pivot_column_groupby': ['kind'],
             'pivot_measures': ['duration_s', 'duration_avg_s', 'time_to_first_weigh_s', 'time_without_lines_s'],
@@ -309,7 +390,14 @@
                 incluye cualquier rato que el operario navegó fuera
                 de Nivel 2 ("← Productos" ya no cierra el intervalo),
                 así que un tiempo por kilo alto puede reflejar
-                navegación, no solo trabajo real.
+                navegación, no solo trabajo real. Abre en "Hoy"
+                (quitable); categoría/producto/rango de mes-
+                trimestre-año están disponibles como filtro manual.
+                La jornada de la noche, desde las 21:00, cuenta como
+                el día siguiente (corte del tablet) — lo trabajado
+                esa noche no sale en "Hoy" si lo revisás esa misma
+                noche. Para un rango de fechas libre: Filtros →
+                Agregar filtro personalizado.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
@@ -323,8 +411,11 @@
              solo producto (antes empleado+producto); pivot_measures
              ampliado con duration_s/kg_done/lines_done (adición de
              Tech Lead) para que el selector de medidas del pivote
-             arranque con las mismas 4 que el gráfico. -->
+             arranque con las mismas 4 que el gráfico. Tarea 13:
+             default "Hoy" (filtro PLANO) — no toca groupBy, no afecta
+             el fallback del gráfico de arriba. -->
         <field name="context">{
+            'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
             'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_kg_s'],
         }</field>
@@ -361,14 +452,22 @@
                 cualquier rato que el operario navegó fuera de Nivel
                 2 ("← Productos" ya no cierra el intervalo), así que
                 un tiempo por caja alto puede reflejar navegación, no
-                solo trabajo real.
+                solo trabajo real. Abre en "Hoy" (quitable);
+                categoría/producto/rango de mes-trimestre-año están
+                disponibles como filtro manual. La jornada de la
+                noche, desde las 21:00, cuenta como el día siguiente
+                (corte del tablet) — lo trabajado esa noche no sale
+                en "Hoy" si lo revisás esa misma noche. Para un rango
+                de fechas libre: Filtros → Agregar filtro
+                personalizado.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
         <!-- Tarea 14: mismo criterio que el Reporte 4 (ver su
              comentario) — solo producto por defecto, operario queda
-             como filtro manual. -->
+             como filtro manual. Tarea 13: default "Hoy". -->
         <field name="context">{
+            'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
             'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_box_s'],
         }</field>

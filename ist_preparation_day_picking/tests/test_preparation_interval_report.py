@@ -649,6 +649,195 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
             'time_per_box_s',
         )
 
+    def _eval_search_filter_domain(self, filter_name):
+        """Tarea 13 (Tech Lead/David, 2026-11-05) — parsea el arch REAL
+        del buscador compartido (3/4/5) y evalúa el domain del filtro
+        con el MISMO contexto estándar que Odoo expone a cualquier
+        domain de vista (context_today/relativedelta, ver odoo/tools/
+        view_validation.py) — así la prueba cubre exactamente el
+        string que se va a desplegar, no una reimplementación
+        paralela de la fórmula."""
+        import xml.etree.ElementTree as ET
+
+        from dateutil.relativedelta import relativedelta
+        from odoo.tools.safe_eval import safe_eval
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_search'
+        )
+        root = ET.fromstring(view.arch)
+        node = root.find(f".//filter[@name='{filter_name}']")
+        self.assertIsNotNone(node, f'filtro {filter_name!r} no existe en el arch.')
+        eval_context = {
+            'context_today': lambda: fields.Date.context_today(self.env.user),
+            'relativedelta': relativedelta,
+        }
+        return safe_eval(node.get('domain'), eval_context)
+
+    def test_filter_today_domain_is_exact_context_today(self):
+        today = fields.Date.context_today(self.env.user).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_today'),
+            [('date', '=', today)],
+        )
+
+    def test_filter_yesterday_domain_is_context_today_minus_1(self):
+        from dateutil.relativedelta import relativedelta
+        yesterday = (
+            fields.Date.context_today(self.env.user) - relativedelta(days=1)
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_yesterday'),
+            [('date', '=', yesterday)],
+        )
+
+    def test_filter_last_7_days_domain_is_context_today_minus_7(self):
+        from dateutil.relativedelta import relativedelta
+        start = (
+            fields.Date.context_today(self.env.user) - relativedelta(days=7)
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_last_7_days'),
+            [('date', '>=', start)],
+        )
+
+    def test_filter_this_month_domain_starts_on_day_1(self):
+        start = fields.Date.context_today(self.env.user).replace(
+            day=1,
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_this_month'),
+            [('date', '>=', start)],
+        )
+
+    def test_filter_last_month_domain_excludes_this_month(self):
+        from dateutil.relativedelta import relativedelta
+        this_month_start = fields.Date.context_today(self.env.user).replace(day=1)
+        last_month_start = (this_month_start - relativedelta(months=1))
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_last_month'),
+            [
+                ('date', '>=', last_month_start.strftime('%Y-%m-%d')),
+                ('date', '<', this_month_start.strftime('%Y-%m-%d')),
+            ],
+        )
+
+    def _assert_action_default_filter(self, action_xmlid, filter_key):
+        from odoo.tools.safe_eval import safe_eval
+
+        action = self.env.ref(action_xmlid)
+        context = safe_eval(action.context or '{}')
+        self.assertEqual(context.get(filter_key), 1)
+
+    def test_report_2_defaults_to_last_7_days(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_2',
+            'search_default_filter_last_7_days',
+        )
+
+    def test_report_3_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_3',
+            'search_default_filter_today',
+        )
+
+    def test_report_4_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'search_default_filter_today',
+        )
+
+    def test_report_5_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+            'search_default_filter_today',
+        )
+
+    def test_categ_id_groups_intervals_by_category(self):
+        """Tarea 13: categ_id = product.template.categ_id ESTÁNDAR,
+        agregado al _table_query vía LEFT JOIN product_template — dos
+        productos en categorías distintas deben separarse al agrupar
+        por categ_id, cada uno con su propia suma."""
+        categ_a = self.env['product.category'].create({'name': 'Categoría A (test)'})
+        categ_b = self.env['product.category'].create({'name': 'Categoría B (test)'})
+        self.product_weight.product_tmpl_id.categ_id = categ_a.id
+        self.product_unit.product_tmpl_id.categ_id = categ_b.id
+
+        day = self._far_today()
+        session = self._session(day)
+        claim_a = self._claim(session, self.product_weight)
+        claim_b = self._claim(session, self.product_unit)
+        now = fields.Datetime.now()
+        self._interval(
+            claim_a, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim_b, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=20), end_dt=now, duration_s=20,
+            kg_done=2.0, lines_done=2,
+        )
+
+        result = call_kw(
+            self.Report.sudo(), 'read_group', [],
+            {
+                'domain': [('wizard_id', '=', session.id)],
+                'fields': ['duration_s:sum'],
+                'groupby': ['categ_id'], 'lazy': False,
+            },
+        )
+        by_categ = {g['categ_id'][0]: g['duration_s'] for g in result}
+        self.assertEqual(by_categ[categ_a.id], 10)
+        self.assertEqual(by_categ[categ_b.id], 20)
+
+    def test_product_search_matches_by_name_or_internal_reference(self):
+        """Tarea 13: filter_domain del campo product_tmpl_id del
+        buscador — "comprobando que busca por nombre y referencia
+        interna (default_code)". product.template.name_search()
+        nativo NO busca default_code (verificado en el fuente); esto
+        prueba la fórmula exacta que declara el arch (relativa a ESTE
+        reporte, product_tmpl_id.name/.default_code) contra filas
+        reales del reporte, no contra product.template suelto."""
+        self.product_weight.product_tmpl_id.default_code = 'REF-TEST-13'
+        day = self._far_today()
+        session = self._session(day)
+        claim_a = self._claim(session, self.product_weight)
+        claim_b = self._claim(session, self.product_unit)
+        now = fields.Datetime.now()
+        self._interval(
+            claim_a, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim_b, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+
+        def search_by(term):
+            return self.Report.sudo().search([
+                ('wizard_id', '=', session.id),
+                '|',
+                ('product_tmpl_id.name', 'ilike', term),
+                ('product_tmpl_id.default_code', 'ilike', term),
+            ])
+
+        by_name = search_by(self.product_weight.product_tmpl_id.name)
+        self.assertTrue(by_name)
+        self.assertTrue(all(
+            r.product_tmpl_id == self.product_weight.product_tmpl_id
+            for r in by_name
+        ))
+
+        by_ref = search_by('REF-TEST-13')
+        self.assertTrue(by_ref)
+        self.assertTrue(all(
+            r.product_tmpl_id == self.product_weight.product_tmpl_id
+            for r in by_ref
+        ))
+
     def test_list_view_shows_kg_lines_ratios_by_default(self):
         """Tarea 14: "lista con Producto, Tiempo trabajado, Kg, Líneas,
         Seg/kg visibles" — la vista lista es compartida con el Reporte

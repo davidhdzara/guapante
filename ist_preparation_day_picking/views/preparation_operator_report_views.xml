@@ -78,7 +78,36 @@
         <field name="arch" type="xml">
             <search string="Pickings por operario">
                 <field name="employee_id"/>
-                <field name="product_tmpl_id"/>
+                <!-- Tarea 13 (Tech Lead/David, 2026-11-05): mismo
+                     filter_domain que en el buscador de Reportes
+                     3/4/5 (ver su comentario largo) — name_search()
+                     nativo de product.template solo busca por name,
+                     nunca por default_code (referencia interna). -->
+                <field name="product_tmpl_id"
+                       filter_domain="['|', ('product_tmpl_id.name', 'ilike', self), ('product_tmpl_id.default_code', 'ilike', self)]"/>
+                <field name="categ_id"/>
+                <!-- Tarea 13 — mismo criterio que en el buscador de
+                     Reportes 3/4/5 (ver su comentario largo): filtros
+                     PLANOS con context_today(), nunca type=
+                     "dateFilter" (ese widget nunca llega a
+                     granularidad día). -->
+                <filter name="filter_yesterday" string="Ayer"
+                        domain="[('date', '=', (context_today() - relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_today" string="Hoy"
+                        domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_7_days" string="Última semana"
+                        domain="[('date', '&gt;=', (context_today() - relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_month" string="Este mes"
+                        domain="[('date', '&gt;=', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_month" string="Mes anterior"
+                        domain="[('date', '&gt;=', (context_today().replace(day=1) - relativedelta(months=1)).strftime('%Y-%m-%d')),
+                                 ('date', '&lt;', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <!-- Widget especializado nativo (mes/trimestre/año) —
+                     rango LIBRE: "Agregar filtro personalizado" del
+                     buscador, nativo, sin declarar nada acá. -->
+                <filter name="date_filter" string="Jornada" date="date"/>
+                <separator/>
                 <!-- Tarea 12.0 (Tech Lead/David, 2026-11-05): "Jornada
                      (día)" va ANTES de "Operario" aquí a propósito —
                      ver el comentario junto a search_default_* en la
@@ -96,6 +125,8 @@
                         context="{'group_by': 'employee_id'}"/>
                 <filter name="group_product" string="Producto"
                         context="{'group_by': 'product_tmpl_id'}"/>
+                <filter name="group_categ" string="Categoría"
+                        context="{'group_by': 'categ_id'}"/>
             </search>
         </field>
     </record>
@@ -105,6 +136,18 @@
         <field name="res_model">guapante.preparation.operator.report</field>
         <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_operator_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Líneas/cajas/kg hechas por operario. Abre en "Última
+                semana" (quitable); "Hoy"/"Ayer"/categoría/producto
+                están disponibles como filtro manual. La jornada de
+                la noche, desde las 21:00, cuenta como el día
+                siguiente (corte del tablet) — lo pesado esa noche no
+                sale en "Hoy" si lo revisás esa misma noche. Para un
+                rango de fechas libre: Filtros → Agregar filtro
+                personalizado.
+            </p>
+        </field>
         <!-- Default de pivot/gráfico: fijado en el arch de cada vista
              (type="row"/"col"/"measure") — agrupado por operario y
              jornada (día); "producto" queda disponible como filtro
@@ -142,9 +185,12 @@
              igual, por claridad visual del dropdown "Agrupar por").
              Pivote no se afecta (fila/columna fijas en su propio arch,
              no usa este groupBy). -->
+        <!-- Tarea 13: default "Última semana" (filtro PLANO, no es
+             groupBy — no interfiere con el defaultRank de arriba). -->
         <field name="context">{
             'search_default_group_date_day': 1,
             'search_default_group_employee': 2,
+            'search_default_filter_last_7_days': 1,
         }</field>
     </record>
 </odoo>
