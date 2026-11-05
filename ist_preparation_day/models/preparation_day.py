@@ -1216,7 +1216,9 @@ class PreparationDay(models.Model):
                 'fecha programada.'
             )
 
-    def _guapante_relocate_picking(self, picking, old_scheduled_date):
+    def _guapante_relocate_picking(
+        self, picking, old_scheduled_date, exclude_picking_ids=None,
+    ):
         """Reubica, de forma incremental, la línea de preparación de
         *picking* cuando su scheduled_date cambia de día calendario.
 
@@ -1235,6 +1237,14 @@ class PreparationDay(models.Model):
         error acá se registra y se traga, nunca se propaga (la única
         excepción deliberada es el UserError de arriba, que corre
         ANTES del write real).
+
+        exclude_picking_ids (Propuesta A, Tech Lead 2026-11-04): ids de
+        TODOS los pickings reubicados en el mismo stock.picking.write()
+        que disparó esto (los pasa StockPicking.write(), ver su
+        docstring) — se reenvía tal cual a _assign_daily_sequences/
+        _guapante_max_daily_sequence_on_date para que el cálculo del
+        "máximo ya existente" no cuente a un hermano todavía sin
+        resetear en esta misma vuelta del loop.
         """
         new_scheduled_date = picking.scheduled_date
         if not new_scheduled_date:
@@ -1284,7 +1294,9 @@ class PreparationDay(models.Model):
                 # queda arrastrando el de la fecha vieja (caso d de la
                 # reproducción).
                 Order.sudo().write({'daily_sequence': 0})
-                self.env['sale.order']._assign_daily_sequences(new_date)
+                self.env['sale.order']._assign_daily_sequences(
+                    new_date, exclude_picking_ids=exclude_picking_ids,
+                )
                 # daily_sequence de la línea es related+store sobre la
                 # orden — se sincroniza solo al cambiar el de la orden.
 

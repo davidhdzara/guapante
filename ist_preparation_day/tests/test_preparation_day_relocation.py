@@ -499,6 +499,53 @@ class TestPreparationDayRelocation(TransactionCase):
             'la nota del chatter debe mostrar el número NUEVO (#3), no el viejo (#1)',
         )
 
+    def test_batch_relocation_of_three_pickings_assigns_contiguous_sequence(self):
+        """Propuesta A (Tech Lead, 2026-11-04): reubicar varios PICK a
+        la vez en UN solo stock.picking.write() no debe dejar huecos
+        al principio de la numeración del destino.
+
+        Sin exclude_picking_ids, super().write() ya mueve el
+        scheduled_date de los 3 pickings ANTES de que el loop de
+        relocate() reasigne su daily_sequence uno por uno — así que al
+        procesar el primero, los otros dos "hermanos" (scheduled_date
+        ya en el día nuevo, pero daily_sequence todavía sin resetear,
+        con el número viejo de day_a) aparecían en el domain de
+        _guapante_max_daily_sequence_on_date como si ya fueran del día
+        nuevo, inflando el máximo y arrancando en #4 en vez de #1."""
+        order_1, pick_1 = self._create_confirmed_order(self.day_a)
+        order_2, pick_2 = self._create_confirmed_order(self.day_a)
+        order_3, pick_3 = self._create_confirmed_order(self.day_a)
+        self._load_session(self.day_a)
+        self.assertEqual(order_1.daily_sequence, 1)
+        self.assertEqual(order_2.daily_sequence, 2)
+        self.assertEqual(order_3.daily_sequence, 3)
+
+        dt_start_b, _ = _date_to_utc_range(self.env, self.day_b)
+        # Los 3 PICK se reubican en UNA sola llamada a write() — mismo
+        # recordset, mismo stock.picking.write().
+        (pick_1 | pick_2 | pick_3).write({'scheduled_date': dt_start_b})
+
+        order_1.invalidate_recordset()
+        order_2.invalidate_recordset()
+        order_3.invalidate_recordset()
+
+        new_sequences = sorted([
+            order_1.daily_sequence,
+            order_2.daily_sequence,
+            order_3.daily_sequence,
+        ])
+        self.assertEqual(
+            new_sequences, [1, 2, 3],
+            'los 3 pedidos reubicados juntos deben numerarse 1,2,3 en '
+            'el destino, sin huecos al principio (ej. 4,5,6) por '
+            'contarse entre sí como "ya existentes" en el domain del '
+            'máximo.',
+        )
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day_b)], limit=1,
+        )
+        self.assertEqual(len(session_b.line_ids), 3)
+
     # ── DEF-01: pedido de varias líneas/productos no debe reventar ──
 
     def _create_confirmed_order_multi(self, day, products):

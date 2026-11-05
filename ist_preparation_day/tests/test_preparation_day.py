@@ -169,6 +169,27 @@ class TestPreparationDay(TransactionCase):
         self.assertEqual(Fields['date'].string, 'Fecha programada')
         self.assertEqual(Fields['date_start'].string, 'Cargada el')
 
+    def test_daily_sequence_has_no_group_header_sum(self):
+        """David, 2026-11-04 ~21:30: "Caja #" (daily_sequence) es un
+        identificador, no una cantidad agregable — Odoo suma los
+        Integer por defecto en el encabezado de grupo (ver
+        Integer.aggregator='sum' en el core), lo que mostraba un
+        número sin sentido (ej. 8 líneas × caja #16 = "128"). Guarda
+        de regresión contra un revert accidental de aggregator=False
+        en sale.order (del que heredan los related de stock.picking y
+        de la línea de Preparación)."""
+        self.assertFalse(
+            self.env['sale.order']._fields['daily_sequence'].aggregator
+        )
+        self.assertFalse(
+            self.env['stock.picking']._fields['daily_sequence'].aggregator
+        )
+        self.assertFalse(
+            self.env['guapante.preparation.day.line']._fields[
+                'daily_sequence'
+            ].aggregator
+        )
+
     def test_no_duplicate_menu_under_inventory_operations(self):
         """Corrección #3 (David, 2026-10-31): "Preparación del Día" ya
         no debe aparecer dentro de Inventario › Operaciones (columna

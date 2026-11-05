@@ -1414,27 +1414,35 @@ class TestPreparationDayProductClaim(TestPreparationDay):
             self.assertEqual(result['time_working_open_count'], 1)
 
     def test_level1_time_counters_open_count_counts_every_still_ticking_worker(self):
-        """Contraparte de test_level1_time_counters_sum_two_operators_
-        on_same_claim_capped: acá los DOS operarios están dentro del
-        margen de gracia (ninguno congelado) — open_count debe ser 2,
-        no 1, para que el cronómetro L1 tiquee al doble de la velocidad
-        real (E3, punto 3 de Tech Lead en la revisión de 3/4)."""
+        """Contraparte del extinto test_level1_time_counters_sum_two_
+        operators_on_same_claim_capped (eliminado en Fase 2 lote B al
+        quitarse el tope de idle_timeout — ver los dos tests de arriba):
+        acá los DOS operarios están dentro del margen de gracia (ninguno
+        congelado) — open_count debe ser 2, no 1, para que el cronómetro
+        L1 tiquee al doble de la velocidad real (E3, punto 3 de Tech
+        Lead en la revisión de 3/4). Reloj fijo (nunca el real, Tech
+        Lead 2026-11-04, backlog "congelar el reloj") — mismo patrón que
+        los dos tests anteriores, aunque esta cuenta en particular ya
+        era inmune al drift de 1s por ser un conteo entero, no una suma
+        de segundos."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
-        now = fields.Datetime.now()
+        now = datetime(2026, 11, 4, 20, 0, 0)
 
-        self._create_interval(
-            claim, 'working', employee=self.operator_a,
-            start_dt=now - timedelta(seconds=200),
-            last_touched_dt=now - timedelta(seconds=50),
-        )
-        self._create_interval(
-            claim, 'working', employee=self.operator_b,
-            start_dt=now - timedelta(seconds=100),
-            last_touched_dt=now - timedelta(seconds=10),
-        )
+        with patch('odoo.fields.Datetime.now') as mock_now:
+            mock_now.return_value = now
+            self._create_interval(
+                claim, 'working', employee=self.operator_a,
+                start_dt=now - timedelta(seconds=200),
+                last_touched_dt=now - timedelta(seconds=50),
+            )
+            self._create_interval(
+                claim, 'working', employee=self.operator_b,
+                start_dt=now - timedelta(seconds=100),
+                last_touched_dt=now - timedelta(seconds=10),
+            )
 
-        visible = self.Claim.get_claims_for_level1_display(session.id)
+            visible = self.Claim.get_claims_for_level1_display(session.id)
         by_id = {c['id']: c for c in visible}
 
         self.assertEqual(by_id[claim.id]['time_working_open_count'], 2)
