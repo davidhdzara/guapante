@@ -308,6 +308,31 @@ class TestPreparationDay(TransactionCase):
             "Done lines should be preserved across reloads",
         )
 
+    def test_pending_lines_is_total_minus_done(self):
+        """Tarea 4 (Tech Lead/David, 2026-11-05): columna "Pendientes"
+        en la lista/kanban de sesiones — pending_lines debe ser
+        siempre total_lines - done_lines, incluida una línea recién
+        Terminada (pending_lines baja en 1, total_lines no cambia)."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        self.assertEqual(session.total_lines, 2)
+        self.assertEqual(session.done_lines, 0)
+        self.assertEqual(session.pending_lines, 2)
+
+        line = session.line_ids[0]
+        line.with_context(skip_auto_save=True).write({
+            'actual_kg': 1.0,
+            'is_done': True,
+        })
+        session.invalidate_recordset()
+
+        self.assertEqual(session.total_lines, 2)
+        self.assertEqual(session.done_lines, 1)
+        self.assertEqual(session.pending_lines, 1)
+
     def test_action_load_customer_hierarchy(self):
         """Lines should show parent as main_customer_name for child contacts."""
         self._create_confirmed_order(
