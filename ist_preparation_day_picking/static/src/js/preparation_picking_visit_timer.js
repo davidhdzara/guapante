@@ -19,12 +19,18 @@ const RESYNC_DEBOUNCE_MS = 400;
 // que PickingOperatorHeader (preparation_picking_operator_header.js):
 // no vive dentro de PickingLinesDisplay, se monta junto a ella.
 //
-// "Visita actual" = solo el intervalo 'working' abierto por ESTE
-// operario en ESTE ingreso al producto — nunca el acumulado histórico
-// del claim (eso ya lo muestra el contador L1 del pie de tarjeta en
-// Nivel 1). Al cerrar (action_close_my_interval, lote 2B) y volver a
-// entrar se abre un intervalo NUEVO con start_dt propio -> este
-// cronómetro vuelve a 00:00 solo, sin lógica de reset en el cliente.
+// "Visita actual" = el intervalo 'working' abierto por ESTE operario
+// sobre ESTE claim — nunca el acumulado histórico del claim (eso ya
+// lo muestra el contador L1 del pie de tarjeta en Nivel 1).
+//
+// B cliente (Tech Lead, 2026-11-04): "← Productos" ya NO cierra el
+// intervalo (se quitó action_close_my_interval y su llamada) — es
+// navegación pura. Si el operario vuelve al mismo producto, sigue
+// siendo el MISMO intervalo abierto: este cronómetro NO vuelve a
+// 00:00, sigue corriendo desde la primera entrada (incluye el tiempo
+// que estuvo navegando fuera de Nivel 2). Solo vuelve a 00:00 cuando
+// se abre un intervalo de verdad nuevo (cambio de producto, cierre de
+// sesión, etc. — ver preparation_interval.py).
 //
 // Ancla anti-drift: get_my_open_interval() da start_dt + server_now
 // del servidor en el MISMO instante — el elapsed inicial se calcula

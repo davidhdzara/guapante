@@ -95,6 +95,16 @@
         <field name="res_model">guapante.preparation.interval.report</field>
         <field name="view_mode">pivot,list,graph</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                El tiempo "En proceso" (working) cuenta desde que el
+                operario entra al producto hasta que termina la
+                última caja o cambia de producto — "← Productos" ya
+                no cierra el intervalo, así que incluye cualquier
+                rato que el operario navegó fuera de Nivel 2 sin
+                terminar.
+            </p>
+        </field>
         <field name="context">{
             'search_default_group_product': 1,
             'search_default_group_kind': 1,
@@ -112,6 +122,15 @@
         <field name="res_model">guapante.preparation.interval.report</field>
         <field name="view_mode">pivot,list,graph</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Duración "working" entre tiempo despachado (kg) —
+                incluye cualquier rato que el operario navegó fuera
+                de Nivel 2 ("← Productos" ya no cierra el intervalo),
+                así que un tiempo por kilo alto puede reflejar
+                navegación, no solo trabajo real.
+            </p>
+        </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
         <field name="context">{
             'search_default_group_employee': 1,
@@ -128,6 +147,15 @@
         <field name="res_model">guapante.preparation.interval.report</field>
         <field name="view_mode">pivot,list,graph</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Duración "working" entre cajas terminadas — incluye
+                cualquier rato que el operario navegó fuera de Nivel
+                2 ("← Productos" ya no cierra el intervalo), así que
+                un tiempo por caja alto puede reflejar navegación, no
+                solo trabajo real.
+            </p>
+        </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
         <field name="context">{
             'search_default_group_employee': 1,

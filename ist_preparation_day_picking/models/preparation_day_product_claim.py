@@ -966,48 +966,6 @@ class PreparationDayProductClaim(models.Model):
             },
         }
 
-    def action_close_my_interval(self) -> bool:
-        """Fase 2 (servidor listo para el lote 2B, Tech Lead
-        2026-11-04) — cierra el intervalo 'working' ABIERTO de ESTE
-        operario sobre ESTE claim cuando sale de Nivel 2 por su cuenta
-        ("← Productos", "Cerrar", "Cerrar sesión"). close_reason=
-        'left', end_dt=now() (salida explícita: cuenta como actividad
-        real en este instante, no se usa last_touched_dt).
-
-        Sin cliente que lo llame todavía (lote 2B agrega el orm.call en
-        preparation_picking_level2_display.js) — hoy "Cerrar"/"Cerrar
-        sesión" ya cierran el intervalo por otra vía (ver
-        _close_open_working_for_employee en el controlador de NIP);
-        este método cubre específicamente "← Productos", que hoy es
-        navegación pura del cliente sin ningún RPC.
-
-        No-op si no hay nada abierto acá (ya se cerró por otra vía, o
-        el operario solo entró a mirar y nunca pesó nada — en ese caso
-        el intervalo sigue abierto hasta que algo más lo cierre, nunca
-        se fuerza un cierre falso por no encontrar uno activo)."""
-        self.ensure_one()
-        self._check_picking_access()
-        employee_id = self._require_active_operator()
-        Interval = self.env['guapante.preparation.interval']
-
-        def _close_my_open_interval():
-            Open = Interval.sudo().search([
-                ('employee_id', '=', employee_id),
-                ('claim_id', '=', self.id),
-                ('kind', '=', 'working'),
-                ('end_dt', '=', False),
-            ], limit=1)
-            if Open:
-                Open._close('left', fields.Datetime.now())
-        # _run_isolated (Tech Lead, revisión de 4/7): el tiempo es
-        # dato secundario — un fallo acá nunca debe impedir la
-        # navegación ("← Productos"/Cerrar) que este método acompaña.
-        Interval._run_isolated(
-            f'action_close_my_interval claim={self.id} '
-            f'empleado={employee_id}', _close_my_open_interval,
-        )
-        return True
-
     def get_my_open_interval(self) -> dict:
         """Fase 2 (lote 2B, Tech Lead 2026-11-04) — lectura de solo
         consulta para el cronómetro de Nivel 2: fuente de verdad del

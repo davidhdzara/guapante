@@ -34,11 +34,6 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // 'reload' seguidos; colapsarlos evita varias verificaciones redundantes.
 const RELOAD_DEBOUNCE_MS = 400;
 
-// Punto 2a (Tech Lead, 2026-11-04, revisión de diseño 2B): tope para
-// no bloquear "← Productos" indefinidamente si el servidor tarda —
-// ver _closeMyIntervalBeforeLeaving().
-const CLOSE_INTERVAL_TIMEOUT_MS = 1500;
-
 // Nivel 2 de Picking como client action propio (especificación visual,
 // David 2026-10-23 — misma decisión final que Nivel 1, ver
 // preparation_picking_level1_display.js). Llega acá SIEMPRE con
@@ -333,38 +328,7 @@ export class PickingLinesDisplay extends Component {
     }
 
     async onClickBackToLevel1() {
-        await this._closeMyIntervalBeforeLeaving();
         await this._backToLevel1();
-    }
-
-    // Punto 2a (Tech Lead, 2026-11-04, revisión de diseño 2B):
-    // ESPERADO (await), no fire-and-forget — si no se espera la
-    // confirmación del cierre, un reingreso inmediato al mismo
-    // producto puede ganarle la carrera al write y reabrir sobre el
-    // intervalo todavía viejo en vez de uno nuevo (ver, en el
-    // servidor, test_close_then_reenter_same_claim_opens_new_
-    // interval_with_new_start) — el cronómetro de la nueva visita no
-    // volvería a 00:00. Tope de 1.5s: si el servidor no responde a
-    // tiempo, navega igual — el tiempo es dato secundario (mismo
-    // criterio que _run_isolated del lado servidor), nunca debe
-    // bloquear la navegación indefinidamente. Los demás caminos a
-    // _backToLevel1() (fallback de F5 sin claim resuelto, cierre
-    // automático al terminar la última línea) NO pasan por acá a
-    // propósito: en el primero no hay claimId que cerrar, y en el
-    // segundo el intervalo ya se cerró del lado servidor
-    // (_close_finished_intervals) antes de que este código corra.
-    async _closeMyIntervalBeforeLeaving() {
-        if (!this.state.claimId) {
-            return;
-        }
-        const closeCall = this.orm.call(
-            "guapante.preparation.day.product.claim", "action_close_my_interval",
-            [[this.state.claimId]],
-        ).catch(() => {});
-        const timeout = new Promise(
-            (resolve) => setTimeout(resolve, CLOSE_INTERVAL_TIMEOUT_MS),
-        );
-        await Promise.race([closeCall, timeout]);
     }
 
     async _handleError(error) {

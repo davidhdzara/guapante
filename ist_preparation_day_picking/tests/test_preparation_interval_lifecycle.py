@@ -705,38 +705,18 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(interval.close_reason, 'session_closed')
         self.assertTrue(interval.end_dt)
 
-    def test_action_close_my_interval_closes_with_left_reason(self):
-        session = self._load_session_with_product()
-        claim = session.product_claim_ids
-        self._enter_l2(claim, self.operator_a)
-        interval = self._open_working(self.operator_a)
-
-        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
-            claim.action_close_my_interval()
-
-        interval.invalidate_recordset()
-        self.assertEqual(interval.close_reason, 'left')
-        self.assertTrue(interval.end_dt)
-
-    def test_action_close_my_interval_is_noop_when_nothing_open(self):
-        session = self._load_session_with_product()
-        claim = session.product_claim_ids
-        with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
-            result = claim.action_close_my_interval()
-        self.assertTrue(result)
-
-    def test_close_then_reenter_same_claim_opens_new_interval_with_new_start(self):
-        """Punto 2a (Tech Lead, 2026-11-04, revisión de diseño 2B): si
-        "← Productos" cerrara el intervalo en fire-and-forget y el
-        cliente navegara antes de que el write llegara al servidor,
-        un reingreso inmediato al mismo producto podría encontrar el
-        intervalo TODAVÍA abierto y reutilizarlo (como en
-        test_open_working_reentry_same_claim_does_not_duplicate) en
-        vez de abrir uno nuevo — el cronómetro de la nueva visita no
-        volvería a 00:00. Este test fija el orden correcto en el
-        servidor (cierre ya confirmado antes de la reapertura): el
-        segundo intervalo es una fila DISTINTA, con su propio
-        start_dt, nunca el mismo que el primero."""
+    def test_leave_and_reenter_same_claim_keeps_same_interval(self):
+        """B cliente (Tech Lead, 2026-11-04): se quitó el cierre al
+        salir de Nivel 2 ("← Productos" ya no llama a ningún RPC de
+        cierre — el método de servidor correspondiente,
+        action_close_my_interval, también se eliminó). "Salir" es
+        ahora navegación pura del cliente: no cierra nada en el
+        servidor. Un reingreso al mismo claim (action_open_lines_
+        kanban directo — el claim sigue siendo mío, no vuelvo a pasar
+        por Asignarme) debe encontrar el MISMO intervalo todavía
+        abierto, no uno nuevo — mismo id, mismo start_dt, el
+        cronómetro de Nivel 1 sigue corriendo desde que entré la
+        primera vez."""
         session = self._load_session_with_product()
         claim = session.product_claim_ids
         with patch('odoo.fields.Datetime.now') as mock_now:
@@ -746,27 +726,22 @@ class TestPreparationIntervalLifecycle(TestPreparationDayProductClaim):
         self.assertEqual(len(first), 1)
         self.assertEqual(first.start_dt, datetime(2026, 11, 4, 10, 0, 0))
 
-        with patch('odoo.fields.Datetime.now') as mock_now:
-            mock_now.return_value = datetime(2026, 11, 4, 10, 5, 0)
-            with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
-                claim.action_close_my_interval()
-        first.invalidate_recordset()
-        self.assertTrue(first.end_dt)
-        self.assertEqual(first.close_reason, 'left')
-
-        # "Continuar" (action_open_lines_kanban directo) — el claim
-        # sigue siendo mío (action_close_my_interval no lo libera),
-        # así que NO vuelvo a pasar por Asignarme (eso reventaría con
-        # "ya se asignó"): la excepción acotada del dueño sin
-        # intervalo (B.2a) es la que reabre acá.
+        # "← Productos" (navegación pura, sin RPC) y luego "Continuar"
+        # (action_open_lines_kanban directo) un rato después.
         with patch('odoo.fields.Datetime.now') as mock_now:
             mock_now.return_value = datetime(2026, 11, 4, 10, 10, 0)
             with patch(REQUEST_PATCH_TARGET_CLAIM, self._request_as(self.operator_a)):
                 claim.action_open_lines_kanban()
         second = self._open_working(self.operator_a)
-        self.assertEqual(len(second), 1)
-        self.assertNotEqual(second.id, first.id)
-        self.assertEqual(second.start_dt, datetime(2026, 11, 4, 10, 10, 0))
+        self.assertEqual(second, first)
+        self.assertEqual(second.start_dt, datetime(2026, 11, 4, 10, 0, 0))
+        self.assertFalse(second.end_dt)
+        self.assertEqual(
+            self.Interval.search_count([
+                ('employee_id', '=', self.operator_a.id),
+            ]),
+            1,
+        )
 
     def test_finishing_last_line_closes_the_working_interval(self):
         """_close_finished_intervals cierra TODO 'working' abierto del
