@@ -136,3 +136,83 @@ class TestPreparationProductDemandReport(TestPreparationDayProductClaim):
             ['wizard_id:count_distinct'], [],
         )
         self.assertEqual(groups[0]['wizard_id'], 2)
+
+    def test_product_rank_orders_by_total_line_done_desc(self):
+        """Task C (Tech Lead, 2026-11-04): product_rank viene de un
+        RANK() sobre el total de líneas despachadas POR PRODUCTO (no
+        por línea), calculado sobre TODA la historia (sin filtro de
+        reports_start_date, igual que el resto de este reporte) — así
+        que no se puede asumir un valor absoluto (staging_dev/la BD
+        de test puede tener datos reales de otros productos con más
+        demanda). Se verifica el ORDEN RELATIVO entre 3 productos de
+        fixture con totales distintos (3, 2, 1): rank(A) < rank(B) <
+        rank(C), y que TODAS las líneas de un mismo producto
+        comparten el mismo rank."""
+        today = self._far_today()
+        session = self._session(today)
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Demanda B', 'type': 'consu',
+        })
+        product_c = self.env['product.product'].create({
+            'name': 'Producto Demanda C', 'type': 'consu',
+        })
+        for _ in range(3):
+            self._line(session, self.product_weight, actual_kg=1.0)
+        for _ in range(2):
+            self._line(session, product_b, actual_kg=1.0)
+        self._line(session, product_c, actual_kg=1.0)
+
+        def _rank_of(product):
+            rows = self.Report.sudo().search_read(
+                [('product_tmpl_id', '=', product.product_tmpl_id.id)],
+                ['product_rank'], limit=1,
+            )
+            return rows[0]['product_rank']
+
+        rank_weight = _rank_of(self.product_weight)
+        rank_b = _rank_of(product_b)
+        rank_c = _rank_of(product_c)
+        self.assertLess(rank_weight, rank_b)
+        self.assertLess(rank_b, rank_c)
+
+        # Todas las líneas del producto con más demanda de los 3
+        # comparten exactamente el mismo rank.
+        rows = self.Report.sudo().search_read(
+            [('product_tmpl_id', '=', self.product_weight.product_tmpl_id.id)],
+            ['product_rank'],
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(r['product_rank'] == rank_weight for r in rows))
+
+    def test_top_n_filter_domain_excludes_lower_ranked_products(self):
+        """El mecanismo de los filtros "Top 10"/"Top 20" del buscador
+        es este mismo domain sobre product_rank — se prueba acá
+        filtrando por el rank real del producto más demandado de 2
+        de fixture (sin asumir que sea el #1 global, que puede no
+        serlo si hay datos reales de fondo): el domain debe incluir
+        SOLO ese producto y excluir el de menor demanda."""
+        today = self._far_today()
+        session = self._session(today)
+        product_b = self.env['product.product'].create({
+            'name': 'Producto Demanda B', 'type': 'consu',
+        })
+        self._line(session, self.product_weight, actual_kg=1.0)
+        self._line(session, self.product_weight, actual_kg=1.0)
+        self._line(session, product_b, actual_kg=1.0)
+
+        rows = self.Report.sudo().search_read(
+            [('wizard_id', '=', session.id)],
+            ['product_tmpl_id', 'product_rank'],
+        )
+        rank_weight = next(
+            r['product_rank'] for r in rows
+            if r['product_tmpl_id'][0] == self.product_weight.product_tmpl_id.id
+        )
+
+        top = self.Report.sudo().search([
+            ('wizard_id', '=', session.id), ('product_rank', '<=', rank_weight),
+        ])
+        self.assertEqual(
+            set(top.mapped('product_tmpl_id.id')),
+            {self.product_weight.product_tmpl_id.id},
+        )
