@@ -129,6 +129,15 @@
                        string="Líneas"
                        widget="progressbar"
                        options="{'current_value': 'done_lines', 'max_value': 'total_lines', 'editable': false}"/>
+                <!-- Tarea 4 (Tech Lead/David, 2026-11-05): columna
+                     "Pendientes" junto a la barra, con el campo
+                     pending_lines ya existente (total - hechas) — sin
+                     campo nuevo, sin CSS. Nota (verificado en el
+                     código del widget progressbar, core de Odoo):
+                     no existe una opción nativa para que la barra
+                     muestre el total completo en vez de abreviarlo
+                     ("1k") — no se fuerza, según lo pedido. -->
+                <field name="pending_lines"/>
                 <field name="state"
                        widget="badge"
                        decoration-muted="state == 'draft'"
@@ -151,6 +160,7 @@
                 <field name="state"/>
                 <field name="so_count"/>
                 <field name="global_progress_pct"/>
+                <field name="pending_lines"/>
                 <templates>
                     <t t-name="kanban-box">
                         <div class="oe_kanban_global_click oe_kanban_card">
@@ -168,6 +178,13 @@
                                 <div class="progress" style="height: 6px;">
                                     <div class="progress-bar" role="progressbar"
                                         t-attf-style="width: #{record.global_progress_pct.raw_value}%;"/>
+                                </div>
+                                <!-- Tarea 4 (Tech Lead/David, 2026-11-05):
+                                     mismo dato que la columna "Pendientes"
+                                     de la lista, junto a la barra
+                                     equivalente de este kanban. -->
+                                <div>
+                                    <field name="pending_lines"/> pendientes
                                 </div>
                             </div>
                         </div>

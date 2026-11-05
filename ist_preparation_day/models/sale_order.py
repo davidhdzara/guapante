@@ -30,6 +30,19 @@ class SaleOrder(models.Model):
         string='# del día',
         default=0,
         copy=False,
+        # Totales de grupo sin sentido (David, 2026-11-04 ~21:30): un
+        # Integer suma por defecto en el encabezado de grupo (ver
+        # Integer.aggregator='sum' en odoo/fields.py) — "Caja #" no es
+        # una cantidad agregable (es un identificador, como 'sequence'
+        # ya trata el propio core). aggregator=False acá se propaga
+        # solo a los related 'daily_sequence' de stock.picking y de
+        # guapante.preparation.day.line (ver _related_aggregator en
+        # fields.py) — una sola fuente de verdad para TODAS las listas
+        # donde aparece esta columna, sin tocar cada vista una por una.
+        # DECISIÓN (David, 2026-11-04): no se agrega ninguna columna de
+        # reemplazo (conteo de órdenes/productos) — el "(N)" del
+        # encabezado de grupo ya cuenta las líneas.
+        aggregator=False,
         help=(
             'Daily box number for the order\'s delivery date '
             '(pickings scheduled date).'
@@ -47,12 +60,29 @@ class SaleOrder(models.Model):
 
     @api.model
     def _guapante_max_daily_sequence_on_date(
-        self, company_id: int, delivery_date
+        self, company_id: int, delivery_date, exclude_picking_ids=None
     ) -> int:
         """Max existing daily_sequence for orders on this delivery date.
 
         Includes ALL states (even cancelled) to prevent box number
         reuse after order cancellation.
+
+        exclude_picking_ids (Propuesta A, Tech Lead 2026-11-04 — bug de
+        reubicación en lote): ids de pickings que se están reubicando
+        a esta MISMA fecha dentro del mismo stock.picking.write() que
+        disparó este cálculo. super().write() ya movió el
+        scheduled_date de TODOS ellos antes de que el loop de
+        relocate() reasigne su daily_sequence uno por uno — así que,
+        sin esto, los pedidos hermanos todavía no reseteados (su
+        daily_sequence sigue siendo el de la fecha VIEJA, no 0 todavía)
+        aparecían en este domain como si ya fueran parte de la fecha
+        nueva, inflando el "máximo" y dejando huecos al principio
+        (ej. cajas 4,5,6 en vez de 1,2,3 al reubicar 3 PICK juntos en
+        un solo write). Excluirlos acá es seguro: si de verdad ya
+        tienen un daily_sequence>0 vigente para la fecha nueva (porque
+        ya se les asignó en una vuelta anterior de este mismo loop),
+        ese pedido ya no pasa por este método de nuevo (el loop de
+        _assign_daily_sequences salta a quien ya tiene daily_sequence).
         """
         dt_start, dt_end = _date_to_utc_range(self.env, delivery_date)
         cid = company_id if company_id else None
@@ -71,6 +101,8 @@ class SaleOrder(models.Model):
         ]
         if cid:
             PickDomain.append(('company_id', '=', cid))
+        if exclude_picking_ids:
+            PickDomain.append(('id', 'not in', list(exclude_picking_ids)))
 
         Pickings = self.env['stock.picking'].sudo().search(PickDomain)
         Candidates = Pickings.mapped('sale_id')
@@ -80,12 +112,14 @@ class SaleOrder(models.Model):
 
     @api.model
     def _guapante_get_or_create_daily_ir_sequence(
-        self, company_id: int, delivery_date
+        self, company_id: int, delivery_date, exclude_picking_ids=None
     ):
         """Return ir.sequence for (company, day); create if missing.
 
         SIEMPRE sincroniza number_next con el máximo real de la BD
         para evitar duplicados tras cancelaciones o ediciones manuales.
+
+        exclude_picking_ids: ver _guapante_max_daily_sequence_on_date.
         """
         # sudo(): ir.sequence creation requiere permisos de admin
         # ya que el usuario de preparación normalmente no tiene
@@ -97,7 +131,7 @@ class SaleOrder(models.Model):
         seq = Sequence.search([('code', '=', code)], limit=1)
 
         max_existing = self._guapante_max_daily_sequence_on_date(
-            company_id, delivery_date,
+            company_id, delivery_date, exclude_picking_ids=exclude_picking_ids,
         )
         safe_next = max_existing + 1 if max_existing >= 0 else 1
 
@@ -149,13 +183,22 @@ class SaleOrder(models.Model):
         return seq
 
     @api.model
-    def _assign_daily_sequences(self, delivery_date) -> None:
+    def _assign_daily_sequences(
+        self, delivery_date, exclude_picking_ids=None
+    ) -> None:
         """Assign daily_sequence to confirmed orders for a delivery date.
 
         Called from PreparationDay.action_load so the sequence is always
         scoped to the actual delivery date, not the order creation date.
         Orders that already have a sequence keep it; new orders receive
         the next number from an ir.sequence (concurrency-safe).
+
+        exclude_picking_ids (Propuesta A): se pasa tal cual a
+        _guapante_get_or_create_daily_ir_sequence — ver su docstring y
+        el de _guapante_max_daily_sequence_on_date. No afecta qué
+        pedidos se recorren acá (OrdersForDate sigue completo): solo
+        afecta el cálculo del "máximo ya existente" para la fecha, que
+        es donde vivía el bug de reubicación en lote.
         """
         # Buscar solo pickings PICK (internal/Recolectar) PENDIENTES.
         # Excluir done/cancel: órdenes ya entregadas no deben recibir
@@ -182,6 +225,7 @@ class SaleOrder(models.Model):
                     .sudo()
                     ._guapante_get_or_create_daily_ir_sequence(
                         cid, delivery_date,
+                        exclude_picking_ids=exclude_picking_ids,
                     )
                 )
             seq = seq_by_company[cid]

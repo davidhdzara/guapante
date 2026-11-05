@@ -39,7 +39,24 @@ class PreparationIntervalReport(models.Model):
     _auto = False
     _order = 'date desc, product_tmpl_id'
 
-    employee_id = fields.Many2one('hr.employee', string='Operario', readonly=True)
+    employee_id = fields.Many2one(
+        'hr.employee', string='Operario', readonly=True,
+        # Tarea 7 (Tech Lead/David, 2026-11-05): un administrador/
+        # ayudante que pesa un producto que no es suyo (E3) no abre ni
+        # extiende NINGÚN intervalo propio — ni le toca el de quien
+        # tenía el 'working' abierto. Ese pesaje puntual simplemente no
+        # aparece en este reporte, de nadie. Ver done_by_employee_id en
+        # el Reporte 1 (Pickings por operario) para el crédito de la
+        # LÍNEA, que sí es siempre de quien la pesó.
+        help=(
+            'Dueño del intervalo (quien lo abrió, en Asignarme o '
+            'Retomar) — un pesaje puntual de un administrador/ayudante '
+            'sobre un producto que no es suyo no abre ni toca ningún '
+            'intervalo, de nadie; no aparece en este reporte. El '
+            'crédito de esa línea puntual vive en el Reporte 1 '
+            '(done_by_employee_id), no acá.'
+        ),
+    )
     product_tmpl_id = fields.Many2one('product.template', string='Producto', readonly=True)
     wizard_id = fields.Many2one('guapante.preparation.day', string='Sesión', readonly=True)
     date = fields.Date(string='Jornada', readonly=True)
@@ -51,7 +68,17 @@ class PreparationIntervalReport(models.Model):
     # medida summable — pivoteada con columnas=kind (default de la
     # acción del reporte 3) da los dos totales lado a lado, nunca dos
     # campos separados para lo mismo.
-    duration_s = fields.Integer(string='Tiempo (s)', readonly=True, aggregator='sum')
+    duration_s = fields.Integer(
+        string='Tiempo trabajado (s)', readonly=True, aggregator='sum',
+        help=(
+            'Duración del intervalo, en segundos — de CUALQUIER kind '
+            '("Trabajando" o "Detenido"), según la fila/columna donde '
+            'aparezca (ver el campo Tipo). En el Reporte 3, que separa '
+            'las dos columnas, esta medida es la misma bajo cada una; '
+            'el nombre refleja el uso más común (reportes 4 y 5, que '
+            'solo cuentan tiempo "Trabajando").'
+        ),
+    )
     # Mismo dato que arriba, expuesto aparte con aggregator='avg'
     # ("tiempo medio por visita") — un Float/Integer tiene UN solo
     # aggregator fijo por campo en Odoo, así que la única forma nativa

@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
-    <!-- Cronómetro de "visita actual" — ver preparation_picking_visit_timer.js.
-         Clases nativas (text-muted), sin colores nuevos ni badges,
-         mismo criterio que el resto de la barra de Nivel 2. En blanco
-         cuando no hay intervalo abierto (00:00, sin tiquear) — nunca
-         se oculta el componente entero, así no hay salto de layout en
-         la barra al abrir/cerrar un intervalo. -->
+    <!-- Cronómetro de "MI tiempo acumulado en este producto" — ver
+         preparation_picking_visit_timer.js. Clases nativas
+         (text-muted), sin colores nuevos ni badges, mismo criterio
+         que el resto de la barra de Nivel 2. Sin tiquear (fijo en el
+         acumulado) cuando no hay intervalo abierto — nunca se oculta
+         el componente entero, así no hay salto de layout en la barra
+         al abrir/cerrar un intervalo. -->
     <t t-name="ist_preparation_day_picking.PickingVisitTimer">
-        <span class="text-muted d-flex align-items-center gap-1" title="Tiempo de esta visita">
+        <span class="text-muted d-flex align-items-center gap-1" title="Mi tiempo acumulado en este producto">
             <i class="fa fa-clock-o"/>
             <t t-esc="displayValue"/>
         </span>

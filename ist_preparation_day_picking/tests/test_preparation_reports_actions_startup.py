@@ -2,7 +2,9 @@
 """Fix urgente de read_group (Tech Lead, 2026-11-04) — además del fix
 puntual (preparation_interval_report.py: el parámetro se llamaba
 `fields_list`, el cliente llama por kwargs con `fields=`), test de
-ARRANQUE de las 5 acciones del menú Reportes: get_views() de cada
+ARRANQUE de las 4 acciones del menú Reportes (Tarea 3, Tech Lead/
+David, 2026-11-05: se quitó "Productos más solicitados" — quedan
+operario + los 3 de tiempo): get_views() de cada
 vista declarada MÁS una llamada de read_group/web_read_group con los
 defaults REALES de pivote (arch `type="row"/"col"/"measure"`,
 sobreescritos por `pivot_row_groupby`/`pivot_column_groupby`/
@@ -13,7 +15,7 @@ kwargs que usa el navegador (`odoo.api.call_kw`, nunca posicional).
 El bug real (David, "Tiempo por producto" revienta) solo se veía por
 este camino — un test que llama `.read_group(domain, fields, groupby)`
 posicional (como ya hacían los tests existentes de los 3 reportes)
-nunca lo iba a notar. Esto cubre las 5 acciones, no solo la que David
+nunca lo iba a notar. Esto cubre las 4 acciones, no solo la que David
 probó primero — un error de arranque igual en otro reporte no debe
 esperar a que alguien lo abra a mano."""
 import xml.etree.ElementTree as ET
@@ -26,7 +28,6 @@ from .test_preparation_day_product_claim import TestPreparationDayProductClaim
 
 REPORT_ACTION_XMLIDS = [
     'ist_preparation_day_picking.action_preparation_operator_report',
-    'ist_preparation_day_picking.action_preparation_product_demand_report',
     'ist_preparation_day_picking.action_preparation_interval_report_3',
     'ist_preparation_day_picking.action_preparation_interval_report_4',
     'ist_preparation_day_picking.action_preparation_interval_report_5',
@@ -107,3 +108,32 @@ class TestPreparationReportsActionsStartup(TestPreparationDayProductClaim):
                         'groupby': groupby[:1], 'lazy': False,
                     },
                 )
+
+    def test_graph_is_the_default_view_on_all_report_actions(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): vista gráfica por
+        defecto en los 4 reportes — view_mode debe empezar por
+        'graph', no 'pivot'/'list'."""
+        for action_xmlid in REPORT_ACTION_XMLIDS:
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                self.assertTrue(
+                    Action.view_mode.startswith('graph'),
+                    f'{action_xmlid}: view_mode={Action.view_mode!r}',
+                )
+
+    def test_product_demand_report_was_fully_removed(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): "Productos más
+        solicitados" se quitó completo — modelo, acción y menú no
+        deben existir. Guarda de regresión contra un revert parcial
+        (ej. manifest/ACL quitados pero el modelo Python olvidado)."""
+        self.assertNotIn(
+            'guapante.preparation.product.demand.report', self.env.registry,
+        )
+        self.assertFalse(self.env.ref(
+            'ist_preparation_day_picking.action_preparation_product_demand_report',
+            raise_if_not_found=False,
+        ))
+        self.assertFalse(self.env.ref(
+            'ist_preparation_day_picking.menu_preparation_product_demand_report',
+            raise_if_not_found=False,
+        ))

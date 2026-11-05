@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- ============================================================
+         CRON: ESPEJO Inventario→Preparación (David/Tech Lead,
+         2026-11-05). Procesa las líneas marcadas needs_inventory_
+         mirror=True por el hook liviano de stock.move._action_done
+         (ver models/stock_move.py) — cierra en Preparación lo que ya
+         se validó directo desde Inventario (con o sin peso), sin
+         operario asociado.
+
+         Intervalo corto (2 min, igual de criterio que el cron de
+         claims de ist_preparation_day_picking): una línea atascada
+         bloquea la vista de "pendientes" de la sesión mientras tanto.
+
+         noupdate="1": un ajuste manual de David desde Ajustes no se
+         pisa con un -u del módulo.
+         ============================================================ -->
+    <record id="ir_cron_guapante_mirror_inventory" model="ir.cron">
+        <field name="name">Guapante: espejo Inventario → Preparación</field>
+        <field name="model_id" ref="model_guapante_preparation_day_line"/>
+        <field name="code">model._cron_mirror_inventory_to_preparation()</field>
+        <field name="interval_number">2</field>
+        <field name="interval_type">minutes</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

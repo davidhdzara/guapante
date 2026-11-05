@@ -37,9 +37,10 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         tener una sesión real (ej. una prueba en vivo de David en
         staging_dev) y _check_unique_date no permite una segunda para la
         misma fecha. +200 días — offset distinto al de
-        test_preparation_operator_report.py (+210) y test_preparation_
-        product_demand_report.py (+220) para que ni los 3 archivos de
-        reportes puedan pisarse entre sí."""
+        test_preparation_operator_report.py (+210) para que los
+        archivos de reportes no puedan pisarse entre sí (el tercer
+        offset, +220, era de test_preparation_product_demand_report.py,
+        quitado en la Tarea 3, Tech Lead/David, 2026-11-05)."""
         return fields.Date.add(
             fields.Date.context_today(self.env['sale.order']), days=200,
         )
@@ -457,3 +458,12 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         self.assertAlmostEqual(
             result['groups'][0]['time_per_kg_s'], 110 / 51, places=6,
         )
+
+    def test_duration_s_renamed_to_tiempo_trabajado(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): "Tiempo (s)" →
+        "Tiempo trabajado (s)", con ayuda explicando que también
+        cubre 'stopped' (Reporte 3). Guarda barata contra un revert
+        accidental de la etiqueta."""
+        field = self.Report._fields['duration_s']
+        self.assertEqual(field.string, 'Tiempo trabajado (s)')
+        self.assertTrue(field.help)

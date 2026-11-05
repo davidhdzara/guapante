@@ -35,19 +35,23 @@
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <!-- Cronómetro L2 (lote 2B, Tech Lead 2026-11-04):
-                             "arriba, junto a Actualizar/Cerrar" — ver
+                             "arriba, junto a Actualizar" — ver
                              preparation_picking_visit_timer.js.
                              t-if (hallazgo de Tech Lead en la revisión
                              de 2/4): state.claimId no está en el
                              objeto inicial de useState() (se asigna en
                              _resolveClaim(), dentro de onWillStart) —
                              nunca montar el componente mientras valga
-                             undefined. -->
+                             undefined.
+
+                             Tarea 6 (decisión provisional de Tech Lead,
+                             vetable por David, 2026-11-05): se quitó el
+                             botón "Cerrar" de esta barra — mismo
+                             razonamiento que en Nivel 1 (ver
+                             preparation_picking_level1_display.xml):
+                             duplicaba "Cerrar sesión". -->
                         <PickingVisitTimer t-if="state.claimId" claimId="state.claimId"/>
                         <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
-                        <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
-                            <i class="fa fa-lg fa-sign-out me-md-1"/><span class="d-none d-md-inline">Cerrar</span>
-                        </button>
                         <PickingOperatorHeader/>
                         <PickingInstallMenu/>
                     </div>

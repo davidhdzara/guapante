@@ -98,9 +98,10 @@ export class GuapantePickingApp extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.idleWatcher = useService("guapante_picking_idle_watcher");
-        // Punto 4 (Tech Lead, 2026-10-31): mismo flag nativo que ya
-        // oculta "Cerrar" en Nivel 1/2 — en la app instalada no hay
-        // "Descartar" a un backend que, para este tablet, no existe.
+        // Punto 4 (Tech Lead, 2026-10-31): mismo flag nativo que
+        // ocultaba "Cerrar" en Nivel 1/2 antes de que la Tarea 6
+        // (2026-11-05) lo quitara del todo — en la app instalada no
+        // hay "Descartar" a un backend que, para este tablet, no existe.
         this.pwaService = useService("pwa");
         this.iconUrl = ICON_URL;
         this.companyLogoUrl = COMPANY_LOGO_URL;

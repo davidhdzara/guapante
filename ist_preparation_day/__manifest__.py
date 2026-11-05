@@ -1,6 +1,6 @@
 {
     'name': 'Preparación (Guapante)',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.1.0',
     'category': 'Inventory/Inventory',
     'summary': 'Alistamiento de pedidos por producto, pesaje con identificación por PIN',
     'description': """
@@ -16,6 +16,7 @@
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
         'data/ir_cron_repair_sessions.xml',
+        'data/ir_cron_mirror_inventory.xml',
         'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
     ],

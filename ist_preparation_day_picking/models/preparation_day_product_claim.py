@@ -967,15 +967,31 @@ class PreparationDayProductClaim(models.Model):
         }
 
     def get_my_open_interval(self) -> dict:
-        """Fase 2 (lote 2B, Tech Lead 2026-11-04) — lectura de solo
-        consulta para el cronómetro de Nivel 2: fuente de verdad del
-        start_dt del intervalo 'working' ABIERTO de este operario
-        sobre este claim, más la hora del servidor en el mismo
-        instante, para que el cliente calcule el tiempo transcurrido
-        sin depender del reloj de la tablet. UN solo mecanismo tanto
-        para la carga inicial de Nivel 2 como para cada
-        resincronización (bus 'reload', visibilitychange) — nunca dos
-        caminos distintos para leer lo mismo.
+        """Fase 2 (lote 2B, Tech Lead 2026-11-04; Tarea 5, Tech Lead/
+        David, 2026-11-05) — lectura de solo consulta para el
+        cronómetro de Nivel 2: fuente de verdad del start_dt del
+        intervalo 'working' ABIERTO de este operario sobre este
+        claim, más la hora del servidor en el mismo instante, para
+        que el cliente calcule el tiempo transcurrido sin depender
+        del reloj de la tablet. UN solo mecanismo tanto para la carga
+        inicial de Nivel 2 como para cada resincronización (bus
+        'reload', visibilitychange) — nunca dos caminos distintos
+        para leer lo mismo.
+
+        Tarea 5: el cronómetro deja de ser "tiempo de esta visita" y
+        pasa a ser "MI tiempo acumulado en este producto" — accumulated_s
+        suma duration_s de TODOS mis intervalos 'working' YA CERRADOS
+        sobre este claim (nunca el abierto, que el cliente ya mide en
+        vivo con start_dt/server_now; sumarlo acá lo contaría dos
+        veces). El cliente arma el total mostrado como accumulated_s +
+        el elapsed en vivo del abierto (si hay uno) — así el número
+        nunca vuelve a 00:00 al liberar/detener/retomar el mismo
+        claim (solo se reinicia con un claim/producto distinto, que
+        es otro employee_id+claim_id). Scoped a ESTE empleado — otro
+        operario que entre después al mismo claim arranca en 00:00
+        (sus propios intervalos cerrados, que no existen todavía). El
+        contador L1 (total de TODOS los operarios) no usa este
+        método — no se toca.
 
         refresh=False (mismo criterio que _compute_is_mine arriba):
         una resincronización pasiva en segundo plano no debe extender
@@ -985,7 +1001,7 @@ class PreparationDayProductClaim(models.Model):
         Nunca escribe nada. Si no hay intervalo abierto (ya se cerró
         por otra vía, o el operario solo entró a mirar sin pesar),
         start_dt viene en False — el cronómetro del cliente se queda
-        en 00:00 sin tiquear, nunca inventa un inicio."""
+        fijo en accumulated_s, sin tiquear, nunca inventa un inicio."""
         self.ensure_one()
         self._check_picking_access()
         employee_id = (
@@ -994,7 +1010,7 @@ class PreparationDayProductClaim(models.Model):
         )
         server_now = fields.Datetime.now()
         if not employee_id:
-            return {'start_dt': False, 'server_now': server_now}
+            return {'start_dt': False, 'server_now': server_now, 'accumulated_s': 0}
         Interval = self.env['guapante.preparation.interval']
         open_interval = Interval.sudo().search([
             ('employee_id', '=', employee_id),
@@ -1002,9 +1018,16 @@ class PreparationDayProductClaim(models.Model):
             ('kind', '=', 'working'),
             ('end_dt', '=', False),
         ], limit=1)
+        closed_intervals = Interval.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('claim_id', '=', self.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '!=', False),
+        ])
         return {
             'start_dt': open_interval.start_dt if open_interval else False,
             'server_now': server_now,
+            'accumulated_s': sum(closed_intervals.mapped('duration_s')),
         }
 
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,

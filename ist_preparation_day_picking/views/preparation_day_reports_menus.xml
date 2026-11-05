@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Fase 2, commit 6/7 (Tech Lead, 2026-11-04): las 5 entradas del
+    <!-- Fase 2, commit 6/7 (Tech Lead, 2026-11-04): las entradas del
          menú "Reportes" (ist_preparation_day_picking.
          menu_preparation_day_reports — placeholder vacío desde
          2026-10-29, ver hr_employee_config_views.xml), una por acción
          ya creada en 5/7. groups="group_preparation_admin" en cada
          entrada (redundante con el del menú padre, pero explícito —
          mismo patrón que menu_preparation_day_config/
-         menu_prep_operators_config): ninguna es para el operario. -->
+         menu_prep_operators_config): ninguna es para el operario.
+         "Productos más solicitados" se quitó completo en la Tarea 3
+         (Tech Lead/David, 2026-11-05) — quedan 4, no 5. -->
 
     <menuitem
         id="menu_preparation_operator_report"
@@ -16,14 +18,6 @@
         action="action_preparation_operator_report"
         groups="group_preparation_admin"
         sequence="10"
-    />
-    <menuitem
-        id="menu_preparation_product_demand_report"
-        name="Productos más solicitados"
-        parent="menu_preparation_day_reports"
-        action="action_preparation_product_demand_report"
-        groups="group_preparation_admin"
-        sequence="20"
     />
     <menuitem
         id="menu_preparation_interval_report_3"

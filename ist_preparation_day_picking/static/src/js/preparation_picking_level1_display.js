@@ -66,7 +66,6 @@ export class PickingClaimsDisplay extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.busService = useService("bus_service");
-        this.pwaService = useService("pwa");
         this.dialog = useService("dialog");
         this.statusOrder = STATUS_ORDER;
         this.statusLabels = STATUS_LABELS;
@@ -335,19 +334,6 @@ export class PickingClaimsDisplay extends Component {
 
     onClickRefresh() {
         this.loadRecords();
-    }
-
-    async onClickClose() {
-        // Punto 1 (Tech Lead, 2026-10-31): "Cerrar" cierra también la
-        // identificación de esta estación (clearOperator() ya llama al
-        // servidor y limpia guapante_prep_employee_id de la sesión, no
-        // solo el estado local) y vuelve a la pantalla de NIP — antes
-        // solo abría la grilla de Apps, dejando al operario identificado
-        // para quien tomara el tablet después.
-        await clearOperator();
-        await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
-            clearBreadcrumbs: true,
-        });
     }
 
     toggleGroup(status) {

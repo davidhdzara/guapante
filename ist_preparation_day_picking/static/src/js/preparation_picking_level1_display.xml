@@ -7,9 +7,15 @@
          MrpDisplay — acá se construye la misma barra a mano con
          Bootstrap, MISMA posición ya validada con David/Tech Lead en la
          versión kanban: buscador centrado (clases o_cp_searchview /
-         o_searchview_input_container nativas), refrescar + Cerrar a la
-         derecha del buscador, operario + Cerrar sesión + hamburguesa en
-         el extremo derecho. Nada a la izquierda.
+         o_searchview_input_container nativas), refrescar a la derecha
+         del buscador, operario + Cerrar sesión + hamburguesa en el
+         extremo derecho. Nada a la izquierda.
+
+         Tarea 6 (decisión provisional de Tech Lead, vetable por David,
+         2026-11-05): se quitó el botón "Cerrar" — hacía exactamente lo
+         mismo que "Cerrar sesión" (clearOperator + vuelta al NIP, ver
+         PickingOperatorHeader), dejando dos botones para la misma
+         acción. "Cerrar sesión" queda como único punto de salida.
 
          Tarjeta: misma estructura que mrp_workorder.MrpDisplayRecord
          (card-header con título + badge, list-group-flush, card-footer
@@ -39,9 +45,6 @@
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-light fa fa-refresh" title="Actualizar" t-on-click="onClickRefresh"/>
-                        <button t-if="!pwaService.isScopedApp" type="button" class="btn btn-light text-nowrap" t-on-click="onClickClose">
-                            <i class="fa fa-lg fa-sign-out me-md-1"/><span class="d-none d-md-inline">Cerrar</span>
-                        </button>
                         <PickingOperatorHeader/>
                         <PickingInstallMenu/>
                     </div>

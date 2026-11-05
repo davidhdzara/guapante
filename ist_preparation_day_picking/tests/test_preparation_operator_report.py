@@ -205,3 +205,30 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         self.assertEqual(by_employee[self.operator_a.id]['kg'], 2.0)
         self.assertEqual(by_employee[self.operator_b.id]['line_done'], 1)
         self.assertEqual(by_employee[self.operator_b.id]['kg'], 5.0)
+
+    def test_graph_view_is_line_chart_by_days_with_operator_series(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): "Pickings por
+        operario" pasó de barras a líneas en el tiempo — eje días
+        (date, interval day), una línea por operario (employee_id como
+        segunda dimensión). Guarda de regresión barata contra un
+        revert accidental a type="bar" o a un solo campo de grupo."""
+        import xml.etree.ElementTree as ET
+
+        Action = self.env.ref(
+            'ist_preparation_day_picking.action_preparation_operator_report',
+        )
+        self.assertTrue(
+            Action.view_mode.startswith('graph'),
+            'el gráfico debe ser la vista por defecto (Tarea 3)',
+        )
+        views = self.Report.sudo().get_views([(False, 'graph')])
+        graph_arch = views['views']['graph']['arch']
+        root = ET.fromstring(graph_arch)
+        self.assertEqual(root.get('type'), 'line')
+        group_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') != 'measure'
+        ]
+        self.assertEqual(group_fields, ['date', 'employee_id'])
+        date_field = root.find("field[@name='date']")
+        self.assertEqual(date_field.get('interval'), 'day')

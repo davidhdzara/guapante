@@ -54,7 +54,6 @@ export class PickingLinesDisplay extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.busService = useService("bus_service");
-        this.pwaService = useService("pwa");
         this.dialog = useService("dialog");
         this.state = useState({
             wizardId: null,
@@ -313,14 +312,6 @@ export class PickingLinesDisplay extends Component {
 
     onClickRefresh() {
         this.loadLines();
-    }
-
-    async onClickClose() {
-        // Punto 1 (Tech Lead, 2026-10-31): mismo fix que Nivel 1.
-        await clearOperator();
-        await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
-            clearBreadcrumbs: true,
-        });
     }
 
     toggleDoneGroup() {

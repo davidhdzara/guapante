@@ -101,9 +101,20 @@ class StockPicking(models.Model):
 
         if old_dates:
             Session = self.env['guapante.preparation.day']
-            for picking in self.browse(list(old_dates.keys())):
+            batch_ids = list(old_dates.keys())
+            # exclude_picking_ids debe ser solo los hermanos TODAVÍA NO
+            # procesados en esta vuelta del loop, no el batch completo
+            # (bug encontrado en test: con el batch completo fijo, cada
+            # picking excluye también a los hermanos que YA recibieron
+            # su daily_sequence nuevo en una vuelta anterior de este
+            # mismo loop, así que el "máximo existente" se recalculaba
+            # en 0 cada vez y los 3 terminaban con la misma caja #1).
+            remaining = list(batch_ids)
+            for picking in self.browse(batch_ids):
+                remaining.remove(picking.id)
                 Session._guapante_relocate_picking(
                     picking, old_dates[picking.id],
+                    exclude_picking_ids=remaining,
                 )
         return res
 

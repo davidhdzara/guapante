@@ -19,7 +19,7 @@
                 <field name="employee_id"/>
                 <field name="product_tmpl_id"/>
                 <field name="kind"/>
-                <field name="duration_s" sum="Tiempo (s)"/>
+                <field name="duration_s" sum="Tiempo trabajado (s)"/>
                 <field name="duration_avg_s" avg="Tiempo medio (s)"/>
                 <field name="time_to_first_weigh_s" avg="Tiempo hasta 1er pesaje (s)" optional="hide"/>
                 <field name="time_without_lines_s" sum="Tiempo sin líneas (s)" optional="hide"/>
@@ -93,7 +93,7 @@
     <record id="action_preparation_interval_report_3" model="ir.actions.act_window">
         <field name="name">Tiempo por producto</field>
         <field name="res_model">guapante.preparation.interval.report</field>
-        <field name="view_mode">pivot,list,graph</field>
+        <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
         <field name="help" type="html">
             <p>
@@ -120,7 +120,7 @@
     <record id="action_preparation_interval_report_4" model="ir.actions.act_window">
         <field name="name">Tiempo por kilo</field>
         <field name="res_model">guapante.preparation.interval.report</field>
-        <field name="view_mode">pivot,list,graph</field>
+        <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
         <field name="help" type="html">
             <p>
@@ -145,7 +145,7 @@
     <record id="action_preparation_interval_report_5" model="ir.actions.act_window">
         <field name="name">Tiempo por caja</field>
         <field name="res_model">guapante.preparation.interval.report</field>
-        <field name="view_mode">pivot,list,graph</field>
+        <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_interval_report_search"/>
         <field name="help" type="html">
             <p>
