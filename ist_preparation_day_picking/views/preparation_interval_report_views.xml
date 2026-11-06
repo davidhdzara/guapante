@@ -19,8 +19,19 @@
                 <field name="employee_id"/>
                 <field name="product_tmpl_id"/>
                 <field name="kind"/>
-                <field name="duration_s" sum="Tiempo trabajado (s)"/>
-                <field name="duration_avg_s" avg="Tiempo medio (s)"/>
+                <!-- Tarea 15 (Tech Lead/David, 2026-11-05): h:mm con el
+                     widget nativo float_time (espera HORAS como
+                     float — duration_h/duration_avg_h ya vienen en
+                     horas desde el _table_query — y pinta "h:mm", ej.
+                     2.1111 -> "2:07") son la vista por defecto en
+                     lista; los de segundos se CONSERVAN (los sigue
+                     usando el read_group ponderado y los tests ya
+                     existentes) pero quedan optional="hide" — ya no
+                     obligatorios en pantalla. -->
+                <field name="duration_h" widget="float_time" sum="Tiempo trabajado (h:mm)"/>
+                <field name="duration_avg_h" widget="float_time" avg="Tiempo medio (h:mm)"/>
+                <field name="duration_s" sum="Tiempo trabajado (s)" optional="hide"/>
+                <field name="duration_avg_s" avg="Tiempo medio (s)" optional="hide"/>
                 <field name="time_to_first_weigh_s" avg="Tiempo hasta 1er pesaje (s)" optional="hide"/>
                 <field name="time_without_lines_s" sum="Tiempo sin líneas (s)" optional="hide"/>
                 <!-- Tarea 14 (Tech Lead/David, 2026-11-05): visibles por
@@ -33,8 +44,8 @@
                      toggle optional sigue disponible). -->
                 <field name="kg_done" sum="Kg" optional="show"/>
                 <field name="lines_done" sum="Líneas" optional="show"/>
-                <field name="time_per_kg_s" avg="Seg/kg" optional="show"/>
-                <field name="time_per_box_s" avg="Seg/caja" optional="show"/>
+                <field name="time_per_kg_s" avg="Seg/kg (s)" optional="show"/>
+                <field name="time_per_box_s" avg="Seg/caja (s)" optional="show"/>
             </list>
         </field>
     </record>
@@ -46,8 +57,17 @@
             <pivot string="Tiempo de Picking" disable_linking="true">
                 <field name="duration_s" type="measure"/>
                 <field name="duration_avg_s" type="measure"/>
+                <!-- Tarea 15 (Tech Lead/David, 2026-11-05): versiones
+                     en minutos (1 decimal) de las 4 medidas de
+                     duración, declaradas junto a las de segundos
+                     (NO se reemplazan — ver _table_query/campos en
+                     preparation_interval_report.py). -->
+                <field name="duration_min" type="measure"/>
+                <field name="duration_avg_min" type="measure"/>
                 <field name="time_to_first_weigh_s" type="measure"/>
+                <field name="time_to_first_weigh_min" type="measure"/>
                 <field name="time_without_lines_s" type="measure"/>
+                <field name="time_without_lines_min" type="measure"/>
                 <field name="kg_done" type="measure"/>
                 <field name="lines_done" type="measure"/>
                 <field name="time_per_kg_s" type="measure"/>
@@ -62,7 +82,12 @@
         <field name="arch" type="xml">
             <graph string="Tiempo de Picking" type="bar">
                 <field name="product_tmpl_id"/>
-                <field name="duration_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min (minutos, 1
+                     decimal) en gráfico/pivote de T12/T14 — los
+                     segundos se quedan solo como medida adicional en
+                     el selector del pivote, no acá (el gráfico solo
+                     puede tener UNA medida activa a la vez). -->
+                <field name="duration_min" type="measure"/>
             </graph>
         </field>
     </record>
@@ -96,7 +121,10 @@
                 <field name="lines_done" type="measure"/>
                 <field name="time_per_box_s" type="measure"/>
                 <field name="time_per_kg_s" type="measure"/>
-                <field name="duration_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min (ver
+                     comentario largo junto al gráfico compartido,
+                     arriba). Sigue último = medida por defecto. -->
+                <field name="duration_min" type="measure"/>
             </graph>
         </field>
     </record>
@@ -129,7 +157,8 @@
         <field name="arch" type="xml">
             <graph string="Tiempo por kilo" type="bar" order="DESC">
                 <field name="product_tmpl_id"/>
-                <field name="duration_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min. -->
+                <field name="duration_min" type="measure"/>
                 <field name="kg_done" type="measure"/>
                 <field name="lines_done" type="measure"/>
                 <field name="time_per_kg_s" type="measure"/>
@@ -146,7 +175,8 @@
         <field name="arch" type="xml">
             <graph string="Tiempo por caja" type="bar" order="DESC">
                 <field name="product_tmpl_id"/>
-                <field name="duration_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min. -->
+                <field name="duration_min" type="measure"/>
                 <field name="kg_done" type="measure"/>
                 <field name="lines_done" type="measure"/>
                 <field name="time_per_box_s" type="measure"/>
@@ -271,6 +301,8 @@
                 tablet) — lo trabajado esa noche no sale en "Hoy" si
                 lo revisás esa misma noche. Para un rango de fechas
                 libre: Filtros → Agregar filtro personalizado.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working')]</field>
@@ -294,7 +326,7 @@
             'search_default_filter_last_7_days': 1,
             'pivot_row_groupby': ['employee_id'],
             'pivot_column_groupby': ['date:day'],
-            'pivot_measures': ['duration_s'],
+            'pivot_measures': ['duration_min'],
         }</field>
     </record>
     <record id="action_preparation_interval_report_2_view_graph" model="ir.actions.act_window.view">
@@ -338,6 +370,10 @@
                 tablet) — lo trabajado esa noche no sale en "Hoy" si
                 lo revisás esa misma noche. Para un rango de fechas
                 libre: Filtros → Agregar filtro personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <!-- Tarea 13: default "Hoy" (filtro PLANO, domain fijo —
@@ -349,7 +385,7 @@
             'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
             'pivot_column_groupby': ['kind'],
-            'pivot_measures': ['duration_s', 'duration_avg_s', 'time_to_first_weigh_s', 'time_without_lines_s'],
+            'pivot_measures': ['duration_min', 'duration_avg_min', 'time_to_first_weigh_min', 'time_without_lines_min'],
         }</field>
     </record>
     <!-- view_ids explícitos (Tarea 12): desde que existe el gráfico
@@ -398,6 +434,10 @@
                 esa noche no sale en "Hoy" si lo revisás esa misma
                 noche. Para un rango de fechas libre: Filtros →
                 Agregar filtro personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
@@ -417,7 +457,7 @@
         <field name="context">{
             'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
-            'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_kg_s'],
+            'pivot_measures': ['duration_min', 'kg_done', 'lines_done', 'time_per_kg_s'],
         }</field>
     </record>
     <record id="action_preparation_interval_report_4_view_graph" model="ir.actions.act_window.view">
@@ -460,6 +500,10 @@
                 en "Hoy" si lo revisás esa misma noche. Para un rango
                 de fechas libre: Filtros → Agregar filtro
                 personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
@@ -469,7 +513,7 @@
         <field name="context">{
             'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
-            'pivot_measures': ['duration_s', 'kg_done', 'lines_done', 'time_per_box_s'],
+            'pivot_measures': ['duration_min', 'kg_done', 'lines_done', 'time_per_box_s'],
         }</field>
     </record>
     <record id="action_preparation_interval_report_5_view_graph" model="ir.actions.act_window.view">

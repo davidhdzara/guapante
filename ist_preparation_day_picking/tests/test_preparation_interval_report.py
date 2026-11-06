@@ -601,7 +601,8 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         ]
         self.assertEqual(
             measure_fields,
-            ['duration_s', 'kg_done', 'lines_done', ratio_field],
+            # Tarea 15: duration_s -> duration_min en el arch del gráfico.
+            ['duration_min', 'kg_done', 'lines_done', ratio_field],
             f'{ratio_field} debe ser la ÚLTIMA medida declarada (el '
             'cliente usa el último <field type="measure"> como medida '
             'por defecto).',
@@ -631,8 +632,9 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         context = safe_eval(action.context or '{}')
         self.assertEqual(context['pivot_row_groupby'], ['product_tmpl_id'])
         self.assertEqual(
+            # Tarea 15: duration_s -> duration_min en pivot_measures.
             set(context['pivot_measures']),
-            {'duration_s', 'kg_done', 'lines_done', ratio_field},
+            {'duration_min', 'kg_done', 'lines_done', ratio_field},
         )
         self.assertNotIn('search_default_group_employee', context)
         self.assertNotIn('search_default_group_product', context)
@@ -855,3 +857,100 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
                 field.get('optional'), 'show',
                 f'{name}: debe ser optional="show" (visible por defecto).',
             )
+
+    # ── Tarea 15 (Tech Lead/David, 2026-11-05): unidades legibles ──
+
+    def _interval_duration(self, duration_s):
+        day = self._far_today()
+        session = self._session(day)
+        claim = self._claim(session, self.product_weight)
+        now = fields.Datetime.now()
+        return self._interval(
+            claim, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=duration_s), end_dt=now,
+            duration_s=duration_s, kg_done=1.0, lines_done=1,
+        )
+
+    def test_duration_min_7600_seconds_rounds_to_126_7(self):
+        """David: "qué pasará cuando tengamos 7600 segundos"; Tech
+        Lead: verificar 7600s -> 126,7 min. duration_min = duration_s
+        / 60.0 en el _table_query, digits=(10,1) redondea en la
+        lectura (confirmado en el fuente: Float.convert_to_cache
+        aplica float_round con los digits del campo, también al
+        leer, no solo al escribir)."""
+        row = self._interval_duration(7600)
+        value = self.Report.sudo().browse(row.id).duration_min
+        self.assertAlmostEqual(value, 126.7, places=1)
+
+    def test_duration_h_7600_seconds_matches_float_time_2h07(self):
+        """duration_h = duration_s / 3600.0 — 7600/3600 = 2.1111...h.
+        Reproduce la fórmula REAL del widget float_time (verificada
+        en el fuente: web/static/src/views/fields/formatters.js,
+        formatFloatTime — hour=floor(value), min=round(resto en ms /
+        60000)) para confirmar que efectivamente pinta 2 horas con 7
+        minutos (2:07), sin asumir el string exacto que arma el
+        cliente (con o sin cero a la izquierda en la hora, que es
+        solo cosmético)."""
+        row = self._interval_duration(7600)
+        value = self.Report.sudo().browse(row.id).duration_h
+        hour = int(value // 1)
+        milli_sec_left = round(value * 3600000) - hour * 3600000
+        minute = round(milli_sec_left / 60000)
+        self.assertEqual((hour, minute), (2, 7))
+
+    def test_duration_s_fields_kept_not_replaced(self):
+        """Tech Lead, explícito: "NO se reemplazan" — duration_s/
+        duration_avg_s/time_to_first_weigh_s/time_without_lines_s
+        deben seguir existiendo (los sigue usando el read_group
+        ponderado de las razones y los tests de ese mecanismo)."""
+        for name in (
+            'duration_s', 'duration_avg_s',
+            'time_to_first_weigh_s', 'time_without_lines_s',
+        ):
+            self.assertIn(name, self.Report._fields)
+
+    def test_ratio_fields_stay_in_seconds_with_explicit_label(self):
+        """Tech Lead: Seg/kg y Seg/caja se quedan en SEGUNDOS (valores
+        chicos, min los haría ilegibles) con etiqueta explícita "(s)"."""
+        self.assertEqual(self.Report._fields['time_per_kg_s'].string, 'Seg/kg (s)')
+        self.assertEqual(self.Report._fields['time_per_box_s'].string, 'Seg/caja (s)')
+
+    def test_pivot_declares_both_seconds_and_minutes_measures(self):
+        """No se reemplazan en el pivote tampoco — las dos versiones
+        (segundos y minutos) deben estar declaradas como type="measure"
+        en el arch compartido, para que el selector del cliente ofrezca
+        ambas."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_pivot'
+        )
+        root = ET.fromstring(view.arch)
+        measures = {
+            f.get('name') for f in root.findall(".//field[@type='measure']")
+        }
+        for name in (
+            'duration_s', 'duration_min', 'duration_avg_s', 'duration_avg_min',
+            'time_to_first_weigh_s', 'time_to_first_weigh_min',
+            'time_without_lines_s', 'time_without_lines_min',
+        ):
+            self.assertIn(name, measures, f'{name} no está en el pivote.')
+
+    def test_list_shows_duration_h_with_float_time_widget_by_default(self):
+        """duration_h/duration_avg_h visibles por defecto con
+        widget="float_time" (h:mm); los _s correspondientes quedan
+        optional="hide" (conservados, no obligatorios en pantalla)."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_list'
+        )
+        root = ET.fromstring(view.arch)
+        for name in ('duration_h', 'duration_avg_h'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertIsNotNone(field, f'{name} no está en la lista.')
+            self.assertEqual(field.get('widget'), 'float_time')
+            self.assertNotEqual(field.get('optional'), 'hide')
+        for name in ('duration_s', 'duration_avg_s'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertEqual(field.get('optional'), 'hide')

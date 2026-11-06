@@ -255,3 +255,40 @@ class TestPreparationReportsActionsStartup(TestPreparationDayProductClaim):
             'ist_preparation_day_picking.menu_preparation_product_demand_report',
             raise_if_not_found=False,
         ))
+
+    def test_all_5_actions_have_non_empty_help(self):
+        """Tarea 13, pedido de Tech Lead tras aprobar el hash: el
+        `help` es el estado vacío NATIVO de la acción (lo que el
+        cliente muestra cuando el filtro activo no devuelve filas) —
+        guarda de regresión general contra que alguna acción se quede
+        sin ayuda (nunca debe sentirse como un fallo, aunque el texto
+        de cada una cambie con el tiempo)."""
+        for action_xmlid in REPORT_ACTION_XMLIDS:
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                self.assertTrue(
+                    (Action.help or '').strip(),
+                    f'{action_xmlid}: sin texto de ayuda (estado vacío).',
+                )
+
+    def test_reports_3_4_5_help_explains_empty_today_filter(self):
+        """Tarea 13 (Tech Lead, tras aprobar el hash): Reportes 3/4/5
+        combinan el default "Hoy" con un domain que puede no tener
+        ninguna fila todavía (ej. temprano en la jornada, antes de la
+        primera caja cerrada) — el help debe decirlo explícitamente,
+        para que un reporte vacío no se sienta como un fallo. 1/2 no
+        llevan esta línea (su default es "Última semana", mucho menos
+        propenso a abrir vacío)."""
+        texto = (
+            'Sin datos para el filtro actual. Quita el filtro '
+            '"Hoy" o elige otro período para ver el histórico.'
+        )
+        for action_xmlid in (
+            'ist_preparation_day_picking.action_preparation_interval_report_3',
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+        ):
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                help_text = ' '.join((Action.help or '').split())
+                self.assertIn(texto, help_text)

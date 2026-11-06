@@ -92,6 +92,28 @@ class PreparationIntervalReport(models.Model):
     # unidad, no una razón de dos sumas distintas) — no hace falta
     # read_group() acá.
     duration_avg_s = fields.Integer(string='Tiempo medio (s)', readonly=True, aggregator='avg')
+    # Tarea 15 (Tech Lead/David, 2026-11-05) — David: "qué pasará
+    # cuando tengamos 7600 segundos... tiempo trabajado 90 minutos, o
+    # hasta 60 minutos, y después... una hora y 10, una hora y 20".
+    # Campos NUEVOS, los de segundos NO se reemplazan (los sigue
+    # usando el read_group ponderado de abajo y los tests ya
+    # existentes) — quedan opcionales/ocultos en la lista. _min para
+    # gráfico/pivote (1 decimal, ej. 126.7); _h SOLO de duration (acá
+    # abajo las dos: total y medio) para la lista, con widget=
+    # "float_time" nativo de Odoo (espera HORAS como float, pinta
+    # "h:mm" — 7600s = 2.1111h → "2:07"). digits=(10,1) en _min para
+    # el decimal único que pidió Tech Lead; _h sin digits fijos, el
+    # widget decide el formato de presentación.
+    duration_min = fields.Float(
+        string='Tiempo trabajado (min)', readonly=True, aggregator='sum',
+        digits=(10, 1),
+    )
+    duration_avg_min = fields.Float(
+        string='Tiempo medio (min)', readonly=True, aggregator='avg',
+        digits=(10, 1),
+    )
+    duration_h = fields.Float(string='Tiempo trabajado (h:mm)', readonly=True, aggregator='sum')
+    duration_avg_h = fields.Float(string='Tiempo medio (h:mm)', readonly=True, aggregator='avg')
     kg_done = fields.Float(string='Kg', readonly=True, aggregator='sum', digits=(10, 3))
     lines_done = fields.Integer(string='Líneas', readonly=True, aggregator='sum')
     # NULL cuando no aplica (kind='stopped', o 'working' sin ningún
@@ -101,12 +123,20 @@ class PreparationIntervalReport(models.Model):
     time_to_first_weigh_s = fields.Integer(
         string='Tiempo hasta 1er pesaje (s)', readonly=True, aggregator='avg',
     )
+    time_to_first_weigh_min = fields.Float(
+        string='Tiempo hasta 1er pesaje (min)', readonly=True, aggregator='avg',
+        digits=(10, 1),
+    )
     # "tiempo sin líneas" (Reporte 3): tiempo de visitas 'working' que
     # no terminaron NINGUNA línea (lines_done=0) — tiempo gastado sin
     # producción real, que las razones de 4/5 excluyen aparte (ver
     # _RATIO_MEASURES y el domain de esos reportes, en la acción).
     time_without_lines_s = fields.Integer(
         string='Tiempo sin líneas (s)', readonly=True, aggregator='sum',
+    )
+    time_without_lines_min = fields.Float(
+        string='Tiempo sin líneas (min)', readonly=True, aggregator='sum',
+        digits=(10, 1),
     )
     # RAZONES (segundos ÷ kg o ÷ líneas) — NUNCA sumar ni promediar
     # fila a fila (sesga a favor de las visitas cortas, Tech Lead
@@ -118,11 +148,16 @@ class PreparationIntervalReport(models.Model):
     # las acciones de 4/5 ya filtra a 'working' con lines_done>0 (y
     # kg_done>0 para 4), así que en la práctica esto nunca pivotea
     # sobre filas NULL, pero queda defendido de todas formas.
+    # Tarea 15: se quedan en SEGUNDOS a propósito (David/Tech Lead) —
+    # valores chicos, dividir entre 60 los haría ilegibles (ej. 0,03
+    # min/kg). Solo se les agregó la unidad explícita "(s)" a la
+    # etiqueta, igual que ya tienen todos los campos de tiempo de
+    # este modelo.
     time_per_kg_s = fields.Float(
-        string='Seg/kg', readonly=True, aggregator='avg', digits=(10, 3),
+        string='Seg/kg (s)', readonly=True, aggregator='avg', digits=(10, 3),
     )
     time_per_box_s = fields.Float(
-        string='Seg/caja', readonly=True, aggregator='avg', digits=(10, 3),
+        string='Seg/caja (s)', readonly=True, aggregator='avg', digits=(10, 3),
     )
 
     _depends = {
@@ -148,6 +183,10 @@ class PreparationIntervalReport(models.Model):
                 pi.kind AS kind,
                 pi.duration_s AS duration_s,
                 pi.duration_s AS duration_avg_s,
+                pi.duration_s / 60.0 AS duration_min,
+                pi.duration_s / 60.0 AS duration_avg_min,
+                pi.duration_s / 3600.0 AS duration_h,
+                pi.duration_s / 3600.0 AS duration_avg_h,
                 pi.kg_done AS kg_done,
                 pi.lines_done AS lines_done,
                 CASE
@@ -156,9 +195,18 @@ class PreparationIntervalReport(models.Model):
                     ELSE NULL
                 END AS time_to_first_weigh_s,
                 CASE
+                    WHEN pi.kind = 'working' AND pi.first_weigh_dt IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (pi.first_weigh_dt - pi.start_dt)) / 60.0
+                    ELSE NULL
+                END AS time_to_first_weigh_min,
+                CASE
                     WHEN pi.kind = 'working' AND pi.lines_done = 0
                     THEN pi.duration_s ELSE 0
                 END AS time_without_lines_s,
+                CASE
+                    WHEN pi.kind = 'working' AND pi.lines_done = 0
+                    THEN pi.duration_s / 60.0 ELSE 0.0
+                END AS time_without_lines_min,
                 CASE
                     WHEN pi.kind = 'working' AND pi.kg_done > 0
                     THEN pi.duration_s / pi.kg_done ELSE NULL
