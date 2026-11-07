@@ -46,3 +46,39 @@ class StockMove(models.Model):
             Line.write({'needs_inventory_mirror': True})
 
         return res
+
+    def _action_cancel(self):
+        """Extensión del espejo (Tech Lead/David, 2026-11-06): un PICK
+        que se cancela (ej. "sin stock", declinar backorder) nunca
+        pasa por _action_done — sin este hook simétrico, needs_
+        inventory_mirror nunca se prende y la línea queda Pendiente
+        para siempre (hueco encontrado por Tech Lead en producción,
+        sesión 226, 2026-11-06).
+
+        Verificado en el fuente real de Odoo 18 (stock/models/
+        stock_move.py _action_cancel, stock_picking.py action_cancel,
+        sale_stock/models/sale_order.py _action_cancel) antes de
+        escribir esto: _action_cancel() es el ÚNICO lugar que escribe
+        el state de stock.move a 'cancel' (moves_to_cancel.state =
+        'cancel' en el fuente) — sin bypass por write() directo que
+        hiciera falta cubrir aparte. stock.picking.action_cancel()
+        siempre delega en self.move_ids._action_cancel(). La
+        cascada de sale.order real (sale_stock, que sobreescribe a
+        sale base) cancela PRIMERO los pickings/moves y SOLO DESPUÉS
+        pone el pedido en 'cancel' (_action_cancel: picking_ids.
+        action_cancel() antes de super()._action_cancel()) — pero
+        como el reflejo real lo hace el cron 2 minutos después, en
+        una transacción separada que lee ya con todo comprometido,
+        esto no abre ninguna ventana de carrera real para el guard
+        de preparation_day.py (sale_order_id.state == 'cancel').
+        """
+        res = super()._action_cancel()
+
+        Line = self.env['guapante.preparation.day.line'].sudo().search([
+            ('stock_move_id', 'in', self.ids),
+            ('needs_inventory_mirror', '=', False),
+        ])
+        if Line:
+            Line.write({'needs_inventory_mirror': True})
+
+        return res
