@@ -37,6 +37,7 @@
         'views/preparation_operator_report_views.xml',
         'views/preparation_interval_report_views.xml',
         'views/preparation_day_reports_menus.xml',
+        'views/preparation_pds_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -58,6 +59,8 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.xml',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.js',
+            'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.xml',
+            'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.js',
         ],
     },
     'installable': True,
