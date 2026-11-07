@@ -344,6 +344,108 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         )
         self.assertAlmostEqual(groups[0]['time_per_box_s'], 110 / 51, places=6)
 
+    def test_weighted_ratio_grouped_by_day_and_employee_does_not_mix_groups(self):
+        """Tarea 12 (Tech Lead/David, 2026-11-05): el gráfico "Tiempo
+        por operario" expone Seg/caja y Seg/kg como medidas, bajo la
+        agrupación día × operario (la del gráfico: date:day luego
+        employee_id) — fixture de 2 operarios y 2 días, con DOS
+        intervalos en la MISMA celda (día1/operario_a) para probar que
+        ahí también es SUM/SUM y no el promedio sesgado de las 2
+        razones por fila."""
+        day1 = self._far_today()
+        day2 = fields.Date.add(day1, days=1)
+        session1 = self._session(day1)
+        session2 = self._session(day2)
+        claim1 = self._claim(session1, self.product_weight)
+        claim2 = self._claim(session2, self.product_weight)
+        now = fields.Datetime.now()
+        # día1/operario_a: 2 intervalos en la MISMA celda — 110/51,
+        # nunca avg(10, 2)=6.
+        self._interval(
+            claim1, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim1, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=100), end_dt=now, duration_s=100,
+            kg_done=50.0, lines_done=50,
+        )
+        # día1/operario_b: 1 intervalo — razón=10.
+        self._interval(
+            claim1, 'working', self.operator_b,
+            start_dt=now - timedelta(seconds=30), end_dt=now, duration_s=30,
+            kg_done=3.0, lines_done=3,
+        )
+        # día2/operario_a: 1 intervalo — razón=10.
+        self._interval(
+            claim2, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=40), end_dt=now, duration_s=40,
+            kg_done=4.0, lines_done=4,
+        )
+        # día2/operario_b: 1 intervalo — razón=10.
+        self._interval(
+            claim2, 'working', self.operator_b,
+            start_dt=now - timedelta(seconds=50), end_dt=now, duration_s=50,
+            kg_done=5.0, lines_done=5,
+        )
+
+        # Cada sesión es YA una sola jornada (date fijo por sesión) —
+        # agrupar por sesión + employee_id prueba exactamente la misma
+        # celda día×operario que el gráfico, sin depender del formato
+        # de etiqueta que read_group use para 'date:day' (ej. "05 Nov
+        # 2026" vs ISO — no es parte del contrato que este test deba
+        # fijar).
+        for measure in ('time_per_box_s', 'time_per_kg_s'):
+            with self.subTest(measure=measure):
+                groups_day1 = self.Report.sudo().read_group(
+                    [('wizard_id', '=', session1.id)],
+                    [f'{measure}:avg'], ['employee_id'],
+                )
+                by_employee_day1 = {
+                    g['employee_id'][0]: g[measure] for g in groups_day1
+                }
+                self.assertAlmostEqual(
+                    by_employee_day1[self.operator_a.id], 110 / 51, places=6,
+                )
+                self.assertNotAlmostEqual(
+                    by_employee_day1[self.operator_a.id], 6, places=3,
+                )
+                self.assertAlmostEqual(
+                    by_employee_day1[self.operator_b.id], 10.0, places=6,
+                )
+
+                groups_day2 = self.Report.sudo().read_group(
+                    [('wizard_id', '=', session2.id)],
+                    [f'{measure}:avg'], ['employee_id'],
+                )
+                by_employee_day2 = {
+                    g['employee_id'][0]: g[measure] for g in groups_day2
+                }
+                self.assertAlmostEqual(
+                    by_employee_day2[self.operator_a.id], 10.0, places=6,
+                )
+                self.assertAlmostEqual(
+                    by_employee_day2[self.operator_b.id], 10.0, places=6,
+                )
+
+                # Y la MISMA invariante con los dos ejes juntos
+                # (date:day, employee_id) — el agrupamiento real del
+                # gráfico — sin inspeccionar el formato de la etiqueta
+                # de fecha, solo que salgan 4 celdas y que la celda
+                # mixta no se pierda/colapse mal.
+                groups_both = self.Report.sudo().read_group(
+                    [('wizard_id', 'in', [session1.id, session2.id])],
+                    [f'{measure}:avg'], ['date:day', 'employee_id'],
+                    lazy=False,
+                )
+                self.assertEqual(len(groups_both), 4)
+                values = sorted(g[measure] for g in groups_both)
+                self.assertAlmostEqual(values[0], 110 / 51, places=6)
+                self.assertAlmostEqual(values[1], 10.0, places=6)
+                self.assertAlmostEqual(values[2], 10.0, places=6)
+                self.assertAlmostEqual(values[3], 10.0, places=6)
+
     def test_weighted_ratio_via_web_read_group_list_path(self):
         """Condición 2 de Tech Lead: el camino de LISTA (web_read_group
         → _web_read_group → read_group, confirmado passthrough leyendo
@@ -467,3 +569,388 @@ class TestPreparationIntervalReport(TestPreparationDayProductClaim):
         field = self.Report._fields['duration_s']
         self.assertEqual(field.string, 'Tiempo trabajado (s)')
         self.assertTrue(field.help)
+
+    def _assert_kg_or_box_graph(self, view_xmlid, ratio_field):
+        """Tarea 14 (Tech Lead/David, 2026-11-05) — texto aprobado:
+        "Barras verticales, eje X = producto (nombre), eje Y = Seg/kg
+        (razón ponderada)... Una barra por producto, ordenadas de
+        mayor a menor (el más lento por kg primero). Una sola serie,
+        sin leyenda; operario NO agrupa por defecto." Verifica: bar +
+        order="DESC" en el arch (atributo confirmado en el fuente real
+        de Odoo 18 — web/static/src/views/graph/graph_arch_parser.js,
+        ORDERS=["ASC","DESC",...]; graph_model.js ordena los grupos
+        por la suma de la medida activa), único groupby no-measure
+        (product_tmpl_id), y la razón (time_per_kg_s/time_per_box_s)
+        como ÚLTIMA medida declarada (default), con duration_s/
+        kg_done/lines_done también declaradas (adición de Tech Lead,
+        medidas seleccionables)."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(view_xmlid)
+        root = ET.fromstring(view.arch)
+        self.assertEqual(root.get('type'), 'bar')
+        self.assertEqual(root.get('order'), 'DESC')
+        group_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') != 'measure'
+        ]
+        self.assertEqual(group_fields, ['product_tmpl_id'])
+        measure_fields = [
+            f.get('name') for f in root.findall('field')
+            if f.get('type') == 'measure'
+        ]
+        self.assertEqual(
+            measure_fields,
+            # Tarea 15: duration_s -> duration_min en el arch del gráfico.
+            ['duration_min', 'kg_done', 'lines_done', ratio_field],
+            f'{ratio_field} debe ser la ÚLTIMA medida declarada (el '
+            'cliente usa el último <field type="measure"> como medida '
+            'por defecto).',
+        )
+
+    def test_report_4_kg_graph_bar_desc_product_only(self):
+        self._assert_kg_or_box_graph(
+            'ist_preparation_day_picking.view_preparation_interval_report_kg_graph',
+            'time_per_kg_s',
+        )
+
+    def test_report_5_box_graph_bar_desc_product_only(self):
+        self._assert_kg_or_box_graph(
+            'ist_preparation_day_picking.view_preparation_interval_report_box_graph',
+            'time_per_box_s',
+        )
+
+    def _assert_action_groups_by_product_only(self, action_xmlid, ratio_field):
+        """Tarea 14: operario NO agrupa por defecto (queda como filtro
+        manual, group_employee sigue en el buscador compartido) — ni
+        en pivot_row_groupby ni como search_default_group_employee.
+        pivot_measures debe traer las mismas 4 medidas que el gráfico
+        (adición de Tech Lead)."""
+        from odoo.tools.safe_eval import safe_eval
+
+        action = self.env.ref(action_xmlid)
+        context = safe_eval(action.context or '{}')
+        self.assertEqual(context['pivot_row_groupby'], ['product_tmpl_id'])
+        self.assertEqual(
+            # Tarea 15: duration_s -> duration_min en pivot_measures.
+            set(context['pivot_measures']),
+            {'duration_min', 'kg_done', 'lines_done', ratio_field},
+        )
+        self.assertNotIn('search_default_group_employee', context)
+        self.assertNotIn('search_default_group_product', context)
+
+    def test_report_4_action_groups_by_product_only(self):
+        self._assert_action_groups_by_product_only(
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'time_per_kg_s',
+        )
+
+    def test_report_5_action_groups_by_product_only(self):
+        self._assert_action_groups_by_product_only(
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+            'time_per_box_s',
+        )
+
+    def _eval_search_filter_domain(self, filter_name):
+        """Tarea 13 (Tech Lead/David, 2026-11-05) — parsea el arch REAL
+        del buscador compartido (3/4/5) y evalúa el domain del filtro
+        con el MISMO contexto estándar que Odoo expone a cualquier
+        domain de vista (context_today/relativedelta, ver odoo/tools/
+        view_validation.py) — así la prueba cubre exactamente el
+        string que se va a desplegar, no una reimplementación
+        paralela de la fórmula."""
+        import xml.etree.ElementTree as ET
+
+        from dateutil.relativedelta import relativedelta
+        from odoo.tools.safe_eval import safe_eval
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_search'
+        )
+        root = ET.fromstring(view.arch)
+        node = root.find(f".//filter[@name='{filter_name}']")
+        self.assertIsNotNone(node, f'filtro {filter_name!r} no existe en el arch.')
+        eval_context = {
+            'context_today': lambda: fields.Date.context_today(self.env.user),
+            'relativedelta': relativedelta,
+        }
+        return safe_eval(node.get('domain'), eval_context)
+
+    def test_filter_today_domain_is_exact_context_today(self):
+        today = fields.Date.context_today(self.env.user).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_today'),
+            [('date', '=', today)],
+        )
+
+    def test_filter_yesterday_domain_is_context_today_minus_1(self):
+        from dateutil.relativedelta import relativedelta
+        yesterday = (
+            fields.Date.context_today(self.env.user) - relativedelta(days=1)
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_yesterday'),
+            [('date', '=', yesterday)],
+        )
+
+    def test_filter_last_7_days_domain_is_context_today_minus_7(self):
+        from dateutil.relativedelta import relativedelta
+        start = (
+            fields.Date.context_today(self.env.user) - relativedelta(days=7)
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_last_7_days'),
+            [('date', '>=', start)],
+        )
+
+    def test_filter_this_month_domain_starts_on_day_1(self):
+        start = fields.Date.context_today(self.env.user).replace(
+            day=1,
+        ).strftime('%Y-%m-%d')
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_this_month'),
+            [('date', '>=', start)],
+        )
+
+    def test_filter_last_month_domain_excludes_this_month(self):
+        from dateutil.relativedelta import relativedelta
+        this_month_start = fields.Date.context_today(self.env.user).replace(day=1)
+        last_month_start = (this_month_start - relativedelta(months=1))
+        self.assertEqual(
+            self._eval_search_filter_domain('filter_last_month'),
+            [
+                ('date', '>=', last_month_start.strftime('%Y-%m-%d')),
+                ('date', '<', this_month_start.strftime('%Y-%m-%d')),
+            ],
+        )
+
+    def _assert_action_default_filter(self, action_xmlid, filter_key):
+        from odoo.tools.safe_eval import safe_eval
+
+        action = self.env.ref(action_xmlid)
+        context = safe_eval(action.context or '{}')
+        self.assertEqual(context.get(filter_key), 1)
+
+    def test_report_2_defaults_to_last_7_days(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_2',
+            'search_default_filter_last_7_days',
+        )
+
+    def test_report_3_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_3',
+            'search_default_filter_today',
+        )
+
+    def test_report_4_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'search_default_filter_today',
+        )
+
+    def test_report_5_defaults_to_today(self):
+        self._assert_action_default_filter(
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+            'search_default_filter_today',
+        )
+
+    def test_categ_id_groups_intervals_by_category(self):
+        """Tarea 13: categ_id = product.template.categ_id ESTÁNDAR,
+        agregado al _table_query vía LEFT JOIN product_template — dos
+        productos en categorías distintas deben separarse al agrupar
+        por categ_id, cada uno con su propia suma."""
+        categ_a = self.env['product.category'].create({'name': 'Categoría A (test)'})
+        categ_b = self.env['product.category'].create({'name': 'Categoría B (test)'})
+        self.product_weight.product_tmpl_id.categ_id = categ_a.id
+        self.product_unit.product_tmpl_id.categ_id = categ_b.id
+
+        day = self._far_today()
+        session = self._session(day)
+        claim_a = self._claim(session, self.product_weight)
+        claim_b = self._claim(session, self.product_unit)
+        now = fields.Datetime.now()
+        self._interval(
+            claim_a, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim_b, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=20), end_dt=now, duration_s=20,
+            kg_done=2.0, lines_done=2,
+        )
+
+        result = call_kw(
+            self.Report.sudo(), 'read_group', [],
+            {
+                'domain': [('wizard_id', '=', session.id)],
+                'fields': ['duration_s:sum'],
+                'groupby': ['categ_id'], 'lazy': False,
+            },
+        )
+        by_categ = {g['categ_id'][0]: g['duration_s'] for g in result}
+        self.assertEqual(by_categ[categ_a.id], 10)
+        self.assertEqual(by_categ[categ_b.id], 20)
+
+    def test_product_search_matches_by_name_or_internal_reference(self):
+        """Tarea 13: filter_domain del campo product_tmpl_id del
+        buscador — "comprobando que busca por nombre y referencia
+        interna (default_code)". product.template.name_search()
+        nativo NO busca default_code (verificado en el fuente); esto
+        prueba la fórmula exacta que declara el arch (relativa a ESTE
+        reporte, product_tmpl_id.name/.default_code) contra filas
+        reales del reporte, no contra product.template suelto."""
+        self.product_weight.product_tmpl_id.default_code = 'REF-TEST-13'
+        day = self._far_today()
+        session = self._session(day)
+        claim_a = self._claim(session, self.product_weight)
+        claim_b = self._claim(session, self.product_unit)
+        now = fields.Datetime.now()
+        self._interval(
+            claim_a, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+        self._interval(
+            claim_b, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=10), end_dt=now, duration_s=10,
+            kg_done=1.0, lines_done=1,
+        )
+
+        def search_by(term):
+            return self.Report.sudo().search([
+                ('wizard_id', '=', session.id),
+                '|',
+                ('product_tmpl_id.name', 'ilike', term),
+                ('product_tmpl_id.default_code', 'ilike', term),
+            ])
+
+        by_name = search_by(self.product_weight.product_tmpl_id.name)
+        self.assertTrue(by_name)
+        self.assertTrue(all(
+            r.product_tmpl_id == self.product_weight.product_tmpl_id
+            for r in by_name
+        ))
+
+        by_ref = search_by('REF-TEST-13')
+        self.assertTrue(by_ref)
+        self.assertTrue(all(
+            r.product_tmpl_id == self.product_weight.product_tmpl_id
+            for r in by_ref
+        ))
+
+    def test_list_view_shows_kg_lines_ratios_by_default(self):
+        """Tarea 14: "lista con Producto, Tiempo trabajado, Kg, Líneas,
+        Seg/kg visibles" — la vista lista es compartida con el Reporte
+        3, así que esto se logra con optional="show" (visible por
+        defecto, igual se puede ocultar) en vez de optional="hide"."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_list'
+        )
+        root = ET.fromstring(view.arch)
+        for name in ('kg_done', 'lines_done', 'time_per_kg_s', 'time_per_box_s'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertEqual(
+                field.get('optional'), 'show',
+                f'{name}: debe ser optional="show" (visible por defecto).',
+            )
+
+    # ── Tarea 15 (Tech Lead/David, 2026-11-05): unidades legibles ──
+
+    def _interval_duration(self, duration_s):
+        day = self._far_today()
+        session = self._session(day)
+        claim = self._claim(session, self.product_weight)
+        now = fields.Datetime.now()
+        return self._interval(
+            claim, 'working', self.operator_a,
+            start_dt=now - timedelta(seconds=duration_s), end_dt=now,
+            duration_s=duration_s, kg_done=1.0, lines_done=1,
+        )
+
+    def test_duration_min_7600_seconds_rounds_to_126_7(self):
+        """David: "qué pasará cuando tengamos 7600 segundos"; Tech
+        Lead: verificar 7600s -> 126,7 min. duration_min = duration_s
+        / 60.0 en el _table_query, digits=(10,1) redondea en la
+        lectura (confirmado en el fuente: Float.convert_to_cache
+        aplica float_round con los digits del campo, también al
+        leer, no solo al escribir)."""
+        row = self._interval_duration(7600)
+        value = self.Report.sudo().browse(row.id).duration_min
+        self.assertAlmostEqual(value, 126.7, places=1)
+
+    def test_duration_h_7600_seconds_matches_float_time_2h07(self):
+        """duration_h = duration_s / 3600.0 — 7600/3600 = 2.1111...h.
+        Reproduce la fórmula REAL del widget float_time (verificada
+        en el fuente: web/static/src/views/fields/formatters.js,
+        formatFloatTime — hour=floor(value), min=round(resto en ms /
+        60000)) para confirmar que efectivamente pinta 2 horas con 7
+        minutos (2:07), sin asumir el string exacto que arma el
+        cliente (con o sin cero a la izquierda en la hora, que es
+        solo cosmético)."""
+        row = self._interval_duration(7600)
+        value = self.Report.sudo().browse(row.id).duration_h
+        hour = int(value // 1)
+        milli_sec_left = round(value * 3600000) - hour * 3600000
+        minute = round(milli_sec_left / 60000)
+        self.assertEqual((hour, minute), (2, 7))
+
+    def test_duration_s_fields_kept_not_replaced(self):
+        """Tech Lead, explícito: "NO se reemplazan" — duration_s/
+        duration_avg_s/time_to_first_weigh_s/time_without_lines_s
+        deben seguir existiendo (los sigue usando el read_group
+        ponderado de las razones y los tests de ese mecanismo)."""
+        for name in (
+            'duration_s', 'duration_avg_s',
+            'time_to_first_weigh_s', 'time_without_lines_s',
+        ):
+            self.assertIn(name, self.Report._fields)
+
+    def test_ratio_fields_stay_in_seconds_with_explicit_label(self):
+        """Tech Lead: Seg/kg y Seg/caja se quedan en SEGUNDOS (valores
+        chicos, min los haría ilegibles) con etiqueta explícita "(s)"."""
+        self.assertEqual(self.Report._fields['time_per_kg_s'].string, 'Seg/kg (s)')
+        self.assertEqual(self.Report._fields['time_per_box_s'].string, 'Seg/caja (s)')
+
+    def test_pivot_declares_both_seconds_and_minutes_measures(self):
+        """No se reemplazan en el pivote tampoco — las dos versiones
+        (segundos y minutos) deben estar declaradas como type="measure"
+        en el arch compartido, para que el selector del cliente ofrezca
+        ambas."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_pivot'
+        )
+        root = ET.fromstring(view.arch)
+        measures = {
+            f.get('name') for f in root.findall(".//field[@type='measure']")
+        }
+        for name in (
+            'duration_s', 'duration_min', 'duration_avg_s', 'duration_avg_min',
+            'time_to_first_weigh_s', 'time_to_first_weigh_min',
+            'time_without_lines_s', 'time_without_lines_min',
+        ):
+            self.assertIn(name, measures, f'{name} no está en el pivote.')
+
+    def test_list_shows_duration_h_with_float_time_widget_by_default(self):
+        """duration_h/duration_avg_h visibles por defecto con
+        widget="float_time" (h:mm); los _s correspondientes quedan
+        optional="hide" (conservados, no obligatorios en pantalla)."""
+        import xml.etree.ElementTree as ET
+
+        view = self.env.ref(
+            'ist_preparation_day_picking.view_preparation_interval_report_list'
+        )
+        root = ET.fromstring(view.arch)
+        for name in ('duration_h', 'duration_avg_h'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertIsNotNone(field, f'{name} no está en la lista.')
+            self.assertEqual(field.get('widget'), 'float_time')
+            self.assertNotEqual(field.get('optional'), 'hide')
+        for name in ('duration_s', 'duration_avg_s'):
+            field = root.find(f".//field[@name='{name}']")
+            self.assertEqual(field.get('optional'), 'hide')

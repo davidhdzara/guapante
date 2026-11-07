@@ -9,7 +9,9 @@
          mismo patrón que menu_preparation_day_config/
          menu_prep_operators_config): ninguna es para el operario.
          "Productos más solicitados" se quitó completo en la Tarea 3
-         (Tech Lead/David, 2026-11-05) — quedan 4, no 5. -->
+         (Tech Lead/David, 2026-11-05) — quedaban 4; la Tarea 12
+         (2026-11-05) agrega el Reporte 2 "Tiempo por operario" —
+         ahora son 5. -->
 
     <menuitem
         id="menu_preparation_operator_report"
@@ -18,6 +20,14 @@
         action="action_preparation_operator_report"
         groups="group_preparation_admin"
         sequence="10"
+    />
+    <menuitem
+        id="menu_preparation_interval_report_2"
+        name="Tiempo por operario"
+        parent="menu_preparation_day_reports"
+        action="action_preparation_interval_report_2"
+        groups="group_preparation_admin"
+        sequence="20"
     />
     <menuitem
         id="menu_preparation_interval_report_3"

@@ -19,14 +19,33 @@
                 <field name="employee_id"/>
                 <field name="product_tmpl_id"/>
                 <field name="kind"/>
-                <field name="duration_s" sum="Tiempo trabajado (s)"/>
-                <field name="duration_avg_s" avg="Tiempo medio (s)"/>
+                <!-- Tarea 15 (Tech Lead/David, 2026-11-05): h:mm con el
+                     widget nativo float_time (espera HORAS como
+                     float — duration_h/duration_avg_h ya vienen en
+                     horas desde el _table_query — y pinta "h:mm", ej.
+                     2.1111 -> "2:07") son la vista por defecto en
+                     lista; los de segundos se CONSERVAN (los sigue
+                     usando el read_group ponderado y los tests ya
+                     existentes) pero quedan optional="hide" — ya no
+                     obligatorios en pantalla. -->
+                <field name="duration_h" widget="float_time" sum="Tiempo trabajado (h:mm)"/>
+                <field name="duration_avg_h" widget="float_time" avg="Tiempo medio (h:mm)"/>
+                <field name="duration_s" sum="Tiempo trabajado (s)" optional="hide"/>
+                <field name="duration_avg_s" avg="Tiempo medio (s)" optional="hide"/>
                 <field name="time_to_first_weigh_s" avg="Tiempo hasta 1er pesaje (s)" optional="hide"/>
                 <field name="time_without_lines_s" sum="Tiempo sin líneas (s)" optional="hide"/>
-                <field name="kg_done" sum="Kg" optional="hide"/>
-                <field name="lines_done" sum="Líneas" optional="hide"/>
-                <field name="time_per_kg_s" avg="Seg/kg" optional="hide"/>
-                <field name="time_per_box_s" avg="Seg/caja" optional="hide"/>
+                <!-- Tarea 14 (Tech Lead/David, 2026-11-05): visibles por
+                     defecto (optional="show", no "hide") — Reportes 4/5
+                     ("Tiempo por kilo"/"Tiempo por caja") los necesitan
+                     a la vista sin que el usuario tenga que activarlos
+                     a mano; sigue siendo la misma vista compartida con
+                     el Reporte 3, que ahora simplemente los muestra
+                     también (el usuario puede ocultarlos igual, el
+                     toggle optional sigue disponible). -->
+                <field name="kg_done" sum="Kg" optional="show"/>
+                <field name="lines_done" sum="Líneas" optional="show"/>
+                <field name="time_per_kg_s" avg="Seg/kg (s)" optional="show"/>
+                <field name="time_per_box_s" avg="Seg/caja (s)" optional="show"/>
             </list>
         </field>
     </record>
@@ -38,8 +57,17 @@
             <pivot string="Tiempo de Picking" disable_linking="true">
                 <field name="duration_s" type="measure"/>
                 <field name="duration_avg_s" type="measure"/>
+                <!-- Tarea 15 (Tech Lead/David, 2026-11-05): versiones
+                     en minutos (1 decimal) de las 4 medidas de
+                     duración, declaradas junto a las de segundos
+                     (NO se reemplazan — ver _table_query/campos en
+                     preparation_interval_report.py). -->
+                <field name="duration_min" type="measure"/>
+                <field name="duration_avg_min" type="measure"/>
                 <field name="time_to_first_weigh_s" type="measure"/>
+                <field name="time_to_first_weigh_min" type="measure"/>
                 <field name="time_without_lines_s" type="measure"/>
+                <field name="time_without_lines_min" type="measure"/>
                 <field name="kg_done" type="measure"/>
                 <field name="lines_done" type="measure"/>
                 <field name="time_per_kg_s" type="measure"/>
@@ -54,7 +82,104 @@
         <field name="arch" type="xml">
             <graph string="Tiempo de Picking" type="bar">
                 <field name="product_tmpl_id"/>
-                <field name="duration_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min (minutos, 1
+                     decimal) en gráfico/pivote de T12/T14 — los
+                     segundos se quedan solo como medida adicional en
+                     el selector del pivote, no acá (el gráfico solo
+                     puede tener UNA medida activa a la vez). -->
+                <field name="duration_min" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Tarea 12 (Tech Lead/David, 2026-11-05) — Reporte 2 "Tiempo por
+         operario": vista gráfico PROPIA (la compartida de arriba es
+         type="bar"/product_tmpl_id, fija para 3/4/5) — línea en el
+         tiempo, eje=jornada (día), leyenda=operario, mismo patrón que
+         el gráfico de "Pickings por operario" (Tarea 3/12.0) y mismo
+         cuidado de orden: 'line_done' allá, 'duration_s' acá, SIEMPRE
+         el último <field type="measure"> del arch (así queda como
+         medida por defecto). List/pivot reutilizan los compartidos de
+         arriba (son genéricos, sin groupby fijo en su arch; el
+         default lo pone el contexto de la acción, ver abajo).
+
+         Decisión de David (vía Tech Lead, 2026-11-05) para no abrir
+         un reporte nuevo "por caja/por kilo por operario" (principio
+         "menos es más"): acá mismo, medida switchable Tiempo
+         trabajado/Líneas/Seg por caja/Seg por kilo — los 2 últimos son
+         razones SUM/SUM (ver preparation_interval_report.py:
+         read_group, override ya existente, agnóstico a la
+         agrupación — probado bajo día×operario con fixture dedicado).
+         'duration_s' sigue último → sigue siendo el default. -->
+    <record id="view_preparation_interval_report_operator_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.operator.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo por operario" type="line">
+                <field name="date" interval="day"/>
+                <field name="employee_id"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_box_s" type="measure"/>
+                <field name="time_per_kg_s" type="measure"/>
+                <!-- Tarea 15: duration_s -> duration_min (ver
+                     comentario largo junto al gráfico compartido,
+                     arriba). Sigue último = medida por defecto. -->
+                <field name="duration_min" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Tarea 14 (Tech Lead/David, 2026-11-05) — Reporte 4 "Tiempo por
+         kilo": vista gráfico PROPIA, texto aprobado tal cual: "Barras
+         verticales, eje X = producto (nombre), eje Y = Seg/kg (razón
+         ponderada SUM(duration_s)/SUM(kg_done), el mismo read_group ya
+         existente, sin promedio de promedios). Una barra por producto,
+         ordenadas de mayor a menor (el más lento por kg primero). Una
+         sola serie, sin leyenda; operario NO agrupa por defecto (queda
+         como filtro)." order="DESC" en el <graph> (verificado en el
+         fuente de Odoo 18 del host: web/static/src/views/graph/
+         graph_arch_parser.js línea 34 lo acepta como ASC/DESC;
+         graph_model.js líneas 445-458 ordena los grupos por la SUMA de
+         la medida ACTIVA — acá un único groupby/dominio, así que esa
+         suma es directamente la razón de cada producto). time_per_kg_s
+         último → medida por defecto; duration_s/kg_done/lines_done
+         también declaradas (adición de Tech Lead) para que el
+         selector de medidas del cliente las ofrezca sin tocar el
+         modelo. SIN ningún search_default_group_* activo: con un solo
+         <field> no-measure en el arch (product_tmpl_id), graph_model.js
+         cae sola al fallback de orden del arch cuando no hay groupBy
+         activo del buscador — no hace falta ningún rango explícito
+         acá (a diferencia de los Reportes 1/2, que sí tienen 2 campos
+         no-measure y necesitan desempatar). -->
+    <record id="view_preparation_interval_report_kg_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.kg.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo por kilo" type="bar" order="DESC">
+                <field name="product_tmpl_id"/>
+                <!-- Tarea 15: duration_s -> duration_min. -->
+                <field name="duration_min" type="measure"/>
+                <field name="kg_done" type="measure"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_kg_s" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Tarea 14 — Reporte 5 "Tiempo por caja": mismo patrón que el de
+         arriba, con time_per_box_s (Seg/caja) como razón/medida por
+         defecto en vez de time_per_kg_s. -->
+    <record id="view_preparation_interval_report_box_graph" model="ir.ui.view">
+        <field name="name">guapante.preparation.interval.report.box.graph</field>
+        <field name="model">guapante.preparation.interval.report</field>
+        <field name="arch" type="xml">
+            <graph string="Tiempo por caja" type="bar" order="DESC">
+                <field name="product_tmpl_id"/>
+                <!-- Tarea 15: duration_s -> duration_min. -->
+                <field name="duration_min" type="measure"/>
+                <field name="kg_done" type="measure"/>
+                <field name="lines_done" type="measure"/>
+                <field name="time_per_box_s" type="measure"/>
             </graph>
         </field>
     </record>
@@ -65,14 +190,73 @@
         <field name="arch" type="xml">
             <search string="Tiempo de Picking">
                 <field name="employee_id"/>
-                <field name="product_tmpl_id"/>
+                <!-- Tarea 13 (Tech Lead/David, 2026-11-05): "producto
+                     en específico" — product.template.name_search()
+                     nativo (verificado en el fuente del host,
+                     product/models/product_template.py) solo busca
+                     por name, NUNCA por default_code (referencia
+                     interna) — sin filter_domain, escribir una
+                     referencia acá no encuentra nada. filter_domain
+                     con 'self' es el mecanismo nativo de Odoo para
+                     esto (sin tocar name_search del modelo, que es
+                     compartido con todo el sistema, no solo este
+                     reporte) — se combina con fecha/categoría como
+                     cualquier otro campo del buscador (AND implícito
+                     entre campos distintos). -->
+                <field name="product_tmpl_id"
+                       filter_domain="['|', ('product_tmpl_id.name', 'ilike', self), ('product_tmpl_id.default_code', 'ilike', self)]"/>
+                <field name="categ_id"/>
                 <filter name="filter_working" string="Trabajando"
                         domain="[('kind', '=', 'working')]"/>
                 <filter name="filter_stopped" string="Detenido"
                         domain="[('kind', '=', 'stopped')]"/>
                 <separator/>
+                <!-- Tarea 13 — rango rápido (texto de David: "yo
+                     debería poder mirar por el día... podría poner
+                     rango de fechas"). Filtros PLANOS con
+                     context_today() (odoo/fields.py:2323) — NUNCA
+                     type="dateFilter": ese widget especializado (ver
+                     web/static/src/search/utils/dates.js,
+                     getPeriodOptions) solo genera granularidad mes/
+                     trimestre/año, nunca día — no hay forma de que
+                     abra exactamente en "Hoy" con ese mecanismo.
+                     context_today() es matemáticamente igual a
+                     _current_session_date (ist_preparation_day/
+                     models/preparation_day.py): las dos convierten
+                     fields.Datetime.now() a env.user.tz y sacan
+                     .date() — mismo criterio de jornada, verificado
+                     leyendo las dos fuentes. relativedelta también
+                     está en los globals estándar de evaluación de
+                     domain (odoo/tools/view_validation.py). Quitables
+                     como cualquier filtro, combinables con categoría/
+                     producto (AND implícito). -->
+                <filter name="filter_yesterday" string="Ayer"
+                        domain="[('date', '=', (context_today() - relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_today" string="Hoy"
+                        domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_7_days" string="Última semana"
+                        domain="[('date', '&gt;=', (context_today() - relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_month" string="Este mes"
+                        domain="[('date', '&gt;=', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_month" string="Mes anterior"
+                        domain="[('date', '&gt;=', (context_today().replace(day=1) - relativedelta(months=1)).strftime('%Y-%m-%d')),
+                                 ('date', '&lt;', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <!-- Widget especializado nativo de Odoo (mes/
+                     trimestre/año con navegación, distinto de los
+                     filtros planos de arriba) — David puede combinar
+                     los dos. Rango LIBRE (cualquier dos fechas): lo
+                     cubre "Agregar filtro personalizado" del buscador
+                     (search_bar_menu.js: onAddCustomFilterClick →
+                     searchModel.spawnCustomFilterDialog(), nativo de
+                     cualquier vista, sin declarar nada en este arch) —
+                     documentado en la ayuda de cada reporte. -->
+                <filter name="date_filter" string="Jornada" date="date"/>
+                <separator/>
                 <filter name="group_product" string="Producto"
                         context="{'group_by': 'product_tmpl_id'}"/>
+                <filter name="group_categ" string="Categoría"
+                        context="{'group_by': 'categ_id'}"/>
                 <filter name="group_employee" string="Operario"
                         context="{'group_by': 'employee_id'}"/>
                 <filter name="group_kind" string="Tipo"
@@ -85,6 +269,83 @@
                         context="{'group_by': 'date:year'}"/>
             </search>
         </field>
+    </record>
+
+    <!-- Reporte 2 — "Tiempo por operario" (Tarea 12, Tech Lead/David,
+         2026-11-05): SOLO tiempo "working" (el mismo recorte que 4/5,
+         "tiempo trabajado" real) agrupado por jornada y operario.
+         Vistas list/pivot REUTILIZADAS (son genéricas, sin groupby
+         fijo en su arch — el default lo pone pivot_row_groupby/
+         pivot_column_groupby de este contexto). El gráfico usa la
+         vista PROPIA (view_preparation_interval_report_operator_graph,
+         arriba) porque el gráfico compartido es fijo tipo bar/
+         producto; los view_ids de abajo evitan que get_views() elija
+         por defecto el gráfico compartido (ambigüedad real: ahora hay
+         2 vistas gráfico para este modelo, y la de menor id —el
+         gráfico de 3/4/5— ganaría sin esta referencia explícita). -->
+    <record id="action_preparation_interval_report_2" model="ir.actions.act_window">
+        <field name="name">Tiempo por operario</field>
+        <field name="res_model">guapante.preparation.interval.report</field>
+        <field name="view_mode">graph,pivot,list</field>
+        <field name="search_view_id" ref="view_preparation_interval_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Tiempo "En proceso" (working) por operario — incluye
+                cualquier rato que el operario navegó fuera de Nivel 2
+                sin terminar ("← Productos" ya no cierra el
+                intervalo), así que puede incluir navegación, no solo
+                trabajo real. Abre en "Última semana" (quitable);
+                "Hoy"/"Ayer"/categoría/producto están disponibles como
+                filtro manual. La jornada de la noche, desde las
+                21:00, cuenta como el día siguiente (corte del
+                tablet) — lo trabajado esa noche no sale en "Hoy" si
+                lo revisás esa misma noche. Para un rango de fechas
+                libre: Filtros → Agregar filtro personalizado.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
+            </p>
+        </field>
+        <field name="domain">[('kind', '=', 'working')]</field>
+        <!-- Rangos EXPLÍCITOS y distintos (Tarea 12.0/12, ver el
+             comentario largo en preparation_operator_report_views.xml
+             de por qué NO basta con search_default_group_x: 1 para
+             los dos — el orden real del groupBy activo del gráfico lo
+             da el defaultRank, no el orden de las claves ni, por sí
+             solo, el de los <filter> del buscador compartido (que
+             acá NO se reordena: sigue sirviendo a 3/4/5 con su propio
+             orden). date_day=1 antes que employee=2 → eje=fecha,
+             leyenda=operario. Tarea 13: default "Última semana" (un
+             solo día sería un punto en un gráfico de serie temporal,
+             decisión de David) — search_default_filter_last_7_days,
+             sin rango numérico porque filter_last_7_days es un filtro
+             PLANO (domain fijo), no un groupBy — no entra en el
+             mecanismo de defaultRank/Array.sort de arriba. -->
+        <field name="context">{
+            'search_default_group_date_day': 1,
+            'search_default_group_employee': 2,
+            'search_default_filter_last_7_days': 1,
+            'pivot_row_groupby': ['employee_id'],
+            'pivot_column_groupby': ['date:day'],
+            'pivot_measures': ['duration_min'],
+        }</field>
+    </record>
+    <record id="action_preparation_interval_report_2_view_graph" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_2"/>
+        <field name="view_mode">graph</field>
+        <field name="view_id" ref="view_preparation_interval_report_operator_graph"/>
+        <field name="sequence">1</field>
+    </record>
+    <record id="action_preparation_interval_report_2_view_pivot" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_2"/>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_preparation_interval_report_pivot"/>
+        <field name="sequence">2</field>
+    </record>
+    <record id="action_preparation_interval_report_2_view_list" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_2"/>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_preparation_interval_report_list"/>
+        <field name="sequence">3</field>
     </record>
 
     <!-- Reporte 3 — "Tiempo por producto": filas=producto, columnas=
@@ -102,16 +363,53 @@
                 última caja o cambia de producto — "← Productos" ya
                 no cierra el intervalo, así que incluye cualquier
                 rato que el operario navegó fuera de Nivel 2 sin
-                terminar.
+                terminar. Abre en "Hoy" (quitable); categoría/
+                producto/rango de mes-trimestre-año están disponibles
+                como filtro manual. La jornada de la noche, desde las
+                21:00, cuenta como el día siguiente (corte del
+                tablet) — lo trabajado esa noche no sale en "Hoy" si
+                lo revisás esa misma noche. Para un rango de fechas
+                libre: Filtros → Agregar filtro personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
+        <!-- Tarea 13: default "Hoy" (filtro PLANO, domain fijo —
+             search_default_filter_today no es un groupBy, no entra
+             en el mecanismo de defaultRank). -->
         <field name="context">{
             'search_default_group_product': 1,
             'search_default_group_kind': 1,
+            'search_default_filter_today': 1,
             'pivot_row_groupby': ['product_tmpl_id'],
             'pivot_column_groupby': ['kind'],
-            'pivot_measures': ['duration_s', 'duration_avg_s', 'time_to_first_weigh_s', 'time_without_lines_s'],
+            'pivot_measures': ['duration_min', 'duration_avg_min', 'time_to_first_weigh_min', 'time_without_lines_min'],
         }</field>
+    </record>
+    <!-- view_ids explícitos (Tarea 12): desde que existe el gráfico
+         propio del Reporte 2 (arriba), este modelo tiene 2 vistas
+         gráfico — sin esto, get_views() podría dejar de resolver
+         siempre al gráfico compartido (bar/producto) por un criterio
+         implícito (id más bajo) en vez de uno explícito en código. -->
+    <record id="action_preparation_interval_report_3_view_graph" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_3"/>
+        <field name="view_mode">graph</field>
+        <field name="view_id" ref="view_preparation_interval_report_graph"/>
+        <field name="sequence">1</field>
+    </record>
+    <record id="action_preparation_interval_report_3_view_pivot" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_3"/>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_preparation_interval_report_pivot"/>
+        <field name="sequence">2</field>
+    </record>
+    <record id="action_preparation_interval_report_3_view_list" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_3"/>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_preparation_interval_report_list"/>
+        <field name="sequence">3</field>
     </record>
 
     <!-- Reporte 4 — "Tiempo por kilo": SOLO visitas working con
@@ -128,16 +426,57 @@
                 incluye cualquier rato que el operario navegó fuera
                 de Nivel 2 ("← Productos" ya no cierra el intervalo),
                 así que un tiempo por kilo alto puede reflejar
-                navegación, no solo trabajo real.
+                navegación, no solo trabajo real. Abre en "Hoy"
+                (quitable); categoría/producto/rango de mes-
+                trimestre-año están disponibles como filtro manual.
+                La jornada de la noche, desde las 21:00, cuenta como
+                el día siguiente (corte del tablet) — lo trabajado
+                esa noche no sale en "Hoy" si lo revisás esa misma
+                noche. Para un rango de fechas libre: Filtros →
+                Agregar filtro personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0), ('kg_done', '>', 0)]</field>
+        <!-- Tarea 14: SIN search_default_group_* — el gráfico cae sola
+             al fallback de orden del arch (product_tmpl_id) al no
+             haber ningún groupBy activo del buscador (ver comentario
+             en view_preparation_interval_report_kg_graph). Operario
+             queda disponible como filtro manual (group_employee en el
+             buscador compartido), nunca agrupado por defecto —
+             decisión explícita de David/Tech Lead. pivot_row_groupby
+             solo producto (antes empleado+producto); pivot_measures
+             ampliado con duration_s/kg_done/lines_done (adición de
+             Tech Lead) para que el selector de medidas del pivote
+             arranque con las mismas 4 que el gráfico. Tarea 13:
+             default "Hoy" (filtro PLANO) — no toca groupBy, no afecta
+             el fallback del gráfico de arriba. -->
         <field name="context">{
-            'search_default_group_employee': 1,
-            'search_default_group_product': 1,
-            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
-            'pivot_measures': ['time_per_kg_s'],
+            'search_default_filter_today': 1,
+            'pivot_row_groupby': ['product_tmpl_id'],
+            'pivot_measures': ['duration_min', 'kg_done', 'lines_done', 'time_per_kg_s'],
         }</field>
+    </record>
+    <record id="action_preparation_interval_report_4_view_graph" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_4"/>
+        <field name="view_mode">graph</field>
+        <field name="view_id" ref="view_preparation_interval_report_kg_graph"/>
+        <field name="sequence">1</field>
+    </record>
+    <record id="action_preparation_interval_report_4_view_pivot" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_4"/>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_preparation_interval_report_pivot"/>
+        <field name="sequence">2</field>
+    </record>
+    <record id="action_preparation_interval_report_4_view_list" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_4"/>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_preparation_interval_report_list"/>
+        <field name="sequence">3</field>
     </record>
 
     <!-- Reporte 5 — "Tiempo por caja": igual que 4 pero por línea
@@ -153,15 +492,46 @@
                 cualquier rato que el operario navegó fuera de Nivel
                 2 ("← Productos" ya no cierra el intervalo), así que
                 un tiempo por caja alto puede reflejar navegación, no
-                solo trabajo real.
+                solo trabajo real. Abre en "Hoy" (quitable);
+                categoría/producto/rango de mes-trimestre-año están
+                disponibles como filtro manual. La jornada de la
+                noche, desde las 21:00, cuenta como el día siguiente
+                (corte del tablet) — lo trabajado esa noche no sale
+                en "Hoy" si lo revisás esa misma noche. Para un rango
+                de fechas libre: Filtros → Agregar filtro
+                personalizado.
+                Sin datos para el filtro actual. Quita el filtro
+                "Hoy" o elige otro período para ver el histórico.
+                Tiempo trabajado en minutos (gráfico/pivote) u h:mm
+                (lista); Seg/kg y Seg/caja siguen en segundos.
             </p>
         </field>
         <field name="domain">[('kind', '=', 'working'), ('lines_done', '>', 0)]</field>
+        <!-- Tarea 14: mismo criterio que el Reporte 4 (ver su
+             comentario) — solo producto por defecto, operario queda
+             como filtro manual. Tarea 13: default "Hoy". -->
         <field name="context">{
-            'search_default_group_employee': 1,
-            'search_default_group_product': 1,
-            'pivot_row_groupby': ['employee_id', 'product_tmpl_id'],
-            'pivot_measures': ['time_per_box_s'],
+            'search_default_filter_today': 1,
+            'pivot_row_groupby': ['product_tmpl_id'],
+            'pivot_measures': ['duration_min', 'kg_done', 'lines_done', 'time_per_box_s'],
         }</field>
+    </record>
+    <record id="action_preparation_interval_report_5_view_graph" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_5"/>
+        <field name="view_mode">graph</field>
+        <field name="view_id" ref="view_preparation_interval_report_box_graph"/>
+        <field name="sequence">1</field>
+    </record>
+    <record id="action_preparation_interval_report_5_view_pivot" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_5"/>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_preparation_interval_report_pivot"/>
+        <field name="sequence">2</field>
+    </record>
+    <record id="action_preparation_interval_report_5_view_list" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_preparation_interval_report_5"/>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_preparation_interval_report_list"/>
+        <field name="sequence">3</field>
     </record>
 </odoo>

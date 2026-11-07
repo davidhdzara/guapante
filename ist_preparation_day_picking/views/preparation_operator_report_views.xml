@@ -48,8 +48,25 @@
         <field name="model">guapante.preparation.operator.report</field>
         <field name="arch" type="xml">
             <graph string="Pickings por operario" type="line">
+            <!-- Tarea 12 (Tech Lead/David, 2026-11-05): medida
+                 switchable Líneas hechas/Cajas/Kg. En Odoo 18
+                 (computeReportMeasures, web/static/src/views/utils.js,
+                 verificado en el fuente real) el selector de medida
+                 del gráfico solo ofrece automáticamente campos
+                 integer/float/monetary con aggregator — "Cajas"
+                 (box_count) es Char y quedaría afuera aunque declare
+                 aggregator='count_distinct', salvo que ya venga
+                 declarado como medida activa en ESTE arch (ahí se
+                 agrega sin filtrar por tipo). "Kg" (Float+sum) ya
+                 calificaba solo, se declara igual por claridad. El
+                 gráfico solo deja UNA medida activa a la vez — "el
+                 último <field type='measure'> del arch" (graph_arch_
+                 parser.js) — por eso 'line_done' va AL FINAL, para
+                 seguir siendo el default. -->
                 <field name="date" interval="day"/>
                 <field name="employee_id"/>
+                <field name="box_count" type="measure"/>
+                <field name="kg" type="measure"/>
                 <field name="line_done" type="measure"/>
             </graph>
         </field>
@@ -61,12 +78,40 @@
         <field name="arch" type="xml">
             <search string="Pickings por operario">
                 <field name="employee_id"/>
-                <field name="product_tmpl_id"/>
-                <filter name="group_employee" string="Operario"
-                        context="{'group_by': 'employee_id'}"/>
-                <filter name="group_product" string="Producto"
-                        context="{'group_by': 'product_tmpl_id'}"/>
+                <!-- Tarea 13 (Tech Lead/David, 2026-11-05): mismo
+                     filter_domain que en el buscador de Reportes
+                     3/4/5 (ver su comentario largo) — name_search()
+                     nativo de product.template solo busca por name,
+                     nunca por default_code (referencia interna). -->
+                <field name="product_tmpl_id"
+                       filter_domain="['|', ('product_tmpl_id.name', 'ilike', self), ('product_tmpl_id.default_code', 'ilike', self)]"/>
+                <field name="categ_id"/>
+                <!-- Tarea 13 — mismo criterio que en el buscador de
+                     Reportes 3/4/5 (ver su comentario largo): filtros
+                     PLANOS con context_today(), nunca type=
+                     "dateFilter" (ese widget nunca llega a
+                     granularidad día). -->
+                <filter name="filter_yesterday" string="Ayer"
+                        domain="[('date', '=', (context_today() - relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_today" string="Hoy"
+                        domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_7_days" string="Última semana"
+                        domain="[('date', '&gt;=', (context_today() - relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_month" string="Este mes"
+                        domain="[('date', '&gt;=', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_last_month" string="Mes anterior"
+                        domain="[('date', '&gt;=', (context_today().replace(day=1) - relativedelta(months=1)).strftime('%Y-%m-%d')),
+                                 ('date', '&lt;', context_today().replace(day=1).strftime('%Y-%m-%d'))]"/>
                 <separator/>
+                <!-- Widget especializado nativo (mes/trimestre/año) —
+                     rango LIBRE: "Agregar filtro personalizado" del
+                     buscador, nativo, sin declarar nada acá. -->
+                <filter name="date_filter" string="Jornada" date="date"/>
+                <separator/>
+                <!-- Tarea 12.0 (Tech Lead/David, 2026-11-05): "Jornada
+                     (día)" va ANTES de "Operario" aquí a propósito —
+                     ver el comentario junto a search_default_* en la
+                     acción más abajo sobre por qué el orden importa. -->
                 <filter name="group_date_day" string="Jornada (día)"
                         context="{'group_by': 'date:day'}"/>
                 <filter name="group_date_week" string="Jornada (semana)"
@@ -75,6 +120,13 @@
                         context="{'group_by': 'date:month'}"/>
                 <filter name="group_date_year" string="Jornada (año)"
                         context="{'group_by': 'date:year'}"/>
+                <separator/>
+                <filter name="group_employee" string="Operario"
+                        context="{'group_by': 'employee_id'}"/>
+                <filter name="group_product" string="Producto"
+                        context="{'group_by': 'product_tmpl_id'}"/>
+                <filter name="group_categ" string="Categoría"
+                        context="{'group_by': 'categ_id'}"/>
             </search>
         </field>
     </record>
@@ -84,6 +136,18 @@
         <field name="res_model">guapante.preparation.operator.report</field>
         <field name="view_mode">graph,pivot,list</field>
         <field name="search_view_id" ref="view_preparation_operator_report_search"/>
+        <field name="help" type="html">
+            <p>
+                Líneas/cajas/kg hechas por operario. Abre en "Última
+                semana" (quitable); "Hoy"/"Ayer"/categoría/producto
+                están disponibles como filtro manual. La jornada de
+                la noche, desde las 21:00, cuenta como el día
+                siguiente (corte del tablet) — lo pesado esa noche no
+                sale en "Hoy" si lo revisás esa misma noche. Para un
+                rango de fechas libre: Filtros → Agregar filtro
+                personalizado.
+            </p>
+        </field>
         <!-- Default de pivot/gráfico: fijado en el arch de cada vista
              (type="row"/"col"/"measure") — agrupado por operario y
              jornada (día); "producto" queda disponible como filtro
@@ -92,10 +156,41 @@
              lista (el pivote ya trae su propio default del arch).
              Tarea 3 (Tech Lead/David, 2026-11-05): gráfico primero en
              view_mode (vista por defecto de los 4 reportes), type=
-             "line" en su arch — eje días, una línea por operario. -->
+             "line" en su arch — eje días, una línea por operario.
+
+             Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG encontrado
+             y CORREGIDO (ver nota de corrección más abajo): en Odoo
+             18, el gráfico usa metaData.groupBy = groupBy ACTIVO del
+             buscador cuando hay alguno (ver graph_model.js,
+             _buildMetaData: "groupBy.length ? groupBy : this.
+             initialGroupBy"), nunca el orden de <field> del arch de
+             la vista gráfico — eso solo es un fallback cuando no hay
+             ningún search_default activo.
+
+             El orden real de ese groupBy activo NO lo decide el orden
+             de las claves de este dict (una primera versión de este
+             comentario lo afirmaba así — INCORRECTO, corregido tras
+             leer más código): search_arch_parser.js asigna a cada
+             filtro un defaultRank = el VALOR de su search_default_*
+             (si es number) o 100; search_model.js:
+             _activateDefaultSearchItems ordena por ese defaultRank
+             con Array.sort (estable desde ES2019) — con dos valores
+             IGUALES (ej. 1 y 1, como tenía esto antes) el desempate lo
+             da el orden de inserción en this.searchItems, que sigue
+             el orden de los <filter> en el arch del BUSCADOR, no el
+             de este contexto. Fix robusto (no depender del desempate):
+             rangos EXPLÍCITOS y distintos — date_day=1 antes que
+             employee=2 — así el orden queda determinado sin importar
+             el orden de los <filter> (que de todas formas se dejó
+             igual, por claridad visual del dropdown "Agrupar por").
+             Pivote no se afecta (fila/columna fijas en su propio arch,
+             no usa este groupBy). -->
+        <!-- Tarea 13: default "Última semana" (filtro PLANO, no es
+             groupBy — no interfiere con el defaultRank de arriba). -->
         <field name="context">{
-            'search_default_group_employee': 1,
             'search_default_group_date_day': 1,
+            'search_default_group_employee': 2,
+            'search_default_filter_last_7_days': 1,
         }</field>
     </record>
 </odoo>

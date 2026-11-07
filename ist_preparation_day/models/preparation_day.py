@@ -886,12 +886,13 @@ class PreparationDayLine(models.Model):
         """
         self.ensure_one()
         move = self.stock_move_id
-        if not move or move.state == 'cancel':
-            # El move se canceló después de marcarse — nunca hubo
-            # nada que reflejar.
+        if not move:
             self.sudo().with_context(skip_auto_save=True).write({
                 'needs_inventory_mirror': False,
             })
+            return
+        if move.state == 'cancel':
+            self._guapante_mirror_from_cancelled_move()
             return
         if move.state != 'done':
             # Se marcó pero el estado retrocedió (raro) — se
@@ -949,6 +950,83 @@ class PreparationDayLine(models.Model):
             f'Inventario (sin operario de Picking) con {weight:.3f} kg.'
         ))
         self._maybe_post_dispatch_zero_note('Inventario (sin operario)')
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
+
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.wizard_id.id),
+            ('is_done', '=', False),
+        ])
+        if pending_total == 0 and self.wizard_id.state != 'done':
+            self.wizard_id.action_mark_done()
+
+    def _guapante_mirror_from_cancelled_move(self) -> None:
+        """Espejo Inventario→Preparación — caso move 'cancel' (Tech
+        Lead/David, 2026-11-06): un PICK que se cancela (ej. "sin
+        stock", declinar backorder) SIN que Preparación la haya
+        cerrado antes — hueco encontrado por Tech Lead en producción
+        (sesión 226, 2026-11-06), simétrico al caso 'done' de arriba
+        pero sin ningún peso real que reflejar (nada se despachó).
+
+        Guard (David, vía Tech Lead): si el PEDIDO ENTERO está
+        cancelado (sale_order_id.state == 'cancel'), esta cancelación
+        del move es solo la cola de la cancelación del pedido, no una
+        decisión de despacho — NO se cierra la línea (no tiene sentido
+        marcar "Terminado" un despacho de un pedido que ya no existe).
+        Se limpia la bandera igual (no reintentar para siempre) y se
+        deja nota en el chatter para revisión manual — no se archiva
+        ni se cierra distinto, a propósito.
+
+        Fuera de ese guard: se cierra igual que el caso 'done' sin
+        operario (mismo done_by_employee_id=False, mismo
+        _maybe_post_dispatch_zero_note, mismo cierre de sesión si
+        pending_total llega a 0) pero con actual_kg=0 SIEMPRE (nunca
+        move.quantity — un move cancelado no tiene un peso real
+        despachado que leer, a diferencia del caso 'done').
+        Respeta "gana quien llegó primero" (decisión (c) de arriba):
+        si Preparación ya la había cerrado, no se pisa nada.
+        """
+        self.ensure_one()
+
+        if self.sale_order_id.state == 'cancel':
+            self.wizard_id.sudo().message_post(body=(
+                f'Línea no cerrada: el pedido {self.sale_order_id.name} '
+                'está cancelado; revisar manualmente.'
+            ))
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+
+        if self.is_done:
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+
+        self.sudo().with_context(skip_auto_save=True).write({
+            'actual_kg': 0.0,
+            'is_done': True,
+            'done_by_employee_id': False,
+            'done_date': fields.Datetime.now(),
+            'needs_inventory_mirror': False,
+        })
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary._add_done_kg(0.0)
+
+        self.wizard_id.sudo().message_post(body=(
+            f'Caja #{self.daily_sequence} ({self.product_description}) '
+            f'cerrada automáticamente en 0 — el traslado se canceló '
+            f'desde Inventario (sin operario de Picking) sin que '
+            f'Preparación la hubiera terminado antes.'
+        ))
+        self._maybe_post_dispatch_zero_note('Inventario (traslado cancelado)')
 
         self.sale_order_id.sudo().invalidate_recordset(
             ['amount_untaxed', 'amount_tax', 'amount_total']

@@ -65,6 +65,11 @@ class PreparationOperatorReport(models.Model):
     wizard_id = fields.Many2one('guapante.preparation.day', string='Sesión', readonly=True)
     date = fields.Date(string='Jornada', readonly=True)
     product_tmpl_id = fields.Many2one('product.template', string='Producto', readonly=True)
+    # Tarea 13 (Tech Lead/David, 2026-11-05): categoría ESTÁNDAR del
+    # catálogo (product.template.categ_id), nada propio de Guapante —
+    # para agrupar/filtrar en el buscador, igual que David ya agrupa/
+    # filtra por operario o producto.
+    categ_id = fields.Many2one('product.category', string='Categoría', readonly=True)
     # Integer 0/1 por fila, aggregator='sum' (default de Integer):
     # suma = conteo de líneas que cumplen la condición — la técnica
     # estándar de los reportes _auto=False de Odoo para un "conteo
@@ -100,6 +105,7 @@ class PreparationOperatorReport(models.Model):
             'actual_kg', 'daily_sequence',
         ],
         'guapante.preparation.day': ['date'],
+        'product.template': ['categ_id'],
     }
 
     @property
@@ -112,12 +118,14 @@ class PreparationOperatorReport(models.Model):
                 line.wizard_id AS wizard_id,
                 pd.date AS date,
                 line.product_id AS product_tmpl_id,
+                pt.categ_id AS categ_id,
                 CASE WHEN line.actual_kg > 0 THEN 1 ELSE 0 END AS line_done,
                 CASE WHEN line.actual_kg <= 0 THEN 1 ELSE 0 END AS line_zero,
                 (line.wizard_id::text || '/' || line.daily_sequence::text) AS box_count,
                 line.actual_kg AS kg
             FROM guapante_preparation_day_line line
             JOIN guapante_preparation_day pd ON pd.id = line.wizard_id
+            LEFT JOIN product_template pt ON pt.id = line.product_id
             WHERE line.done_by_employee_id IS NOT NULL
               AND line.done_date >= COALESCE(
                   (SELECT value::timestamp FROM ir_config_parameter

@@ -154,36 +154,117 @@ class TestMirrorInventoryToPreparation(TestPreparationDay):
         last_note = session.message_ids.sorted('id', reverse=True)[0]
         self.assertIn('Diferencia de peso', last_note.body)
 
-    def test_cancelled_move_after_flag_discards_without_closing(self):
-        """Guarda defensiva de _guapante_mirror_from_inventory contra
-        un move en estado 'cancel' al momento en que corre el cron.
+    def test_move_cancelled_closes_line_at_zero_via_cron(self):
+        """Extensión (Tech Lead/David, 2026-11-06) — hueco encontrado
+        en producción (sesión 226): un PICK que se CANCELA (ej.
+        "sin stock", declinar backorder) sin que Preparación la haya
+        cerrado antes nunca pasa por _action_done, así que el hook
+        viejo nunca prendía needs_inventory_mirror y la línea quedaba
+        Pendiente para siempre. El nuevo hook en _action_cancel()
+        (stock_move.py) + _guapante_mirror_from_cancelled_move()
+        deben cerrarla igual que el caso 'done' sin operario, pero
+        SIEMPRE en actual_kg=0 (un move cancelado no tiene un peso
+        real despachado que leer)."""
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = self._line_for(order)
+        self.assertFalse(line.is_done)
 
-        NOTA (encontrado al correr la suite, 2026-11-05): un move en
-        'done' NUNCA se puede cancelar vía _action_cancel() — el core
-        de Odoo lo rechaza ('Create a return...'); no existe un
-        camino real de negocio que repita exactamente "se deshizo el
-        traslado" sobre un move ya Hecho. La guarda sigue siendo
-        correcta como defensa ante un estado de BD inesperado (ej. un
-        cambio futuro de Odoo, o una corrección manual), así que el
-        test fuerza el estado directo en vez de pasar por
-        _action_cancel()."""
+        pick = self._pick_for(order)
+        pick.action_cancel()
+
+        line.invalidate_recordset()
+        self.assertTrue(
+            line.needs_inventory_mirror,
+            'el hook de _action_cancel debe marcar la línea para el cron',
+        )
+
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+
+        line.invalidate_recordset()
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertFalse(line.done_by_employee_id)
+        self.assertFalse(line.needs_inventory_mirror)
+
+    def test_order_cancelled_entirely_does_not_close_line_and_leaves_note(self):
+        """Guard (David, vía Tech Lead): si el PEDIDO ENTERO se
+        cancela, la cancelación en cascada de su PICK no es una
+        decisión de despacho — NO se cierra la línea (no tiene
+        sentido "Terminar" el despacho de un pedido que ya no
+        existe). Se limpia la bandera igual (no reintentar para
+        siempre) y se deja nota en el chatter para revisión manual;
+        no se archiva ni se cierra distinto."""
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = self._line_for(order)
+        message_count_before = len(session.message_ids)
+
+        # Cascada real de sale_stock: cancela primero pickings/moves
+        # (prende nuestro hook) y DESPUÉS pone el pedido en 'cancel'.
+        order._action_cancel()
+        self.assertEqual(order.state, 'cancel')
+
+        line.invalidate_recordset()
+        self.assertTrue(line.needs_inventory_mirror)
+
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+
+        line.invalidate_recordset()
+        session.invalidate_recordset()
+        self.assertFalse(
+            line.is_done,
+            'un pedido cancelado entero nunca cierra la línea',
+        )
+        self.assertFalse(line.needs_inventory_mirror)
+        self.assertEqual(len(session.message_ids), message_count_before + 1)
+        last_note = session.message_ids.sorted('id', reverse=True)[0]
+        self.assertIn('no cerrada', last_note.body)
+        self.assertIn(order.name, last_note.body)
+
+    def test_already_done_line_not_overwritten_by_cancelled_move(self):
+        """Decisión (c), simétrica al caso 'done': si Preparación ya
+        había cerrado la línea antes de que el PICK se cancele (ej.
+        un admin cancela el traslado después de que el operario ya
+        despachó), el cron nunca pisa is_done/actual_kg."""
         order = self._create_confirmed_order(qty=3.0)
         session = self._create_session()
         session.action_load()
         line = self._line_for(order)
 
-        self._validate_pick_from_inventory(order, 1.0)
-        line.invalidate_recordset()
-        self.assertTrue(line.needs_inventory_mirror)
+        line.sudo().write({'actual_kg': 3.0, 'is_done': True})
 
-        move = line.stock_move_id
-        move.sudo().write({'state': 'cancel'})
+        pick = self._pick_for(order)
+        pick.action_cancel()
 
         self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
 
         line.invalidate_recordset()
-        self.assertFalse(line.is_done)
+        self.assertTrue(line.is_done)
+        self.assertEqual(
+            line.actual_kg, 3.0,
+            'el valor del operario, que llegó primero, nunca se pisa',
+        )
         self.assertFalse(line.needs_inventory_mirror)
+
+    def test_cancel_mirror_never_calls_sync_weight_to_stock(self):
+        """Regresión explícita, simétrica a la del caso 'done' (Tech
+        Lead, riesgo #8 del diseño): el camino del cron para un move
+        cancelado NUNCA debe llamar _sync_weight_to_stock — volvería
+        a escribir el move y el hook de stock_move.py lo marcaría de
+        nuevo."""
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        pick = self._pick_for(order)
+        pick.action_cancel()
+
+        with patch(_SYNC_PATCH_TARGET) as mocked_sync:
+            self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+            mocked_sync.assert_not_called()
 
     def test_mirror_never_calls_sync_weight_to_stock(self):
         """Regresión explícita contra el bucle con _sync_weight_to_
