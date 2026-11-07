@@ -38,7 +38,7 @@
                         <span class="fs-3 text-muted" t-esc="Math.round(state.globalProgressPct) + '%'"/>
                         <span class="fs-5 text-muted" t-esc="state.pendingLines + ' pendientes'"/>
                     </div>
-                    <div class="progress flex-grow-1 mx-3" style="height: 1.5rem; max-width: 480px;">
+                    <div class="progress flex-grow-1 mx-3">
                         <div class="progress-bar bg-success" role="progressbar"
                              t-attf-style="width: #{state.globalProgressPct}%"/>
                     </div>

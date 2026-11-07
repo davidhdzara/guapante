@@ -3,20 +3,11 @@ from odoo import fields, models
 from odoo.exceptions import AccessError
 
 from .preparation_day import _picking_session_date
+from .preparation_day_product_claim import STOP_REASONS
 
-# Etiquetas de stop_reason duplicadas a propósito (mismo patrón que
-# CLAIM_DISPLAY_FIELDS en preparation_picking_level1_display.js — no
-# existe en este repo un mecanismo compartido Python/JS para esto):
-# el backend ya conoce la etiqueta en español vía el campo Selection
-# del claim, así que se reexpone tal cual con dict(selection).
-_STOP_REASON_LABELS = dict(
-    [
-        ('sin_stock', 'Sin stock'),
-        ('mal_estado', 'Producto en mal estado'),
-        ('esperando_proveedor', 'Esperando proveedor'),
-        ('otro', 'Otro'),
-    ]
-)
+# Tech Lead, revisión de b63a385: una sola fuente — STOP_REASONS ya
+# vive en preparation_day_product_claim.py, no se duplica acá.
+_STOP_REASON_LABELS = dict(STOP_REASONS)
 
 
 class PreparationDay(models.Model):
