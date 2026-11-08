@@ -21,7 +21,7 @@
         id="menu_pds_root"
         name="Pantallas"
         parent="ist_preparation_day.menu_preparation_day_root"
-        groups="group_preparation_reports_pds"
+        groups="group_preparation_reports_pds,-group_preparation_admin"
         sequence="40"
     />
     <menuitem
@@ -29,6 +29,6 @@
         name="PDS Operación"
         parent="menu_pds_root"
         action="action_pds_operacion"
-        groups="group_preparation_reports_pds"
+        groups="group_preparation_reports_pds,-group_preparation_admin"
     />
 </odoo>
