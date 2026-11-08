@@ -52,4 +52,27 @@
         <field name="category_id" ref="module_category_preparation"/>
         <field name="implied_ids" eval="[(4, ref('group_preparation_picking_operator'))]"/>
     </record>
+
+    <!-- Tema A (cliente vía David/Tech Lead, 2026-11-08): los reportes y
+         el PDS los ve SOLO quien tenga este permiso (hoy: Diana) — ni
+         Mauricio ni los operarios, aunque sean Administrador de
+         Preparación. David lo activa por usuario en Ajustes › Usuarios.
+
+         Categoría PROPIA a propósito (verificado en res_users.py de Odoo
+         18, get_groups_by_application): si este grupo viviera en
+         "Preparación" sin cadena implied_ids con Operario/Administrador,
+         la categoría dejaría de ser el selector único (vacío/Operario/
+         Administrador) y pasaría a casillas sueltas bajo "Other".
+         SIN implied_ids hacia/desde group_preparation_admin ni
+         group_preparation_picking_operator: no lo da ni lo quita ningún
+         otro permiso. No implica base.group_user (Diana ya es interna). -->
+    <record id="module_category_preparation_reports" model="ir.module.category">
+        <field name="name">Preparación — Reportes y PDS</field>
+        <field name="sequence">26</field>
+    </record>
+
+    <record id="group_preparation_reports_pds" model="res.groups">
+        <field name="name">Reportes y PDS</field>
+        <field name="category_id" ref="module_category_preparation_reports"/>
+    </record>
 </odoo>

@@ -36,8 +36,20 @@ class TestPreparationReportsAcl(TestPreparationDayProductClaim):
         self.operator_group = self.env.ref(
             'ist_preparation_day_picking.group_preparation_picking_operator',
         )
+        self.reports_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_reports_pds',
+        )
         self.internal_group = self.env.ref('base.group_user')
 
+        # Tema A (2026-11-08): los reportes ya NO los da group_preparation_
+        # admin sino «Reportes y PDS» (grupo aparte, sin implied_ids).
+        self.prep_reports_user = self.env['res.users'].create({
+            'name': 'Reportes y PDS Test (ACL reportes)',
+            'login': f'prep.reports.acl.test.{uuid.uuid4().hex}@example.com',
+            'groups_id': [(6, 0, [
+                self.reports_group.id, self.internal_group.id,
+            ])],
+        })
         self.prep_admin_user = self.env['res.users'].create({
             'name': 'Admin Preparación Test (ACL reportes)',
             'login': f'prep.admin.acl.test.{uuid.uuid4().hex}@example.com',
@@ -83,14 +95,36 @@ class TestPreparationReportsAcl(TestPreparationDayProductClaim):
 
     # ── Admin: solo lectura en los 4 modelos ──
 
-    def test_admin_can_read_the_two_reports(self):
+    def test_reports_group_user_can_read_the_two_reports(self):
         for model_name in (
             'guapante.preparation.operator.report',
             'guapante.preparation.interval.report',
         ):
-            self.env[model_name].with_user(self.prep_admin_user).search_read(
+            self.env[model_name].with_user(self.prep_reports_user).search_read(
                 [], ['id'],
             )  # no debe lanzar AccessError
+
+    def test_admin_without_reports_group_cannot_read_the_two_reports(self):
+        """Tema A: Administrador de Preparación (ej. Mauricio) sin el
+        permiso «Reportes y PDS» NO ve los reportes."""
+        for model_name in (
+            'guapante.preparation.operator.report',
+            'guapante.preparation.interval.report',
+        ):
+            with self.assertRaises(AccessError):
+                self.env[model_name].with_user(
+                    self.prep_admin_user,
+                ).search_read([], ['id'])
+
+    def test_operator_cannot_read_the_two_reports(self):
+        for model_name in (
+            'guapante.preparation.operator.report',
+            'guapante.preparation.interval.report',
+        ):
+            with self.assertRaises(AccessError):
+                self.env[model_name].with_user(
+                    self.prep_operator_user,
+                ).search_read([], ['id'])
 
     def test_admin_can_read_intervals(self):
         self.Interval.with_user(self.prep_admin_user).search([])  # no debe lanzar

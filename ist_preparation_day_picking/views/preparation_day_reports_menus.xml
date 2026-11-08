@@ -4,7 +4,8 @@
          menú "Reportes" (ist_preparation_day_picking.
          menu_preparation_day_reports — placeholder vacío desde
          2026-10-29, ver hr_employee_config_views.xml), una por acción
-         ya creada en 5/7. groups="group_preparation_admin" en cada
+         ya creada en 5/7. groups="group_preparation_reports_pds" (antes group_preparation_admin;
+         Tema A, 2026-11-08: solo quien tenga «Reportes y PDS») en cada
          entrada (redundante con el del menú padre, pero explícito —
          mismo patrón que menu_preparation_day_config/
          menu_prep_operators_config): ninguna es para el operario.
@@ -18,7 +19,7 @@
         name="Pickings por operario"
         parent="menu_preparation_day_reports"
         action="action_preparation_operator_report"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="10"
     />
     <menuitem
@@ -26,7 +27,7 @@
         name="Tiempo por operario"
         parent="menu_preparation_day_reports"
         action="action_preparation_interval_report_2"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="20"
     />
     <menuitem
@@ -34,7 +35,7 @@
         name="Tiempo por producto"
         parent="menu_preparation_day_reports"
         action="action_preparation_interval_report_3"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="30"
     />
     <menuitem
@@ -42,7 +43,7 @@
         name="Tiempo por kilo"
         parent="menu_preparation_day_reports"
         action="action_preparation_interval_report_4"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="40"
     />
     <menuitem
@@ -50,7 +51,7 @@
         name="Tiempo por caja"
         parent="menu_preparation_day_reports"
         action="action_preparation_interval_report_5"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="50"
     />
 </odoo>

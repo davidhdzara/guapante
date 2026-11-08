@@ -20,3 +20,4 @@ from . import test_preparation_reports_actions_startup
 from . import test_preparation_interval_unlink_guard
 from . import test_preparation_pds_operacion
 from . import test_preparation_picking_cancelled_move
+from . import test_preparation_reports_group
