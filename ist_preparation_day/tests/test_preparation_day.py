@@ -500,6 +500,58 @@ class TestPreparationDay(TransactionCase):
             'era la única línea pendiente — debe autocerrar la sesión',
         )
 
+    # ── Move cancelado en Inventario + tablet (Tech Lead, 2026-11-07) ──
+    # Producción 2026-11-06/07: 20 avisos del núcleo «No puede cambiar un
+    # movimiento de existencias cancelado…» cuando el operario cerraba en
+    # 0 una línea cuyo PICK Inventario ya canceló.
+
+    def _cancelled_move_line(self):
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids.filtered(lambda l: l.sale_order_id == order)
+        pick = order.picking_ids.filtered(
+            lambda p: p.picking_type_code == 'internal'
+            and p.state not in ('done', 'cancel')
+        )
+        pick.action_cancel()
+        self.assertEqual(line.stock_move_id.state, 'cancel')
+        return session, line
+
+    def test_save_line_weight_cancelled_move_zero_closes_line_without_stock(self):
+        session, line = self._cancelled_move_line()
+        move = line.stock_move_id
+        result = session.action_save_line_weight(line.id)
+        self.assertTrue(result)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(move.state, 'cancel', 'no se debe tocar el move')
+        self.assertEqual(move.quantity, 0.0)
+        notes = session.message_ids.mapped('body')
+        self.assertTrue(
+            any('cancelado en Inventario' in (b or '') for b in notes),
+            'debe dejar nota de que el traslado estaba cancelado',
+        )
+
+    def test_save_line_weight_cancelled_move_positive_weight_raises_clear_error(self):
+        session, line = self._cancelled_move_line()
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+        with self.assertRaises(UserError) as cm:
+            session.action_save_line_weight(line.id)
+        self.assertIn('cancelado en Inventario', str(cm.exception))
+        self.assertNotIn('existencias cancelado', str(cm.exception))
+        self.assertFalse(line.is_done)
+
+    def test_save_line_weight_normal_move_still_writes_stock(self):
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.8})
+        session.action_save_line_weight(line.id)
+        self.assertTrue(line.is_done)
+        self.assertAlmostEqual(line.stock_move_id.quantity, 1.8, places=2)
+
     def test_auto_finish_session(self):
         """Session should auto-finish when all lines are done."""
         self._create_confirmed_order(qty=1.0)

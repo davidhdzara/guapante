@@ -2583,13 +2583,33 @@ class PreparationDay(models.Model):
             # dentro de get_active_prep_operator_id.
             Employee = Employee.sudo().browse(employee_id)
 
+        # Move cancelado en Inventario (Tech Lead, 2026-11-07; hallazgo en
+        # el log de producción: 20 avisos en 48 h del núcleo «No puede
+        # cambiar un movimiento de existencias cancelado…»). Odoo no
+        # admite escribir quantity en un move 'cancel' (stock_move.py,
+        # write): antes la tablet reventaba con ese mensaje y la línea
+        # quedaba pendiente. Ahora: peso 0 → NO se toca el stock (no hay
+        # nada que despachar) y la línea se termina en 0 con nota; peso
+        # > 0 → error claro, mismo criterio que _sync_weight_to_stock.
+        move_cancelled = bool(
+            Line.stock_move_id and Line.stock_move_id.state == 'cancel'
+        )
+        if move_cancelled and Line.actual_kg > 0:
+            raise UserError(
+                f'No se puede registrar el peso de {Line.product_description} '
+                f'(Caja #{Line.daily_sequence}): el movimiento de stock de '
+                'esta línea está cancelado en Inventario y no admite '
+                'cantidad. Despáchala en 0 (sin stock) o contacta a '
+                'Inventario.'
+            )
+
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de
         # escritura directa sobre stock.move.line del almacén.
         # skip_inverse_visual_qty: evita que el cambio en quantity
         # propague de vuelta a sale.order.line.product_uom_qty
         # a través del campo visual_qty compute/inverse.
-        if Line.stock_move_id:
+        if Line.stock_move_id and not move_cancelled:
             Move = Line.stock_move_id.sudo().with_context(
                 skip_inverse_visual_qty=True,
                 skip_recolectar_zero_check=True,
@@ -2629,6 +2649,13 @@ class PreparationDay(models.Model):
             'done_date': fields.Datetime.now(),
         })
         Line._maybe_post_dispatch_zero_note(Employee.name or self.env.user.name)
+        if move_cancelled:
+            self.sudo().message_post(body=(
+                f'{Employee.name or self.env.user.name} cerró '
+                f'{Line.product_description} (Caja #{Line.daily_sequence}) '
+                'en 0: el traslado de esta línea estaba cancelado en '
+                'Inventario (no se tocó el stock).'
+            ))
 
         # Actualizar total_done_kg en el resumen del producto
         Summary = self.summary_ids.filtered(
