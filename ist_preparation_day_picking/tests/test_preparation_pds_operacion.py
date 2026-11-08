@@ -4,8 +4,8 @@ ajustes. Cubre get_pds_operacion_board_data(): agrupación en las 4
 columnas, stop_reason visible solo en Detenido, operario visible solo
 en En progreso/Terminado (igual que el mockup — confirmado en el
 análisis previo), conteos coherentes con total_lines/done_lines/
-pending_lines, control de acceso (group_preparation_admin sí,
-operario de Picking AccessError — ajuste 3), y "Sin jornada abierta"
+pending_lines, control de acceso («Reportes y PDS» sí;
+admin sin ese permiso y operario de Picking AccessError — ajuste 3 + Tema A), y "Sin jornada abierta"
 cuando _picking_session_date (ajuste 2 — NO _current_session_date) no
 resuelve ninguna sesión real."""
 import uuid
@@ -38,10 +38,23 @@ class TestPreparationPdsOperacion(TestPreparationDayProductClaim):
         self.operator_group = self.env.ref(
             'ist_preparation_day_picking.group_preparation_picking_operator',
         )
+        self.reports_group = self.env.ref(
+            'ist_preparation_day_picking.group_preparation_reports_pds',
+        )
         self.internal_group = self.env.ref('base.group_user')
+        # Tema A (2026-11-08): el PDS lo ve quien tenga «Reportes y PDS»
+        # (nombre `prep_admin_user` se conserva por los helpers de abajo).
         self.prep_admin_user = self.env['res.users'].create({
-            'name': 'Admin Preparación Test (PDS)',
-            'login': f'prep.admin.pds.test.{uuid.uuid4().hex}@example.com',
+            'name': 'Reportes y PDS Test (PDS)',
+            'login': f'prep.reports.pds.test.{uuid.uuid4().hex}@example.com',
+            'groups_id': [(6, 0, [
+                self.reports_group.id, self.internal_group.id,
+            ])],
+        })
+        # Administrador de Preparación SIN el permiso nuevo (ej. Mauricio).
+        self.prep_admin_only_user = self.env['res.users'].create({
+            'name': 'Admin Preparación Test (sin PDS)',
+            'login': f'prep.admin.nopds.test.{uuid.uuid4().hex}@example.com',
             'groups_id': [(6, 0, [
                 self.admin_group.id, self.internal_group.id,
             ])],
@@ -79,6 +92,26 @@ class TestPreparationPdsOperacion(TestPreparationDayProductClaim):
         data = self._get_board_data_as_admin()
         self.assertTrue(data['has_session'])
         self.assertEqual(data['session_id'], session.id)
+
+    def test_admin_without_reports_group_gets_access_error(self):
+        """Tema A: Administrador de Preparación sin «Reportes y PDS» no
+        ve el PDS — ni por el método directo ni por call_kw."""
+        self._load_session_with_product()
+        Model = self.env['guapante.preparation.day'].with_user(
+            self.prep_admin_only_user,
+        )
+        with patch(
+            'odoo.fields.Datetime.now', return_value=self._now_before_switch_hour(),
+        ):
+            with self.assertRaises(AccessError):
+                Model.get_pds_operacion_board_data()
+            with self.assertRaises(AccessError):
+                call_kw(Model, 'get_pds_operacion_board_data', [], {})
+
+    def test_pds_menus_only_for_reports_group(self):
+        for xmlid in ('menu_pds_root', 'menu_pds_operacion'):
+            menu = self.env.ref(f'ist_preparation_day_picking.{xmlid}')
+            self.assertEqual(menu.groups_id, self.reports_group)
 
     def test_operator_gets_access_error(self):
         self._load_session_with_product()

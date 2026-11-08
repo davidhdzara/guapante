@@ -9,7 +9,7 @@
          propio computador de Diana/Mauricio (David, corrección sobre
          el diseño original de "TV sin usuario" — ver análisis de
          seguridad). "Pantallas" es menú nuevo, solo
-         group_preparation_admin — ni el operario de Picking ni nadie
+         group_preparation_reports_pds (Tema A, 2026-11-08) — ni el operario de Picking ni nadie
          más ve esta entrada. -->
     <record id="action_pds_operacion" model="ir.actions.client">
         <field name="name">PDS Operación</field>
@@ -21,7 +21,7 @@
         id="menu_pds_root"
         name="Pantallas"
         parent="ist_preparation_day.menu_preparation_day_root"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
         sequence="40"
     />
     <menuitem
@@ -29,6 +29,6 @@
         name="PDS Operación"
         parent="menu_pds_root"
         action="action_pds_operacion"
-        groups="group_preparation_admin"
+        groups="group_preparation_reports_pds"
     />
 </odoo>

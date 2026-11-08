@@ -18,7 +18,8 @@ class PreparationDay(models.Model):
         """Datos de solo lectura para la Pantalla A (PDS Operación) —
         Tech Lead, plan aprobado 2026-11-06, 3 ajustes.
 
-        Ajuste (3): el chequeo de grupo vive AQUÍ, no solo en el menú
+        Ajuste (3): el chequeo de grupo («Reportes y PDS», Tema A,
+        2026-11-08) vive AQUÍ, no solo en el menú
         (defensa en profundidad para RPC directo) — mismo patrón que
         action_reopen() en este mismo módulo. Ningún sudo(): el acceso
         base a guapante.preparation.day/line/product.claim y a
@@ -38,12 +39,15 @@ class PreparationDay(models.Model):
         recargar la página — el componente la vuelve a pedir en su
         refresco de respaldo periódico.
         """
+        # Tema A (2026-11-08): solo quien tenga el permiso «Reportes y
+        # PDS» (grupo aparte, sin relación con group_preparation_admin):
+        # un Administrador de Preparación sin ese permiso NO la ve.
         if not self.env.user.has_group(
-            'ist_preparation_day_picking.group_preparation_admin'
+            'ist_preparation_day_picking.group_preparation_reports_pds'
         ):
             raise AccessError(
-                'Solo un administrador de Preparación puede ver la '
-                'pantalla PDS Operación.'
+                'Solo quien tenga el permiso «Reportes y PDS» puede ver '
+                'la pantalla PDS Operación.'
             )
 
         target_date = _picking_session_date(self.env)
