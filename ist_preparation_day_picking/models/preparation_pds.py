@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models
+from odoo import api, fields, models
 from odoo.exceptions import AccessError
 
 from .preparation_day import _picking_session_date
@@ -13,6 +13,7 @@ _STOP_REASON_LABELS = dict(STOP_REASONS)
 class PreparationDay(models.Model):
     _inherit = 'guapante.preparation.day'
 
+    @api.model
     def get_pds_operacion_board_data(self):
         """Datos de solo lectura para la Pantalla A (PDS Operación) —
         Tech Lead, plan aprobado 2026-11-06, 3 ajustes.
@@ -103,6 +104,7 @@ class PreparationDay(models.Model):
             'columns': columns,
         }
 
+    @api.model
     def action_open_pds_operacion(self):
         """Abre la Pantalla A (PDS Operación) — ir.actions.client
         target=fullscreen, mismo patrón ya usado por

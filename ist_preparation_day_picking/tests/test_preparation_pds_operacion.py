@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytz
 
 from odoo import fields
+from odoo.api import call_kw
 from odoo.exceptions import AccessError
 from odoo.tests.common import tagged
 
@@ -90,6 +91,46 @@ class TestPreparationPdsOperacion(TestPreparationDayProductClaim):
                 ].with_user(
                     self.prep_operator_user
                 ).get_pds_operacion_board_data()
+
+    # ── Nivel RPC (call_kw): lo que realmente hace el JS ──
+    # El JS llama orm.call(modelo, método, []) — sin ids. Un método de
+    # instancia (sin @api.model) revienta en call_kw con IndexError al
+    # hacer args[0]. Llamar el método directo desde Python NO lo detecta,
+    # por eso estas pruebas pasan por odoo.api.call_kw.
+
+    def test_rpc_call_kw_admin_without_ids(self):
+        session = self._load_session_with_product()
+        Model = self.env['guapante.preparation.day'].with_user(
+            self.prep_admin_user,
+        )
+        with patch(
+            'odoo.fields.Datetime.now',
+            return_value=self._now_before_switch_hour(),
+        ):
+            data = call_kw(
+                Model, 'get_pds_operacion_board_data', [], {},
+            )
+        self.assertTrue(data['has_session'])
+        self.assertEqual(data['session_id'], session.id)
+
+    def test_rpc_call_kw_operator_access_error(self):
+        self._load_session_with_product()
+        Model = self.env['guapante.preparation.day'].with_user(
+            self.prep_operator_user,
+        )
+        with patch(
+            'odoo.fields.Datetime.now',
+            return_value=self._now_before_switch_hour(),
+        ):
+            with self.assertRaises(AccessError):
+                call_kw(Model, 'get_pds_operacion_board_data', [], {})
+
+    def test_rpc_call_kw_open_action_without_ids(self):
+        Model = self.env['guapante.preparation.day'].with_user(
+            self.prep_admin_user,
+        )
+        action = call_kw(Model, 'action_open_pds_operacion', [], {})
+        self.assertEqual(action['tag'], 'guapante_pds_operacion')
 
     # ── Sesión resuelta vía _picking_session_date, no _current_session_date (ajuste 2) ──
 
