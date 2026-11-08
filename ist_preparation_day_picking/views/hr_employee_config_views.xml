@@ -39,7 +39,7 @@
         id="menu_preparation_day_reports"
         name="Reportes"
         parent="ist_preparation_day.menu_preparation_day_root"
-        groups="group_preparation_reports_pds"
+        groups="group_preparation_reports_pds,-group_preparation_admin"
         sequence="50"
     />
 
