@@ -124,7 +124,9 @@ class BoxResetWizard(models.TransientModel):
     _description = 'Reinicio de números de caja'
 
     picking_ids = fields.Many2many('stock.picking', string='Recolecciones')
-    reason = fields.Text(string='Motivo', required=True)
+    # Obligatorio en la vista y en _guapante_reset_boxes (no NOT NULL en BD:
+    # el asistente se crea vacío antes de pedir el motivo).
+    reason = fields.Text(string='Motivo')
     order_count = fields.Integer(
         string='Pedidos con caja', compute='_compute_order_count',
     )

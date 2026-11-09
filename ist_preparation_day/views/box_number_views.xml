@@ -97,7 +97,7 @@
                 </p>
                 <group>
                     <field name="order_count"/>
-                    <field name="reason" placeholder="Por qué se reinician las cajas…"/>
+                    <field name="reason" required="1" placeholder="Por qué se reinician las cajas…"/>
                 </group>
                 <footer>
                     <button string="Reiniciar cajas" name="action_confirm" type="object" class="btn-primary"/>

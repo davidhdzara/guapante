@@ -100,12 +100,17 @@ class TestBoxNumberControl(TransactionCase):
     def test_assign_is_logged_with_origin_alta(self):
         order = self._order()
         self._assign()
-        log = self.Log.search([('order_id', '=', order.id)])
-        self.assertEqual(len(log), 1)
+        # La confirmación ya pudo asignar caja en «hoy» y la reubicación al
+        # día de prueba queda en el historial: lo que importa es la cadena
+        # y que el último registro sea el alta vigente.
+        logs = self.Log.search([('order_id', '=', order.id)], order='id')
+        self.assertTrue(logs)
+        last = logs[-1]
         self.assertEqual(
-            (log.old_sequence, log.new_sequence, log.origin, log.box_date),
-            (0, 1, 'alta', self.day))
-        self.assertEqual(log.order_name, order.name)
+            (last.old_sequence, last.new_sequence, last.origin, last.box_date),
+            (0, order.daily_sequence, 'alta', self.day))
+        self.assertEqual(last.order_name, order.name)
+        self.assertEqual(logs[0].origin, 'alta')
 
     def test_log_is_immutable_even_as_superuser(self):
         order = self._order()
@@ -193,7 +198,9 @@ class TestBoxNumberControl(TransactionCase):
     def test_review_detects_change_outside_the_log(self):
         o1 = self._order()
         self._assign()
-        session = self.env['guapante.preparation.day'].create({'date': self.day})
+        session = self.env['guapante.preparation.day'].search(
+            [('date', '=', self.day)], limit=1,
+        ) or self.env['guapante.preparation.day'].create({'date': self.day})
         session.action_load()
         self.env.cr.execute(
             'UPDATE sale_order SET daily_sequence = 44 WHERE id = %s', (o1.id,))
