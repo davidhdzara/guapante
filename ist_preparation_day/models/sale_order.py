@@ -7,6 +7,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 from .preparation_day import (
+    _PG_CONCURRENCY_ERRORS,
     _date_to_utc_range,
     _utc_datetime_to_session_date,
 )
@@ -274,4 +275,27 @@ class SaleOrder(models.Model):
             }
             for date_val in session_dates:
                 Session._guapante_add_confirmed_order(date_val, order)
+        return res
+
+    def _action_cancel(self):
+        """Lote 3 (David, 2026-11-09): al cancelar el pedido (método,
+        botón o wizard nativo sale.order.cancel — los tres terminan
+        acá), sus líneas pendientes desaparecen de Preparación y del
+        Picking sin tener que pulsar «Cargar». Ventas e Inventario
+        quedan en «Cancelado», como siempre. Nunca puede tumbar la
+        cancelación: el trabajo va en su propio savepoint (ver
+        PreparationDay._guapante_remove_cancelled_order_lines)."""
+        res = super()._action_cancel()
+        try:
+            with self.env.cr.savepoint():
+                self.env['guapante.preparation.day'].sudo(
+                )._guapante_remove_cancelled_order_lines(self)
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: no se pudieron retirar de Preparación las '
+                'líneas de los pedidos cancelados %s.',
+                ', '.join(self.mapped('name')),
+            )
         return res

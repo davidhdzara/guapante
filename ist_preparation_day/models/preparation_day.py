@@ -1455,6 +1455,120 @@ class PreparationDay(models.Model):
         new_session."""
         return
 
+    def _guapante_after_lines_removed(self, session, templates) -> None:
+        """Punto de extensión (lote 3, Tech Lead/David 2026-11-09): no
+        hace nada en este módulo — ist_preparation_day_picking lo
+        sobreescribe para borrar los claims del Nivel 1 que se quedan
+        sin ninguna línea y avisar a las tablets (los claims viven en
+        ese módulo hijo). `templates` = product.template de las líneas
+        retiradas; self es la sesión (mismo patrón que
+        _guapante_after_relocate)."""
+        return
+
+    @api.model
+    def _guapante_remove_cancelled_order_lines(self, orders) -> None:
+        """Lote 3 (David, 2026-11-09): cuando un pedido se cancela, sus
+        líneas PENDIENTES desaparecen de Preparación y del Picking —
+        no se ponen en 0 (no hubo despacho). Ventas e Inventario no se
+        tocan: el pedido y sus traslados quedan en «Cancelado» (las FK
+        de la línea hacia pedido/línea de venta/traslado son ON DELETE
+        SET NULL y ninguna otra tabla referencia la línea, verificado
+        en producción — ver DISENO_retiro_pedido_cancelado.md).
+
+        Reglas (Tech Lead, condiciones iii/iv):
+        - Solo líneas NO hechas, solo en sesiones que NO están 'done'.
+        - Línea ya hecha en un pedido cancelado, o sesión 'done': NO se
+          borra nada, solo se deja una nota con nombres.
+        - Las cajas NUNCA se renumeran: la caja del pedido queda como
+          hueco (esto no escribe daily_sequence en ninguna otra línea).
+        - Idempotente: sin líneas pendientes no hace nada (lo llama
+          también el barrido del cron del espejo).
+
+        Cada sesión va en su propio savepoint y con lock de sesión
+        (mismo patrón que _guapante_relocate_picking): un fallo acá se
+        registra y se traga, NUNCA puede tumbar la cancelación del
+        pedido; los errores de concurrencia sí se relanzan para que
+        Odoo reintente."""
+        Orders = orders.filtered(lambda o: o.state == 'cancel')
+        if not Orders:
+            return
+        Lines = self.env['guapante.preparation.day.line'].sudo().search([
+            ('sale_order_id', 'in', Orders.ids),
+        ])
+        for Session in Lines.mapped('wizard_id'):
+            SessionLines = Lines.filtered(lambda l, s=Session: l.wizard_id == s)
+            try:
+                with self.env.cr.savepoint():
+                    Session._guapante_remove_cancelled_lines_in_session(
+                        SessionLines,
+                    )
+            except _PG_CONCURRENCY_ERRORS:
+                raise
+            except Exception:
+                _logger.exception(
+                    'Guapante: no se pudieron retirar las líneas de los '
+                    'pedidos cancelados %s de la sesión %s (%s) — se '
+                    'reintenta en el barrido del cron del espejo.',
+                    ', '.join(SessionLines.mapped('order_name')),
+                    Session.id, Session.name,
+                )
+
+    def _guapante_remove_cancelled_lines_in_session(self, lines) -> None:
+        """Trabajo de UNA sesión (self) para _guapante_remove_cancelled_
+        order_lines — ver su docstring para las reglas."""
+        self.ensure_one()
+        self._guapante_lock_sessions(self)
+        # El lock invalida cachés: releer las líneas con el estado real.
+        lines = lines.exists()
+        Pending = lines.filtered(lambda l: not l.is_done)
+        Done = lines - Pending
+        order_names = ', '.join(sorted(set(lines.mapped('order_name'))))
+
+        if self.state == 'done':
+            if lines:
+                self.sudo().message_post(body=(
+                    f'Pedido(s) {order_names} cancelado(s), pero esta '
+                    'operación ya está cerrada: no se retiró ninguna '
+                    'línea. Reábrela para limpiarla si hace falta.'
+                ))
+            return
+
+        if Done:
+            done_orders = ', '.join(sorted(set(Done.mapped('order_name'))))
+            done_boxes = ', #'.join(
+                str(n) for n in sorted(set(Done.mapped('daily_sequence')))
+            )
+            self.sudo().message_post(body=(
+                f'Pedido(s) {done_orders} cancelado(s) con {len(Done)} '
+                f'línea(s) ya terminada(s) (caja #{done_boxes}): se '
+                'conservan, revisar manualmente.'
+            ))
+        if not Pending:
+            return
+
+        templates = Pending.mapped('product_id')
+        sequences = sorted(set(Pending.mapped('daily_sequence')))
+        pending_orders = ', '.join(sorted(set(Pending.mapped('order_name'))))
+        count = len(Pending)
+        boxes = ', #'.join(str(n) for n in sequences)
+        products = ', '.join(sorted({
+            ' '.join((l.product_description or '').split()) for l in Pending
+        }))
+        for Line in Pending:
+            self._guapante_patch_summary(self, Line, add=False)
+        Pending.unlink()
+        self._guapante_after_lines_removed(self, templates)
+        self.sudo().message_post(body=(
+            f'Pedido {pending_orders} cancelado: se retiraron {count} '
+            f'línea(s) pendiente(s) de esta sesión (caja #{boxes}). '
+            'Inventario y '
+            'Ventas no se tocaron; las cajas no se renumeran. '
+            f'Productos: {products}.'
+        ))
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{self.id}', 'reload', {},
+        )
+
     def _guapante_patch_summary(self, session, line, add) -> None:
         """Ajusta, de forma incremental, el summary de *session* para
         el producto de *line* — suma o resta UNA línea, sin recorrer
