@@ -5,6 +5,8 @@ from unittest.mock import patch
 import pytz
 from psycopg2 import errors as pg_errors
 
+from odoo.addons.ist_preparation_day.tests.box_helpers import set_box
+
 from odoo import fields
 from odoo.tests.common import tagged
 
@@ -513,7 +515,7 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
             [('date', '=', day)],
         ).unlink()
         for order in orders:
-            order.daily_sequence = 0
+            set_box(order, 0)
 
         self._run_cron_as_of(fake_today)
 

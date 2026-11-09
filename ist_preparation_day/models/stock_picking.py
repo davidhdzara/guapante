@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models
-from odoo.exceptions import UserError
+import logging
 
-from .preparation_day import _utc_datetime_to_session_date
+from odoo import fields, models
+from odoo.exceptions import AccessError, UserError
+
+from .box_number import CTX_ORIGIN, CTX_REASON, ORIGIN_RESET, box_origin
+from .preparation_day import (
+    _PG_CONCURRENCY_ERRORS,
+    _utc_datetime_to_session_date,
+)
+
+_logger = logging.getLogger(__name__)
 
 
 class StockPicking(models.Model):
@@ -116,9 +124,49 @@ class StockPicking(models.Model):
                     picking, old_dates[picking.id],
                     exclude_picking_ids=remaining,
                 )
+            # Lote 4: cierre del lote — la comprobación de duplicados se
+            # difiere aquí porque dentro del loop hay estados transitorios.
+            # Nunca puede tumbar la escritura de bodega.
+            try:
+                with self.env.cr.savepoint():
+                    for day in {
+                        _utc_datetime_to_session_date(
+                            self.env, p.scheduled_date)
+                        for p in self.browse(batch_ids)
+                        if p.scheduled_date
+                    }:
+                        self.env['sale.order']._guapante_check_box_numbering(day)
+            except _PG_CONCURRENCY_ERRORS:
+                raise
+            except Exception:
+                _logger.exception('Guapante: revisión de cajas tras reubicar')
         return res
 
+    def _guapante_can_reset_boxes(self) -> bool:
+        """Solo administrador (el módulo de Picking amplía a su grupo)."""
+        return self.env.user.has_group('base.group_system')
+
     def action_reset_daily_sequence(self) -> dict:
+        """Abre el asistente que pide el MOTIVO del reinicio de cajas
+        (lote 4, Tech Lead 2026-11-09): reiniciar sin motivo ya no existe."""
+        if not self._guapante_can_reset_boxes():
+            raise AccessError(
+                'Solo un administrador puede reiniciar los números de caja.'
+            )
+        wiz = self.env['guapante.box.reset.wizard'].create({
+            'picking_ids': [(6, 0, self.ids)],
+        })
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Reiniciar # de cajas',
+            'res_model': 'guapante.box.reset.wizard',
+            'res_id': wiz.id,
+            'view_mode': 'form',
+            'views': [(False, 'form')],
+            'target': 'new',
+        }
+
+    def _guapante_reset_boxes(self, reason) -> dict:
         """Resetea la numeración de cajas para los pickings seleccionados.
 
         Pone daily_sequence = 0 en las sale.order vinculadas,
@@ -138,6 +186,13 @@ class StockPicking(models.Model):
         esta acción es un reinicio administrativo total del día
         (reinicia también el ir.sequence a 1), no el camino normal.
         """
+        if not self._guapante_can_reset_boxes():
+            raise AccessError(
+                'Solo un administrador puede reiniciar los números de caja.'
+            )
+        reason = (reason or '').strip()
+        if not reason:
+            raise UserError('El reinicio de cajas exige un motivo.')
         Orders = self.mapped('sale_id').filtered(
             lambda o: o.daily_sequence > 0
         )
@@ -157,7 +212,9 @@ class StockPicking(models.Model):
             }
 
         count = len(Orders)
-        Orders.write({'daily_sequence': 0})
+        Orders.with_context(**{
+            CTX_ORIGIN: box_origin(ORIGIN_RESET), CTX_REASON: reason,
+        }).write({'daily_sequence': 0})
 
         # Resetear ir.sequence por cada (company, date) involucrada.
         dates_by_company = {}

@@ -17,8 +17,10 @@
         'data/ir_sequence_data.xml',
         'data/ir_cron_repair_sessions.xml',
         'data/ir_cron_mirror_inventory.xml',
+        'data/ir_cron_box_numbering.xml',
         'views/preparation_day_views.xml',
         'views/stock_picking_views.xml',
+        'views/box_number_views.xml',
     ],
     'assets': {
         'web.assets_backend': [

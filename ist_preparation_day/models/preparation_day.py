@@ -9,6 +9,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
+from .box_number import CTX_ORIGIN, ORIGIN_REUBICACION, box_origin
 from .const_preparation import get_active_prep_operator_id
 
 _logger = logging.getLogger(__name__)
@@ -1407,8 +1408,14 @@ class PreparationDay(models.Model):
                 # ANTES de pedirle uno nuevo para la fecha nueva, o se
                 # queda arrastrando el de la fecha vieja (caso d de la
                 # reproducción).
-                Order.sudo().write({'daily_sequence': 0})
-                self.env['sale.order']._assign_daily_sequences(
+                # Candado de cajas (lote 4): origen del sistema, queda
+                # en el historial como «reubicación».
+                Box = self.with_context(
+                    **{CTX_ORIGIN: box_origin(ORIGIN_REUBICACION)}
+                )
+                Box.env['sale.order'].browse(Order.ids).sudo().write(
+                    {'daily_sequence': 0})
+                Box.env['sale.order']._assign_daily_sequences(
                     new_date, exclude_picking_ids=exclude_picking_ids,
                 )
                 # daily_sequence de la línea es related+store sobre la
@@ -1545,6 +1552,20 @@ class PreparationDay(models.Model):
                     ', '.join(SessionLines.mapped('order_name')),
                     Session.id, Session.name,
                 )
+
+    def _guapante_review_box_numbering(self) -> None:
+        """Revisión de cajas (lote 4) al cargar/reabrir la sesión. Nunca
+        puede tumbar la carga: savepoint y se traga todo salvo
+        concurrencia (que Odoo reintenta)."""
+        self.ensure_one()
+        try:
+            with self.env.cr.savepoint():
+                self.env['sale.order']._guapante_check_box_numbering(self.date)
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: revisión de cajas falló en la sesión %s', self.id)
 
     def _guapante_post_note_once(self, body) -> None:
         """Nota informativa del retiro por pedido cancelado, SIN repetir
@@ -2524,6 +2545,8 @@ class PreparationDay(models.Model):
         if not self.date_start:
             self.date_start = fields.Datetime.now()
 
+        self._guapante_review_box_numbering()
+
         if added_count == 0:
             self.save_note = (
                 'Listado actualizado. No se detectaron productos nuevos.'
@@ -2946,6 +2969,7 @@ class PreparationDay(models.Model):
                 '"Actualizar pedidos" si hay pedidos tardíos que recoger.'
             )
         )
+        self._guapante_review_box_numbering()
         return False
 
     def action_export_excel(self) -> dict:
