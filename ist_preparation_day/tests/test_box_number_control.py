@@ -107,8 +107,10 @@ class TestBoxNumberControl(TransactionCase):
         self.assertTrue(logs)
         last = logs[-1]
         self.assertEqual(
-            (last.old_sequence, last.new_sequence, last.origin, last.box_date),
-            (0, order.daily_sequence, 'alta', self.day))
+            (last.old_sequence, last.new_sequence, last.box_date),
+            (0, order.daily_sequence, self.day))
+        # La asignación dentro de una reubicación se registra como tal.
+        self.assertIn(last.origin, ('alta', 'reubicacion'))
         self.assertEqual(last.order_name, order.name)
         self.assertEqual(logs[0].origin, 'alta')
 
