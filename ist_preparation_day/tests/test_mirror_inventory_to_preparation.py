@@ -188,41 +188,71 @@ class TestMirrorInventoryToPreparation(TestPreparationDay):
         self.assertFalse(line.done_by_employee_id)
         self.assertFalse(line.needs_inventory_mirror)
 
-    def test_order_cancelled_entirely_does_not_close_line_and_leaves_note(self):
-        """Guard (David, vía Tech Lead): si el PEDIDO ENTERO se
-        cancela, la cancelación en cascada de su PICK no es una
-        decisión de despacho — NO se cierra la línea (no tiene
-        sentido "Terminar" el despacho de un pedido que ya no
-        existe). Se limpia la bandera igual (no reintentar para
-        siempre) y se deja nota en el chatter para revisión manual;
-        no se archiva ni se cierra distinto."""
+    def test_order_cancelled_entirely_removes_line_never_closes_it(self):
+        """Guard (David, vía Tech Lead; lote 3, 2026-11-09): si el
+        PEDIDO ENTERO se cancela, la cancelación en cascada de su PICK
+        no es una decisión de despacho — la línea NUNCA se cierra en 0
+        (no hubo despacho): desaparece de la sesión y queda una nota
+        con nombres. Antes (2026-11-06) se dejaba pendiente con «revisar
+        manualmente»; David pidió que desaparezca sola."""
         order = self._create_confirmed_order(qty=3.0)
         session = self._create_session()
         session.action_load()
         line = self._line_for(order)
-        message_count_before = len(session.message_ids)
+        move = line.stock_move_id
 
         # Cascada real de sale_stock: cancela primero pickings/moves
-        # (prende nuestro hook) y DESPUÉS pone el pedido en 'cancel'.
+        # (prende nuestro hook) y DESPUÉS pone el pedido en 'cancel';
+        # el override de _action_cancel retira la línea al terminar.
         order._action_cancel()
         self.assertEqual(order.state, 'cancel')
 
-        line.invalidate_recordset()
-        self.assertTrue(line.needs_inventory_mirror)
+        self.assertFalse(line.exists(), 'la línea desaparece de la sesión')
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+        session.invalidate_recordset()
+        notes = ' '.join(session.message_ids.mapped('body'))
+        self.assertIn(f'Pedido {order.name} cancelado', notes)
+        self.assertNotIn('no cerrada', notes)
+        self.assertEqual(move.state, 'cancel', 'Inventario queda en Cancelado')
+
+    def test_order_cancelled_when_immediate_removal_failed_cron_removes_it(self):
+        """Red de seguridad: si el retiro inmediato falló (o el pedido se
+        canceló por otra ruta), el barrido del cron del espejo la retira
+        — nunca la cierra en 0."""
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = self._line_for(order)
+
+        with patch(
+            'odoo.addons.ist_preparation_day.models.preparation_day'
+            '.PreparationDay._guapante_remove_cancelled_lines_in_session',
+            side_effect=RuntimeError('boom'),
+        ):
+            order._action_cancel()
+        self.assertEqual(order.state, 'cancel')
+        self.assertTrue(line.exists(), 'el retiro inmediato falló: sigue ahí')
 
         self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
 
-        line.invalidate_recordset()
-        session.invalidate_recordset()
-        self.assertFalse(
-            line.is_done,
-            'un pedido cancelado entero nunca cierra la línea',
-        )
-        self.assertFalse(line.needs_inventory_mirror)
-        self.assertEqual(len(session.message_ids), message_count_before + 1)
-        last_note = session.message_ids.sorted('id', reverse=True)[0]
-        self.assertIn('no cerrada', last_note.body)
-        self.assertIn(order.name, last_note.body)
+        self.assertFalse(line.exists(), 'el cron la retira')
+        notes_after = len(session.message_ids)
+        # idempotente: otra corrida no repite notas ni falla
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+        self.assertEqual(len(session.message_ids), notes_after)
+
+    def test_cron_sweep_ignores_closed_sessions_and_does_not_spam_notes(self):
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = self._line_for(order)
+        session.write({'state': 'done'})
+        order._action_cancel()
+        notes = len(session.message_ids)
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+        self.env['guapante.preparation.day.line']._cron_mirror_inventory_to_preparation()
+        self.assertTrue(line.exists(), 'sesión cerrada: nunca se borra')
+        self.assertEqual(len(session.message_ids), notes, 'el barrido no repite notas')
 
     def test_already_done_line_not_overwritten_by_cancelled_move(self):
         """Decisión (c), simétrica al caso 'done': si Preparación ya

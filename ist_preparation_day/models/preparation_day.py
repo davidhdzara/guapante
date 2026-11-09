@@ -850,6 +850,33 @@ class PreparationDayLine(models.Model):
         stock_move.py). Un SAVEPOINT por línea: si una falla, no tumba
         las demás (mismo patrón que _guapante_relocate_picking).
         """
+        # Lote 3 (David/Tech Lead, 2026-11-09): red de seguridad de
+        # «cancelar un pedido ⇒ sus líneas pendientes desaparecen».
+        # El camino normal es el override de sale.order._action_cancel();
+        # esto cubre una cancelación por otra ruta (SQL, script,
+        # sesión en uso, fallo del savepoint) — idempotente: solo toma
+        # líneas NO hechas de sesiones NO cerradas, así que no repite
+        # notas en cada corrida.
+        try:
+            with self.env.cr.savepoint():
+                CancelledPending = self.sudo().search([
+                    ('is_done', '=', False),
+                    ('sale_order_id.state', '=', 'cancel'),
+                    ('wizard_id.state', '!=', 'done'),
+                ])
+                if CancelledPending:
+                    self.env['guapante.preparation.day'].sudo(
+                    )._guapante_remove_cancelled_order_lines(
+                        CancelledPending.mapped('sale_order_id'),
+                    )
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: barrido de pedidos cancelados — fallo, se '
+                'reintenta en la próxima corrida.',
+            )
+
         Flagged = self.sudo().search([('needs_inventory_mirror', '=', True)])
         for line in Flagged:
             try:
@@ -991,13 +1018,19 @@ class PreparationDayLine(models.Model):
         self.ensure_one()
 
         if self.sale_order_id.state == 'cancel':
-            self.wizard_id.sudo().message_post(body=(
-                f'Línea no cerrada: el pedido {self.sale_order_id.name} '
-                'está cancelado; revisar manualmente.'
-            ))
+            # Lote 3 (David, 2026-11-09): antes se dejaba la línea con una
+            # nota «revisar manualmente»; ahora un pedido cancelado
+            # entero RETIRA sus líneas pendientes (nunca las cierra en 0,
+            # no hubo despacho). Línea ya hecha o sesión cerrada: solo
+            # nota (condición iii del Tech Lead) — lo decide el propio
+            # método de retiro. Se limpia la bandera igual (no reintentar
+            # para siempre).
+            Order = self.sale_order_id
             self.sudo().with_context(skip_auto_save=True).write({
                 'needs_inventory_mirror': False,
             })
+            self.env['guapante.preparation.day'].sudo(
+            )._guapante_remove_cancelled_order_lines(Order)
             return
 
         if self.is_done:
@@ -1513,6 +1546,17 @@ class PreparationDay(models.Model):
                     Session.id, Session.name,
                 )
 
+    def _guapante_post_note_once(self, body) -> None:
+        """Nota informativa del retiro por pedido cancelado, SIN repetir
+        el mismo texto en el chatter de la sesión: el evento de
+        cancelación y el guard del espejo pueden pasar los dos por el
+        mismo caso (sesión cerrada, línea ya hecha) y la nota no debe
+        duplicarse."""
+        self.ensure_one()
+        if any(body in (m.body or '') for m in self.message_ids):
+            return
+        self.sudo().message_post(body=body)
+
     def _guapante_remove_cancelled_lines_in_session(self, lines) -> None:
         """Trabajo de UNA sesión (self) para _guapante_remove_cancelled_
         order_lines — ver su docstring para las reglas."""
@@ -1526,11 +1570,11 @@ class PreparationDay(models.Model):
 
         if self.state == 'done':
             if lines:
-                self.sudo().message_post(body=(
+                self._guapante_post_note_once(
                     f'Pedido(s) {order_names} cancelado(s), pero esta '
                     'operación ya está cerrada: no se retiró ninguna '
                     'línea. Reábrela para limpiarla si hace falta.'
-                ))
+                )
             return
 
         if Done:
@@ -1538,11 +1582,11 @@ class PreparationDay(models.Model):
             done_boxes = ', #'.join(
                 str(n) for n in sorted(set(Done.mapped('daily_sequence')))
             )
-            self.sudo().message_post(body=(
+            self._guapante_post_note_once(
                 f'Pedido(s) {done_orders} cancelado(s) con {len(Done)} '
                 f'línea(s) ya terminada(s) (caja #{done_boxes}): se '
                 'conservan, revisar manualmente.'
-            ))
+            )
         if not Pending:
             return
 
