@@ -39,6 +39,7 @@
         'views/preparation_day_reports_menus.xml',
         'views/preparation_pds_views.xml',
         'views/box_number_menus.xml',
+        'views/preparation_stopped_products_views.xml',
     ],
     'assets': {
         'web.assets_backend': [

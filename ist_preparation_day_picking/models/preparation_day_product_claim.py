@@ -136,6 +136,83 @@ class PreparationDayProductClaim(models.Model):
         ),
     )
 
+    # Punto 3 (Tech Lead/David, 2026-11-09): vista de administrador de los
+    # productos Detenidos. Solo lectura; la corrección de pesos sigue por la
+    # lista de líneas ya existente (inline, con nota y guard de sesión).
+    weighed_line_count = fields.Integer(
+        string='Líneas pesadas', compute='_compute_weighed',
+    )
+    weighed_kg = fields.Float(
+        string='Kg pesados', compute='_compute_weighed', digits=(10, 2),
+    )
+    stopped_since = fields.Datetime(
+        string='Detenido desde', compute='_compute_stopped_since',
+    )
+
+    @api.depends(
+        'wizard_id.line_ids.is_done',
+        'wizard_id.line_ids.actual_kg',
+        'wizard_id.line_ids.product_id',
+    )
+    def _compute_weighed(self) -> None:
+        for claim in self:
+            weighed = claim._get_lines().filtered(
+                lambda l: l.is_done and l.actual_kg > 0)
+            claim.weighed_line_count = len(weighed)
+            claim.weighed_kg = sum(weighed.mapped('actual_kg'))
+
+    def _compute_stopped_since(self) -> None:
+        Interval = self.env['guapante.preparation.interval'].sudo()
+        for claim in self:
+            interval = Interval.search([
+                ('claim_id', '=', claim.id), ('kind', '=', 'stopped'),
+            ], order='start_dt desc', limit=1) if claim.stop_reason else False
+            claim.stopped_since = interval.start_dt if interval else False
+
+    def _guapante_is_prep_admin(self) -> bool:
+        return (
+            self.env.user.has_group(
+                'ist_preparation_day_picking.group_preparation_admin')
+            or self.env.user.has_group('base.group_system')
+        )
+
+    def action_open_lines_admin(self) -> dict:
+        """«Ver líneas» de la lista de Productos detenidos: abre la lista de
+        líneas de la sesión filtrada por este producto (la misma que el
+        administrador ya edita inline para corregir pesos)."""
+        self.ensure_one()
+        if not self._guapante_is_prep_admin():
+            raise AccessError(
+                'Solo un administrador de Preparación puede ver esto.')
+        view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'Líneas — {self.product_tmpl_id.name}',
+            'res_model': 'guapante.preparation.day.line',
+            'view_mode': 'list',
+            'views': [(view.id, 'list')],
+            'domain': [
+                ('wizard_id', '=', self.wizard_id.id),
+                ('product_id', '=', self.product_tmpl_id.id),
+            ],
+            'target': 'current',
+        }
+
+    def _guapante_note_if_weighed(self, event: str, detail: str) -> None:
+        """Nota en el chatter de la sesión SOLO si el producto ya tiene
+        líneas pesadas (sin pedirle nada al operario)."""
+        self.ensure_one()
+        Lines = self._get_lines()
+        weighed = Lines.filtered(lambda l: l.is_done and l.actual_kg > 0)
+        if not weighed:
+            return
+        self.wizard_id.sudo().message_post(body=(
+            f"{event} con {len(weighed)} de {len(Lines)} línea(s) ya "
+            f"pesadas ({sum(weighed.mapped('actual_kg')):.2f} kg) — "
+            f"{self.product_tmpl_id.name}: {detail}. Un administrador puede "
+            "revisarlas en Productos detenidos."
+        ))
+
     def _get_lines(self):
         self.ensure_one()
         return self.wizard_id.line_ids.filtered(
@@ -648,6 +725,10 @@ class PreparationDayProductClaim(models.Model):
                 f"detenido por {reason_label}, por {stopped_by_name})."
             ),
         )
+        self._guapante_note_if_weighed(
+            'Liberado',
+            f'por {ReleasingEmployee.name}; estaba detenido por {reason_label}',
+        )
         self._notify_bus()
         return True
 
@@ -835,6 +916,10 @@ class PreparationDayProductClaim(models.Model):
                 f"{dict(STOP_REASONS)[reason]} (por {Employee.name})."
                 f"{cross_operator_note}"
             ),
+        )
+        self._guapante_note_if_weighed(
+            'Detenido',
+            f'{dict(STOP_REASONS)[reason]} (por {Employee.name})',
         )
         self._notify_bus()
         return True
