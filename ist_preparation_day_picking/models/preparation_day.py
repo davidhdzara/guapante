@@ -140,6 +140,35 @@ class PreparationDay(models.Model):
             'picking_claim_updated', {},
         )
 
+    def _guapante_after_lines_removed(self, session, templates) -> None:
+        """Lote 3 (David/Tech Lead, 2026-11-09): un pedido cancelado
+        retiró sus líneas pendientes de la sesión (ver
+        PreparationDay._guapante_remove_cancelled_order_lines en
+        ist_preparation_day). Los claims del Nivel 1 viven acá: se borra
+        el de cada producto que se quedó SIN NINGUNA línea (nunca uno
+        con líneas, aunque estén is_done — mismo criterio que
+        _guapante_after_relocate) y se avisa a las tablets para que el
+        producto desaparezca del Picking sin recargar a mano.
+
+        Los intervalos de tiempo de un claim borrado se van en cascada
+        (guapante.preparation.interval.claim_id es ondelete='cascade'),
+        igual que al reubicar un pedido; solo ocurre si el producto
+        quedó sin ninguna línea (caso raro: alguien lo tomó pero nunca
+        pesó nada y todo su pedido se canceló)."""
+        super()._guapante_after_lines_removed(session, templates)
+        for tmpl in templates:
+            if session.line_ids.filtered(lambda l, t=tmpl: l.product_id == t):
+                continue
+            stale = session.product_claim_ids.filtered(
+                lambda c, t=tmpl: c.product_tmpl_id == t
+            )
+            if stale:
+                stale.sudo().unlink()
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{session.id}',
+            'picking_claim_updated', {},
+        )
+
     def _guapante_after_incremental_add(self, line) -> None:
         """Plan de carga automática, paso e2 (2026-10-29): mismo
         criterio que _rebuild_product_claims()/_guapante_after_relocate
