@@ -70,10 +70,15 @@ TEST_EMPLOYEES = [
     },
 ]
 
+# UX-02 (2026-10-11): el tipo de documento ya no es un valor en este dict -- se
+# escribe aparte en work_contact_id (ver TEST_EMPLOYEE_IDENTIFICATION_TYPE_XMLID
+# y l10n_co_ne_certification_wizard.py), porque ese partner solo existe DESPUÉS
+# de crear el hr.employee (lo crea hr nativo, _create_work_contacts()).
+TEST_EMPLOYEE_IDENTIFICATION_TYPE_XMLID = 'l10n_co.national_citizen_id'  # Cédula de Ciudadanía
+
 # Campos compartidos por los 4 empleados de prueba -- ningún dato bancario
 # real, método de pago "Efectivo" para no requerir banco/cuenta.
 TEST_EMPLOYEE_COMMON_VALUES = {
-    'l10n_co_ne_document_type': '13',  # Cédula de Ciudadanía
     'l10n_co_ne_worker_type': '01',  # Trabajador Dependiente
     'l10n_co_ne_worker_subtype': '00',  # No Aplica
     'l10n_co_ne_high_risk_pension': False,

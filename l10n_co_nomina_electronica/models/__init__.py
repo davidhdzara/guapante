@@ -5,6 +5,8 @@ from . import res_company
 from . import l10n_co_ne_operation_mode
 from . import res_config_settings
 from . import hr_employee
+from . import l10n_latam_identification_type
+from . import res_partner
 from . import hr_contract
 from . import hr_salary_rule
 from . import hr_payslip

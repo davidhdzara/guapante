@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!--
+            UX-04/.99 (2026-10-11, pedido de David): que Colombia aparezca en
+            "Choose a Payroll Localization" (Ajustes > Nómina > Payroll
+            Rules) igual que las demás localizaciones. El dominio nativo de
+            esta acción (confirmado por Tech Lead contra el servidor,
+            enterprise/hr_payroll) es [('name', '=like', 'l10n_%_hr_payroll')]:
+            nuestro módulo técnico se llama l10n_co_nomina_electronica, no
+            encaja en ese patrón de nombre.
+
+            En vez de renombrar el módulo técnico (alto riesgo e
+            irreversible sobre la base de producción real de Guapante, ver
+            diseño .99), se agrega el módulo explícitamente con un OR,
+            dejando intacto el patrón original para las demás
+            localizaciones.
+
+            noupdate="0": esta sobreescritura debe reaplicarse en cada -u de
+            ESTE módulo (si no, un -u futuro de hr_payroll que reescriba su
+            propia acción nos dejaría sin el OR hasta el siguiente -u
+            nuestro de todas formas, pero preferimos que sea predecible).
+        -->
+        <record id="hr_payroll.open_payroll_modules" model="ir.actions.act_window">
+            <field name="domain">[
+                '|',
+                ('name', '=like', 'l10n_%_hr_payroll'),
+                ('name', '=', 'l10n_co_nomina_electronica'),
+            ]</field>
+        </record>
+
+    </data>
+</odoo>

@@ -194,7 +194,11 @@
                             <!-- QR Code -->
                             <div class="col-3 text-center">
                                 <t t-if="o.l10n_co_ne_cune">
-                                    <img t-att-src="'/report/barcode/?type=%s&amp;value=%s&amp;width=%s&amp;height=%s&amp;humanreadable=1' % ('QR', 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + (o.l10n_co_ne_cune or ''), 200, 200)"
+                                    <!-- AUD-DIAN-34 (2026-10-05): host del QR, único punto,
+                                         ver ResCompany._ne_dian_qr_host(). Antes esta plantilla
+                                         tenía su PROPIA copia fija de catalogo-vpfe (siempre
+                                         producción, incluso para una nómina de habilitación). -->
+                                    <img t-att-src="'/report/barcode/?type=%s&amp;value=%s&amp;width=%s&amp;height=%s&amp;humanreadable=1' % ('QR', 'https://%s/document/searchqr?documentkey=%s' % (o.company_id._ne_dian_qr_host(), o.l10n_co_ne_cune or ''), 200, 200)"
                                          style="width: 110px; height: 110px;"
                                          alt="QR Validacion DIAN"/>
                                 </t>

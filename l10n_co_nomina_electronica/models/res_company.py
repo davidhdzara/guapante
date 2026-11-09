@@ -16,7 +16,10 @@ electrónica.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
+from odoo.tools import convert
 from odoo.tools.misc import str2bool
+
+from ..services import dian_utils
 
 
 class ResCompany(models.Model):
@@ -64,6 +67,42 @@ class ResCompany(models.Model):
         """
         self.ensure_one()
         return self.l10n_co_ne_certificate_ids[-1:]
+
+    # ──────────────────────────────────────────────────────────────────
+    # DIAN — URLs y tiempos configurables (AUD-DIAN-34, 2026-10-05)
+    # ──────────────────────────────────────────────────────────────────
+    # Único punto para que services/soap_client.py, services/dian_utils.py y este modelo
+    # no mantengan cada uno su propia copia de las URL de la DIAN (antes repetidas en 3
+    # sitios) ni de los tiempos fijos (SOAP_TIMEOUT, tick/timeout del motor de
+    # habilitación). Los valores por defecto son los que ya estaban hardcodeados -- ningún
+    # comportamiento cambia al instalar esto. Sobrescribibles vía ir.config_parameter
+    # (Ajustes > Técnico > Parámetros del Sistema, valor inicial en data/ir_config_
+    # parameter_dian_data.xml, noupdate=1) sin tocar código ni re-desplegar.
+
+    def _ne_dian_endpoint(self, environment=None):
+        """URL del servicio SOAP de la DIAN. ``environment`` por defecto es el de la
+        compañía; se puede forzar (ej. envíos de set de pruebas, siempre habilitación)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_soap_endpoint_%s' % env)
+        return dian_utils.get_soap_endpoint(env, override=override)
+
+    def _ne_dian_qr_host(self, environment=None):
+        """Host del catálogo DIAN para la URL del CodigoQR (Anexo Técnico, sección QRCode)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_qr_host_%s' % env)
+        return dian_utils.get_qr_catalog_host(env, override=override)
+
+    def _ne_config_int_param(self, key, default):
+        """Lee un parámetro entero positivo de ir.config_parameter bajo ``key`` -- usado
+        para los timeouts configurables (SOAP_TIMEOUT, tick/timeout de habilitación). Valor
+        ausente o inválido -> ``default`` con un _logger.warning (ver dian_utils.
+        parse_positive_int): una configuración mal escrita nunca debe reventar un envío."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(key)
+        return dian_utils.parse_positive_int(raw, default, key)
 
     # ──────────────────────────────────────────────────────────────────
     # Ambiente y configuración de habilitación
@@ -165,6 +204,25 @@ class ResCompany(models.Model):
         'res.users', string='Usuario que inició la habilitación', copy=False,
     )
     l10n_co_ne_hab_started = fields.Datetime(string='Inicio de la habilitación', copy=False)
+
+    # ──────────────────────────────────────────────────────────────────
+    # Localización nómina (.99, pedido de David): paquete de nómina
+    # electrónica instalado, visible en Ajustes > Nómina como la
+    # "Localización fiscal" de Contabilidad (chart_template). hr_payroll
+    # no tiene un framework de plantillas equivalente al de account
+    # (confirmado con Tech Lead contra el servidor) -- este campo calca
+    # el PATRÓN VISUAL de Accounting, no reusa un mecanismo nativo de
+    # Nómina que no existe.
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_payroll_package = fields.Selection(
+        selection='_selection_l10n_co_ne_payroll_package',
+        string='Paquete de Nómina',
+        help='Localización de nómina electrónica instalada para este país.',
+    )
+
+    @api.model
+    def _selection_l10n_co_ne_payroll_package(self):
+        return [('l10n_co_nomina_electronica', _('Colombia'))]
 
     # ──────────────────────────────────────────────────────────────────
     # Prefijos de consecutivo para Nómina y Notas de Ajuste
@@ -387,3 +445,39 @@ class ResCompany(models.Model):
                     '(Pruebas). Este valor se obtiene del portal de la '
                     'DIAN.'
                 ))
+
+    # ──────────────────────────────────────────────────────────────────
+    # Recargar paquete de nómina (.99, "Opción A" aprobada por David/Tech
+    # Lead): recrea estructuras, reglas salariales y tipos de novedad que
+    # falten, SIN tocar hr.rule.parameter.
+    # ──────────────────────────────────────────────────────────────────
+    _L10N_CO_NE_RELOAD_DATA_FILES = [
+        'data/hr_payroll_structure_data.xml',
+        'data/hr_payroll_structure_special_data.xml',
+        'data/hr_salary_rule_auto_deductions.xml',
+        'data/l10n_co_embargo_input_types_data.xml',
+        'data/l10n_co_horas_extra_input_types_data.xml',
+        'data/l10n_co_novedades_input_types_data.xml',
+    ]
+
+    def _l10n_co_ne_reload_payroll_package(self):
+        """Vuelve a aplicar SOLO estos archivos de datos del módulo, en el
+        mismo orden que el manifest, con el mismo mecanismo que usa un
+        `-u` real (``odoo.tools.convert.convert_file``): cada archivo
+        respeta su propio ``noupdate`` ya declarado -- los de
+        estructuras/reglas llevan ``noupdate="0"`` y siempre se
+        reaplican, los de tipos de novedad llevan ``noupdate="1"`` y solo
+        se recrean si faltan (ver ``_tag_root`` en ``odoo/tools/
+        convert.py``: el atributo del propio bloque ``<data>`` siempre
+        gana sobre el ``noupdate`` que se pasa aquí).
+
+        Deliberadamente NO incluye ``data/l10n_co_rule_parameters_data.xml``
+        (parámetros legales versionados, nunca se pisan) ni
+        ``data/hr_retefuente_data.xml`` (mismo motivo) -- quedan fuera de
+        alcance por diseño, no por una comparación de valores.
+        """
+        self.ensure_one()
+        module = 'l10n_co_nomina_electronica'
+        idref = {}
+        for relpath in self._L10N_CO_NE_RELOAD_DATA_FILES:
+            convert.convert_file(self.env, module, relpath, idref, mode='update', noupdate=False)

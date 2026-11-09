@@ -205,6 +205,25 @@ class TestHabilitacionEngine(TransactionCase):
         self.assertFalse(finished, 'el rechazo de un set anterior no debe detener el set actual')
         prepare.assert_called_once_with(self.company, individual=True)
 
+    # ── resultado previo ────────────────────────────────────────────────────
+
+    def test_cambiar_el_set_borra_el_resultado_de_la_habilitacion_anterior(self):
+        self.company.write({'l10n_co_ne_hab_state': 'done',
+                            'l10n_co_ne_hab_message': 'Habilitación completa: ...'})
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-NUEVO'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'idle')
+        self.assertFalse(self.company.l10n_co_ne_hab_message)
+
+    def test_guardar_el_mismo_set_no_borra_el_resultado(self):
+        self.company.write({'l10n_co_ne_hab_state': 'done', 'l10n_co_ne_hab_message': 'Completa'})
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-ACTUAL'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'done')
+
+    def test_cambiar_el_set_no_interrumpe_una_habilitacion_en_curso(self):
+        self.company.l10n_co_ne_hab_state = 'running'
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-NUEVO'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'running')
+
     # ── configuración ───────────────────────────────────────────────────────
 
     def test_no_inicia_fuera_de_ambiente_de_pruebas(self):

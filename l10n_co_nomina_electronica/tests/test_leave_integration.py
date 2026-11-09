@@ -19,13 +19,35 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         self.employee = self.env['hr.employee'].create({
             'name': 'Juan Pérez Gómez',
             'identification_id': '10203040',
-            'l10n_co_ne_document_type': '13',
             'l10n_co_ne_worker_type': '01',
             'l10n_co_ne_worker_subtype': '00',
+            # UX-02 (b, .91, hallazgo de Tech Lead en staging): Efectivo aquí,
+            # no Transferencia -- bank_account_id no puede ir en este mismo
+            # create() (work_contact_id recién existe DESPUÉS de que create()
+            # termina), y _check_bank_account_for_transfer() ya exige la
+            # cuenta en el momento en que el método es Transferencia. Se
+            # cambia a Transferencia junto con la cuenta en un solo write()
+            # más abajo, nunca en 2 pasos sueltos.
+            'l10n_co_ne_payment_method': '10',
+        })
+        # UX-02 (2026-10-11): el tipo de documento ya no se fija al crear el
+        # empleado -- work_contact_id (el partner que lo guarda) recién existe
+        # DESPUÉS de este create() (hr nativo lo crea en _create_work_contacts()).
+        self.employee.l10n_co_ne_identification_type_id = self.env.ref(
+            'l10n_co.national_citizen_id').id
+        # UX-02 (2026-10-11): Banco/NumeroCuenta salen de la Cuenta Bancaria
+        # nativa (bank_account_id, res.partner.bank). El método de pago pasa a
+        # Transferencia EN LA MISMA escritura que bank_account_id -- el
+        # constraint mira ambos campos juntos al final del write(), igual que
+        # al final de create().
+        bank_account = self.env['res.partner.bank'].create({
+            'acc_number': '1234567890',
+            'partner_id': self.employee.work_contact_id.id,
+            'bank_id': self.env['res.bank'].create({'name': 'Bancolombia'}).id,
+        })
+        self.employee.write({
             'l10n_co_ne_payment_method': '1',  # 1 = Transferencia Bancaria
-            'l10n_co_ne_bank_account': '1234567890',
-            'l10n_co_ne_bank_name': 'Bancolombia',
-            'l10n_co_ne_bank_account_type': 'ahorro',
+            'bank_account_id': bank_account.id,
         })
         self.structure_type = self.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura',
@@ -43,27 +65,15 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'date_start': date(2026, 6, 1),
             'state': 'open',
         })
-        # Crear tipos de ausencias
-        self.work_entry_type_sick = self.env['hr.work.entry.type'].create({
-            'name': 'Incapacidad Común',
-            'code': 'INC_COMUN',
-            'is_leave': True,
-        })
-        self.leave_type_sick = self.env['hr.leave.type'].create({
-            'name': 'Incapacidad Común',
-            'work_entry_type_id': self.work_entry_type_sick.id,
-            'requires_allocation': 'no',
-        })
-        self.work_entry_type_vac = self.env['hr.work.entry.type'].create({
-            'name': 'Vacaciones',
-            'code': 'VACACIONES',
-            'is_leave': True,
-        })
-        self.leave_type_vac = self.env['hr.leave.type'].create({
-            'name': 'Vacaciones',
-            'work_entry_type_id': self.work_entry_type_vac.id,
-            'requires_allocation': 'no',
-        })
+        # H-014 (revisión .78, Tech Lead): usar los tipos de ausencia REALES de H-013
+        # (data/l10n_co_ausencias_data.xml) en vez de tipos inventados con códigos propios
+        # (INC_COMUN, VACACIONES) -- ese código inventado nunca pasa por el camino real del
+        # usuario desde H-013/H-014 (ni para el pago, que exige CO_INC_COMUN exacto, ni
+        # para el resumen de action_detect_leaves()/_LEAVE_CODE_MAP).
+        self.leave_type_sick = self.env.ref(
+            'l10n_co_nomina_electronica.hr_leave_type_co_inc_comun')
+        self.leave_type_vac = self.env.ref(
+            'l10n_co_nomina_electronica.hr_leave_type_co_vac')
         self.rule_category = self.env['hr.salary.rule.category'].search([('code', '=', 'ALW')], limit=1)
         if not self.rule_category:
             self.rule_category = self.env['hr.salary.rule.category'].create({
@@ -118,8 +128,15 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         # Verificar contadores automáticos
         self.assertEqual(payslip.l10n_co_ne_dias_incapacidad, 4)
         self.assertEqual(payslip.l10n_co_ne_dias_vacaciones, 11)
-        self.assertIn('Incapacidad: 4 días (Incapacidad Común)', payslip.l10n_co_ne_leave_summary)
-        self.assertIn('Vacaciones: 11 días (Vacaciones)', payslip.l10n_co_ne_leave_summary)
+        # H-014 (.78): el nombre entre paréntesis es leave.holiday_status_id.name del tipo
+        # REAL de H-013 (data/l10n_co_ausencias_data.xml) -- "Incapacidad Enfermedad
+        # General"/"Vacaciones Disfrutadas", no el nombre inventado que tenía este test
+        # antes de usar los tipos reales.
+        self.assertIn(
+            'Incapacidad: 4 días (Incapacidad Enfermedad General)',
+            payslip.l10n_co_ne_leave_summary)
+        self.assertIn(
+            'Vacaciones: 11 días (Vacaciones Disfrutadas)', payslip.l10n_co_ne_leave_summary)
 
         # Probar la preparación del XML: llamar a _collect_payslip_data()
         # Mockear las lineas de la nomina requeridas para simular los pagos de las reglas
@@ -151,6 +168,12 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'struct_id': self.structure.id,
             'category_id': self.rule_category.id,
         })
+        # H-016 (.82): la ausencia de vacaciones (15-25 jun/2026) se paga por
+        # DIAS HABILES reales, no por dias calendario. Bajo el calendario L-V
+        # por defecto de este test, con jun 15 (lunes) festivo "Sagrado
+        # Corazon": 15(festivo,excluido) 16 17 18 19(habiles) 20 21(fin de
+        # semana,excluidos) 22 23 24 25(habiles) = 8 dias habiles.
+        # La regla ad hoc de este test paga a 100.000/dia -> total = 800.000.
         self.env['hr.payslip.line'].create({
             'slip_id': payslip.id,
             'employee_id': self.employee.id,
@@ -158,8 +181,8 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'salary_rule_id': rule_vac.id,
             'code': 'VAC_PAGO',
             'name': 'Vacaciones Comunes Pago',
-            'total': 1100000.0,
-            'quantity': 11,
+            'total': 800000.0,
+            'quantity': 8,
             'rate': 100,
         })
 
@@ -179,5 +202,10 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         self.assertEqual(len(vacaciones), 1)
         self.assertEqual(vacaciones[0]['FechaInicio'], '2026-06-15')
         self.assertEqual(vacaciones[0]['FechaFin'], '2026-06-25')
-        self.assertEqual(vacaciones[0]['Cantidad'], '11')
-        self.assertEqual(vacaciones[0]['Pago'], '1100000.00')
+        # H-016 (.83): Cantidad/Pago del XML son dias HABILES (8, ver comentario
+        # de la regla ad hoc arriba), no los 11 dias CALENDARIO que sigue
+        # mostrando correctamente l10n_co_ne_dias_vacaciones (linea 108) -- ese
+        # contador es un mecanismo distinto (_compute_leave_days_in_period(),
+        # resumen de accion_detect_leaves(), siempre calendario) y no cambia.
+        self.assertEqual(vacaciones[0]['Cantidad'], '8')
+        self.assertEqual(vacaciones[0]['Pago'], '800000.00')

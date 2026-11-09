@@ -6,3 +6,20 @@ from . import test_ne_consecutive
 
 from . import test_ne_xml_namespaces
 from . import test_habilitacion_engine
+from . import test_input_types
+from . import test_dian_status_recheck
+from . import test_dias_trabajados
+from . import test_dian_config
+from . import test_rule_parameters_exist
+from . import test_liquidacion_indemnizacion
+from . import test_dian_pais_moneda
+from . import test_liquidacion_wizard_departure
+from . import test_ausencias_nomina
+from . import test_tipo_documento_dian
+from . import test_identificacion_sincronizada
+from . import test_pago_cuenta_bancaria
+from . import test_migracion_identificacion
+from . import test_ui_sin_colores_propios
+from . import test_certification_wizard_period
+from . import test_localizacion_nomina
+from . import test_migracion_payroll_package

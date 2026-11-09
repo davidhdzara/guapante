@@ -36,6 +36,29 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
         if not co_country:
             co_country = cls.env.ref('base.co')
+        # H-018 (2026-10-11): _ne_lugar_trabajo_partner() exige país/departamento/
+        # municipio en la Dirección de Trabajo del empleado (por defecto, la de la
+        # compañía) para cualquier nómina que llegue a _collect_payslip_data() --
+        # necesario para test_version_de_nota_de_ajuste_usa_el_literal_niae022.
+        co_state = cls.env['res.country.state'].search(
+            [('country_id', '=', co_country.id)], limit=1)
+        if not co_state:
+            co_state = cls.env['res.country.state'].create({
+                'name': 'Departamento Prueba Consecutivo',
+                'code': 'PC',
+                'country_id': co_country.id,
+            })
+        co_city = cls.env['res.city'].create({
+            'name': 'Ciudad Prueba Consecutivo',
+            'state_id': co_state.id,
+            'country_id': co_country.id,
+        })
+        cls.company.partner_id.write({
+            'country_id': co_country.id,
+            'state_id': co_state.id,
+            'city_id': co_city.id,
+            'street': 'Calle Prueba Consecutivo # 1-1',
+        })
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura Consecutivo',
             'country_id': co_country.id,
@@ -61,6 +84,11 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
             # bancarios.
             'l10n_co_ne_payment_method': '10',
         })
+        # UX-02 (2026-10-11): _ne_tipo_documento() exige un tipo de documento con
+        # equivalente DIAN en work_contact_id -- necesario para
+        # test_version_de_nota_de_ajuste_usa_el_literal_niae022.
+        employee.l10n_co_ne_identification_type_id = self.env.ref(
+            'l10n_co.national_citizen_id').id
         contract = self.env['hr.contract'].create({
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,

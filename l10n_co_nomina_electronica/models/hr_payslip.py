@@ -22,10 +22,11 @@ V1.0, Resolución DIAN 000013 de 2021.
 """
 
 import base64
+import calendar
 import hashlib
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
@@ -59,6 +60,33 @@ DEVENGADO_SIMPLE_CONCEPTS = {
 
 HORA_EXTRA_CONCEPTS = {'HED', 'HEN', 'HRN', 'HEDDF', 'HRDDF', 'HENDF', 'HRNDF'}
 
+# H-013 (2026-10-08, QA Bloque 4, decisión de David): códigos de hr.work.entry.type de las
+# ausencias colombianas que este módulo paga con su propia regla salarial (data/
+# l10n_co_ausencias_data.xml). _ne_dias_pagables() las excluye SIEMPRE del básico (nunca
+# dependen de hr.leave.type.unpaid, que es un eje distinto -- ver el comentario en esa
+# función) y cada regla lee los mismos días -- una sola fuente para ambos lados, nunca
+# doble pago.
+#
+# Dos grupos, con dos mecanismos de conteo distintos (H-014, 2026-10-08, QA Bloque 5,
+# decisión de David basada en CST Art. 186/227/236 mod. Ley 2114/2021 y Concepto
+# Mintrabajo 63044901/2022):
+#
+# - CO_VAC/CO_LIC_REM/CO_LIC_NR: días HÁBILES según el calendario laboral del contrato
+#   (L-V, L-S o el de la compañía) -- cuentan vía worked_days (_ne_dias_novedad()), el
+#   mecanismo nativo de hr.work.entry ya hace esta cuenta correctamente.
+# - CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL: días CALENDARIO corridos (lunes a
+#   domingo, festivos incluidos -- el empleado no puede quedar subpagado). worked_days NO
+#   alcanza para esto: los work entries solo existen en los días que el calendario del
+#   contrato define como laborables (confirmado contra hr_work_entry_contract.
+#   _get_contract_work_entries_values -- un día sin asistencia en ese calendario, ej. el
+#   lunes en un calendario martes-a-domingo, nunca genera NINGÚN work entry). Por eso estos
+#   4 cuentan directamente desde las fechas de la hr.leave validada
+#   (_ne_ausencia_calendario()), no desde worked_days.
+_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES = {'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR'}
+_NOVEDAD_AUSENCIA_CALENDARIO_CODES = {
+    'CO_LIC_MAT', 'CO_LIC_PAT', 'CO_INC_COMUN', 'CO_INC_LABORAL',
+}
+
 DEDUCTION_SIMPLE_CONCEPTS = {
     'PensionVoluntaria': 'PensionVoluntaria',
     'RetencionFuente': 'RetencionFuente',
@@ -70,6 +98,20 @@ DEDUCTION_SIMPLE_CONCEPTS = {
     'ReintegroDed': 'Reintegro',
     'Deuda': 'Deuda',
 }
+
+# Tope de documentos 'sent' que _cron_recheck_sent_status() reconsulta por
+# compañía en cada ejecución -- un lote acotado, no todo el histórico
+# pendiente de una sola vez (ver data/ir_cron_dian_status_recheck.xml, cuyo
+# intervalo SÍ es un dato editable en Ajustes, no una constante de código).
+_CRON_RECHECK_BATCH_LIMIT = 200
+
+# H-012 (2026-10-06): plazo máximo (horas) que un documento 'sent' se reconsulta
+# automáticamente antes de marcarse 'uncertain' y salir del cron -- valor por defecto,
+# overridable vía ir.config_parameter (ver data/ir_config_parameter_dian_data.xml). Evidencia
+# real (NA0000000049, payslip 944, ZipKey 98e2fdc3): un documento puede quedar "sent" para
+# siempre si la DIAN nunca vuelve a dar un veredicto del documento -- sin este límite el cron
+# lo reconsulta cada 10 minutos sin fin.
+_CRON_RECHECK_MAX_HOURS_DEFAULT = 72
 
 
 class HrPayslip(models.Model):
@@ -166,16 +208,32 @@ class HrPayslip(models.Model):
     def _ne_store_exchange(self, operation, endpoint, response, manifest=None,
                            queried_zip_key=None, parent_exchange=None,
                            unidentified_count=0):
-        """Guarda evidencia completa y actualiza solo el resumen visible."""
+        """Guarda evidencia completa (siempre, un registro histórico por intento) y
+        actualiza el resumen visible del documento SOLO si de verdad cambió.
+
+        H-012 (2026-10-06): un documento 'sent' sin resolver que el cron reconsulta cada 10
+        minutos escribía aquí sin condición -- aunque la respuesta de la DIAN fuera
+        exactamente la misma de la reconsulta anterior, write_date se actualizaba igual.
+        Eso hacía parecer que el documento se "tocaba" constantemente sin ningún cambio
+        real, y ensuciaba el orden por write_date que usa _cron_recheck_sent_status() para
+        priorizar el lote.
+        """
         exchange = self.env['l10n.co.ne.exchange'].create_exchange(
             self.company_id, operation, endpoint, response, self, manifest,
             queried_zip_key=queried_zip_key, parent_exchange=parent_exchange,
             unidentified_count=unidentified_count,
         )
-        self.write({
-            'l10n_co_ne_dian_request': self._ne_response_text(response.get('RawRequest')),
-            'l10n_co_ne_dian_response': self._ne_response_text(response.get('RawResponse')),
-        })
+        new_request = self._ne_response_text(response.get('RawRequest'))
+        new_response = self._ne_response_text(response.get('RawResponse'))
+        changed = self.filtered(
+            lambda slip: slip.l10n_co_ne_dian_request != new_request
+            or slip.l10n_co_ne_dian_response != new_response
+        )
+        if changed:
+            changed.write({
+                'l10n_co_ne_dian_request': new_request,
+                'l10n_co_ne_dian_response': new_response,
+            })
         return exchange
 
     @staticmethod
@@ -209,6 +267,26 @@ class HrPayslip(models.Model):
         if not application:
             return set()
         return soap_client.extract_document_numbers(application)
+
+    @staticmethod
+    def _ne_is_set_level_status(response):
+        """True si la respuesta de GetStatusZip es sobre el SET de pruebas completo, no
+        sobre el documento individual consultado.
+
+        H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
+        GetStatusZip respondió StatusCode="2", IsValid="false",
+        StatusDescription="Set de prueba con identificador e07c1748... se encuentra
+        Aceptado.", sin XmlDocumentKey ni ApplicationResponse (ningún dato que identifique
+        el documento). Esa combinación (StatusCode 2 + IsValid false + cero datos de
+        documento) es la FORMA de una respuesta de nivel set, no una hipótesis sobre por
+        qué la DIAN respondió así -- no se asume la causa (Tech Lead: "mi hipótesis no está
+        confirmada, el fix no debe depender de ella").
+        """
+        if str(response.get('StatusCode', '')).strip() != '2':
+            return False
+        if str(response.get('IsValid', '')).lower() == 'true':
+            return False
+        return not response.get('XmlDocumentKey') and not response.get('ApplicationResponse')
 
     def _ne_match_dian_results(self, results, manifest):
         """Asocia resultados solo cuando la evidencia identifica un documento.
@@ -551,12 +629,8 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        # Determinar endpoint según ambiente
-        endpoint = (
-            soap_client.DIAN_ENDPOINT_PROD
-            if company.l10n_co_ne_environment == '1'
-            else soap_client.DIAN_ENDPOINT_HAB
-        )
+        # Determinar endpoint según ambiente -- único punto, ver ResCompany._ne_dian_endpoint()
+        endpoint = company._ne_dian_endpoint()
 
         # Enviar a DIAN vía SendNominaSync
         filename = self._get_ne_xml_filename()
@@ -566,6 +640,8 @@ class HrPayslip(models.Model):
             private_key=private_key,
             cert_pem=cert_pem,
             endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
         )
 
         # Procesar respuesta DIAN y preservar el payload exacto del intento.
@@ -865,13 +941,17 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        # Send test set
+        # Send test set -- SIEMPRE habilitación (el set de pruebas es un concepto propio de
+        # ese ambiente), sin importar l10n_co_ne_environment de la compañía.
+        endpoint = company._ne_dian_endpoint(environment='2')
         response = soap_client.send_test_set_async(
             xml_files=xml_files,
             test_set_id=company.l10n_co_ne_operation_mode_ids.test_set_id,
             private_key=private_key,
             cert_pem=cert_pem,
-            endpoint=soap_client.DIAN_ENDPOINT_HAB,
+            endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
         )
 
         zip_key = response.get('ZipKey', '')
@@ -880,7 +960,7 @@ class HrPayslip(models.Model):
             and response.get('StatusCode') not in ('CONNECTION_ERROR', 'PARSE_ERROR', 'ERROR', '99') \
             and not response.get('TransportError')
         records._ne_store_exchange(
-            'send_test_set', soap_client.DIAN_ENDPOINT_HAB, response, manifest,
+            'send_test_set', endpoint, response, manifest,
         )
         # Un timeout o acuse sin ZipKey es incierto: queda evidencia, pero no
         # se simula un envío exitoso ni se programa reintento automático.
@@ -956,18 +1036,16 @@ class HrPayslip(models.Model):
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
 
-        endpoint = (
-            soap_client.DIAN_ENDPOINT_PROD
-            if company.l10n_co_ne_environment == '1'
-            else soap_client.DIAN_ENDPOINT_HAB
-        )
+        endpoint = company._ne_dian_endpoint()
+        timeout = company._ne_config_int_param(
+            'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
 
         summaries = []
         for track_id in set(self.mapped('l10n_co_ne_zip_key')):
             records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
             response = soap_client.get_status_zip(
                 track_id=track_id, private_key=private_key, cert_pem=cert_pem,
-                endpoint=endpoint,
+                endpoint=endpoint, timeout=timeout,
             )
             # Consultas usan el manifiesto del último envío del mismo ZipKey;
             # nunca se reconstruye desde el XML actual de la nómina.
@@ -980,6 +1058,16 @@ class HrPayslip(models.Model):
             # historial, no solo en la notificación de la sesión actual.
             matches, ambiguous, unidentified = records._ne_match_dian_results(
                 response.get('DianResponses', []), manifest)
+            # H-012 (2026-10-06): una respuesta de nivel SET (ver
+            # _ne_is_set_level_status) nunca resuelve un documento, aunque
+            # _ne_match_dian_results la haya emparejado por la regla "manifiesto de 1
+            # documento, sin identificador" (pensada para un resultado genuino del
+            # documento sin CUNE, no para un mensaje que ni siquiera es sobre el
+            # documento) -- se descarta el match explícitamente, nunca se infiere
+            # accepted/rejected de ella.
+            set_level = self._ne_is_set_level_status(response)
+            if set_level:
+                matches = {}
             records._ne_store_exchange('get_status_zip', endpoint, response,
                 queried_zip_key=track_id, parent_exchange=sent,
                 unidentified_count=unidentified)
@@ -1009,7 +1097,30 @@ class HrPayslip(models.Model):
                 elif not valid and is_rejection and slip.l10n_co_ne_state != 'accepted':
                     slip.l10n_co_ne_state = 'rejected'
             summary = response.get('StatusDescription') or response.get('StatusMessage') or _('Sin respuesta')
-            if unidentified:
+            if set_level:
+                # H-012 (2026-10-06, confirmado con el portal DIAN por David): esta
+                # respuesta no es un estado transitorio que una reconsulta futura vaya a
+                # resolver -- el set de pruebas ya quedó "Habilitado" y la DIAN no procesa
+                # más documentos de él. Se marca 'uncertain' de inmediato (nunca se espera
+                # al plazo de _CRON_RECHECK_MAX_HOURS_DEFAULT para un motivo ya conocido);
+                # un 'accepted' ya confirmado antes nunca se degrada.
+                to_mark = records.filtered(lambda slip: slip.l10n_co_ne_state == 'sent')
+                for slip in to_mark:
+                    slip.message_post(body=_(
+                        'La DIAN respondió sobre el SET de pruebas, no sobre este '
+                        'documento: "%(desc)s". El set ya está "Habilitado" y no procesa '
+                        'más documentos de prueba -- este documento no se va a resolver '
+                        'en este set. Revise el estado de habilitación de la compañía '
+                        '(Ajustes > Nómina) antes de seguir reintentando.',
+                        desc=summary,
+                    ))
+                to_mark.write({'l10n_co_ne_state': 'uncertain'})
+                summary = _(
+                    '%(summary)s (respuesta del SET de pruebas: ya está "Habilitado" y '
+                    'no va a resolver este documento -- marcado "Envío incierto")',
+                    summary=summary,
+                )
+            elif unidentified:
                 summary = _(
                     '%(summary)s (%(n)d resultado(s) sin identificar -- '
                     'requieren conciliación manual, ver Historial DIAN)',
@@ -1026,6 +1137,120 @@ class HrPayslip(models.Model):
                 'sticky': True,
             },
         }
+
+    @api.model
+    def _cron_recheck_sent_status(self):
+        """Reconsulta documentos 'sent' que nadie volvió a consultar a mano (Ronda 1 DIAN,
+        2026-10-05): 5 nóminas aceptadas en segundos quedaron en 'sent' durante 15 min porque
+        nadie hizo clic en "Consultar Estado". El motor de habilitación sí reconsulta lo suyo
+        (su propio cron en l10n_co_ne_habilitacion.py); el envío normal no tenía nada equivalente.
+
+        No duplica la lógica SOAP: reutiliza action_check_dian_status() tal cual, agrupado por
+        ZipKey para no repetir una misma consulta por cada nómina del mismo envío. Aislamiento:
+        por compañía (ya lo exige action_check_dian_status), por lote acotado
+        (_CRON_RECHECK_BATCH_LIMIT), y un ZipKey con error se registra y no frena a los demás.
+
+        H-012 (2026-10-06): un documento que la DIAN nunca resuelve (evidencia real:
+        NA0000000049) se reconsultaba cada 10 minutos para siempre. Dos ajustes:
+        (1) pasado _CRON_RECHECK_MAX_HOURS_DEFAULT (u override), el documento sale del cron
+        y queda 'uncertain' -- el botón "Consultar Estado" sigue disponible para revisarlo a
+        mano en cualquier momento (ver su invisible en hr_payslip_views.xml).
+        (2) el lote se procesa en orden de envío ascendente -- el que más tiempo lleva
+        esperando entra primero, tanto al tope del lote como al orden de los grupos por
+        ZipKey.
+
+        H-012 (2026-10-07, hallazgo de Tech Lead corriendo esto en servidor real): "desde
+        cuándo espera" NO se puede medir con write_date -- ese campo lo toca CUALQUIER
+        escritura sobre el payslip, no solo esta integración DIAN (evidencia real: documentos
+        de una copia de BD llevaban 'sent' desde hace tiempo, pero su write_date marcaba
+        "hoy" por motivos ajenos a la DIAN -- con ese campo, el plazo nunca vencería). La
+        fecha estable es la del envío real: create_date del l10n.co.ne.exchange
+        ('send_sync'/'send_test_set') que produjo el ZipKey actual -- un registro histórico
+        que ya existe y nunca se reescribe después de creado.
+        """
+        now = fields.Datetime.now()
+        companies = self.env['res.company'].sudo().search([
+            ('l10n_co_ne_hab_state', '!=', 'running'),
+        ])
+        for company in companies:
+            # El motor de habilitación ya reconsulta sus propios 'sent' en su propio cron
+            # (l10n_co_ne_habilitacion.py, paso 2 de _step()) -- consultarlos aquí también
+            # duplicaría la consulta sobre el mismo ZipKey al mismo tiempo.
+            pending = self.sudo().search([
+                ('company_id', '=', company.id),
+                ('l10n_co_ne_state', '=', 'sent'),
+                ('l10n_co_ne_zip_key', '!=', False),
+            ])
+            if not pending:
+                continue
+
+            zip_keys = list(set(pending.mapped('l10n_co_ne_zip_key')))
+            sends = self.env['l10n.co.ne.exchange'].sudo().search([
+                ('company_id', '=', company.id),
+                ('operation', 'in', ('send_sync', 'send_test_set')),
+                ('zip_key', 'in', zip_keys),
+            ], order='create_date desc')
+            sent_since = {}
+            for send in sends:
+                sent_since.setdefault(send.zip_key, send.create_date)
+
+            def _waiting_since(slip, _sent_since=sent_since):
+                # Respaldo defensivo si no hay exchange (no debería pasar: zip_key solo se
+                # asigna junto con el exchange que lo produjo) -- nunca por write_date.
+                return _sent_since.get(slip.l10n_co_ne_zip_key) or slip.create_date
+
+            pending = pending.sorted(key=_waiting_since)[:_CRON_RECHECK_BATCH_LIMIT]
+
+            max_hours = company._ne_config_int_param(
+                'l10n_co_nomina_electronica.recheck_max_hours',
+                _CRON_RECHECK_MAX_HOURS_DEFAULT,
+            )
+            expired = pending.filtered(
+                lambda slip: now - _waiting_since(slip) >= timedelta(hours=max_hours))
+            if expired:
+                for slip in expired:
+                    slip.message_post(body=_(
+                        'Reconsulta automática DIAN suspendida: pasaron más de '
+                        '%(h)d horas sin que la DIAN diera un veredicto de este '
+                        'documento. Queda marcado "Envío incierto -- requiere '
+                        'conciliación" y ya no entra a la reconsulta automática -- '
+                        'use "Consultar Estado" para revisarlo a mano cuando quiera.',
+                        h=max_hours,
+                    ))
+                expired.write({'l10n_co_ne_state': 'uncertain'})
+                self._cron_recheck_commit()
+            pending = pending - expired
+            if not pending:
+                continue
+
+            # dict.fromkeys en vez de sorted(set(...)) -- conserva el orden de llegada de
+            # `pending` (ya viene ordenado por fecha de envío ascendente de arriba) en vez
+            # de reordenar alfabéticamente por ZipKey.
+            for zip_key in dict.fromkeys(pending.mapped('l10n_co_ne_zip_key')):
+                group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
+                try:
+                    group.action_check_dian_status()
+                except Exception:  # noqa: BLE001 -- un ZipKey con error nunca debe frenar a los demás
+                    _logger.exception(
+                        'Reconsulta automática DIAN: error consultando ZipKey %s (compañía %s)',
+                        zip_key, company.display_name,
+                    )
+                    self._cron_recheck_rollback()
+                    continue
+                self._cron_recheck_commit()
+
+    def _cron_recheck_commit(self):
+        """Confirma lo consultado hasta aquí (un ZipKey ya resuelto no puede perderse por un
+        fallo posterior). Aislado para que las pruebas lo reemplacen -- mismo motivo y mismo
+        patrón que l10n_co_ne_habilitacion._commit(): Odoo prohíbe cr.commit() en un test."""
+        self.env.cr.commit()
+
+    def _cron_recheck_rollback(self):
+        """Deshace lo que haya quedado a medias tras un error en un ZipKey. Aislado por el mismo
+        motivo que _cron_recheck_commit(): permite a las pruebas ejercer esta rama sin tocar la
+        transacción real de la prueba."""
+        self.env.cr.rollback()
+        self.env.invalidate_all()
 
     # ══════════════════════════════════════════════════════════════════
     # MÉTODOS DE RECOPILACIÓN DE DATOS
@@ -1120,7 +1345,7 @@ class HrPayslip(models.Model):
                 'PeriodoNomina': dian_utils.get_periodo_nomina(
                     self.date_from, self.date_to
                 ),
-                'TipoMoneda': 'COP',
+                'TipoMoneda': nomina_xml_builder.NE_TIPO_MONEDA,
                 'TRM': '0',
             },
             'numero_secuencia': {
@@ -1130,12 +1355,12 @@ class HrPayslip(models.Model):
                 'CodigoTrabajador': str(employee.id),
             },
             'lugar_generacion': {
-                'Pais': 'CO',
+                'Pais': company.partner_id.country_id.code,
                 'DepartamentoEstado': dian_utils.get_department_code(
                     company.partner_id.state_id
                 ),
                 'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
-                'Idioma': 'es',
+                'Idioma': nomina_xml_builder.NE_IDIOMA,
             },
             'proveedor_xml': {
                 'RazonSocial': company.name or '',
@@ -1152,7 +1377,7 @@ class HrPayslip(models.Model):
                 'RazonSocial': company.name or '',
                 'NIT': company_nit,
                 'DV': company_dv,
-                'Pais': 'CO',
+                'Pais': company.partner_id.country_id.code,
                 'DepartamentoEstado': dian_utils.get_department_code(
                     company.partner_id.state_id
                 ),
@@ -1162,16 +1387,7 @@ class HrPayslip(models.Model):
 
         }
         data['trabajador'] = self._ne_trabajador()
-        data['pago'] = {
-                'Forma': '1',  # 1=Contado
-                'Metodo': employee.l10n_co_ne_payment_method or '1',
-                'Banco': employee.l10n_co_ne_bank_name or '',
-                'TipoCuenta': (
-                    'Ahorro' if employee.l10n_co_ne_bank_account_type == 'ahorro'
-                    else 'Corriente'
-                ) if employee.l10n_co_ne_bank_account_type else '',
-                'NumeroCuenta': employee.l10n_co_ne_bank_account or '',
-        }
+        data['pago'] = self._ne_pago()
         data['periodo'] = {
                 'FechaIngreso': str(contract.date_start) if contract.date_start else '',
                 'FechaRetiro': str(contract.date_end) if contract.date_end else '',
@@ -1216,36 +1432,160 @@ class HrPayslip(models.Model):
         dv = dian_utils.compute_dv(nit) if self.company_id.vat else ''
         return nit, dv
 
+    def _ne_lugar_trabajo_partner(self):
+        """Único partner fuente de los 4 atributos LugarTrabajo* del nodo <Trabajador>
+        (H-018, 2026-10-11, decisión de David + Tech Lead).
+
+        Antes mezclaba orígenes: LugarTrabajoPais/LugarTrabajoDireccion salían de
+        employee.work_contact_id (la ficha de contacto del empleado -- nombre/correo/
+        teléfono, NO una dirección; puede no tener país ni calle) o, de respaldo, de la
+        compañía; LugarTrabajoDepartamentoEstado/LugarTrabajoMunicipioCiudad salían de un
+        campo propio (l10n_co_ne_dane_city_id, removido en este cambio) que, vacío, caía
+        en silencio al municipio de la compañía. Resultado posible: un empleado con la
+        calle de su casa y el municipio de la compañía en el mismo nodo.
+
+        Ahora los 4 salen del MISMO partner: employee.address_id ("Dirección de Trabajo",
+        campo nativo de hr.employee -- por defecto la dirección de la compañía, editable
+        por empleado para un teletrabajador vía Contactos). Sin dato por defecto
+        silencioso: si falta país, departamento o municipio, UserError explícito.
+
+        Limitación de diseño conocida, documentada a propósito (Tech Lead, 2026-10-11,
+        nota en el pool de deuda técnica -- NO es un olvido): esto exige departamento y
+        municipio SIEMPRE, incluso si LugarTrabajoPais no es Colombia. Un trabajador real
+        en el exterior (escenario que AUD-DIAN-34 protegió explícitamente: el Anexo
+        Técnico admite cualquier código alfa-2 en LugarTrabajoPais, NIE050) necesitaría un
+        res.country.state/res.city cargado para ese país, que puede no existir en la base.
+        Decisión explícita: se deja estricto así -- Guapante no tiene hoy ningún
+        trabajador en el exterior. Si eso cambia, revisar esta función antes de dar por
+        hecho que un trabajador en el exterior puede generar nómina.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        partner = employee.address_id
+        faltantes = []
+        if not partner.country_id:
+            faltantes.append(_('país'))
+        if not partner.state_id:
+            faltantes.append(_('departamento'))
+        if not partner.city_id:
+            faltantes.append(_('municipio'))
+        if faltantes:
+            raise UserError(_(
+                'La Dirección de Trabajo de %(employee)s no tiene %(campos)s '
+                'configurado(s) (ficha del empleado, campo "Dirección de Trabajo", o el '
+                'contacto que apunte -- en Contactos). Complete esos datos antes de '
+                'generar la nómina electrónica: los 4 atributos LugarTrabajo* del XML '
+                'deben salir del mismo lugar, nunca de un valor inventado.',
+                employee=employee.name, campos=', '.join(faltantes),
+            ))
+        return partner
+
+    def _ne_tipo_documento(self):
+        """Código DIAN (TipoDocumento del nodo <Trabajador>) del tipo de identificación
+        del empleado (UX-02, 2026-10-11, decisión de David + Tech Lead).
+
+        Antes era un Selection propio en hr.employee, duplicando el tipo de
+        identificación que Contactos ya guarda en work_contact_id.l10n_latam_
+        identification_type_id (el mismo partner que exige el dominio nativo de
+        bank_account_id). Ahora sale de ahí, vía l10n_latam.identification.type.
+        l10n_co_ne_dian_document_code (dato del módulo, data/l10n_latam_identification_
+        type_dian_code_data.xml). Sin tipo configurado, o con un tipo sin equivalente
+        DIAN (ej. los genéricos "Cédula Extranjera"/"VAT" de otros países LATAM, que
+        deliberadamente no tienen registro en esos datos): UserError que nombra al
+        empleado, nunca un '13' inventado como hacía el default silencioso anterior.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        tipo = employee.work_contact_id.l10n_latam_identification_type_id
+        codigo = tipo.l10n_co_ne_dian_document_code
+        if not codigo:
+            raise UserError(_(
+                'El empleado %(employee)s no tiene un Tipo de Documento con '
+                'equivalente DIAN configurado (Información privada > Tipo de '
+                'Documento). Complete ese dato antes de generar la nómina '
+                'electrónica.',
+                employee=employee.name,
+            ))
+        return codigo
+
+    def _ne_pago(self):
+        """Sección <Pago> del XML de nómina electrónica (UX-02, 2026-10-11, decisión de
+        David + Tech Lead).
+
+        Antes Banco/TipoCuenta/NumeroCuenta salían de 3 campos propios
+        (l10n_co_ne_bank_name/bank_account_type/bank_account), duplicando la cuenta
+        bancaria nativa del empleado (employee.bank_account_id, res.partner.bank, ya
+        visible en "Información privada" > grupo "Contacto privado"). Ahora Banco =
+        bank_account_id.bank_id.name, NumeroCuenta = bank_account_id.acc_number.
+
+        TipoCuenta (Ahorro/Corriente) se OMITE a propósito: no existe ningún campo
+        nativo de community ni de l10n_co que represente ese concepto -- acc_type
+        nativo (account/base_iban) es una clasificación de FORMATO del número de
+        cuenta ('bank'/'iban', para decidir si validar con el algoritmo IBAN), no
+        tiene nada que ver con Ahorros/Corriente. l10n_co_account_type sí existe,
+        pero viene de l10n_co_bank_payment_export (módulo propio de InSoTech, fuera
+        de este repo) -- David decidió no depender de él ni crear un campo propio
+        para esto. Tech Lead verificó en el Anexo Técnico (NIE067) que la regla de
+        TipoCuenta es de tipo "N" (notificación), no "R" (rechazo): omitirlo no
+        rechaza el documento, puede generar una notificación de la DIAN -- QA debe
+        confirmar en staging si llega alguna. El XML builder (nomina_xml_builder.py)
+        ya trata Banco/TipoCuenta/NumeroCuenta como opcionales (omite la llave si no
+        hay valor), consistente con el XSD V1.0.6 (Forma/Metodo obligatorios).
+
+        Metodo (l10n_co_ne_payment_method) se queda como el único campo propio de
+        esta sección -- sin equivalente nativo verificado (no hay nada en
+        account.payment.method que mapee a los 3 códigos DIAN 1/2/10 de nómina).
+
+        Si el método es transferencia (código '1') y no hay bank_account_id:
+        UserError explícito, nunca un Banco/NumeroCuenta vacíos enviados a la DIAN.
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        metodo = employee.l10n_co_ne_payment_method or '1'
+        cuenta = employee.bank_account_id
+        if metodo == '1' and not cuenta:
+            raise UserError(_(
+                'El empleado %(employee)s no tiene una Cuenta Bancaria configurada '
+                '(Información privada > Contacto privado) y el método de pago es '
+                'Transferencia Bancaria. Configure la cuenta o cambie el método de '
+                'pago antes de generar la nómina electrónica.',
+                employee=employee.name,
+            ))
+        return {
+            'Forma': '1',  # 1=Contado
+            'Metodo': metodo,
+            'Banco': (cuenta.bank_id.name or '') if cuenta else '',
+            'NumeroCuenta': (cuenta.acc_number or '') if cuenta else '',
+        }
+
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
         contract = self.contract_id
-        company = self.company_id
         _name_parts = dian_utils.split_name(employee.name or '')
+        lugar_trabajo = self._ne_lugar_trabajo_partner()
         return {
             'TipoTrabajador': employee.l10n_co_ne_worker_type or '01',
             'SubTipoTrabajador': employee.l10n_co_ne_worker_subtype or '00',
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'
             ),
-            'TipoDocumento': employee.l10n_co_ne_document_type or '13',
+            'TipoDocumento': self._ne_tipo_documento(),
             'NumeroDocumento': employee.identification_id or '',
             'PrimerApellido': _name_parts.get('primer_apellido', ''),
             'SegundoApellido': _name_parts.get('segundo_apellido', ''),
             'PrimerNombre': _name_parts.get('primer_nombre', ''),
             'OtrosNombres': _name_parts.get('otros_nombres', ''),
-            'LugarTrabajoPais': 'CO',
+            # AUD-DIAN-34 (2026-10-05): a diferencia de Idioma/TipoMoneda, el Anexo Técnico
+            # NO fija LugarTrabajoPais a Colombia (NIE050: admite cualquier código alfa-2,
+            # "país actual donde se encontraba ubicado el trabajador"). H-018 (2026-10-11):
+            # los 4 atributos LugarTrabajo* salen del mismo partner -- ver
+            # _ne_lugar_trabajo_partner().
+            'LugarTrabajoPais': lugar_trabajo.country_id.code,
             'LugarTrabajoDepartamentoEstado': dian_utils.get_department_code(
-                employee.l10n_co_ne_dane_city_id.state_id
-                if employee.l10n_co_ne_dane_city_id
-                else company.partner_id.state_id
-            ),
-            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(
-                employee.l10n_co_ne_dane_city_id
-            ) if employee.l10n_co_ne_dane_city_id else dian_utils.get_city_code(
-                company.partner_id.city_id
-            ),
-            'LugarTrabajoDireccion': employee.work_contact_id.street or company.partner_id.street or '',
+                lugar_trabajo.state_id),
+            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(lugar_trabajo.city_id),
+            'LugarTrabajoDireccion': lugar_trabajo.street or '',
 
             'SalarioIntegral': (
                 'true' if contract.l10n_co_ne_integral_salary else 'false'
@@ -1269,13 +1609,10 @@ class HrPayslip(models.Model):
         if info_gen is not None:
             info_gen.set('CUNE', cune_value)
             info_gen.set('EncripCUNE', 'CUNE-SHA384')
-        # AUD-DIAN-34 (2026-09-14): el host del QR cambia segun el ambiente (Anexo Tecnico,
-        # seccion QRCode) -- Habilitacion usa catalogo-vpfe-hab, Produccion catalogo-vpfe.
-        qr_host = (
-            'catalogo-vpfe.dian.gov.co'
-            if company.l10n_co_ne_environment == '1'
-            else 'catalogo-vpfe-hab.dian.gov.co'
-        )
+        # AUD-DIAN-34 (2026-09-14, consolidado 2026-10-05): el host del QR cambia segun el
+        # ambiente (Anexo Tecnico, seccion QRCode) -- unico punto, ver ResCompany.
+        # _ne_dian_qr_host() / dian_utils.get_qr_catalog_host().
+        qr_host = company._ne_dian_qr_host()
         qr_url = 'https://%s/document/searchqr?documentkey=%s' % (qr_host, cune_value)
         qr_el = tree.find('.//{%s}CodigoQR' % ns)
         if qr_el is None and info_gen is not None:
@@ -1376,18 +1713,405 @@ class HrPayslip(models.Model):
         self._dev_bonos_y_pagos(concept_lines, devengados)
         return devengados
 
+    @staticmethod
+    def _ne_dias_en_mes_calendario(year, month):
+        """Días reales de un mes calendario -- compartido por toda la aritmética de "mes
+        comercial" de 30 días (_ne_dia_comercial, _ne_dias_corridos_en_tramo).
+
+        Tech Lead (2026-10-08, revisión .77): usa calendar.monthrange() en vez de un
+        cálculo manual de año bisiesto -- misma regla gregoriana, sin reimplementarla."""
+        return calendar.monthrange(year, month)[1]
+
+    def _ne_dia_comercial(self, d, dias_mes):
+        """Mapea un día calendario real a su "día comercial" (convención colombiana de mes
+        de 30 días): el último día calendario REAL de cualquier mes (28/29-feb, 30 o 31)
+        siempre equivale al día comercial 30 -- no solo cuando el mes tiene exactamente 30
+        días. Compartido por _ne_dias_pagables() y _ne_dias_corridos_en_tramo() (H-014)."""
+        ultimo_dia_mes = self._ne_dias_en_mes_calendario(d.year, d.month)
+        if d.day == ultimo_dia_mes:
+            return dias_mes
+        return min(d.day, dias_mes)
+
+    def _ne_tramo_pagable_periodo(self):
+        """(periodo_ini, periodo_fin) -- el tramo del período de la nómina que realmente es
+        pagable bajo la convención de mes comercial de 30 días.
+
+        H-009 (2026-10-06, QA Bloque 2): en Liquidación, date_from es contract.date_start y
+        date_to la fecha de retiro -- un período que puede abarcar meses o años. Cuando el
+        período cruza más de un mes calendario, el tramo pagable se restringe al mes
+        calendario de date_to (los meses anteriores ya se pagaron en nóminas regulares);
+        dentro de un mismo mes (el caso normal mensual) el resultado es el período completo
+        tal cual. Compartido por _ne_dias_pagables() y _ne_ausencia_calendario() (H-014) --
+        ambos deben recortar al mismo tramo para no descontar/pagar fuera de él.
+        """
+        periodo_ini = self.date_from
+        periodo_fin = self.date_to
+        if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
+            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+        return periodo_ini, periodo_fin
+
+    def _ne_dias_corridos_en_tramo(self, fecha_ini, fecha_fin, tramo_ini, tramo_fin, dias_mes):
+        """Días CALENDARIO corridos (lunes a domingo) de [fecha_ini, fecha_fin] que caen
+        dentro de [tramo_ini, tramo_fin], bajo la convención de mes comercial de 30 días
+        (_ne_dia_comercial) -- 0 si no hay solapamiento. Usada por _ne_ausencia_calendario()
+        para los 4 conceptos de "días corridos" (H-014)."""
+        ini = max(fecha_ini, tramo_ini)
+        fin = min(fecha_fin, tramo_fin)
+        if ini > fin:
+            return 0
+        return self._ne_dia_comercial(fin, dias_mes) - self._ne_dia_comercial(ini, dias_mes) + 1
+
+    def _ne_dias_pagables(self):
+        """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
+        usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
+        data.xml) y CO_AUX_TRANS para calcular el sueldo/auxilio. Única fuente para el sueldo
+        Y para DiasTrabajados, sin importar si la estructura es mensual o de liquidación.
+
+        AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): hallazgo real -- un básico de mes completo
+        generaba DiasTrabajados="19" (conteo de líneas WORK100, calendario lun-vie) junto a
+        SueldoTrabajado del mes completo (30 días comerciales): dos fuentes de días distintas
+        para el mismo devengado. El Anexo Técnico (NIE069/NIE070) define SueldoTrabajado como
+        "el Sueldo Trabajado por los días laborados" -- ambos deben contar exactamente lo
+        mismo. Esta función es esa única fuente; CO_BASICO/CO_AUX_TRANS la llaman en vez de
+        recalcular.
+        """
+        self.ensure_one()
+        contract = self.contract_id
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_ini = contract.date_start
+        contrato_fin = contract.date_end or periodo_fin
+
+        activo_ini = max(periodo_ini, contrato_ini)
+        activo_fin = min(periodo_fin, contrato_fin)
+
+        if activo_ini > activo_fin:
+            dias_bajo_contrato = 0
+        else:
+            dias_bajo_contrato = (
+                self._ne_dia_comercial(activo_fin, dias_mes)
+                - self._ne_dia_comercial(activo_ini, dias_mes) + 1
+            )
+
+        unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
+        unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+        # H-013 (2026-10-08, QA Bloque 4): vacaciones/licencias/incapacidades entraban como
+        # novedades manuales (inputs CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL)
+        # y el básico no descontaba esos días -- doble pago real (vacaciones 15 días: básico
+        # de 30 días completo + vacaciones aparte). "unpaid" en Odoo no sirve para detectar
+        # esto: significa "sin continuidad de pago del empleador", mientras que vacaciones/
+        # incapacidad/licencia remunerada SÍ se pagan en Colombia, solo que por un concepto
+        # distinto al básico (Art. 186 CST, Ley 100/1993, etc.). Por eso se excluyen SIEMPRE
+        # estos códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
+        dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
+        dias_excluidos = sum(
+            wd.number_of_days
+            for wd in self.worked_days_line_ids
+            if wd.work_entry_type_id.code in dias_excluidos_codes
+        )
+        # H-014 (2026-10-08, QA Bloque 5): CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
+        # se pagan en días CALENDARIO corridos (ver _ne_ausencia_calendario) -- se excluyen
+        # del básico por la misma cuenta, nunca por worked_days (ahí solo existirían los
+        # días que el calendario del contrato ya define como laborables, subcontando un
+        # festivo o un día no laboral dentro de la ausencia).
+        for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            dias_excluidos += self._ne_ausencia_calendario(codigo)[0]
+        return dias_bajo_contrato - dias_excluidos
+
+    def _ne_ausencia_calendario(self, work_entry_code):
+        """Única fuente de días CALENDARIO corridos (lunes a domingo, festivos incluidos)
+        para un concepto de ausencia -- CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
+        (H-014, 2026-10-08, decisión de David: CST Art. 186/227/236 mod. Ley 2114/2021,
+        Concepto Mintrabajo 63044901/2022). A diferencia de CO_VAC/CO_LIC_REM/CO_LIC_NR
+        (H-013, días HÁBILES vía worked_days), estos 4 no pueden contarse desde worked_days:
+        los work entries solo existen en los días que el calendario del contrato define
+        como laborables (confirmado contra hr_work_entry_contract.
+        _get_contract_work_entries_values -- un día sin asistencia en ese calendario, ej.
+        el lunes en un calendario martes-a-domingo, nunca genera NINGÚN work entry, sea
+        cual sea el tipo de ausencia).
+
+        Recorta cada hr.leave validada al mismo tramo pagable del período
+        (_ne_tramo_pagable_periodo(), la misma restricción de mes comercial de 30 días que
+        usa _ne_dias_pagables() para Liquidación) y a la actividad del contrato.
+
+        Devuelve (dias_totales, detalle) -- dias_totales es la única fuente para la regla
+        de pago (_ne_dias_novedad_calendario()) Y para la exclusión del básico
+        (_ne_dias_pagables()); detalle es [(leave, dias, fecha_ini_recortada,
+        fecha_fin_recortada)] para quien necesite el desglose por ausencia
+        (_dev_novedades(), y el futuro corte de incapacidad en el día 90 del paso 3 de
+        H-013, que puede reusar esto mismo con las fechas ya recortadas).
+        """
+        self.ensure_one()
+        contract = self.contract_id
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_ini = contract.date_start
+        contrato_fin = contract.date_end or periodo_fin
+        tramo_ini = max(periodo_ini, contrato_ini)
+        tramo_fin = min(periodo_fin, contrato_fin)
+
+        # Tech Lead (2026-10-08, revisión .77): date_from/date_to son datetimes en UTC: una
+        # ausencia que termina de noche en Colombia (UTC-5, ej. el calendario Mar-Dom de
+        # Guapante) cae en la madrugada del día siguiente en UTC, y .date() contaría un día
+        # de más. request_date_from/request_date_to son las fechas puras que el usuario
+        # pidió (sin conversión de huso horario) -- misma lección ya aplicada a hr.leave en
+        # otras partes del módulo.
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'validate'),
+            ('holiday_status_id.work_entry_type_id.code', '=', work_entry_code),
+            ('request_date_from', '<=', self.date_to),
+            ('request_date_to', '>=', self.date_from),
+        ])
+
+        detalle = []
+        dias_totales = 0
+        for leave in leaves:
+            leave_ini = leave.request_date_from
+            leave_fin = leave.request_date_to
+            dias = self._ne_dias_corridos_en_tramo(leave_ini, leave_fin, tramo_ini, tramo_fin, dias_mes)
+            if dias > 0:
+                detalle.append((leave, dias, max(leave_ini, tramo_ini), min(leave_fin, tramo_fin)))
+                dias_totales += dias
+        return dias_totales, detalle
+
+    def _ne_ausencia_habil(self, work_entry_code):
+        """Única fuente de días HÁBILES (vía worked_days/hr.work.entry) para Vacaciones/
+        LicenciaR/LicenciaNR (H-016, 2026-10-08, QA en staging -- NE0000000099).
+
+        H-016, causa confirmada por QA: _get_overlapping_leaves_data() (el mecanismo que
+        formateaba estos 3 conceptos en el XML antes de esta revisión) cuenta días
+        CALENDARIO puros entre las fechas de la hr.leave, mientras que CO_VAC/CO_LIC_REM/
+        CO_LIC_NR pagan y descuentan el básico en días HÁBILES del calendario del contrato
+        (worked_days_line_ids, vía _ne_dias_novedad()). Un lunes no laborable o un festivo
+        dentro del rango de la ausencia hacía que "Cantidad" (calendario) y "Pago" (hábil)
+        del mismo nodo XML no cuadraran -- ej. vacaciones 5-11/ene con un lunes no laboral:
+        Cantidad="7" (calendario) junto a Pago de solo 6 días (hábil).
+
+        Por cada hr.leave validada de este código, agrupa sus hr.work.entry generados
+        (ligados vía leave_id, mecanismo nativo de hr_work_entry_holidays -- confirmado
+        contra hr_work_entry_contract._get_contract_work_entries_values(): solo se genera
+        un work entry por cada intervalo de asistencia real del calendario que cae dentro
+        de la ausencia, nunca uno para un día sin asistencia) y cuenta los días calendario
+        DISTINTOS que esos work entries realmente cubren dentro del período de esta
+        nómina -- el mismo criterio "hay o no hay work entry ese día" que ya determina el
+        pago, nunca un conteo de fechas sin pasar por el calendario del contrato.
+
+        Tech Lead (revisión .81): SOLO la CANTIDAD viene de los work entries -- FechaInicio/
+        FechaFin son las fechas REALES de la ausencia (leave.request_date_from/
+        request_date_to, recortadas al período de esta nómina), igual que
+        _ne_ausencia_calendario(). Usar el primer/último work entry para las fechas (como
+        hacía esta función antes de .81) recorta la fecha cuando la ausencia empieza o
+        termina en un día sin work entry (festivo, sábado, lunes no laborable) -- a la DIAN
+        va la fecha real de la ausencia, no la del primer/último día efectivamente pagado.
+
+        Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
+        mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
+        _dev_prestaciones() los traten igual.
+        """
+        self.ensure_one()
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'validate'),
+            ('holiday_status_id.work_entry_type_id.code', '=', work_entry_code),
+            ('request_date_from', '<=', self.date_to),
+            ('request_date_to', '>=', self.date_from),
+        ])
+        if not leaves:
+            return 0, []
+
+        periodo_ini_dt = datetime.combine(self.date_from, datetime.min.time())
+        periodo_fin_dt = datetime.combine(self.date_to + timedelta(days=1), datetime.min.time())
+        work_entries = self.env['hr.work.entry'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('leave_id', 'in', leaves.ids),
+            ('date_start', '<', periodo_fin_dt),
+            ('date_stop', '>', periodo_ini_dt),
+        ])
+
+        entries_by_leave = defaultdict(list)
+        for entry in work_entries:
+            entries_by_leave[entry.leave_id.id].append(entry)
+
+        detalle = []
+        dias_totales = 0
+        for leave in leaves:
+            entries = entries_by_leave.get(leave.id)
+            if not entries:
+                continue
+            dias = len({entry.date_start.date() for entry in entries})
+            if dias > 0:
+                ini = max(leave.request_date_from, self.date_from)
+                fin = min(leave.request_date_to, self.date_to)
+                detalle.append((leave, dias, ini, fin))
+                dias_totales += dias
+        return dias_totales, detalle
+
+    def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
+        """(días desde Ausencias, días desde el input manual) para un concepto de novedad en
+        días HÁBILES (CO_VAC/CO_LIC_REM/CO_LIC_NR -- H-013).
+
+        No decide ni falla -- eso lo hace el llamador: condition_python solo necesita saber
+        si hay algo (cualquiera de los dos > 0); amount_python_compute (vía
+        _ne_dias_novedad()) necesita el valor final y el chequeo de conflicto."""
+        worked_days_line = worked_days.get(work_entry_code)
+        dias_ausencia = worked_days_line.number_of_days if worked_days_line else 0
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
+        return dias_ausencia, dias_input
+
+    def _ne_ausencia_calendario_dias_e_input(self, work_entry_code, input_code, inputs):
+        """Igual que _ne_dias_novedad_ausencia_e_input() pero para los 4 conceptos de días
+        CALENDARIO corridos (H-014) -- mismo rol (condition_python), fuente de días distinta
+        (_ne_ausencia_calendario() en vez de worked_days)."""
+        dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
+        return dias_ausencia, dias_input
+
+    def _ne_resolver_dias_novedad(self, dias_ausencia, input_code, inputs, work_entry_code):
+        """Combina los días que vienen de Ausencias con el input manual de respaldo para un
+        concepto de novedad -- nunca los dos a la vez. Compartido por _ne_dias_novedad()
+        (días hábiles, H-013) y _ne_dias_novedad_calendario() (días corridos, H-014): ambos
+        ya calcularon dias_ausencia por su propio mecanismo, y de aquí en adelante el
+        conflicto con el input manual se resuelve igual.
+
+        H-013 (2026-10-08, decisión de David): prioriza el módulo de Ausencias (hr.leave
+        validada -> ... -> esta función). El input manual CO_XXX sigue existiendo como
+        respaldo para lo que Ausencias no haya capturado, pero NUNCA junto con una ausencia
+        real del mismo concepto en la misma nómina: sumar los dos sería doble conteo, y
+        elegir uno en silencio escondería un error de captura real. Nunca un default
+        silencioso -- mismo principio que _dias_trabajados_requerido()/_pais_requerido()
+        en services/nomina_xml_builder.py.
+        """
+        input_line = inputs.get(input_code)
+        dias_input = input_line.amount if input_line else 0
+        if dias_ausencia > 0 and dias_input > 0:
+            raise UserError(_(
+                'Hay %(dias_ausencia)s día(s) de "%(code)s" ya registrados en Ausencias '
+                'y además un input manual "%(input_code)s" con %(dias_input)s día(s) en '
+                'la misma nómina de %(employee)s. Use solo una fuente: borre el input '
+                'manual si la ausencia ya está en el sistema, o elimine la ausencia si el '
+                'dato manual es el correcto.',
+                dias_ausencia=dias_ausencia, code=work_entry_code, input_code=input_code,
+                dias_input=dias_input, employee=self.employee_id.name,
+            ))
+        return dias_ausencia or dias_input
+
+    def _ne_dias_novedad(self, work_entry_code, input_code, inputs, worked_days):
+        """Única fuente de días para las reglas de ausencias en días HÁBILES (CO_VAC/
+        CO_LIC_REM/CO_LIC_NR, H-013) -- los mismos días que _ne_dias_pagables() excluye del
+        básico (_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES)."""
+        dias_ausencia, _dias_input = self._ne_dias_novedad_ausencia_e_input(
+            work_entry_code, input_code, inputs, worked_days)
+        return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
+
+    def _ne_dias_novedad_calendario(self, work_entry_code, input_code, inputs):
+        """Única fuente de días para las reglas de ausencias en días CALENDARIO corridos
+        (CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL, H-014) -- los mismos días que
+        _ne_dias_pagables() excluye del básico (_NOVEDAD_AUSENCIA_CALENDARIO_CODES)."""
+        dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
+        return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
+
+    def _ne_ultimo_ibc_anterior(self, contract):
+        """Último IBC de seguridad social confirmado antes de esta nómina (H-017a,
+        2026-10-11, punto a del diseño -- decisión de David + Tech Lead).
+
+        Mismo patrón que Procedure2.action_calculate_retention_procedure2()
+        (hr_contract_retefuente.py): última nómina 'done' del mismo contrato y
+        estructura, antes del date_from de esta nómina, leyendo su línea
+        invisible CO_SS_BASE_IBC. Sin historial (primera nómina del contrato):
+        fallback a contract.wage -- confirmado el caso real de los 18 empleados
+        de Guapante hoy (ninguno tiene nómina previa).
+
+        Lectura literal (Tech Lead, 2026-10-11): si hubo un cambio de salario
+        entre el mes anterior y el de la novedad, se usa el IBC real del mes
+        anterior tal cual, NUNCA un valor prorrateado al salario nuevo.
+        """
+        self.ensure_one()
+        payslip_anterior = self.env['hr.payslip'].search([
+            ('contract_id', '=', contract.id),
+            ('struct_id', '=', self.struct_id.id),
+            ('state', '=', 'done'),
+            ('date_from', '<', self.date_from),
+        ], order='date_from desc', limit=1)
+        if not payslip_anterior:
+            return contract.wage
+        linea_ibc = payslip_anterior.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
+        return linea_ibc.total if linea_ibc else contract.wage
+
+    def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
+        """IBC de seguridad social del empleado (H-017a, 2026-10-11, decisión de David +
+        Tech Lead): incluye en la base de salud/pensión los días de vacaciones, licencia
+        remunerada ordinaria y licencia de maternidad/paternidad que hoy quedan fuera de
+        categories['DEV_SAL'] (CO_VAC/CO_LIC_REM/CO_LIC_MAT/CO_LIC_PAT tienen categoría
+        VAC/INC, parent DEV, no DEV_SAL).
+
+        Maternidad/paternidad: base = result_rules['CO_LIC_MAT']/['CO_LIC_PAT']['total'] --
+        única fuente (no se recalcula la fórmula aparte). Tech Lead (2026-10-11) verificó
+        contra el código real de Enterprise hr_payroll (hr_payslip.py, _get_localdict()):
+        result_rules se crea UNA sola vez por payslip y el MISMO localdict se pasa tanto a
+        rule._satisfy_condition() como a rule._compute_rule() -- disponible en
+        condition_python y en amount_python_compute por igual. Es además un
+        DefaultDictPayroll: una clave aún no calculada (ej. una regla que no corrió este
+        período) devuelve totales en 0, nunca KeyError/NameError. CO_LIC_MAT/CO_LIC_PAT
+        (secuencia 55/56) corren antes que CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (100/101/102),
+        así que su resultado ya está disponible aquí.
+
+        Única fuente para CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (las 3 reglas de empleado).
+        Alcance explícito de H-017a, NO tocar sin decisión de Tech Lead:
+        - Las 6 reglas patronales (CO_SALUD_CIA/CO_PENSION_CIA/CO_ARL_CIA/CO_CCF_CIA/
+          CO_SENA_CIA/CO_ICBF_CIA), el wizard de PILA y el reporte UGPP siguen leyendo su
+          propia base tal cual -- se alinean en H-017b (después del 15, antes del primer
+          pago de PILA), junto con la decisión normativa del piso de 1 SMMLV / techo de 25
+          SMMLV.
+        - Las incapacidades (CO_INC_COMUN, CO_INC_LABORAL) NO entran a esta base todavía --
+          quedan para el paso 3 de incapacidad (corte del día 90, piso de salario mínimo).
+          No agregar CO_INC_COMUN/CO_INC_LABORAL aquí sin que ese paso lo decida
+          explícitamente (decisión de Tech Lead, 2026-10-11).
+        """
+        self.ensure_one()
+        if contract.l10n_co_ne_integral_salary:
+            return contract.wage * self._rule_parameter(
+                'l10n_co_factor_integral_salary', self.date_from)
+
+        ibc = categories['DEV_SAL']
+        dias_mes_comercial = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+
+        # Vacaciones y licencia remunerada: base = último IBC anterior a la novedad,
+        # prorrateado por los mismos días que ya paga la novedad (_ne_dias_novedad()).
+        ultimo_ibc = None
+        for work_entry_code in ('CO_VAC', 'CO_LIC_REM'):
+            dias_ausencia, dias_input = self._ne_dias_novedad_ausencia_e_input(
+                work_entry_code, work_entry_code, inputs, worked_days)
+            dias = dias_ausencia or dias_input
+            if dias > 0:
+                if ultimo_ibc is None:
+                    ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
+                ibc += (ultimo_ibc / dias_mes_comercial) * dias
+
+        # Maternidad/paternidad: base = lo que la licencia ya pagó -- result_rules es la
+        # única fuente, ver docstring.
+        ibc += result_rules.get('CO_LIC_MAT', {}).get('total', 0.0)
+        ibc += result_rules.get('CO_LIC_PAT', {}).get('total', 0.0)
+        return ibc
+
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
         # Sueldo básico
         if 'Sueldo' in concept_lines:
             sueldo_lines = concept_lines['Sueldo']
-            worked_days = sum(
-                wd.number_of_days
-                for wd in self.worked_days_line_ids
-                if wd.work_entry_type_id.code == 'WORK100'
-            ) or 30
+            dias_pagables = self._ne_dias_pagables()
+            if dias_pagables <= 0:
+                raise UserError(_(
+                    'No se pudo determinar DiasTrabajados de %(employee)s para el período '
+                    '%(ini)s a %(fin)s (contrato no activo en el período, o los días no '
+                    'remunerados cubren todo el período). Revise las fechas del contrato y '
+                    'las novedades antes de generar el XML.',
+                    employee=self.employee_id.name, ini=self.date_from, fin=self.date_to,
+                ))
             devengados['Basico'] = {
-                'DiasTrabajados': str(int(worked_days)),
+                'DiasTrabajados': str(int(dias_pagables)),
                 'SueldoTrabajado': '%.2f' % sum(l.total for l in sueldo_lines),
             }
 
@@ -1443,12 +2167,18 @@ class HrPayslip(models.Model):
             code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
             if hasattr(self, '_LEAVE_CODE_MAP'):
                 return self._LEAVE_CODE_MAP.get(code)
+            # Copia defensiva de HrPayslipLeaveIntegration._LEAVE_CODE_MAP (hr_leave_ne.py)
+            # -- nunca se ejercita en producción porque ese mixin siempre está presente en
+            # este modelo heredado, pero debe quedar sincronizada para no divergir (H-014,
+            # revisión .78: se agregaron los 7 códigos CO_ al mapa real, ver ese archivo).
             local_map = {
                 'INCAPACIDAD': 'incapacidad', 'SICK': 'incapacidad', 'INC_COMUN': 'incapacidad', 'INC_LABORAL': 'incapacidad',
+                'CO_INC_COMUN': 'incapacidad', 'CO_INC_LABORAL': 'incapacidad',
                 'MATERNIDAD': 'licencia_mat', 'MATERNITY': 'licencia_mat', 'PATERNIDAD': 'licencia_mat', 'PATERNITY': 'licencia_mat', 'LIC_MAT': 'licencia_mat', 'LIC_PAT': 'licencia_mat',
-                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones',
-                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem',
-                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr',
+                'CO_LIC_MAT': 'licencia_mat', 'CO_LIC_PAT': 'licencia_mat',
+                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones', 'CO_VAC': 'vacaciones',
+                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem', 'CO_LIC_REM': 'licencia_rem',
+                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr', 'CO_LIC_NR': 'licencia_nr',
             }
             return local_map.get(code)
 
@@ -1479,40 +2209,58 @@ class HrPayslip(models.Model):
         return category_leaves, category_leave_days, category_total_days
 
     def _dev_prestaciones(self, concept_lines, devengados):
-        """Devengados: vacaciones, primas, cesantías e intereses."""
+        """Devengados: vacaciones, primas, cesantías e intereses.
+
+        Revisión .79 (2026-10-08, decisión de David): un pago de VacacionesComunes
+        (CO_VAC) sin ninguna hr.leave validada que lo respalde (típicamente el input
+        manual de respaldo usado solo, sin registrar la ausencia) se detiene con
+        UserError en vez de emitir las fechas del período completo en silencio -- mismo
+        criterio que Incapacidades/LicenciaMP/LicenciaR. VacacionesCompensadas (CO_VAC_COMP)
+        no lleva FechaInicio/FechaFin en el XML (ver más abajo, Pago/Cantidad solamente) --
+        no hay fecha que inventar, y por su naturaleza (pago en dinero de días NO
+        disfrutados) tampoco hay una ausencia que la respalde, así que no entra en este
+        mismo tratamiento.
+        """
         # Vacaciones
         vac_comunes = concept_lines.get('VacacionesComunes', [])
         vac_compensadas = concept_lines.get('VacacionesCompensadas', [])
         if vac_comunes or vac_compensadas:
             vacaciones = {}
             if vac_comunes:
-                category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
-                actual_vac_leaves = category_leaves.get('vacaciones', [])
-                if actual_vac_leaves:
+                # H-016 (revisión .80, decisión de David): fuente única con la regla/el
+                # básico -- días HÁBILES vía worked_days/hr.work.entry
+                # (_ne_ausencia_habil()), no días calendario puros
+                # (_get_overlapping_leaves_data(), causa real del defecto reportado por QA
+                # en NE0000000099).
+                dias_totales, detalle = self._ne_ausencia_habil('CO_VAC')
+                if detalle:
                     items = []
                     total_pago = sum(l.total for l in vac_comunes)
-                    total_days = category_total_days['vacaciones']
-                    for leave in actual_vac_leaves:
-                        days = category_leave_days['vacaciones'][leave.id]
-                        pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                        leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                        leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                        period_start = max(leave_start, self.date_from)
-                        period_end = min(leave_end, self.date_to)
+                    for _leave, dias, ini, fin in detalle:
+                        pago = total_pago * (dias / dias_totales) if dias_totales > 0 else 0.0
                         items.append({
-                            'FechaInicio': str(period_start),
-                            'FechaFin': str(period_end),
-                            'Cantidad': str(int(days)),
+                            'FechaInicio': str(ini),
+                            'FechaFin': str(fin),
+                            'Cantidad': str(int(dias)),
                             'Pago': '%.2f' % pago,
                         })
                     vacaciones['VacacionesComunes'] = items
                 else:
-                    vacaciones['VacacionesComunes'] = [{
-                        'FechaInicio': str(self.date_from),
-                        'FechaFin': str(self.date_to),
-                        'Cantidad': str(int(sum(l.quantity for l in vac_comunes))),
-                        'Pago': '%.2f' % sum(l.total for l in vac_comunes),
-                    }]
+                    # H-014 (revisión .79, decisión de David): mismo criterio que
+                    # Incapacidad/LicenciaMP/LicenciaR -- sin ausencia validada no hay
+                    # fechas reales que reportar, y aquí SÍ hay dinero real de por medio
+                    # (CO_VAC). Antes se emitían las fechas del período completo en
+                    # silencio.
+                    raise UserError(_(
+                        'Hay un pago de Vacaciones (%(pago)s) en la nómina de '
+                        '%(employee)s sin ninguna ausencia (CO_VAC) validada en '
+                        'Ausencias que lo respalde con fechas reales -- la DIAN exige '
+                        'las fechas reales de las vacaciones, no las del período '
+                        'completo. Registre la ausencia en Ausencias antes de generar '
+                        'el XML.',
+                        pago='%.2f' % sum(l.total for l in vac_comunes),
+                        employee=self.employee_id.name,
+                    ))
             if vac_compensadas:
                 vacaciones['VacacionesCompensadas'] = [{
                     'Cantidad': str(int(sum(l.quantity for l in vac_compensadas))),
@@ -1543,103 +2291,161 @@ class HrPayslip(models.Model):
             }
 
     def _dev_novedades(self, concept_lines, devengados):
-        """Devengados: incapacidades y licencias."""
-        category_leaves, category_leave_days, category_total_days = self._get_overlapping_leaves_data()
+        """Devengados: incapacidades y licencias.
 
-        # Incapacidades
+        H-014 (2026-10-08): Incapacidades (CO_INC_COMUN/CO_INC_LABORAL) y LicenciaMP
+        (CO_LIC_MAT/CO_LIC_PAT) se formatean desde _ne_ausencia_calendario() -- la MISMA
+        fuente que ya paga la regla y descuenta el básico (días calendario corridos), para
+        no tener 3 cálculos distintos de lo mismo.
+
+        H-016 (revisión .80): LicenciaR/LicenciaNR ahora se formatean desde
+        _ne_ausencia_habil() (días HÁBILES vía worked_days/hr.work.entry) -- ya no desde
+        _get_overlapping_leaves_data() (días calendario puros, causa del defecto de QA en
+        NE0000000099: Cantidad/Pago del mismo nodo no cuadraban cuando la ausencia cruzaba
+        un lunes no laborable o un festivo). _get_overlapping_leaves_data() queda SIN
+        ningún llamador en todo el módulo tras este cambio -- no se eliminó, reportado a
+        Tech Lead para que decida su retiro.
+
+        Revisión .79 (2026-10-08, decisión de David): si hay un pago/registro de
+        Incapacidad, LicenciaMP o LicenciaR SIN ninguna hr.leave validada que lo respalde
+        (típicamente el input manual de respaldo usado solo, sin registrar la ausencia),
+        se detiene con UserError en vez de emitir las fechas del período completo en
+        silencio -- la DIAN exige las fechas reales de la ausencia (los nodos del XSD
+        V1.0.6 son minOccurs=0: sin ausencia simplemente no se emite el nodo, nunca un
+        dato inventado). LicenciaNR NUNCA llega a este camino: su amount_python_compute
+        es siempre 0 (no genera pago, por diseño) y _group_lines_by_concept() omite del
+        concept_lines cualquier línea con total=0 -- lo único que se pierde ahí es el
+        detalle de cuántos días hubo, si nadie registra la ausencia (límite conocido, sin
+        resolver). Vacaciones (CO_VAC) recibe el mismo tratamiento en _dev_prestaciones().
+        """
+        # Incapacidades (común + laboral, cada una con su Tipo -- ya no por substring del
+        # código, por cuál de las 2 llamadas la produjo)
         if 'Incapacidad' in concept_lines:
-            actual_inc_leaves = category_leaves.get('incapacidad', [])
-            if actual_inc_leaves:
+            _dias_comun, detalle_comun = self._ne_ausencia_calendario('CO_INC_COMUN')
+            _dias_laboral, detalle_laboral = self._ne_ausencia_calendario('CO_INC_LABORAL')
+            detalle_inc = (
+                [(leave, dias, ini, fin, '1') for leave, dias, ini, fin in detalle_comun]
+                + [(leave, dias, ini, fin, '3') for leave, dias, ini, fin in detalle_laboral]
+            )
+            if detalle_inc:
                 items = []
                 total_pago = sum(l.total for l in concept_lines['Incapacidad'])
-                total_days = category_total_days['incapacidad']
-                for leave in actual_inc_leaves:
-                    days = category_leave_days['incapacidad'][leave.id]
-                    pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                    leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                    leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                    period_start = max(leave_start, self.date_from)
-                    period_end = min(leave_end, self.date_to)
-                    
-                    leave_code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
-                    inc_type = '1'
-                    if 'PROFESIONAL' in leave_code or 'INC_PROF' in leave_code:
-                        inc_type = '2'
-                    elif 'LABORAL' in leave_code or 'INC_LAB' in leave_code:
-                        inc_type = '3'
-
+                total_dias = sum(dias for _leave, dias, _ini, _fin, _tipo in detalle_inc)
+                for _leave, dias, ini, fin, tipo in detalle_inc:
+                    pago = total_pago * (dias / total_dias) if total_dias > 0 else 0.0
                     items.append({
-                        'FechaInicio': str(period_start),
-                        'FechaFin': str(period_end),
-                        'Cantidad': str(int(days)),
-                        'Tipo': inc_type,
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
+                        'Tipo': tipo,
                         'Pago': '%.2f' % pago,
                     })
                 devengados['Incapacidades'] = items
             else:
-                items = []
-                for line in concept_lines['Incapacidad']:
-                    items.append({
-                        'FechaInicio': str(self.date_from),
-                        'FechaFin': str(self.date_to),
-                        'Cantidad': str(int(line.quantity)) if line.quantity else '0',
-                        'Tipo': '1',  # 1=Común, se puede extender
-                        'Pago': '%.2f' % line.total,
-                    })
-                devengados['Incapacidades'] = items
+                # H-014 (revisión .79, decisión de David): la DIAN exige las fechas reales
+                # de la incapacidad -- un pago sin ninguna hr.leave validada que lo
+                # respalde (ej. solo el input manual CO_INC_COMUN/CO_INC_LABORAL de
+                # respaldo, sin registrar la ausencia) no tiene de dónde sacar esas fechas.
+                # Antes se emitían las fechas del período completo en silencio; ahora se
+                # detiene con un error claro en vez de mandar un dato inventado a la DIAN.
+                raise UserError(_(
+                    'Hay un pago de Incapacidad (%(pago)s) en la nómina de %(employee)s '
+                    'sin ninguna ausencia de Incapacidad (CO_INC_COMUN/CO_INC_LABORAL) '
+                    'validada en Ausencias que lo respalde con fechas reales -- la DIAN '
+                    'exige las fechas reales de la incapacidad, no las del período '
+                    'completo. Registre la ausencia en Ausencias antes de generar el XML.',
+                    pago='%.2f' % sum(l.total for l in concept_lines['Incapacidad']),
+                    employee=self.employee_id.name,
+                ))
 
         # Licencias
-        licencia_concepts = {
-            'LicenciaMP': 'LicenciaMP',
-            'LicenciaR': 'LicenciaR',
-            'LicenciaNR': 'LicenciaNR',
-        }
-        lic_concept_to_category = {
-            'LicenciaMP': 'licencia_mat',
-            'LicenciaR': 'licencia_rem',
-            'LicenciaNR': 'licencia_nr',
-        }
         licencias = {}
-        for concept_key, xml_key in licencia_concepts.items():
-            category = lic_concept_to_category[concept_key]
-            actual_leaves = category_leaves.get(category, [])
-            
-            if actual_leaves:
+
+        # LicenciaMP (maternidad + paternidad): días calendario corridos, misma fuente que
+        # la regla y el descuento del básico (H-014).
+        if 'LicenciaMP' in concept_lines:
+            _dias_mat, detalle_mat = self._ne_ausencia_calendario('CO_LIC_MAT')
+            _dias_pat, detalle_pat = self._ne_ausencia_calendario('CO_LIC_PAT')
+            detalle_mp = detalle_mat + detalle_pat
+            if detalle_mp:
+                items = []
+                total_pago = sum(l.total for l in concept_lines['LicenciaMP'])
+                total_dias = sum(dias for _leave, dias, _ini, _fin in detalle_mp)
+                for _leave, dias, ini, fin in detalle_mp:
+                    pago = total_pago * (dias / total_dias) if total_dias > 0 else 0.0
+                    items.append({
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
+                        'Pago': '%.2f' % pago,
+                    })
+                licencias['LicenciaMP'] = items
+            else:
+                # H-014 (revisión .79, decisión de David): mismo criterio que Incapacidad
+                # -- maternidad/paternidad SON licencias (LicenciaMP), no incapacidades, y
+                # ya están separadas en el código; sin ausencia no hay fechas reales que
+                # reportar.
+                raise UserError(_(
+                    'Hay un pago de Licencia de Maternidad/Paternidad (%(pago)s) en la '
+                    'nómina de %(employee)s sin ninguna ausencia (CO_LIC_MAT/CO_LIC_PAT) '
+                    'validada en Ausencias que lo respalde con fechas reales -- la DIAN '
+                    'exige las fechas reales de la licencia, no las del período completo. '
+                    'Registre la ausencia en Ausencias antes de generar el XML.',
+                    pago='%.2f' % sum(l.total for l in concept_lines['LicenciaMP']),
+                    employee=self.employee_id.name,
+                ))
+
+        # LicenciaR / LicenciaNR: días HÁBILES, misma fuente que la regla y el descuento
+        # del básico (H-016, revisión .80: _ne_ausencia_habil(), ya no
+        # _get_overlapping_leaves_data() -- causa del defecto de QA en NE0000000099, ver
+        # docstring de _ne_ausencia_habil()).
+        licencia_concepts = {
+            'LicenciaR': 'CO_LIC_REM',
+            'LicenciaNR': 'CO_LIC_NR',
+        }
+        for xml_key, work_entry_code in licencia_concepts.items():
+            concept_key = xml_key
+            dias_totales, detalle = self._ne_ausencia_habil(work_entry_code)
+
+            if detalle:
                 items = []
                 total_pago = sum(l.total for l in concept_lines.get(concept_key, []))
-                total_days = category_total_days[category]
-                
-                for leave in actual_leaves:
-                    days = category_leave_days[category][leave.id]
-                    pago = total_pago * (days / total_days) if total_days > 0 else 0.0
-                    
-                    leave_start = leave.date_from.date() if isinstance(leave.date_from, datetime) else leave.date_from
-                    leave_end = leave.date_to.date() if isinstance(leave.date_to, datetime) else leave.date_to
-                    period_start = max(leave_start, self.date_from)
-                    period_end = min(leave_end, self.date_to)
-                    
+
+                for _leave, dias, ini, fin in detalle:
+                    pago = total_pago * (dias / dias_totales) if dias_totales > 0 else 0.0
+
                     lic_data = {
-                        'FechaInicio': str(period_start),
-                        'FechaFin': str(period_end),
-                        'Cantidad': str(int(days)),
+                        'FechaInicio': str(ini),
+                        'FechaFin': str(fin),
+                        'Cantidad': str(int(dias)),
                     }
                     if concept_key != 'LicenciaNR':
                         lic_data['Pago'] = '%.2f' % pago
                     items.append(lic_data)
                 licencias[xml_key] = items
-            elif concept_key in concept_lines:
-                lic_data = {
-                    'FechaInicio': str(self.date_from),
-                    'FechaFin': str(self.date_to),
-                    'Cantidad': str(int(sum(
+            elif concept_key == 'LicenciaR' and concept_key in concept_lines:
+                # H-014 (revisión .79, decisión de David): sin ausencia no hay fechas
+                # reales que reportar -- mismo criterio que Incapacidad/LicenciaMP/
+                # Vacaciones. LicenciaNR NUNCA entra aquí: su amount_python_compute es
+                # siempre 0 (no genera pago, por diseño -- ver data/hr_payroll_structure_
+                # data.xml) y _group_lines_by_concept() omite del concept_lines cualquier
+                # línea con total=0, así que una rama "elif 'LicenciaNR' in concept_lines"
+                # sería código muerto que nada prueba (Tech Lead, revisión .79). Lo único
+                # que se pierde en ese caso es el detalle de cuántos días de licencia no
+                # remunerada hubo, si nadie registra la ausencia -- límite conocido, no se
+                # resuelve aquí (ver test_xml_licencia_no_remunerada_solo_input_no_emite_
+                # nodo_ni_error).
+                raise UserError(_(
+                    'Hay un registro de Licencia Remunerada (%(cantidad)s día(s)) en la '
+                    'nómina de %(employee)s sin ninguna ausencia validada en Ausencias '
+                    'que lo respalde con fechas reales -- la DIAN exige las fechas reales '
+                    'de la licencia, no las del período completo. Registre la ausencia en '
+                    'Ausencias antes de generar el XML.',
+                    cantidad=str(int(sum(
                         l.quantity for l in concept_lines[concept_key]
                     ))),
-                }
-                if concept_key != 'LicenciaNR':
-                    lic_data['Pago'] = '%.2f' % sum(
-                        l.total for l in concept_lines[concept_key]
-                    )
-                licencias[xml_key] = [lic_data]
+                    employee=self.employee_id.name,
+                ))
         if licencias:
             devengados['Licencias'] = licencias
 
@@ -1897,6 +2703,21 @@ class HrPayslip(models.Model):
                 'vigente antes de continuar.',
                 company.name,
                 certificate.date_end,
+            ))
+
+        # AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030) es explícito -- "Para Colombia
+        # se debe colocar 'COP'" en TipoMoneda, sin excepción. No se parametriza: es una
+        # constante del Anexo (nomina_xml_builder.NE_TIPO_MONEDA), así que una compañía en
+        # otra moneda debe fallar aquí, antes de generar un XML inválido, en vez de enviar
+        # "COP" por encima de montos que en realidad están en otra moneda.
+        if company.currency_id.name != nomina_xml_builder.NE_TIPO_MONEDA:
+            raise UserError(_(
+                'La compañía %(company)s tiene moneda "%(currency)s" configurada, pero la '
+                'Nómina Electrónica DIAN exige TipoMoneda="%(cop)s" (Anexo Técnico, NIE030: '
+                '"Para Colombia se debe colocar \'%(cop)s\'"). Configure la compañía en '
+                'pesos colombianos antes de generar nómina electrónica.',
+                company=company.name, currency=company.currency_id.name,
+                cop=nomina_xml_builder.NE_TIPO_MONEDA,
             ))
 
     def _ne_expected_prefix(self):

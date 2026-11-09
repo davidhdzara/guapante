@@ -63,6 +63,15 @@ _NSMAP_AJUSTE = {
     'xsi': NS_XSD,
 }
 
+# AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030/@TipoMoneda, LugarGeneracionXML/@Idioma)
+# es explícito -- "Para Colombia se debe colocar 'COP'" / "...se debe colocar 'es'". A
+# diferencia de los campos @Pais/@LugarTrabajoPais (que SÍ admiten cualquier código alfa-2 de
+# la tabla 5.4.1, según el mismo Anexo -- ahí no hay instrucción de fijarlo a Colombia),
+# estos 2 no se parametrizan: son constantes del Anexo, un solo punto. hr_payslip.py las usa
+# en vez de repetir el literal.
+NE_TIPO_MONEDA = 'COP'
+NE_IDIOMA = 'es'
+
 
 def _serialize(root: etree._Element) -> bytes:
     """Serializa el documento forzando ``xsi:schemaLocation``.
@@ -163,6 +172,46 @@ def _fmt(value: Union[int, float, str, None], decimals: int = 2) -> str:
     return ('%%.%df' % decimals) % truncated
 
 
+def _dias_trabajados_requerido(basico: dict) -> str:
+    """DiasTrabajados de Devengados/Basico -- obligatorio, nunca inventado.
+
+    AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): antes un '30' por defecto aquí disfrazaba la
+    ausencia del dato (producía un XML "válido" con DiasTrabajados incoherente con
+    SueldoTrabajado, que el Anexo Técnico, NIE069/NIE070, define como la misma cantidad de
+    días). Quien llama a este builder (HrPayslip._dev_basico_y_transporte /
+    _ne_dias_pagables()) debe calcularlo siempre; si no llega, es un error real, no un caso
+    a disimular con un valor fijo.
+    """
+    value = basico.get('DiasTrabajados')
+    if value is None:
+        raise ValueError(
+            "Falta 'DiasTrabajados' en Devengados.Basico -- no se asume 30 días. "
+            "Quien construye 'data' debe calcularlo (ver HrPayslip._ne_dias_pagables())."
+        )
+    return str(value)
+
+
+def _pais_requerido(data: dict, key: str, contexto: str) -> str:
+    """Código de país (ISO 3166-1 alfa-2, tabla 5.4.1 del Anexo Técnico) -- obligatorio,
+    nunca inventado como 'CO' por defecto.
+
+    AUD-DIAN-34 (2026-10-05): a diferencia de TipoMoneda/Idioma, el Anexo Técnico NO fija
+    estos campos a Colombia (NIE013/NIE035/NIE050: "se debe colocar el Código alfa-2 de la
+    tabla 5.4.1", sin la instrucción "para Colombia coloque X" que sí tienen TipoMoneda e
+    Idioma) -- admiten cualquier país, dato real de la compañía o del trabajador. Antes un
+    'CO' fijo aquí disimulaba silenciosamente una compañía/trabajador sin país configurado,
+    mismo criterio que _dias_trabajados_requerido() para DiasTrabajados.
+    """
+    value = data.get(key)
+    if not value:
+        raise ValueError(
+            "Falta '%s' en %s -- no se asume 'CO'. Quien construye 'data' debe resolverlo "
+            "desde el país real configurado (ResCompany.partner_id.country_id / "
+            "employee.work_contact_id.country_id)." % (key, contexto)
+        )
+    return value
+
+
 def _get(data: dict, *keys, default=None):
     """Acceso seguro a diccionarios anidados.
 
@@ -253,10 +302,10 @@ def _add_lugar_generacion(parent: etree._Element, data: dict) -> None:
     """
     _attr(
         parent, 'LugarGeneracionXML',
-        Pais=data.get('Pais', 'CO'),
+        Pais=_pais_requerido(data, 'Pais', 'LugarGeneracionXML'),
         DepartamentoEstado=str(data.get('DepartamentoEstado', '')),
         MunicipioCiudad=str(data.get('MunicipioCiudad', '')),
-        Idioma=data.get('Idioma', 'es'),
+        Idioma=data.get('Idioma', NE_IDIOMA),
     )
 
 
@@ -305,7 +354,7 @@ def _add_informacion_general(
         'FechaGen': data.get('FechaGen', ''),
         'HoraGen': data.get('HoraGen', ''),
         'PeriodoNomina': str(data.get('PeriodoNomina', '5')),
-        'TipoMoneda': data.get('TipoMoneda', 'COP'),
+        'TipoMoneda': data.get('TipoMoneda', NE_TIPO_MONEDA),
     }
     if data.get('TRM'):
         attribs['TRM'] = str(data['TRM'])
@@ -326,7 +375,7 @@ def _add_empleador(parent: etree._Element, data: dict) -> None:
     attribs = {
         'NIT': str(data.get('NIT', '')),
         'DV': str(data.get('DV', '')),
-        'Pais': data.get('Pais', 'CO'),
+        'Pais': _pais_requerido(data, 'Pais', 'Empleador'),
         'DepartamentoEstado': str(
             data.get('DepartamentoEstado', '')),
         'MunicipioCiudad': str(data.get('MunicipioCiudad', '')),
@@ -365,7 +414,7 @@ def _add_trabajador(parent: etree._Element, data: dict) -> None:
         'PrimerApellido': data.get('PrimerApellido', ''),
         'SegundoApellido': data.get('SegundoApellido', ''),
         'PrimerNombre': data.get('PrimerNombre', ''),
-        'LugarTrabajoPais': data.get('LugarTrabajoPais', 'CO'),
+        'LugarTrabajoPais': _pais_requerido(data, 'LugarTrabajoPais', 'Trabajador'),
         'LugarTrabajoDepartamentoEstado': str(
             data.get('LugarTrabajoDepartamentoEstado', '')),
         'LugarTrabajoMunicipioCiudad': str(
@@ -478,7 +527,7 @@ def _add_devengados(parent: etree._Element, data: dict) -> None:
     basico = data.get('Basico', {})
     _attr(
         dev, 'Basico',
-        DiasTrabajados=str(basico.get('DiasTrabajados', '30')),
+        DiasTrabajados=_dias_trabajados_requerido(basico),
         SueldoTrabajado=_fmt(basico.get('SueldoTrabajado', 0)),
     )
 
@@ -1232,10 +1281,10 @@ def _get_numero_secuencia_node(data: dict) -> dict:
 def _get_lugar_generacion_node(data: dict) -> dict:
     """Equivalente dict de _add_lugar_generacion(). data = sub-dict 'lugar_generacion'."""
     return {
-        'Pais': data.get('Pais', 'CO'),
+        'Pais': _pais_requerido(data, 'Pais', 'LugarGeneracionXML'),
         'DepartamentoEstado': str(data.get('DepartamentoEstado', '')),
         'MunicipioCiudad': str(data.get('MunicipioCiudad', '')),
-        'Idioma': data.get('Idioma', 'es'),
+        'Idioma': data.get('Idioma', NE_IDIOMA),
     }
 
 
@@ -1268,7 +1317,7 @@ def _get_informacion_general_node(data: dict) -> dict:
         'FechaGen': data.get('FechaGen', ''),
         'HoraGen': data.get('HoraGen', ''),
         'PeriodoNomina': str(data.get('PeriodoNomina', '5')),
-        'TipoMoneda': data.get('TipoMoneda', 'COP'),
+        'TipoMoneda': data.get('TipoMoneda', NE_TIPO_MONEDA),
     }
     if data.get('TRM'):
         node['TRM'] = str(data['TRM'])
@@ -1280,7 +1329,7 @@ def _get_empleador_node(data: dict) -> dict:
     node = {
         'NIT': str(data.get('NIT', '')),
         'DV': str(data.get('DV', '')),
-        'Pais': data.get('Pais', 'CO'),
+        'Pais': _pais_requerido(data, 'Pais', 'Empleador'),
         'DepartamentoEstado': str(data.get('DepartamentoEstado', '')),
         'MunicipioCiudad': str(data.get('MunicipioCiudad', '')),
         'Direccion': data.get('Direccion', ''),
@@ -1303,7 +1352,7 @@ def _get_trabajador_node(data: dict) -> dict:
         'PrimerApellido': data.get('PrimerApellido', ''),
         'SegundoApellido': data.get('SegundoApellido', ''),
         'PrimerNombre': data.get('PrimerNombre', ''),
-        'LugarTrabajoPais': data.get('LugarTrabajoPais', 'CO'),
+        'LugarTrabajoPais': _pais_requerido(data, 'LugarTrabajoPais', 'Trabajador'),
         'LugarTrabajoDepartamentoEstado': str(
             data.get('LugarTrabajoDepartamentoEstado', '')),
         'LugarTrabajoMunicipioCiudad': str(
@@ -1601,7 +1650,7 @@ def _get_devengados_node(data: dict) -> dict:
     basico = data.get('Basico', {})
     node = {
         'Basico': {
-            'DiasTrabajados': str(basico.get('DiasTrabajados', '30')),
+            'DiasTrabajados': _dias_trabajados_requerido(basico),
             'SueldoTrabajado': _fmt(basico.get('SueldoTrabajado', 0)),
         },
         'Transporte': _get_transporte_items(data.get('Transporte')),

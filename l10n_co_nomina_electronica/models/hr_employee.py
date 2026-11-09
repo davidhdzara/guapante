@@ -5,9 +5,16 @@
 Extensión de hr.employee para Nómina Electrónica DIAN.
 
 Agrega los campos requeridos por el nodo ``<Trabajador>`` del XML de nómina
-electrónica: tipo/subtipo de trabajador, tipo de documento según codificación
-DIAN, lugar de trabajo (municipio DANE), indicadores de alto riesgo y
-extranjería, así como información bancaria para el nodo ``<Pago>``.
+electrónica: tipo/subtipo de trabajador, indicadores de alto riesgo y
+extranjería, así como información bancaria para el nodo ``<Pago>``. El lugar
+de trabajo (LugarTrabajoPais/DepartamentoEstado/MunicipioCiudad/Direccion) NO
+vive aquí -- sale del campo nativo ``address_id`` (Dirección de Trabajo) vía
+``HrPayslip._ne_lugar_trabajo_partner()`` (H-018, 2026-10-11). El tipo de
+documento de identidad (TipoDocumento del XML) tampoco vive aquí como
+Selection propio -- sale de ``l10n_latam.identification.type`` vía
+``work_contact_id`` (UX-02, 2026-10-11); ver
+``l10n_co_ne_identification_type_id`` abajo y
+``HrPayslip._ne_trabajador()``.
 
 Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica
 V1.0, secciones 6.2.8 (Trabajador) y 6.2.9 (Pago).
@@ -23,29 +30,137 @@ class HrEmployee(models.Model):
     _inherit = 'hr.employee'
 
     # ──────────────────────────────────────────────────────────────────
-    # Tipo de documento de identidad (codificación DIAN)
+    # Tipo de documento de identidad (UX-02, 2026-10-11, decisión de David +
+    # Tech Lead): antes un Selection propio, duplicando el tipo de
+    # identificación que Contactos ya guarda en work_contact_id (el mismo
+    # partner que exige el dominio nativo de bank_account_id). El código
+    # DIAN (TipoDocumento del nodo <Trabajador>) ahora sale de
+    # l10n_latam.identification.type.l10n_co_ne_dian_document_code (dato del
+    # módulo, data/l10n_latam_identification_type_dian_code_data.xml -- ver
+    # HrPayslip._ne_trabajador()). El NÚMERO (identification_id) sigue siendo
+    # el mismo Char nativo de siempre (sin cambiar su naturaleza ni los ~12
+    # usos reales que ya tiene) -- lo que se agrega es sincronización
+    # bidireccional con work_contact_id.vat, ver create()/write() más abajo
+    # y models/res_partner.py (decisión de David, 2026-10-11: "que el
+    # contacto y el empleado queden sincronizados en el número").
     # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_document_type = fields.Selection(
-        selection=[
-            ('11', 'Registro Civil'),
-            ('12', 'Tarjeta de Identidad'),
-            ('13', 'Cédula de Ciudadanía'),
-            ('21', 'Tarjeta de Extranjería'),
-            ('22', 'Cédula de Extranjería'),
-            ('31', 'NIT'),
-            ('41', 'Pasaporte'),
-            ('42', 'Documento de Identificación Extranjero'),
-            ('47', 'PEP – Permiso Especial de Permanencia'),
-            ('48', 'PPT – Permiso de Protección Temporal'),
-            ('50', 'NIT de otro país'),
-            ('91', 'NUIP'),
-        ],
-        string='Tipo Documento DIAN',
-        help='Tipo de documento de identidad del trabajador según la '
-             'codificación oficial de la DIAN para nómina electrónica.\n'
-             'Este valor se usa en el atributo TipoDocumento del nodo '
-             '<Trabajador> del XML.',
+    l10n_co_ne_identification_type_id = fields.Many2one(
+        comodel_name='l10n_latam.identification.type',
+        string='Tipo de Documento',
+        compute='_compute_l10n_co_ne_identification_type_id',
+        inverse='_inverse_l10n_co_ne_identification_type_id',
+        help='Tipo de documento de identidad del trabajador -- espejo '
+             'editable de work_contact_id.l10n_latam_identification_type_id '
+             '(el mismo dato de Contactos, mostrado aquí junto al número '
+             'para no exigir 2 pestañas distintas).',
     )
+
+    @api.depends('work_contact_id.l10n_latam_identification_type_id')
+    def _compute_l10n_co_ne_identification_type_id(self):
+        for employee in self:
+            employee.l10n_co_ne_identification_type_id = (
+                employee.work_contact_id.l10n_latam_identification_type_id)
+
+    def _inverse_l10n_co_ne_identification_type_id(self):
+        # El Internal User "RRHH" (hr.group_hr_user) no tiene de por sí
+        # permiso de escritura en res.partner (access_res_partner_group_user:
+        # perm_write=0 en la base de Odoo -- solo group_partner_manager lo
+        # tiene) -- mismo caso que resuelve hr nativo con sudo() en
+        # _inverse_work_contact_details() (hr_employee_base.py). sudo()
+        # acotado a esta sola escritura, nunca a todo el registro.
+        for employee in self:
+            if employee.work_contact_id:
+                employee.work_contact_id.sudo().write({
+                    'l10n_latam_identification_type_id':
+                        employee.l10n_co_ne_identification_type_id.id,
+                })
+
+    # ──────────────────────────────────────────────────────────────────
+    # Sincronización del NÚMERO de identificación con Contactos (UX-02,
+    # 2026-10-11, decisión de David: "que el contacto y el empleado queden
+    # sincronizados en el número"). La dirección Contactos -> empleado vive
+    # en models/res_partner.py (write() de res.partner, cuando cambia vat).
+    #
+    # Por qué un create()/write() explícitos y no un related/compute+store
+    # en identification_id: ese campo es nativo de hr (Char, sin related) y
+    # tiene ~12 usos reales en este módulo (NumeroDocumento del XML, UGPP,
+    # PILA, la clave de idempotencia del wizard de certificación, y pruebas)
+    # -- convertirlo en related cambiaría su naturaleza de almacenamiento,
+    # más riesgo del necesario. Además hay un problema real de orden en la
+    # creación (verificado contra hr/models/hr_employee.py::create()): para
+    # un empleado SIN usuario vinculado (el caso típico), work_contact_id NO
+    # existe todavía cuando super().create() procesa identification_id --
+    # hr nativo lo crea DESPUÉS, en _create_work_contacts(), llamado tras
+    # super().create(). Por eso la propagación debe hacerse DESPUÉS de que
+    # el create() completo (incluida esa post-creación) haya terminado.
+    #
+    # Guards explícitos (Tech Lead, 2026-10-11): nunca propagar un valor
+    # vacío/False en ninguna dirección (borraría el dato real del otro
+    # lado), y comparar antes de escribir para no generar un ciclo
+    # empleado->contacto->empleado->... (ver test_sin_bucle_infinito_entre_
+    # employee_y_partner en test_identificacion_sincronizada.py).
+    # ──────────────────────────────────────────────────────────────────
+    @api.model_create_multi
+    def create(self, vals_list):
+        employees = super().create(vals_list)
+        for employee in employees:
+            if (
+                employee.identification_id
+                and employee.work_contact_id
+                and employee.work_contact_id.vat != employee.identification_id
+            ):
+                employee.work_contact_id.sudo().vat = employee.identification_id
+        return employees
+
+    def write(self, vals):
+        res = super().write(vals)
+        if 'identification_id' in vals:
+            for employee in self:
+                if (
+                    employee.identification_id
+                    and employee.work_contact_id
+                    and employee.work_contact_id.vat != employee.identification_id
+                ):
+                    employee.work_contact_id.sudo().vat = employee.identification_id
+        return res
+
+    # ──────────────────────────────────────────────────────────────────
+    # Default del TIPO de identificación para empleados colombianos nuevos
+    # (UX-02, 2026-10-11, decisión de David, punto 3 de la .93/.94). Hallazgo:
+    # work_contact_id se crea en hr/models/hr_employee_base.py::
+    # _create_work_contacts() con vals = {email, mobile, name, image_1920,
+    # company_id} -- nunca incluye el tipo de identificación, así que el
+    # campo cae siempre en su default de CLASE
+    # (l10n_latam_base/models/res_partner.py:
+    # default=lambda self: self.env.ref('l10n_latam_base.it_vat')), el tipo
+    # genérico "VAT", que no tiene (a propósito) código DIAN. El
+    # @api.onchange('country_id') de ese mismo archivo no ayuda: solo corre
+    # en formularios UI (nunca en create() por ORM) y, aunque corriera,
+    # elegiría NIT (l10n_co.rut, el único tipo colombiano con is_vat=True en
+    # l10n_co/data/l10n_latam.identification.type.csv), no Cédula.
+    #
+    # David decidió que, en la práctica, casi todos los empleados
+    # colombianos son Cédula de ciudadanía -- ese debe ser el valor INICIAL,
+    # no "VAT" (que ni es un tipo de documento real). Es un default, no un
+    # constraint: el usuario sigue pudiendo cambiarlo a mano después. Nunca
+    # toca un contacto que ya tenga otro tipo -- este método solo procesa
+    # contactos RECIÉN creados, nunca uno existente -- ver también el
+    # backfill equivalente para los contactos que ya existían antes de este
+    # cambio, en migrations/18.0.3.0.89/post-sync_identification_number.py.
+    # ──────────────────────────────────────────────────────────────────
+    def _create_work_contacts(self):
+        super()._create_work_contacts()
+        it_vat = self.env.ref('l10n_latam_base.it_vat', raise_if_not_found=False)
+        cedula = self.env.ref('l10n_co.national_citizen_id', raise_if_not_found=False)
+        if not it_vat or not cedula:
+            return
+        for employee in self:
+            partner = employee.work_contact_id
+            if not partner or employee.company_id.partner_id.country_id.code != 'CO':
+                continue
+            tipo_actual = partner.l10n_latam_identification_type_id
+            if not tipo_actual or tipo_actual == it_vat:
+                partner.sudo().l10n_latam_identification_type_id = cedula.id
 
     # ──────────────────────────────────────────────────────────────────
     # Tipo y Subtipo de Trabajador
@@ -106,20 +221,15 @@ class HrEmployee(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
-    # Lugar de trabajo (codificación DANE)
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_dane_city_id = fields.Many2one(
-        comodel_name='res.city',
-        string='Municipio Lugar de Trabajo',
-        help='Municipio donde el trabajador presta sus servicios, '
-             'codificado según el DANE. Se usa en los atributos '
-             'LugarTrabajoDepartamentoEstado y LugarTrabajoMunicipioCiudad '
-             'del nodo <Trabajador>.',
-    )
-
-    # ──────────────────────────────────────────────────────────────────
-    # Información de pago bancario
-    # Nodo <Pago> del XML de nómina electrónica
+    # Información de pago bancario (UX-02, 2026-10-11, decisión de David +
+    # Tech Lead): Banco/TipoCuenta/NumeroCuenta ya NO son campos propios --
+    # duplicaban la cuenta bancaria nativa del empleado (bank_account_id,
+    # res.partner.bank, visible en "Información privada" > grupo "Contacto
+    # privado"). Banco y NumeroCuenta salen de ahí
+    # (HrPayslip._ne_pago()); TipoCuenta se omite del XML (es opcional en
+    # el XSD -- no existe campo nativo real para Ahorro/Corriente, ver
+    # docstring de _ne_pago()). Metodo sigue siendo el único campo propio
+    # de esta sección: no tiene equivalente nativo verificado.
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_payment_method = fields.Selection(
         selection=[
@@ -130,25 +240,9 @@ class HrEmployee(models.Model):
         string='Método de Pago',
         default='1',
         help='Método de pago de la nómina al trabajador. Se refleja en '
-             'el atributo Metodo del nodo <Pago> del XML.',
-    )
-    l10n_co_ne_bank_name = fields.Char(
-        string='Nombre del Banco',
-        help='Nombre de la entidad bancaria donde el trabajador tiene '
-             'su cuenta de nómina.',
-    )
-    l10n_co_ne_bank_account_type = fields.Selection(
-        selection=[
-            ('ahorro', 'Cuenta de Ahorro'),
-            ('corriente', 'Cuenta Corriente'),
-        ],
-        string='Tipo de Cuenta',
-        help='Tipo de cuenta bancaria del trabajador.',
-    )
-    l10n_co_ne_bank_account = fields.Char(
-        string='Número de Cuenta',
-        help='Número de cuenta bancaria del trabajador para el pago '
-             'de nómina.',
+             'el atributo Metodo del nodo <Pago> del XML. La cuenta '
+             'bancaria se elige en "Información privada" (Cuenta '
+             'Bancaria).',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -261,17 +355,20 @@ class HrEmployee(models.Model):
                     employee.name,
                 ))
 
-    @api.constrains('l10n_co_ne_payment_method', 'l10n_co_ne_bank_account')
+    @api.constrains('l10n_co_ne_payment_method', 'bank_account_id')
     def _check_bank_account_for_transfer(self):
-        """Valida que la cuenta bancaria esté informada si el pago es por transferencia."""
+        """Valida que la cuenta bancaria esté informada si el pago es por transferencia.
+
+        UX-02 (2026-10-11): ahora mira el campo nativo bank_account_id en vez del
+        propio l10n_co_ne_bank_account (retirado)."""
         for employee in self:
             if (
                 employee.l10n_co_ne_payment_method == '1'
-                and not employee.l10n_co_ne_bank_account
+                and not employee.bank_account_id
             ):
                 raise ValidationError(_(
-                    'Debe informar el número de cuenta bancaria cuando el '
-                    'método de pago es Transferencia Bancaria. '
+                    'Debe informar la Cuenta Bancaria (Información privada) cuando '
+                    'el método de pago es Transferencia Bancaria. '
                     'Empleado: %s',
                     employee.name,
                 ))

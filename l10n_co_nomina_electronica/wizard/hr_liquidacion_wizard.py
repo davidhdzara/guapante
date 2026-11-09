@@ -24,6 +24,19 @@ from odoo.exceptions import UserError
 # inputs.get('CO_LIQ_INDEMNIZ')) -- '1' fijo, '3' obra/labor.
 _CONTRACT_TYPES_REQUIRE_DIAS_RESTANTES = ('1', '3')
 
+# H-011 (2026-10-06, decisión de David): mapeo de hr.departure.reason (RRHH nativo) a la
+# causal de esta liquidación -- único lugar, se extiende agregando una línea. Solo entran
+# motivos SIN AMBIGÜEDAD legal: "Resigned" (hr.departure_resigned) siempre es renuncia
+# voluntaria. "Fired" (hr.departure_fired) NO se mapea a propósito -- el motivo nativo no
+# distingue despido con/sin justa causa, y de eso depende si procede indemnización (Art. 64
+# CST); un default equivocado generaría una indemnización que no corresponde. "Retired"
+# tampoco tiene causal equivalente en esta lista (jubilación no es ninguna de las 6 causas
+# de retiro que maneja esta liquidación). Ante cualquier motivo no listado aquí, la causal
+# queda vacía y obligatoria -- nunca un default silencioso.
+_DEPARTURE_REASON_TO_CAUSE_XMLIDS = {
+    'hr.departure_resigned': 'renuncia',
+}
+
 
 class L10nCoHrLiquidacionWizard(models.TransientModel):
     """Asistente para crear una liquidación definitiva de contrato."""
@@ -83,22 +96,46 @@ class L10nCoHrLiquidacionWizard(models.TransientModel):
 
     @api.onchange('employee_id')
     def _onchange_employee_id(self):
-        """Busca el contrato vigente del empleado seleccionado."""
+        """Busca el contrato vigente del empleado seleccionado y, si el retiro ya se
+        registró en RRHH (hr.departure.wizard, flujo real confirmado por David: primero se
+        registra el retiro, después se liquida), prellena fecha y causal -- H-011
+        (2026-10-06). Si no hay retiro registrado para el empleado, ambos campos quedan
+        igual que antes de esta corrección (fecha de hoy, causal vacía)."""
         self.contract_id = False
-        if self.employee_id:
-            contract = self.env['hr.contract'].search([
-                ('employee_id', '=', self.employee_id.id),
-                ('state', 'in', ['open', 'close']),
-            ], limit=1, order='date_start desc')
-            if contract:
-                self.contract_id = contract
-            return {
-                'domain': {
-                    'contract_id': [
-                        ('employee_id', '=', self.employee_id.id),
-                    ],
-                },
-            }
+        if not self.employee_id:
+            return
+
+        contract = self.env['hr.contract'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', 'in', ['open', 'close']),
+        ], limit=1, order='date_start desc')
+        if contract:
+            self.contract_id = contract
+
+        # hr_contract.HrDepartureWizard.action_register_departure() ya deja el retiro en
+        # contract.date_end (cuando "Set Contract End Date" quedó marcado, el default para
+        # un contract manager -- ver addons/hr_contract/wizard/hr_departure_wizard.py en el
+        # core de Odoo) -- esa es la fuente más específica al contrato ya elegido arriba.
+        # employee.departure_date (addons/hr/wizard/hr_departure_wizard.py) es el respaldo
+        # si ese checkbox se desmarcó. El usuario sigue pudiendo cambiar la fecha a mano.
+        departure_date = (contract.date_end if contract else False) or self.employee_id.departure_date
+        self.date_end = departure_date or fields.Date.context_today(self)
+
+        self.cause = False
+        reason = self.employee_id.departure_reason_id
+        if reason:
+            for xmlid, cause in _DEPARTURE_REASON_TO_CAUSE_XMLIDS.items():
+                if reason == self.env.ref(xmlid, raise_if_not_found=False):
+                    self.cause = cause
+                    break
+
+        return {
+            'domain': {
+                'contract_id': [
+                    ('employee_id', '=', self.employee_id.id),
+                ],
+            },
+        }
 
     @api.depends('contract_id', 'contract_id.l10n_co_ne_contract_type')
     def _compute_requires_dias_restantes(self):
