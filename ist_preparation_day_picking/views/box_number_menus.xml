@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lote 4: el Administrador de Preparación también ve el historial y
+         las inconsistencias de cajas (el menú base solo lo ve base.group_system;
+         `groups` en un menuitem existente AGREGA grupos). -->
+    <menuitem id="ist_preparation_day.menu_box_number_log"
+        groups="group_preparation_admin"/>
+    <menuitem id="ist_preparation_day.menu_box_number_issue"
+        groups="group_preparation_admin"/>
+</odoo>
