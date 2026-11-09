@@ -6,11 +6,20 @@ quedan líneas de otros pedidos, el claim se conserva."""
 from unittest.mock import patch
 
 from odoo.api import call_kw
+from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
 from .test_preparation_day_product_claim import (
     REQUEST_PATCH_TARGET,
     TestPreparationDayProductClaim,
+)
+
+LINE_REQUEST_PATCH_TARGET = (
+    'odoo.addons.ist_preparation_day_picking.models'
+    '.preparation_day_line.request'
+)
+PARENT_REQUEST_PATCH_TARGET = (
+    'odoo.addons.ist_preparation_day.models.preparation_day.request'
 )
 
 
@@ -83,3 +92,45 @@ class TestPreparationCancelledOrderClaims(TestPreparationDayProductClaim):
 
         self.assertTrue(claim.exists())
         self.assertEqual(claim.status, 'done')
+
+    # ── Operario con la tarjeta abierta cuando la línea se retira ──
+
+    def _retired_line_id(self):
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = self.env['guapante.preparation.day.line'].sudo().search([
+            ('sale_order_id', '=', order.id),
+        ])
+        line_id = line.id
+        order._action_cancel()
+        self.assertFalse(line.exists())
+        return line_id
+
+    def test_write_on_retired_line_via_call_kw_gives_clear_message(self):
+        line_id = self._retired_line_id()
+        mock_request = self._request_as(self.operator_a)
+        with patch(LINE_REQUEST_PATCH_TARGET, mock_request), \
+                patch(PARENT_REQUEST_PATCH_TARGET, mock_request):
+            with self.assertRaises(UserError) as cm:
+                call_kw(
+                    self.env['guapante.preparation.day.line'], 'write',
+                    [[line_id], {'actual_kg': 1.5}],
+                    {'context': {'guapante_picking_flow': True}},
+                )
+        self.assertIn('su pedido fue cancelado', str(cm.exception))
+        self.assertNotIn('does not exist', str(cm.exception))
+
+    def test_add_note_on_retired_line_via_call_kw_gives_clear_message(self):
+        line_id = self._retired_line_id()
+        mock_request = self._request_as(self.operator_a)
+        with patch(LINE_REQUEST_PATCH_TARGET, mock_request), \
+                patch(PARENT_REQUEST_PATCH_TARGET, mock_request):
+            with self.assertRaises(UserError) as cm:
+                call_kw(
+                    self.env['guapante.preparation.day.line'],
+                    'action_add_note', [[line_id], 'hola'],
+                    {'context': {'guapante_picking_flow': True}},
+                )
+        self.assertIn('su pedido fue cancelado', str(cm.exception))
+
