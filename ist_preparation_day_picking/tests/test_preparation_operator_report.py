@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
 
+from odoo.addons.ist_preparation_day.models.box_number import (
+    CTX_ORIGIN,
+    ORIGIN_ALTA,
+    box_origin,
+)
 from odoo import fields
 from odoo.tests.common import tagged
 
@@ -48,7 +53,11 @@ class TestPreparationOperatorReport(TestPreparationDayProductClaim):
         con su propio daily_sequence, nunca escribir el campo de la
         línea directo."""
         self._next_box += 1
-        return self.env['sale.order'].sudo().create({
+        # Lote 4 (candado de cajas): el número solo se fija con un origen
+        # del sistema.
+        return self.env['sale.order'].sudo().with_context(
+            **{CTX_ORIGIN: box_origin(ORIGIN_ALTA)}
+        ).create({
             'partner_id': self.partner.id,
             'daily_sequence': self._next_box,
         })
