@@ -2,7 +2,7 @@
 from odoo import api, fields, models
 from odoo.exceptions import AccessError
 
-from .preparation_day import _picking_session_date
+from .preparation_day import _date_to_utc_range, _picking_session_date
 from .preparation_day_product_claim import STOP_REASONS
 
 # Tech Lead, revisión de b63a385: una sola fuente — STOP_REASONS ya
@@ -120,6 +120,7 @@ class PreparationDay(models.Model):
                 )
             columns[claim.status].append(card)
 
+        ranking = self._pds_ranking(Session, open_working)
         return {
             'has_session': True,
             'server_now': _iso_utc(fields.Datetime.now()),
@@ -131,6 +132,9 @@ class PreparationDay(models.Model):
             'pending_lines': Session.pending_lines,
             'global_progress_pct': Session.global_progress_pct,
             'columns': columns,
+            'kpis': self._pds_kpis(Session, columns),
+            'ranking': ranking,
+            'rhythm': self._pds_rhythm(ranking, open_working),
         }
 
     @api.model
@@ -205,4 +209,126 @@ class PreparationDay(models.Model):
             'no_weigh_yet': bool(
                 status == 'in_progress' and working
                 and not working.lines_done and not working.first_weigh_dt),
+        }
+
+    @api.model
+    def _pds_kpis(self, Session, columns):
+        """Franja de KPIs (rediseño PDS, 2026-11-10). «Cajas vs. pickings»:
+        cajas = pedidos distintos con líneas en la sesión (so_count);
+        pickings = pedidos con PICK interno vigente ese día (mismo criterio
+        que la conciliación de la sesión sin líneas)."""
+        dt_start, dt_end = _date_to_utc_range(self.env, Session.date)
+        picks = self.env['stock.picking'].sudo().search([
+            ('scheduled_date', '>=', dt_start),
+            ('scheduled_date', '<', dt_end),
+            ('picking_type_code', '=', 'internal'),
+            ('sale_id', '!=', False),
+            ('sale_id.state', 'in', ('sale', 'done')),
+            ('state', '!=', 'cancel'),
+        ])
+        pick_orders = len(picks.mapped('sale_id'))
+        return {
+            'boxes': Session.so_count,
+            'pickings': pick_orders,
+            'boxes_match': Session.so_count == pick_orders,
+            'draft_count': Session.draft_count,
+            'distinct_products': sum(len(c) for c in columns.values()),
+            'not_started': len(columns['pending']),
+        }
+
+    @api.model
+    def _pds_ranking(self, Session, open_working):
+        """Desempeño por operario (pestaña del PDS): orden por LÍNEAS
+        atendidas, agrupado SIEMPRE por done_by_employee_id (PIN), nunca por
+        el usuario compartido de Odoo. Las cerradas en 0 («sin stock») cuentan
+        como atendidas pero se muestran aparte y no entran en kg/min. Tiempos
+        de guapante.preparation.interval (kind='working' de la sesión); el
+        intervalo abierto cuenta hasta ahora. Sin datos → None, nunca inventar."""
+        Line = self.env['guapante.preparation.day.line']
+        done_domain = [
+            ('wizard_id', '=', Session.id), ('is_done', '=', True),
+            ('done_by_employee_id', '!=', False),
+        ]
+        lines_by_emp = {
+            emp.id: count for emp, count in Line._read_group(
+                done_domain, groupby=['done_by_employee_id'],
+                aggregates=['__count'])
+        }
+        zero_by_emp = {
+            emp.id: count for emp, count in Line._read_group(
+                done_domain + [('actual_kg', '=', 0)],
+                groupby=['done_by_employee_id'], aggregates=['__count'])
+        }
+        products_by_emp = {}
+        for emp, tmpl, count in Line._read_group(
+                done_domain, groupby=['done_by_employee_id', 'product_id'],
+                aggregates=['__count']):
+            products_by_emp.setdefault(emp.id, []).append(
+                (-count, tmpl.name or ''))
+        Interval = self.env['guapante.preparation.interval'].sudo()
+        work_s, kg, int_lines = {}, {}, {}
+        for emp, dur, kg_sum, lines_sum in Interval._read_group(
+                [('wizard_id', '=', Session.id), ('kind', '=', 'working'),
+                 ('employee_id', '!=', False)],
+                groupby=['employee_id'],
+                aggregates=['duration_s:sum', 'kg_done:sum', 'lines_done:sum']):
+            work_s[emp.id] = dur or 0
+            kg[emp.id] = kg_sum or 0.0
+            int_lines[emp.id] = lines_sum or 0
+        now = fields.Datetime.now()
+        for interval in open_working:
+            emp_id = interval.employee_id.id
+            if emp_id and interval.start_dt:
+                work_s[emp_id] = work_s.get(emp_id, 0) + max(
+                    int((now - interval.start_dt).total_seconds()), 0)
+        names = {
+            e.id: e.name for e in self.env['hr.employee'].sudo().browse(
+                list(lines_by_emp))
+        }
+        rows = []
+        for emp_id, lines in lines_by_emp.items():
+            seconds = work_s.get(emp_id, 0)
+            done_in_intervals = int_lines.get(emp_id, 0)
+            kg_done = kg.get(emp_id, 0.0)
+            rows.append({
+                'employee_id': emp_id,
+                'name': names.get(emp_id, ''),
+                'lines': lines,
+                'zero_lines': zero_by_emp.get(emp_id, 0),
+                'avg_line_s': (
+                    round(seconds / done_in_intervals)
+                    if seconds and done_in_intervals else None),
+                'kg_per_min': (
+                    round(kg_done / (seconds / 60.0), 2)
+                    if seconds and kg_done > 0 else None),
+                'products': [
+                    name for _neg, name in sorted(products_by_emp.get(emp_id, []))
+                ][:4],
+            })
+        rows.sort(key=lambda r: (
+            -r['lines'],
+            r['avg_line_s'] if r['avg_line_s'] is not None else float('inf'),
+            r['name'],
+        ))
+        for position, row in enumerate(rows, start=1):
+            row['rank'] = position
+        return rows
+
+    @api.model
+    def _pds_rhythm(self, ranking, open_working):
+        """«Ritmo del día» y «Mejor ritmo de hoy»: operarios activos = con un
+        intervalo working abierto; promedio de kg equiv./min entre los activos
+        que tienen dato."""
+        active_ids = set(open_working.mapped('employee_id').ids)
+        rates = [
+            r['kg_per_min'] for r in ranking
+            if r['employee_id'] in active_ids and r['kg_per_min']
+        ]
+        best = ranking[0] if ranking else None
+        return {
+            'active_operators': len(active_ids),
+            'avg_kg_per_min': round(sum(rates) / len(rates), 2) if rates else None,
+            'best': (
+                {k: best[k] for k in ('name', 'lines', 'avg_line_s')}
+                if best else None),
         }
