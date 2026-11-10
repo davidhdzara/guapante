@@ -48,6 +48,16 @@
                     </div>
                 </header>
 
+                <div class="gp-tabs">
+                    <button type="button" t-attf-class="gp-tab #{state.tab === 'tablero' ? 'active' : ''}" t-on-click="() => this.showTab('tablero')">📋 Tablero</button>
+                    <button type="button" t-attf-class="gp-tab #{state.tab === 'desempeno' ? 'active' : ''}" t-on-click="() => this.showTab('desempeno')">👥 Desempeño por operario</button>
+                    <button type="button" t-attf-class="gp-play #{state.rotating ? 'playing' : ''}" t-on-click="toggleRotation">
+                        <span t-esc="state.rotating ? '⏸' : '▶'"/>
+                        <span t-esc="state.rotating ? 'Rotación automática activa' : 'En pausa — datos se siguen actualizando'"/>
+                    </button>
+                </div>
+
+                <div t-attf-class="gp-tab-panel #{state.tab === 'tablero' ? 'active' : ''}">
                 <section class="gp-kpis">
                     <div class="gp-kpi hero">
                         <div class="gp-ring" t-attf-style="--pct: #{Math.round(state.globalProgressPct)}">
@@ -135,6 +145,70 @@
                         </div>
                     </t>
                 </section>
+
+                <section class="gp-extra">
+                    <div class="gp-box">
+                        <div class="gp-emoji">⚡</div>
+                        <div>
+                            <h3>Ritmo del día</h3>
+                            <p t-if="state.rhythm.avg_kg_per_min !== null">
+                                Promedio <strong t-esc="formatRate(state.rhythm.avg_kg_per_min) + ' kg equiv./min'"/> por operario activo ·
+                                <t t-esc="state.rhythm.active_operators"/> operarios identificados por PIN ahora mismo
+                            </p>
+                            <p t-else="">
+                                <t t-esc="state.rhythm.active_operators"/> operarios identificados por PIN ahora mismo · aún sin datos de ritmo
+                            </p>
+                        </div>
+                    </div>
+                    <div class="gp-box">
+                        <div class="gp-emoji">🏆</div>
+                        <div>
+                            <h3>Mejor ritmo de hoy</h3>
+                            <p t-if="state.rhythm.best">
+                                <strong t-esc="state.rhythm.best.name"/> — <t t-esc="state.rhythm.best.lines"/> líneas completadas,
+                                tiempo promedio <t t-esc="formatAvg(state.rhythm.best.avg_line_s)"/> por línea
+                            </p>
+                            <p t-else="">Aún no hay líneas completadas hoy</p>
+                        </div>
+                    </div>
+                </section>
+                </div>
+
+                <div t-attf-class="gp-tab-panel #{state.tab === 'desempeno' ? 'active' : ''}">
+                    <div t-if="!state.ranking.length" class="gp-center">Aún no hay líneas completadas hoy</div>
+                    <section t-else="" class="gp-perf-grid">
+                        <t t-foreach="state.ranking" t-as="op" t-key="op.employee_id">
+                            <div t-attf-class="gp-perf-card #{op.rank === 1 ? 'top' : ''}">
+                                <div class="gp-perf-row">
+                                    <div class="gp-perf-name" t-esc="op.name"/>
+                                    <div class="gp-perf-rank" t-esc="op.rank === 1 ? '🏆 1º del día' : op.rank + 'º'"/>
+                                </div>
+                                <div class="gp-perf-stats">
+                                    <div>
+                                        <div class="n" t-esc="op.lines"/>
+                                        <div class="l">Líneas<t t-if="op.zero_lines"> (<t t-esc="op.zero_lines"/> sin stock)</t></div>
+                                    </div>
+                                    <div>
+                                        <div class="n" t-esc="formatAvg(op.avg_line_s)"/>
+                                        <div class="l">Prom./línea</div>
+                                    </div>
+                                    <div>
+                                        <div class="n" t-esc="formatRate(op.kg_per_min)"/>
+                                        <div class="l">Kg equiv./min</div>
+                                    </div>
+                                </div>
+                                <div t-if="op.products.length" class="gp-perf-note">
+                                    Productos de hoy: <t t-esc="op.products.join(', ')"/>
+                                </div>
+                            </div>
+                        </t>
+                    </section>
+                    <p class="gp-footnote">
+                        Orden por <strong>líneas atendidas</strong>, no por kg: un pedido grande de un solo producto no
+                        debe «ganarle» a quien resolvió muchos pedidos chicos. El tiempo y los kg son contexto, no
+                        deciden el puesto. Agrupado por el operario identificado por PIN.
+                    </p>
+                </div>
             </t>
         </div>
     </t>

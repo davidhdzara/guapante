@@ -223,7 +223,7 @@ class TestPreparationPdsIndicators(TestPreparationPdsOperacion):
             self.assertNotIn(emoji, xml, 'íconos nativos, no emojis')
         self.assertIn('Sin pesar aún', xml)
         self.assertIn('data.stopped_alert_s', js)
-        self.assertEqual(js.count('window.setInterval'), 2)  # los que ya había
+        self.assertEqual(js.count('window.setInterval'), 3)  # respaldo, etiqueta y rotación
 
     # ── permisos reales de «Reportes y PDS» (sin cachés de la fixture) ──
 

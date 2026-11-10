@@ -168,6 +168,57 @@
     .card-header { background-color: transparent; border-bottom-color: var(--gp-border-soft); color: var(--gp-text); }
     .list-group-item { background-color: transparent; color: var(--gp-text-dim); border-color: var(--gp-border-soft); }
     .text-muted { color: var(--gp-text-dim) !important; }
+
+    /* ───────── Pestañas y rotación ───────── */
+    .gp-tabs { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+    .gp-tab, .gp-play {
+        font-family: inherit; cursor: pointer; border: 1px solid var(--gp-border-soft);
+        background: var(--gp-panel-2); color: var(--gp-text-dim); font-size: 13px; font-weight: 600;
+        padding: 9px 18px; border-radius: 50rem; transition: all .2s ease;
+    }
+    .gp-tab.active { background: rgba(34, 197, 94, .14); color: #8be8a7; border-color: rgba(34, 197, 94, .35); }
+    .gp-play { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; }
+    .gp-play.playing { color: #8be8a7; border-color: rgba(34, 197, 94, .35); }
+    .gp-tab-panel { flex: 1 1 0; min-height: 0; display: none; flex-direction: column; }
+    .gp-tab-panel.active { display: flex; }
+
+    /* ───────── Paneles «Ritmo del día» / «Mejor ritmo» ───────── */
+    .gp-extra { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .gp-box {
+        background: var(--gp-panel); border: 1px solid var(--gp-border); border-radius: var(--gp-radius-lg);
+        padding: 14px 20px; box-shadow: var(--gp-shadow); display: flex; align-items: center; gap: 16px;
+    }
+    .gp-emoji {
+        width: 48px; height: 48px; border-radius: 14px; flex: 0 0 auto;
+        background: rgba(34, 197, 94, .12); border: 1px solid rgba(34, 197, 94, .25);
+        display: flex; align-items: center; justify-content: center; font-size: 22px;
+    }
+    .gp-box h3 { margin: 0 0 3px; font-size: 13.5px; font-weight: 700; }
+    .gp-box p { margin: 0; font-size: 12.5px; color: var(--gp-text-dim); line-height: 1.4; }
+    .gp-box strong { color: #bdf5cf; }
+
+    /* ───────── Desempeño por operario ───────── */
+    .gp-perf-grid {
+        flex: 1 1 0; min-height: 0; overflow-y: auto; align-content: start;
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    }
+    .gp-perf-card {
+        background: var(--gp-panel); border: 1px solid var(--gp-border); border-radius: var(--gp-radius-lg);
+        padding: 20px; box-shadow: var(--gp-shadow);
+    }
+    .gp-perf-card.top { border-color: rgba(34, 197, 94, .4); background: linear-gradient(160deg, rgba(34, 197, 94, .08), var(--gp-panel)); }
+    .gp-perf-row { display: flex; align-items: center; justify-content: space-between; }
+    .gp-perf-name { font-size: 16px; font-weight: 700; }
+    .gp-perf-rank {
+        font-size: 11px; font-weight: 700; color: var(--gp-text-faint); background: #101a13;
+        border: 1px solid var(--gp-border-soft); padding: 3px 9px; border-radius: 50rem;
+    }
+    .gp-perf-card.top .gp-perf-rank { background: #ffd27d; border-color: #ffd27d; color: #1f1500; }
+    .gp-perf-stats { display: flex; gap: 18px; margin-top: 16px; }
+    .gp-perf-stats .n { font-size: 20px; font-weight: 800; }
+    .gp-perf-stats .l { font-size: 11px; color: var(--gp-text-dim); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+    .gp-perf-note { font-size: 11.5px; color: var(--gp-text-faint); margin-top: 14px; line-height: 1.5; }
+    .gp-footnote { flex: 0 0 auto; font-size: 12px; color: var(--gp-text-faint); margin: 12px 0 0; }
 }
 
 /* Fuera de la clase raíz solo el nombre de la animación (prefijo gp-). */

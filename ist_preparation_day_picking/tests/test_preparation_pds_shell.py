@@ -88,3 +88,31 @@ class TestPreparationPdsShell(TransactionCase):
         for needle in ('data.kpis', 'data.ranking', 'data.rhythm',
                        'data.session_state'):
             self.assertIn(needle, js, needle)
+
+    # ── F3: pestañas, rotación y ranking ──
+
+    def test_rotation_every_25s_with_pause_and_full_cleanup(self):
+        js = _read('js/preparation_pds_operacion.js')
+        self.assertIn('const ROTATION_MS = 25000;', js)
+        self.assertIn('toggleRotation()', js)
+        self.assertIn('_startRotation()', js)
+        # el temporizador de rotación se limpia al desmontar (y antes de crear otro)
+        unmount = js[js.index('onWillUnmount('):]
+        unmount = unmount[:unmount.index('});')]
+        self.assertIn('this._stopRotation();', unmount)
+        self.assertIn('window.clearInterval(this._rotationIntervalId)', js)
+        self.assertEqual(js.count('window.setInterval'), 3)
+
+    def test_tabs_ranking_and_panels_in_template(self):
+        xml = _read('js/preparation_pds_operacion.xml')
+        for needle in (
+                'Tablero', 'Desempeño por operario', 'Rotación automática activa',
+                'En pausa — datos se siguen actualizando',
+                'state.ranking', 'op.avg_line_s', 'op.kg_per_min', 'op.products',
+                '1º del día', 'Ritmo del día', 'Mejor ritmo de hoy',
+                'state.rhythm.best', 'líneas atendidas'):
+            self.assertIn(needle, xml, needle)
+
+    def test_missing_data_is_shown_as_dash_never_invented(self):
+        js = _read('js/preparation_pds_operacion.js')
+        self.assertEqual(js.count('return "—";'), 2)  # formatAvg y formatRate
