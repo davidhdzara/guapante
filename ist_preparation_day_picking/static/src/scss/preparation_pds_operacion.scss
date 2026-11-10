@@ -1,0 +1,177 @@
+/* PDS Operación — rediseño (David/Tech Lead, 2026-11-10).
+ *
+ * EXCEPCIÓN PUNTUAL a la regla de «sin CSS propio»: solo esta pantalla.
+ * TODO vive bajo `.o_guapante_pds` (clase raíz del componente): ningún
+ * selector fuera de ella, para no poder afectar otras pantallas.
+ * Tokens tomados del mockup kds-preparacion-del-dia.html. La tarjeta del
+ * producto conserva su estructura/contenido (clases Bootstrap); aquí solo se
+ * ajustan colores para dar contraste sobre el fondo oscuro.
+ * Fuente: Inter si el equipo la tiene; si no, la del sistema (sin recursos
+ * externos en una pantalla de bodega). */
+.o_guapante_pds {
+    --gp-dark-green: #155724;
+    --gp-success: #22c55e;
+    --gp-success-dim: #16a34a;
+    --gp-warning: #f59e0b;
+    --gp-danger: #ef4444;
+    --gp-bg: #0e1410;
+    --gp-panel: #141c17;
+    --gp-panel-2: #192219;
+    --gp-border: #263128;
+    --gp-border-soft: #2d3a2f;
+    --gp-text: #eef5ef;
+    --gp-text-dim: #9fb3a3;
+    --gp-text-faint: #6f8577;
+    --gp-radius-lg: 22px;
+    --gp-radius-md: 16px;
+    --gp-shadow: 0 10px 40px rgba(0, 0, 0, .35);
+
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 18px 26px 16px;
+    color: var(--gp-text);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(34, 197, 94, .10), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(21, 87, 36, .25), transparent 55%),
+        var(--gp-bg);
+
+    /* Estados vacíos / cargando / sesión expirada */
+    .gp-center {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: var(--gp-text-dim);
+    }
+
+    /* ───────── Encabezado ───────── */
+    .gp-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .gp-brand { display: flex; align-items: center; gap: 14px; }
+    .gp-mark {
+        width: 46px; height: 46px; border-radius: 14px;
+        background: linear-gradient(145deg, var(--gp-success), var(--gp-dark-green));
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 20px; color: #fff;
+        box-shadow: 0 6px 20px rgba(34, 197, 94, .35);
+    }
+    .gp-brand h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: .01em; }
+    .gp-sub { font-size: 12.5px; color: var(--gp-text-dim); margin-top: 2px; }
+    .gp-cluster { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .gp-pill {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: var(--gp-panel-2); border: 1px solid var(--gp-border-soft);
+        padding: 8px 14px; border-radius: 50rem; font-size: 13px; font-weight: 600;
+        color: var(--gp-text-dim); white-space: nowrap;
+    }
+    .gp-pill.live { color: #bdf5cf; border-color: rgba(34, 197, 94, .35); }
+    .gp-pill.alert { color: #fecaca; border-color: rgba(239, 68, 68, .5); background: rgba(239, 68, 68, .14); }
+    .gp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gp-success); }
+    .gp-dot.pulse { animation: gp-pulse 1.8s ease-in-out infinite; }
+    .gp-state {
+        padding: 9px 16px; border-radius: 50rem; font-weight: 700; font-size: 13px;
+        background: rgba(34, 197, 94, .14); color: #8be8a7; border: 1px solid rgba(34, 197, 94, .3);
+    }
+
+    /* ───────── Franja de KPIs ───────── */
+    .gp-kpis {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: 1.3fr repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+    .gp-kpi {
+        position: relative; overflow: hidden;
+        background: var(--gp-panel); border: 1px solid var(--gp-border);
+        border-radius: var(--gp-radius-lg); padding: 16px 20px;
+        box-shadow: var(--gp-shadow);
+    }
+    .gp-kpi.hero { display: flex; align-items: center; gap: 18px; }
+    .gp-kpi.flag::before {
+        content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, var(--gp-success), transparent);
+    }
+    .gp-ring {
+        --pct: 0;
+        width: 84px; height: 84px; border-radius: 50%; flex: 0 0 auto;
+        background: conic-gradient(var(--gp-success) calc(var(--pct) * 1%), var(--gp-border-soft) 0);
+        display: flex; align-items: center; justify-content: center;
+    }
+    .gp-ring span {
+        width: 64px; height: 64px; border-radius: 50%; background: var(--gp-panel);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 19px; font-weight: 800;
+    }
+    .gp-label { font-size: 12px; color: var(--gp-text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .gp-hero-big { font-size: 15px; font-weight: 700; margin-top: 4px; }
+    .gp-value { font-size: 28px; font-weight: 800; margin-top: 6px; line-height: 1; }
+    .gp-value.ok { color: #8be8a7; }
+    .gp-value.warn { color: #ffd27d; }
+    .gp-delta { font-size: 12px; color: var(--gp-text-faint); margin-top: 6px; }
+
+    /* ───────── Tablero: scroll INDEPENDIENTE por columna ───────── */
+    .gp-board {
+        flex: 1 1 0;
+        min-height: 0;               /* deja que las columnas encojan y scrolleen */
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+    }
+    .gp-col {
+        min-height: 0;
+        display: flex; flex-direction: column;
+        background: var(--gp-panel); border: 1px solid var(--gp-border);
+        border-radius: var(--gp-radius-lg); padding: 14px 14px 10px;
+        box-shadow: var(--gp-shadow);
+    }
+    .gp-col-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 12px; }
+    .gp-col-title { display: flex; align-items: center; gap: 10px; }
+    .gp-col-title h2 { font-size: 14px; font-weight: 700; margin: 0; letter-spacing: .02em; }
+    .gp-sw { width: 10px; height: 10px; border-radius: 3px; }
+    .gp-sw.pending { background: var(--gp-text-faint); }
+    .gp-sw.in_progress { background: var(--gp-warning); }
+    .gp-sw.stopped { background: var(--gp-danger); }
+    .gp-sw.done { background: var(--gp-success); }
+    .gp-count {
+        background: var(--gp-panel-2); border: 1px solid var(--gp-border-soft);
+        border-radius: 50rem; padding: 3px 11px; font-size: 12.5px; font-weight: 700; color: var(--gp-text-dim);
+    }
+    .gp-cards {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;            /* barra propia de cada columna */
+        padding-right: 4px;
+    }
+
+    /* Tarjeta (contenido y estructura INTACTOS): solo contraste sobre fondo oscuro */
+    .card {
+        --bs-card-bg: var(--gp-panel-2);
+        --bs-card-color: var(--gp-text);
+        --bs-card-border-color: var(--gp-border-soft);
+        background-color: var(--gp-panel-2);
+        color: var(--gp-text);
+        border-color: var(--gp-border-soft);
+    }
+    .card-header { background-color: transparent; border-bottom-color: var(--gp-border-soft); color: var(--gp-text); }
+    .list-group-item { background-color: transparent; color: var(--gp-text-dim); border-color: var(--gp-border-soft); }
+    .text-muted { color: var(--gp-text-dim) !important; }
+}
+
+/* Fuera de la clase raíz solo el nombre de la animación (prefijo gp-). */
+@keyframes gp-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .55); }
+    70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+}

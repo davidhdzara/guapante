@@ -55,6 +55,10 @@ class TestPreparationPdsDashboard(TestPreparationPdsOperacion):
             vals.update({'end_dt': now, 'duration_s': seconds})
         return self.env['guapante.preparation.interval'].sudo().create(vals)
 
+    def test_payload_exposes_session_state(self):
+        session, _lines = self._session_three_lines()
+        self.assertEqual(self._board()['session_state'], session.state)
+
     # ── KPIs ──
 
     def test_kpis_match_session_counts(self):

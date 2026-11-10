@@ -16,6 +16,7 @@ import { formatDuration } from "./preparation_picking_time_format";
 // get_pds_operacion_board_data en preparation_pds.py).
 
 const STATUS_ORDER = ["pending", "in_progress", "stopped", "done"];
+const SESSION_STATE_LABELS = { draft: "Borrador", loaded: "En progreso", done: "Terminada" };
 const STATUS_LABELS = {
     pending: "Por hacer",
     in_progress: "En progreso",
@@ -47,6 +48,13 @@ export class PdsOperacionDisplay extends Component {
             pendingLines: 0,
             globalProgressPct: 0,
             columns: { pending: [], in_progress: [], stopped: [], done: [] },
+            sessionState: "loaded",
+            kpis: {
+                boxes: 0, pickings: 0, boxes_match: true, draft_count: 0,
+                distinct_products: 0, not_started: 0,
+            },
+            ranking: [],
+            rhythm: { active_operators: 0, avg_kg_per_min: null, best: null },
             lastUpdatedLabel: "",
             // Indicadores de tiempo (solo lectura): reloj del navegador
             // corregido con server_now; se actualiza en el tick de 1 s.
@@ -165,6 +173,10 @@ export class PdsOperacionDisplay extends Component {
             this.state.pendingLines = data.pending_lines;
             this.state.globalProgressPct = data.global_progress_pct;
             this.state.columns = data.columns;
+            this.state.sessionState = data.session_state || "loaded";
+            this.state.kpis = data.kpis;
+            this.state.ranking = data.ranking;
+            this.state.rhythm = data.rhythm;
             if (previousSessionId !== data.session_id) {
                 // Cambio de jornada (corte de _picking_session_date) —
                 // re-suscribe al canal de bus de la nueva sesión.
@@ -177,6 +189,10 @@ export class PdsOperacionDisplay extends Component {
         this.state.loaded = true;
         this._lastUpdatedPerfNow = performance.now();
         this._refreshUpdatedLabel();
+    }
+
+    get sessionStateLabel() {
+        return SESSION_STATE_LABELS[this.state.sessionState] || this.state.sessionState;
     }
 
     // Segundos transcurridos en el estado actual de la tarjeta (null si el

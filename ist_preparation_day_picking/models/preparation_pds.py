@@ -127,6 +127,7 @@ class PreparationDay(models.Model):
             'stopped_alert_s': self._pds_stopped_alert_seconds(),
             'session_id': Session.id,
             'session_date': fields.Date.to_string(Session.date),
+            'session_state': Session.state,
             'total_lines': Session.total_lines,
             'done_lines': Session.done_lines,
             'pending_lines': Session.pending_lines,

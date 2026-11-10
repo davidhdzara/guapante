@@ -29,3 +29,4 @@ from . import test_preparation_attribute_chips_color
 from . import test_preparation_box_menus
 from . import test_preparation_pds_indicators
 from . import test_preparation_pds_dashboard
+from . import test_preparation_pds_shell
