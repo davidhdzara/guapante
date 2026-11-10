@@ -233,13 +233,17 @@ class TestPreparationPdsIndicators(TestPreparationPdsOperacion):
         (perfil público): el tablero reventaba con AccessError en una petición
         fresca (en las pruebas pasaba por cachés llenos de la fixture)."""
         session, claim = self._one_claim_session()
+        # Las líneas se ordenan por is_done: una vez pesada la primera pasa al
+        # final, así que hay que fijar ambas ANTES de pesar (si no, [1] sería
+        # la misma ya pesada y la otra nunca se cerraría).
+        first, second = session.line_ids
         with patch(REQUEST_PATCH_TARGET_ALIAS, self._request_as(self.operator_a)):
             claim.action_assign()
-        self._weigh(session.line_ids[0], 1.0)
+        self._weigh(first, 1.0)
         data = self._board()
         card = self._card(data, 'in_progress')
         self.assertEqual(card['operator_name'], self.operator_a.name)
-        self._weigh(session.line_ids[1], 1.0)
+        self._weigh(second, 1.0)
         data = self._board()
         self.assertEqual(
             self._card(data, 'done')['operator_name'], self.operator_a.name)
