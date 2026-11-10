@@ -2,7 +2,11 @@
 from odoo import api, fields, models
 from odoo.exceptions import AccessError
 
-from .preparation_day import _date_to_utc_range, _picking_session_date
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _date_to_utc_range,
+)
+
+from .preparation_day import _picking_session_date
 from .preparation_day_product_claim import STOP_REASONS
 
 # Tech Lead, revisión de b63a385: una sola fuente — STOP_REASONS ya
