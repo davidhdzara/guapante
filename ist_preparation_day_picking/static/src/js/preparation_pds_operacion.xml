@@ -42,6 +42,9 @@
                         <div class="progress-bar bg-success" role="progressbar"
                              t-attf-style="width: #{state.globalProgressPct}%"/>
                     </div>
+                    <span t-attf-class="badge rounded-pill fs-5 text-nowrap #{state.columns.stopped.length ? 'text-bg-danger' : 'text-bg-light border border-secondary'}">
+                        <t t-esc="state.columns.stopped.length"/> detenidos ahora
+                    </span>
                     <small class="text-muted text-nowrap" t-esc="state.lastUpdatedLabel"/>
                 </div>
 
@@ -64,6 +67,22 @@
                                         <ul class="list-group list-group-flush">
                                             <li class="list-group-item">
                                                 <t t-esc="card.done_line_count"/> de <t t-esc="card.total_line_count"/> órdenes
+                                                <span t-if="card.zero_line_count" class="badge rounded-pill text-bg-warning ms-1">
+                                                    (<t t-esc="card.zero_line_count"/> sin stock)
+                                                </span>
+                                            </li>
+                                            <li t-if="elapsedLabel(card)" t-attf-class="list-group-item d-flex justify-content-between align-items-center #{isStoppedAlert(card, status) ? 'text-danger fw-bold' : ''}">
+                                                <span>
+                                                    <span t-if="isStoppedAlert(card, status)" class="fa fa-exclamation-triangle me-1"/>
+                                                    ⏱ <t t-esc="elapsedLabel(card)"/>
+                                                </span>
+                                                <span t-if="card.no_weigh_yet" class="badge rounded-pill text-bg-warning">Sin pesar aún</span>
+                                            </li>
+                                            <li t-if="card.expected_kg" class="list-group-item">
+                                                <t t-esc="card.weighed_kg"/> / <t t-esc="card.expected_kg"/> kg
+                                            </li>
+                                            <li t-if="card.waiting_customers" class="list-group-item">
+                                                <t t-esc="card.waiting_customers"/> cliente(s) esperando
                                             </li>
                                             <li t-if="card.operator_name" class="list-group-item">
                                                 👤 <t t-esc="card.operator_name"/>

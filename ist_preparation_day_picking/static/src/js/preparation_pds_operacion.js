@@ -1,6 +1,7 @@
 import { registry } from "@web/core/registry";
 import { Component, useState, onWillStart, onWillUnmount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
+import { formatDuration } from "./preparation_picking_time_format";
 
 // Pantalla A (PDS Operación) — Tech Lead, plan aprobado 2026-11-06.
 // Solo lectura: sin acciones, sin ranking de personas (salvo el
@@ -47,6 +48,11 @@ export class PdsOperacionDisplay extends Component {
             globalProgressPct: 0,
             columns: { pending: [], in_progress: [], stopped: [], done: [] },
             lastUpdatedLabel: "",
+            // Indicadores de tiempo (solo lectura): reloj del navegador
+            // corregido con server_now; se actualiza en el tick de 1 s.
+            nowMs: Date.now(),
+            clockOffsetMs: 0,
+            stoppedAlertS: 1800,
         });
         this.isDestroyed = false;
         this.channel = null;
@@ -143,6 +149,12 @@ export class PdsOperacionDisplay extends Component {
             return;
         }
         this.state.sessionExpired = false;
+        if (data.server_now) {
+            this.state.clockOffsetMs = Date.parse(data.server_now) - Date.now();
+        }
+        if (data.stopped_alert_s) {
+            this.state.stoppedAlertS = data.stopped_alert_s;
+        }
         this.state.hasSession = data.has_session;
         this.state.sessionDate = data.session_date;
         if (data.has_session) {
@@ -167,7 +179,31 @@ export class PdsOperacionDisplay extends Component {
         this._refreshUpdatedLabel();
     }
 
+    // Segundos transcurridos en el estado actual de la tarjeta (null si el
+    // servidor no pudo determinar el inicio: nunca se inventa un tiempo).
+    elapsedSeconds(card) {
+        if (!card.status_since) {
+            return null;
+        }
+        return Math.max(
+            (this.state.nowMs + this.state.clockOffsetMs - Date.parse(card.status_since)) / 1000,
+            0,
+        );
+    }
+
+    elapsedLabel(card) {
+        const seconds = this.elapsedSeconds(card);
+        return seconds === null ? "" : formatDuration(seconds);
+    }
+
+    // Alerta de Detenido: lleva detenido más que el umbral del servidor.
+    isStoppedAlert(card, status) {
+        const seconds = this.elapsedSeconds(card);
+        return status === "stopped" && seconds !== null && seconds > this.state.stoppedAlertS;
+    }
+
     _refreshUpdatedLabel() {
+        this.state.nowMs = Date.now();
         if (!this._lastUpdatedPerfNow) {
             this.state.lastUpdatedLabel = "";
             return;

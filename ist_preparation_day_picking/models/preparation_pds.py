@@ -9,6 +9,16 @@ from .preparation_day_product_claim import STOP_REASONS
 # vive en preparation_day_product_claim.py, no se duplica acá.
 _STOP_REASON_LABELS = dict(STOP_REASONS)
 
+PDS_STOPPED_ALERT_PARAM = 'ist_preparation_day_picking.pds_stopped_alert_minutes'
+PDS_STOPPED_ALERT_DEFAULT = 30
+PDS_STOPPED_ALERT_MIN = 1
+PDS_STOPPED_ALERT_MAX = 1440
+
+
+def _iso_utc(value):
+    """Datetime naive (UTC, como los guarda Odoo) → ISO con Z, o False."""
+    return value.strftime('%Y-%m-%dT%H:%M:%SZ') if value else False
+
 
 class PreparationDay(models.Model):
     _inherit = 'guapante.preparation.day'
@@ -61,6 +71,15 @@ class PreparationDay(models.Model):
             }
 
         columns = {'pending': [], 'in_progress': [], 'stopped': [], 'done': []}
+        # Una sola búsqueda de los intervalos 'working' abiertos de la
+        # sesión (no una por tarjeta): ~100+ tarjetas por jornada.
+        # sudo() acotado a esta lectura: «Reportes y PDS» no es lector del
+        # modelo de intervalos (solo group_preparation_admin lo es).
+        open_working = self.env['guapante.preparation.interval'].sudo().search([
+            ('wizard_id', '=', Session.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '=', False),
+        ])
         for claim in Session.product_claim_ids:
             Lines = claim._get_lines()
             if not Lines:
@@ -72,6 +91,8 @@ class PreparationDay(models.Model):
                 'done_line_count': claim.total_line_count - claim.pending_line_count,
                 'total_line_count': claim.total_line_count,
             }
+            card.update(self._pds_card_indicators(
+                claim, Lines, Session, open_working))
             if claim.status == 'in_progress':
                 card['operator_name'] = claim.assigned_employee_id.name or False
             elif claim.status == 'done':
@@ -99,6 +120,8 @@ class PreparationDay(models.Model):
 
         return {
             'has_session': True,
+            'server_now': _iso_utc(fields.Datetime.now()),
+            'stopped_alert_s': self._pds_stopped_alert_seconds(),
             'session_id': Session.id,
             'session_date': fields.Date.to_string(Session.date),
             'total_lines': Session.total_lines,
@@ -119,4 +142,65 @@ class PreparationDay(models.Model):
             'tag': 'guapante_pds_operacion',
             'target': 'fullscreen',
             'name': 'PDS Operación',
+        }
+
+    @api.model
+    def _pds_stopped_alert_seconds(self):
+        """Umbral (s) a partir del cual un Detenido se marca como alerta.
+        Parámetro `ist_preparation_day_picking.pds_stopped_alert_minutes`
+        (default 30, mín 1, máx 1440; inválido → 30)."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(
+            PDS_STOPPED_ALERT_PARAM, str(PDS_STOPPED_ALERT_DEFAULT))
+        try:
+            minutes = int(float(raw))
+        except (TypeError, ValueError):
+            minutes = PDS_STOPPED_ALERT_DEFAULT
+        minutes = max(PDS_STOPPED_ALERT_MIN, min(PDS_STOPPED_ALERT_MAX, minutes))
+        return minutes * 60
+
+    @api.model
+    def _pds_delivery_partner(self, order):
+        """Dirección de entrega de una orden (David/Tech Lead, 2026-11-10):
+        `partner_shipping_id`, NO partner_id ni el padre — cada dirección es
+        una entrega física distinta. Un solo lugar para cambiarlo. sudo()
+        acotado: «Reportes y PDS» puede no tener acceso de lectura a Ventas."""
+        return order.sudo().partner_shipping_id
+
+    @api.model
+    def _pds_card_indicators(self, claim, Lines, Session, open_working):
+        """Indicadores de solo lectura de una tarjeta del PDS Operación
+        (tiempo en el estado actual, kg, clientes esperando, sin stock,
+        sin pesar). Nada de esto escribe ni usa sudo."""
+        status = claim.status
+        pending = Lines.filtered(lambda l: not l.is_done)
+        done = Lines - pending
+        weighed = done.filtered(lambda l: l.actual_kg > 0)
+        # Racha actual del operario ASIGNADO (no acumulado): intervalo
+        # 'working' abierto de ese claim y ese operario, el más reciente.
+        working = open_working.filtered(
+            lambda i: i.claim_id == claim
+            and i.employee_id == claim.assigned_employee_id
+        ).sorted('start_dt', reverse=True)[:1]
+        since = False
+        if status == 'stopped':
+            since = claim.stopped_since
+        elif status == 'in_progress':
+            since = working.start_dt or claim.assigned_date
+        elif status == 'pending':
+            since = Session.date_start
+        elif status == 'done':
+            stamped = done.filtered('done_date')
+            since = max(stamped.mapped('done_date')) if stamped else False
+        return {
+            'status_since': _iso_utc(since),
+            'weighed_kg': round(sum(weighed.mapped('actual_kg')), 2),
+            'expected_kg': round(sum(Lines.mapped('estimated_kg')), 2),
+            'waiting_customers': len({
+                self._pds_delivery_partner(l.sale_order_id).id
+                for l in pending if l.sale_order_id
+            }),
+            'zero_line_count': len(done.filtered(lambda l: l.actual_kg == 0)),
+            'no_weigh_yet': bool(
+                status == 'in_progress' and working
+                and not working.lines_done and not working.first_weigh_dt),
         }
