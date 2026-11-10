@@ -43,7 +43,10 @@ class TestPreparationPdsDashboard(TestPreparationPdsOperacion):
         })
 
     def _interval(self, session, claim, employee, seconds, lines, kg, open_=False):
-        now = fields.Datetime.now()
+        # Mismo reloj que _board() (parcheado): un intervalo abierto dura
+        # «seconds» al leer el tablero, no los días que separan el reloj real
+        # de la fecha de entrega del fixture.
+        now = self._now_before_switch_hour()
         vals = {
             'wizard_id': session.id, 'claim_id': claim.id,
             'employee_id': employee.id, 'kind': 'working',
