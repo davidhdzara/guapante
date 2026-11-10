@@ -174,15 +174,18 @@ export class PickingLinesDisplay extends Component {
         if (attrIds.length) {
             const attrs = await this.orm.read(
                 "product.template.attribute.value", attrIds,
-                ["name", "display_name", "color"],
+                ["name", "display_name"],
             );
             attrById = Object.fromEntries(attrs.map((a) => [a.id, a]));
         }
-        // Colores nativos (Tech Lead, 2026-10-31): mismo campo `color`
-        // (0-11) que ya usa el widget many2many_tags en el backend —
-        // el chip se pinta con la clase o_tag_color_N del core de Odoo
-        // (web/static/src/core/tags_list), cero CSS propio.
-        //
+        // Chips NEUTROS (Tech Lead, 2026-11-10, punto 4): el `color` (0-11)
+        // de product.template.attribute.value es el índice que Odoo asigna
+        // al azar al configurar CADA producto — verificado en producción:
+        // el mismo «Verde» sale con 9 colores distintos y html_color está
+        // vacío en los 8 valores. Un color sin significado puede inducir a
+        // pesar/entregar la variante equivocada, así que el chip va SIEMPRE
+        // en o_tag_color_0 (neutro) y solo el texto informa. «Color con
+        // significado» queda en backlog (por valor, no por producto).
         // Texto (David, 2026-10-31): "Atributo: Valor" (display_name
         // nativo) cuando cabe sin alargar el chip — la columna de
         // Nivel 2 es angosta (w-25). Con los atributos reales de
@@ -205,7 +208,7 @@ export class PickingLinesDisplay extends Component {
                     name: (
                         fullText && fullText.length <= MAX_CHIP_TEXT_LENGTH
                     ) ? fullText : (attr?.name || ""),
-                    color: attr?.color || 0,
+                    color: 0,
                 };
             });
         }

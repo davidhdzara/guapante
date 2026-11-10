@@ -24,3 +24,4 @@ from . import test_preparation_reports_group
 from . import test_preparation_js_call_kw
 from . import test_preparation_cancelled_order_claims
 from . import test_preparation_stopped_products
+from . import test_preparation_attribute_chips_neutral
