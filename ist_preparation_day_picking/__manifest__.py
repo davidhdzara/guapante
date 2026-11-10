@@ -29,7 +29,6 @@
         'data/ir_cron_release_claims.xml',
         'data/ir_cron_release_intervals.xml',
         'data/ir_config_parameter_chip_colors.xml',
-        'data/ir_config_parameter_pds_admin.xml',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
@@ -45,8 +44,6 @@
     ],
     'assets': {
         'web.assets_backend': [
-            'ist_preparation_day_picking/static/src/js/preparation_pds_admin.xml',
-            'ist_preparation_day_picking/static/src/js/preparation_pds_admin.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_idle_watcher.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_install_menu.js',
             'ist_preparation_day_picking/static/src/js/preparation_picking_app.js',

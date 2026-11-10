@@ -9,11 +9,6 @@ from .preparation_day_product_claim import STOP_REASONS
 # vive en preparation_day_product_claim.py, no se duplica acá.
 _STOP_REASON_LABELS = dict(STOP_REASONS)
 
-PDS_ADMIN_REFRESH_PARAM = 'ist_preparation_day_picking.pds_admin_refresh_minutes'
-PDS_ADMIN_REFRESH_DEFAULT = 5
-PDS_ADMIN_REFRESH_MIN = 1
-PDS_ADMIN_REFRESH_MAX = 60
-
 
 class PreparationDay(models.Model):
     _inherit = 'guapante.preparation.day'
@@ -125,23 +120,3 @@ class PreparationDay(models.Model):
             'target': 'fullscreen',
             'name': 'PDS Operación',
         }
-
-    @api.model
-    def get_pds_admin_refresh_minutes(self):
-        """Cada cuántos minutos se refresca el PDS administrativo (Pantalla
-        B, entrega 2). Parámetro del sistema
-        `ist_preparation_day_picking.pds_admin_refresh_minutes` (default 5,
-        mínimo 1, máximo 60; inválido → 5). Solo «Reportes y PDS». El
-        componente lo llama en cada vuelta: sirve a la vez como sonda de que
-        la sesión sigue viva."""
-        if not self.env.user.has_group(
-                'ist_preparation_day_picking.group_preparation_reports_pds'):
-            raise AccessError(
-                'Solo «Reportes y PDS» puede ver el PDS administrativo.')
-        raw = self.env['ir.config_parameter'].sudo().get_param(
-            PDS_ADMIN_REFRESH_PARAM, str(PDS_ADMIN_REFRESH_DEFAULT))
-        try:
-            minutes = int(float(raw))
-        except (TypeError, ValueError):
-            return PDS_ADMIN_REFRESH_DEFAULT
-        return max(PDS_ADMIN_REFRESH_MIN, min(PDS_ADMIN_REFRESH_MAX, minutes))
