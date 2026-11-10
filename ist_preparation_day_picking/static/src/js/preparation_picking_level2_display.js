@@ -174,18 +174,16 @@ export class PickingLinesDisplay extends Component {
         if (attrIds.length) {
             const attrs = await this.orm.read(
                 "product.template.attribute.value", attrIds,
-                ["name", "display_name"],
+                ["name", "display_name", "guapante_chip_color"],
             );
             attrById = Object.fromEntries(attrs.map((a) => [a.id, a]));
         }
-        // Chips NEUTROS (Tech Lead, 2026-11-10, punto 4): el `color` (0-11)
-        // de product.template.attribute.value es el índice que Odoo asigna
-        // al azar al configurar CADA producto — verificado en producción:
-        // el mismo «Verde» sale con 9 colores distintos y html_color está
-        // vacío en los 8 valores. Un color sin significado puede inducir a
-        // pesar/entregar la variante equivocada, así que el chip va SIEMPRE
-        // en o_tag_color_0 (neutro) y solo el texto informa. «Color con
-        // significado» queda en backlog (por valor, no por producto).
+        // Color POR VALOR (David, 2026-11-10, punto 3): el `color` nativo de
+        // product.template.attribute.value es aleatorio por producto (el
+        // mismo «Verde» sale con 9 colores), así que NO se usa. El servidor
+        // calcula `guapante_chip_color` desde el parámetro del sistema
+        // ist_preparation_day_picking.attribute_chip_colors (nombre del
+        // valor → clase nativa o_tag_color_N); sin mapear → 0 (neutro).
         // Texto (David, 2026-10-31): "Atributo: Valor" (display_name
         // nativo) cuando cabe sin alargar el chip — la columna de
         // Nivel 2 es angosta (w-25). Con los atributos reales de
@@ -208,7 +206,7 @@ export class PickingLinesDisplay extends Component {
                     name: (
                         fullText && fullText.length <= MAX_CHIP_TEXT_LENGTH
                     ) ? fullText : (attr?.name || ""),
-                    color: 0,
+                    color: attr?.guapante_chip_color || 0,
                 };
             });
         }

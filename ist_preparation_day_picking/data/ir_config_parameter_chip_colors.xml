@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Colores de los chips de «Grado de Madurez» en Nivel 2 (David,
+         2026-11-10). Clases nativas o_tag_color_N: 10 verde, 3 amarillo,
+         2 naranja, 1 rojo, 0 neutro. «Tamaño» no se mapea (neutro).
+         noupdate: un ajuste posterior en Ajustes > Técnico > Parámetros
+         no se pisa con un -u. -->
+    <record id="param_attribute_chip_colors" model="ir.config_parameter">
+        <field name="key">ist_preparation_day_picking.attribute_chip_colors</field>
+        <field name="value">{"Verde": 10, "Pinton": 3, "Pinton-Maduro": 2, "Maduro": 1, "Cascara Negra": 0}</field>
+    </record>
+</odoo>

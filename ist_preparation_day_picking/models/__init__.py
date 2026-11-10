@@ -12,3 +12,4 @@ from . import preparation_interval_report
 from . import hr_employee
 from . import preparation_pds
 from . import stock_picking
+from . import product_template_attribute_value

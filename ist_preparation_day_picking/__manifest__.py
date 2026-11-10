@@ -28,6 +28,7 @@
         'security/ir.model.access.csv',
         'data/ir_cron_release_claims.xml',
         'data/ir_cron_release_intervals.xml',
+        'data/ir_config_parameter_chip_colors.xml',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
