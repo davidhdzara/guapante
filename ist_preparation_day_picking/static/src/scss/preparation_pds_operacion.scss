@@ -168,6 +168,10 @@
     .card-header { background-color: transparent; border-bottom-color: var(--gp-border-soft); color: var(--gp-text); }
     .list-group-item { background-color: transparent; color: var(--gp-text-dim); border-color: var(--gp-border-soft); }
     .text-muted { color: var(--gp-text-dim) !important; }
+    // Odoo pinta h1-h6/.h1-.h6 con su color oscuro de título: sobre el fondo
+    // oscuro del PDS dejaba ilegibles el nombre del producto, los títulos de
+    // columna y los de los paneles.
+    h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 { color: var(--gp-text); }
 
     /* ───────── Pestañas y rotación ───────── */
     .gp-tabs { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
