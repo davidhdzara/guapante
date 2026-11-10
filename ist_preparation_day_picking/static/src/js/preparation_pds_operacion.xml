@@ -2,59 +2,107 @@
 <templates xml:space="preserve">
     <!-- Pantalla A (PDS Operación) — ver preparation_pds_operacion.js.
 
-         Sin CSS propio (regla de David, confirmada por Tech Lead para
-         esta pantalla): solo clases Bootstrap/Odoo nativas (card,
-         badge/text-bg-*, progress, list-group, d-flex, text-muted,
-         fs-*/display-*/gap-*), igual que ya hace Nivel 1
-         (preparation_picking_level1_display.xml) — misma clase
-         o_mrp_display/o_mrp_display_record de mrp_workorder (en
-         depends, sin copiar archivos — OEEL-1). Sin buscador, sin
-         filtros, sin botones: de solo lectura. -->
+         REDISEÑO (David/Tech Lead, 2026-11-10): tema oscuro del mockup
+         kds-preparacion-del-dia.html, con CSS propio SOLO para esta pantalla
+         (static/src/scss/preparation_pds_operacion.scss, todo bajo la clase
+         raíz .o_guapante_pds). La TARJETA del producto conserva su
+         estructura y contenido (David: «las tarjetas están perfectas»).
+         Solo lectura: sin buscador, filtros ni acciones. -->
     <t t-name="ist_preparation_day_picking.PdsOperacionDisplay">
-        <div class="o_action o_mrp_display h-100 d-flex flex-column">
+        <div class="o_action o_mrp_display o_guapante_pds">
 
-            <div t-if="!state.loaded" class="flex-grow-1 d-flex align-items-center justify-content-center">
-                <span class="fa fa-spin fa-circle-o-notch fs-1 text-muted"/>
+            <div t-if="!state.loaded" class="gp-center">
+                <span class="fa fa-spin fa-circle-o-notch fs-1"/>
             </div>
 
-            <div t-elif="state.sessionExpired" class="flex-grow-1 d-flex align-items-center justify-content-center">
-                <div class="text-center">
-                    <p class="display-4 text-muted">Sesión expirada</p>
-                    <p class="fs-4 text-muted">Vuelve a iniciar sesión en este computador para reanudar la pantalla.</p>
+            <div t-elif="state.sessionExpired" class="gp-center">
+                <div>
+                    <p class="display-4">Sesión expirada</p>
+                    <p class="fs-4">Vuelve a iniciar sesión en este computador para reanudar la pantalla.</p>
                 </div>
             </div>
 
-            <div t-elif="!state.hasSession" class="flex-grow-1 d-flex align-items-center justify-content-center">
-                <div class="text-center">
-                    <p class="display-4 text-muted">Sin jornada abierta</p>
-                    <p class="fs-4 text-muted" t-esc="state.sessionDate"/>
+            <div t-elif="!state.hasSession" class="gp-center">
+                <div>
+                    <p class="display-4">Sin jornada abierta</p>
+                    <p class="fs-4" t-esc="state.sessionDate"/>
                 </div>
             </div>
 
             <t t-else="">
-                <div class="o_control_panel d-flex justify-content-between align-items-center gap-3 px-3 py-2 border-bottom">
-                    <div class="d-flex align-items-baseline gap-3">
-                        <span class="display-6 mb-0" t-esc="state.doneLines + ' / ' + state.totalLines"/>
-                        <span class="fs-3 text-muted" t-esc="Math.round(state.globalProgressPct) + '%'"/>
-                        <span class="fs-5 text-muted" t-esc="state.pendingLines + ' pendientes'"/>
+                <header class="gp-header">
+                    <div class="gp-brand">
+                        <div class="gp-mark">G</div>
+                        <div>
+                            <h1>Preparación del Día</h1>
+                            <div class="gp-sub">Comercializadora y Productora Guapante · Bodega</div>
+                        </div>
                     </div>
-                    <div class="progress flex-grow-1 mx-3">
-                        <div class="progress-bar bg-success" role="progressbar"
-                             t-attf-style="width: #{state.globalProgressPct}%"/>
+                    <div class="gp-cluster">
+                        <span class="gp-state" t-esc="'● ' + sessionStateLabel"/>
+                        <span class="gp-pill" t-esc="'Jornada ' + state.sessionDate"/>
+                        <span t-attf-class="gp-pill #{state.columns.stopped.length ? 'alert' : ''}">
+                            <t t-esc="state.columns.stopped.length"/> detenidos ahora
+                        </span>
+                        <span class="gp-pill live"><span class="gp-dot pulse"/><t t-esc="state.lastUpdatedLabel"/></span>
                     </div>
-                    <span t-attf-class="badge rounded-pill fs-5 text-nowrap #{state.columns.stopped.length ? 'text-bg-danger' : 'text-bg-light border border-secondary'}">
-                        <t t-esc="state.columns.stopped.length"/> detenidos ahora
-                    </span>
-                    <small class="text-muted text-nowrap" t-esc="state.lastUpdatedLabel"/>
+                </header>
+
+                <div class="gp-tabs">
+                    <button type="button" t-attf-class="gp-tab #{state.tab === 'tablero' ? 'active' : ''}" t-on-click="() => this.showTab('tablero')">📋 Tablero</button>
+                    <button type="button" t-attf-class="gp-tab #{state.tab === 'desempeno' ? 'active' : ''}" t-on-click="() => this.showTab('desempeno')">👥 Desempeño por operario</button>
+                    <button type="button" t-attf-class="gp-play #{state.rotating ? 'playing' : ''}" t-on-click="toggleRotation">
+                        <span t-esc="state.rotating ? '⏸' : '▶'"/>
+                        <span t-esc="state.rotating ? 'Rotación automática activa' : 'En pausa — datos se siguen actualizando'"/>
+                    </button>
                 </div>
 
-                <div class="o_mrp_display_records flex-grow-1 m-2 d-flex gap-3 overflow-auto">
+                <div t-attf-class="gp-tab-panel #{state.tab === 'tablero' ? 'active' : ''}">
+                <section class="gp-kpis">
+                    <div class="gp-kpi hero">
+                        <div class="gp-ring" t-attf-style="--pct: #{Math.round(state.globalProgressPct)}">
+                            <span t-esc="Math.round(state.globalProgressPct) + '%'"/>
+                        </div>
+                        <div>
+                            <div class="gp-label">Progreso general</div>
+                            <div class="gp-hero-big"><t t-esc="state.doneLines"/> de <t t-esc="state.totalLines"/> líneas de picking completadas</div>
+                        </div>
+                    </div>
+                    <div class="gp-kpi flag">
+                        <div class="gp-label">Líneas de picking pendientes</div>
+                        <div class="gp-value warn" t-esc="state.pendingLines"/>
+                        <div class="gp-delta">1 línea = 1 producto de 1 pedido por recolectar</div>
+                    </div>
+                    <div class="gp-kpi flag">
+                        <div class="gp-label">Líneas de picking completadas</div>
+                        <div class="gp-value ok" t-esc="state.doneLines"/>
+                        <div class="gp-delta">de <t t-esc="state.totalLines"/> en total</div>
+                    </div>
+                    <div class="gp-kpi flag">
+                        <div class="gp-label">Cajas vs. Pickings (pedidos)</div>
+                        <div t-attf-class="gp-value #{state.kpis.boxes_match ? 'ok' : 'warn'}">
+                            <t t-esc="state.kpis.boxes_match ? '✓ ' : '⚠ '"/><t t-esc="state.kpis.boxes"/> <t t-esc="state.kpis.boxes_match ? '=' : '≠'"/> <t t-esc="state.kpis.pickings"/>
+                        </div>
+                        <div class="gp-delta"><t t-esc="state.kpis.draft_count"/> cotizaciones sin confirmar</div>
+                    </div>
+                    <div class="gp-kpi flag">
+                        <div class="gp-label">Productos distintos</div>
+                        <div class="gp-value" t-esc="state.kpis.distinct_products"/>
+                        <div class="gp-delta"><t t-esc="state.kpis.not_started"/> sin iniciar</div>
+                    </div>
+                </section>
+
+                <section class="gp-board">
                     <t t-foreach="statusOrder" t-as="status" t-key="status">
-                        <div class="d-flex flex-column w-25">
-                            <div class="d-flex align-items-center mb-2 text-muted">
-                                <strong class="fs-5" t-esc="statusLabels[status] + ' (' + state.columns[status].length + ')'"/>
+                        <div class="gp-col">
+                            <div class="gp-col-head">
+                                <div class="gp-col-title">
+                                    <span t-attf-class="gp-sw #{status}"/>
+                                    <h2 t-esc="statusLabels[status]"/>
+                                </div>
+                                <span class="gp-count" t-esc="state.columns[status].length"/>
                             </div>
-                            <div class="d-flex flex-column overflow-auto">
+                            <div class="gp-cards">
                                 <t t-foreach="state.columns[status]" t-as="card" t-key="card.claim_id">
                                     <div class="o_mrp_display_record card border rounded m-0 mb-2">
                                         <div class="card-header">
@@ -96,6 +144,70 @@
                             </div>
                         </div>
                     </t>
+                </section>
+
+                <section class="gp-extra">
+                    <div class="gp-box">
+                        <div class="gp-emoji">⚡</div>
+                        <div>
+                            <h3>Ritmo del día</h3>
+                            <p t-if="state.rhythm.avg_kg_per_min !== null">
+                                Promedio <strong t-esc="formatRate(state.rhythm.avg_kg_per_min) + ' kg equiv./min'"/> por operario activo ·
+                                <t t-esc="state.rhythm.active_operators"/> operarios identificados por PIN ahora mismo
+                            </p>
+                            <p t-else="">
+                                <t t-esc="state.rhythm.active_operators"/> operarios identificados por PIN ahora mismo · aún sin datos de ritmo
+                            </p>
+                        </div>
+                    </div>
+                    <div class="gp-box">
+                        <div class="gp-emoji">🏆</div>
+                        <div>
+                            <h3>Mejor ritmo de hoy</h3>
+                            <p t-if="state.rhythm.best">
+                                <strong t-esc="state.rhythm.best.name"/> — <t t-esc="state.rhythm.best.lines"/> líneas completadas,
+                                tiempo promedio <t t-esc="formatAvg(state.rhythm.best.avg_line_s)"/> por línea
+                            </p>
+                            <p t-else="">Aún no hay líneas completadas hoy</p>
+                        </div>
+                    </div>
+                </section>
+                </div>
+
+                <div t-attf-class="gp-tab-panel #{state.tab === 'desempeno' ? 'active' : ''}">
+                    <div t-if="!state.ranking.length" class="gp-center">Aún no hay líneas completadas hoy</div>
+                    <section t-else="" class="gp-perf-grid">
+                        <t t-foreach="state.ranking" t-as="op" t-key="op.employee_id">
+                            <div t-attf-class="gp-perf-card #{op.rank === 1 ? 'top' : ''}">
+                                <div class="gp-perf-row">
+                                    <div class="gp-perf-name" t-esc="op.name"/>
+                                    <div class="gp-perf-rank" t-esc="op.rank === 1 ? '🏆 1º del día' : op.rank + 'º'"/>
+                                </div>
+                                <div class="gp-perf-stats">
+                                    <div>
+                                        <div class="n" t-esc="op.lines"/>
+                                        <div class="l">Líneas<t t-if="op.zero_lines"> (<t t-esc="op.zero_lines"/> sin stock)</t></div>
+                                    </div>
+                                    <div>
+                                        <div class="n" t-esc="formatAvg(op.avg_line_s)"/>
+                                        <div class="l">Prom./línea</div>
+                                    </div>
+                                    <div>
+                                        <div class="n" t-esc="formatRate(op.kg_per_min)"/>
+                                        <div class="l">Kg equiv./min</div>
+                                    </div>
+                                </div>
+                                <div t-if="op.products.length" class="gp-perf-note">
+                                    Productos de hoy: <t t-esc="op.products.join(', ')"/>
+                                </div>
+                            </div>
+                        </t>
+                    </section>
+                    <p class="gp-footnote">
+                        Orden por <strong>líneas atendidas</strong>, no por kg: un pedido grande de un solo producto no
+                        debe «ganarle» a quien resolvió muchos pedidos chicos. El tiempo y los kg son contexto, no
+                        deciden el puesto. Agrupado por el operario identificado por PIN.
+                    </p>
                 </div>
             </t>
         </div>

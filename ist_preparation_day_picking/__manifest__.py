@@ -1,6 +1,6 @@
 {
     'name': 'Picking (Guapante)',
-    'version': '18.0.1.4.0',
+    'version': '18.0.1.5.0',
     'category': 'Inventory/Inventory',
     'summary': 'Pantalla kanban a pantalla completa para pesaje de Picking',
     'description': """
@@ -63,6 +63,7 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.xml',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.js',
+            'ist_preparation_day_picking/static/src/scss/preparation_pds_operacion.scss',
             'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.xml',
             'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.js',
         ],

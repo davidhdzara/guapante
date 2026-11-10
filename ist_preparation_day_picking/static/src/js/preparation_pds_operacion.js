@@ -16,6 +16,7 @@ import { formatDuration } from "./preparation_picking_time_format";
 // get_pds_operacion_board_data en preparation_pds.py).
 
 const STATUS_ORDER = ["pending", "in_progress", "stopped", "done"];
+const SESSION_STATE_LABELS = { draft: "Borrador", loaded: "En progreso", done: "Terminada" };
 const STATUS_LABELS = {
     pending: "Por hacer",
     in_progress: "En progreso",
@@ -24,6 +25,8 @@ const STATUS_LABELS = {
 };
 
 const BACKUP_REFRESH_MS = 30000;
+const ROTATION_MS = 25000;
+const TABS = ["tablero", "desempeno"];
 const UPDATED_LABEL_TICK_MS = 1000;
 const SESSION_EXPIRED_EXCEPTION = "odoo.http.SessionExpiredException";
 
@@ -47,6 +50,15 @@ export class PdsOperacionDisplay extends Component {
             pendingLines: 0,
             globalProgressPct: 0,
             columns: { pending: [], in_progress: [], stopped: [], done: [] },
+            sessionState: "loaded",
+            tab: "tablero",
+            rotating: true,
+            kpis: {
+                boxes: 0, pickings: 0, boxes_match: true, draft_count: 0,
+                distinct_products: 0, not_started: 0,
+            },
+            ranking: [],
+            rhythm: { active_operators: 0, avg_kg_per_min: null, best: null },
             lastUpdatedLabel: "",
             // Indicadores de tiempo (solo lectura): reloj del navegador
             // corregido con server_now; se actualiza en el tick de 1 s.
@@ -59,6 +71,7 @@ export class PdsOperacionDisplay extends Component {
         this._lastUpdatedPerfNow = null;
         this._backupIntervalId = null;
         this._labelTickIntervalId = null;
+        this._rotationIntervalId = null;
         this.onBusNotif = this.onBusNotif.bind(this);
         this.onBusReconnect = this.onBusReconnect.bind(this);
 
@@ -71,6 +84,7 @@ export class PdsOperacionDisplay extends Component {
             this._labelTickIntervalId = window.setInterval(() => {
                 this._refreshUpdatedLabel();
             }, UPDATED_LABEL_TICK_MS);
+            this._startRotation();
         });
         onWillUnmount(() => {
             this.isDestroyed = true;
@@ -80,6 +94,7 @@ export class PdsOperacionDisplay extends Component {
             if (this._labelTickIntervalId) {
                 window.clearInterval(this._labelTickIntervalId);
             }
+            this._stopRotation();
             this.busService.removeEventListener("reconnect", this.onBusReconnect);
             this._unsubscribeChannel();
         });
@@ -165,6 +180,10 @@ export class PdsOperacionDisplay extends Component {
             this.state.pendingLines = data.pending_lines;
             this.state.globalProgressPct = data.global_progress_pct;
             this.state.columns = data.columns;
+            this.state.sessionState = data.session_state || "loaded";
+            this.state.kpis = data.kpis;
+            this.state.ranking = data.ranking;
+            this.state.rhythm = data.rhythm;
             if (previousSessionId !== data.session_id) {
                 // Cambio de jornada (corte de _picking_session_date) —
                 // re-suscribe al canal de bus de la nueva sesión.
@@ -177,6 +196,63 @@ export class PdsOperacionDisplay extends Component {
         this.state.loaded = true;
         this._lastUpdatedPerfNow = performance.now();
         this._refreshUpdatedLabel();
+    }
+
+    // ── Pestañas y rotación (TV sin control): alterna Tablero ↔ Desempeño cada
+    // 25 s. Pausar congela QUÉ vista se ve; los datos siguen actualizándose
+    // por el bus y el respaldo de 30 s. ──
+    _startRotation() {
+        this._stopRotation();
+        if (!this.state.rotating) {
+            return;
+        }
+        this._rotationIntervalId = window.setInterval(() => {
+            const next = (TABS.indexOf(this.state.tab) + 1) % TABS.length;
+            this.state.tab = TABS[next];
+        }, ROTATION_MS);
+    }
+
+    _stopRotation() {
+        if (this._rotationIntervalId) {
+            window.clearInterval(this._rotationIntervalId);
+            this._rotationIntervalId = null;
+        }
+    }
+
+    showTab(tab) {
+        this.state.tab = tab;
+        this._startRotation(); // reinicia la cuenta de 25 s desde el cambio manual
+    }
+
+    toggleRotation() {
+        this.state.rotating = !this.state.rotating;
+        if (this.state.rotating) {
+            this._startRotation();
+        } else {
+            this._stopRotation();
+        }
+    }
+
+    // 100 s → "1m 40s"; sin dato → "—" (nunca se inventa un tiempo).
+    formatAvg(seconds) {
+        if (seconds === null || seconds === undefined) {
+            return "—";
+        }
+        const total = Math.max(Math.round(seconds), 0);
+        const minutes = Math.floor(total / 60);
+        const rest = String(total % 60).padStart(2, "0");
+        return minutes ? `${minutes}m ${rest}s` : `${total}s`;
+    }
+
+    formatRate(value) {
+        if (value === null || value === undefined) {
+            return "—";
+        }
+        return value.toFixed(1).replace(".", ",");
+    }
+
+    get sessionStateLabel() {
+        return SESSION_STATE_LABELS[this.state.sessionState] || this.state.sessionState;
     }
 
     // Segundos transcurridos en el estado actual de la tarjeta (null si el

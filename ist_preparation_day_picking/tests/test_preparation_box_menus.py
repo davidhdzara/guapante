@@ -24,7 +24,7 @@ class TestPreparationBoxMenus(TransactionCase):
 
     def test_no_root_menu_is_named_like_an_xmlid(self):
         roots = self.env['ir.ui.menu'].with_context(
-            ir_ui_menu_full_list=True).search([('parent_id', '=', False)])
+            **{'ir.ui.menu.full_list': True}).search([('parent_id', '=', False)])
         self.assertFalse([m.name for m in roots if m.name.startswith('ist_preparation')])
 
     def test_admin_tools_are_grouped_under_administracion(self):
@@ -46,10 +46,10 @@ class TestPreparationBoxMenus(TransactionCase):
 
     def test_root_menu_has_only_the_expected_first_level_entries(self):
         root = self.env.ref('ist_preparation_day.menu_preparation_day_root')
-        # ir_ui_menu_full_list: sin el filtro de visibilidad por grupos del
+        # 'ir.ui.menu.full_list' (con puntos, no guiones bajos): sin el filtro de visibilidad por grupos del
         # usuario de la prueba (sudo() no lo salta).
         names = set(self.env['ir.ui.menu'].with_context(
-            ir_ui_menu_full_list=True).search(
+            **{'ir.ui.menu.full_list': True}).search(
             [('parent_id', '=', root.id)]).mapped('name'))
         self.assertEqual(names, {
             'Sesiones', 'Pantallas', 'Reportes', 'Administración',
