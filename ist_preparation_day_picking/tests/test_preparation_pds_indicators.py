@@ -213,6 +213,10 @@ class TestPreparationPdsIndicators(TestPreparationPdsOperacion):
         self.assertIn('state.columns.stopped.length', xml)
         self.assertIn('detenidos ahora', xml)
         self.assertIn('sin stock', xml)
+        self.assertIn('fa fa-clock-o', xml)
+        self.assertIn('fa fa-user', xml)
+        for emoji in ('⏱', '👤'):
+            self.assertNotIn(emoji, xml, 'íconos nativos, no emojis')
         self.assertIn('Sin pesar aún', xml)
         self.assertIn('data.stopped_alert_s', js)
         self.assertEqual(js.count('window.setInterval'), 2)  # los que ya había

@@ -74,7 +74,7 @@
                                             <li t-if="elapsedLabel(card)" t-attf-class="list-group-item d-flex justify-content-between align-items-center #{isStoppedAlert(card, status) ? 'text-danger fw-bold' : ''}">
                                                 <span>
                                                     <span t-if="isStoppedAlert(card, status)" class="fa fa-exclamation-triangle me-1"/>
-                                                    ⏱ <t t-esc="elapsedLabel(card)"/>
+                                                    <span class="fa fa-clock-o me-1"/><t t-esc="elapsedLabel(card)"/>
                                                 </span>
                                                 <span t-if="card.no_weigh_yet" class="badge rounded-pill text-bg-warning">Sin pesar aún</span>
                                             </li>
@@ -85,7 +85,7 @@
                                                 <t t-esc="card.waiting_customers"/> cliente(s) esperando
                                             </li>
                                             <li t-if="card.operator_name" class="list-group-item">
-                                                👤 <t t-esc="card.operator_name"/>
+                                                <span class="fa fa-user me-1"/><t t-esc="card.operator_name"/>
                                             </li>
                                             <li t-if="status === 'stopped'" class="list-group-item text-danger">
                                                 <t t-esc="card.stop_reason_label"/>
