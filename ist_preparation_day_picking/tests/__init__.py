@@ -26,3 +26,4 @@ from . import test_preparation_cancelled_order_claims
 from . import test_preparation_stopped_products
 from . import test_preparation_scrap_visibility
 from . import test_preparation_attribute_chips_color
+from . import test_preparation_pds_admin

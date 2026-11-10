@@ -31,4 +31,50 @@
         action="action_pds_operacion"
         groups="group_preparation_reports_pds,-group_preparation_admin"
     />
+
+    <!-- PDS administrativo (Pantalla B), ENTREGA 1 (David/Tech Lead,
+         2026-11-10): los reportes 1 «Pickings por operario» y 2 «Tiempo
+         por operario» a pantalla completa, con sus vistas, filtros y
+         permisos de siempre (mismos modelos y ACL de solo lectura de
+         «Reportes y PDS»). Acción de servidor que devuelve la acción
+         del reporte (con `views`, vía _for_xml_id) en target=fullscreen:
+         una sola fuente de verdad, nada duplicado. El refresco automático
+         llega en la ENTREGA 2. -->
+    <record id="action_pds_admin_operator" model="ir.actions.server">
+        <field name="name">PDS Pickings por operario</field>
+        <field name="model_id" ref="model_guapante_preparation_operator_report"/>
+        <field name="state">code</field>
+        <field name="code">
+action = env['ir.actions.actions']._for_xml_id('ist_preparation_day_picking.action_preparation_operator_report')
+action['target'] = 'fullscreen'
+action['name'] = 'PDS Pickings por operario'
+        </field>
+    </record>
+    <record id="action_pds_admin_interval" model="ir.actions.server">
+        <field name="name">PDS Tiempo por operario</field>
+        <field name="model_id" ref="model_guapante_preparation_interval_report"/>
+        <field name="state">code</field>
+        <field name="code">
+action = env['ir.actions.actions']._for_xml_id('ist_preparation_day_picking.action_preparation_interval_report_2')
+action['target'] = 'fullscreen'
+action['name'] = 'PDS Tiempo por operario'
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_pds_admin_operator"
+        name="PDS Pickings por operario"
+        parent="menu_pds_root"
+        action="action_pds_admin_operator"
+        groups="group_preparation_reports_pds,-group_preparation_admin"
+        sequence="20"
+    />
+    <menuitem
+        id="menu_pds_admin_interval"
+        name="PDS Tiempo por operario"
+        parent="menu_pds_root"
+        action="action_pds_admin_interval"
+        groups="group_preparation_reports_pds,-group_preparation_admin"
+        sequence="30"
+    />
 </odoo>
