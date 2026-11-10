@@ -169,6 +169,27 @@ class TestPreparationDay(TransactionCase):
         self.assertEqual(Fields['date'].string, 'Fecha programada')
         self.assertEqual(Fields['date_start'].string, 'Cargada el')
 
+    def test_daily_sequence_has_no_group_header_sum(self):
+        """David, 2026-11-04 ~21:30: "Caja #" (daily_sequence) es un
+        identificador, no una cantidad agregable — Odoo suma los
+        Integer por defecto en el encabezado de grupo (ver
+        Integer.aggregator='sum' en el core), lo que mostraba un
+        número sin sentido (ej. 8 líneas × caja #16 = "128"). Guarda
+        de regresión contra un revert accidental de aggregator=False
+        en sale.order (del que heredan los related de stock.picking y
+        de la línea de Preparación)."""
+        self.assertFalse(
+            self.env['sale.order']._fields['daily_sequence'].aggregator
+        )
+        self.assertFalse(
+            self.env['stock.picking']._fields['daily_sequence'].aggregator
+        )
+        self.assertFalse(
+            self.env['guapante.preparation.day.line']._fields[
+                'daily_sequence'
+            ].aggregator
+        )
+
     def test_no_duplicate_menu_under_inventory_operations(self):
         """Corrección #3 (David, 2026-10-31): "Preparación del Día" ya
         no debe aparecer dentro de Inventario › Operaciones (columna
@@ -286,6 +307,31 @@ class TestPreparationDay(TransactionCase):
             done_line,
             "Done lines should be preserved across reloads",
         )
+
+    def test_pending_lines_is_total_minus_done(self):
+        """Tarea 4 (Tech Lead/David, 2026-11-05): columna "Pendientes"
+        en la lista/kanban de sesiones — pending_lines debe ser
+        siempre total_lines - done_lines, incluida una línea recién
+        Terminada (pending_lines baja en 1, total_lines no cambia)."""
+        self._create_confirmed_order(qty=2.0)
+        self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+
+        self.assertEqual(session.total_lines, 2)
+        self.assertEqual(session.done_lines, 0)
+        self.assertEqual(session.pending_lines, 2)
+
+        line = session.line_ids[0]
+        line.with_context(skip_auto_save=True).write({
+            'actual_kg': 1.0,
+            'is_done': True,
+        })
+        session.invalidate_recordset()
+
+        self.assertEqual(session.total_lines, 2)
+        self.assertEqual(session.done_lines, 1)
+        self.assertEqual(session.pending_lines, 1)
 
     def test_action_load_customer_hierarchy(self):
         """Lines should show parent as main_customer_name for child contacts."""
@@ -453,6 +499,58 @@ class TestPreparationDay(TransactionCase):
             session.state, 'done',
             'era la única línea pendiente — debe autocerrar la sesión',
         )
+
+    # ── Move cancelado en Inventario + tablet (Tech Lead, 2026-11-07) ──
+    # Producción 2026-11-06/07: 20 avisos del núcleo «No puede cambiar un
+    # movimiento de existencias cancelado…» cuando el operario cerraba en
+    # 0 una línea cuyo PICK Inventario ya canceló.
+
+    def _cancelled_move_line(self):
+        order = self._create_confirmed_order(qty=3.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids.filtered(lambda l: l.sale_order_id == order)
+        pick = order.picking_ids.filtered(
+            lambda p: p.picking_type_code == 'internal'
+            and p.state not in ('done', 'cancel')
+        )
+        pick.action_cancel()
+        self.assertEqual(line.stock_move_id.state, 'cancel')
+        return session, line
+
+    def test_save_line_weight_cancelled_move_zero_closes_line_without_stock(self):
+        session, line = self._cancelled_move_line()
+        move = line.stock_move_id
+        result = session.action_save_line_weight(line.id)
+        self.assertTrue(result)
+        self.assertTrue(line.is_done)
+        self.assertEqual(line.actual_kg, 0.0)
+        self.assertEqual(move.state, 'cancel', 'no se debe tocar el move')
+        self.assertEqual(move.quantity, 0.0)
+        notes = session.message_ids.mapped('body')
+        self.assertTrue(
+            any('cancelado en Inventario' in (b or '') for b in notes),
+            'debe dejar nota de que el traslado estaba cancelado',
+        )
+
+    def test_save_line_weight_cancelled_move_positive_weight_raises_clear_error(self):
+        session, line = self._cancelled_move_line()
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.5})
+        with self.assertRaises(UserError) as cm:
+            session.action_save_line_weight(line.id)
+        self.assertIn('cancelado en Inventario', str(cm.exception))
+        self.assertNotIn('existencias cancelado', str(cm.exception))
+        self.assertFalse(line.is_done)
+
+    def test_save_line_weight_normal_move_still_writes_stock(self):
+        self._create_confirmed_order(qty=2.0)
+        session = self._create_session()
+        session.action_load()
+        line = session.line_ids[:1]
+        line.with_context(skip_auto_save=True).write({'actual_kg': 1.8})
+        session.action_save_line_weight(line.id)
+        self.assertTrue(line.is_done)
+        self.assertAlmostEqual(line.stock_move_id.quantity, 1.8, places=2)
 
     def test_auto_finish_session(self):
         """Session should auto-finish when all lines are done."""

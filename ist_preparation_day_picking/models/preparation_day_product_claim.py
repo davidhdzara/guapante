@@ -136,6 +136,114 @@ class PreparationDayProductClaim(models.Model):
         ),
     )
 
+    # Punto 3 (Tech Lead/David, 2026-11-09): vista de administrador de los
+    # productos Detenidos. Solo lectura; la corrección de pesos sigue por la
+    # lista de líneas ya existente (inline, con nota y guard de sesión).
+    weighed_line_count = fields.Integer(
+        string='Líneas pesadas', compute='_compute_weighed',
+    )
+    weighed_kg = fields.Float(
+        string='Kg pesados', compute='_compute_weighed', digits=(10, 2),
+    )
+    stopped_since = fields.Datetime(
+        string='Detenido desde', compute='_compute_stopped_since',
+    )
+
+    @api.depends(
+        'wizard_id.line_ids.is_done',
+        'wizard_id.line_ids.actual_kg',
+        'wizard_id.line_ids.product_id',
+    )
+    def _compute_weighed(self) -> None:
+        for claim in self:
+            weighed = claim._get_lines().filtered(
+                lambda l: l.is_done and l.actual_kg > 0)
+            claim.weighed_line_count = len(weighed)
+            claim.weighed_kg = sum(weighed.mapped('actual_kg'))
+
+    scrap_count = fields.Integer(
+        string='Desechos', compute='_compute_scrap',
+    )
+    scrap_qty = fields.Float(
+        string='Cant. desechada', compute='_compute_scrap', digits=(10, 2),
+        help='En la unidad del producto. Solo desechos hechos (estado Hecho) '
+             'de esta sesión (origin = nombre de la sesión) y esta plantilla.',
+    )
+
+    def _compute_scrap(self) -> None:
+        Scrap = self.env['stock.scrap'].sudo()
+        for claim in self:
+            scraps = Scrap.search([
+                ('state', '=', 'done'),
+                ('origin', '=', claim.wizard_id.name),
+                ('product_id.product_tmpl_id', '=', claim.product_tmpl_id.id),
+            ]) if claim.wizard_id else Scrap
+            uom = claim.product_tmpl_id.uom_id
+            claim.scrap_count = len(scraps)
+            claim.scrap_qty = sum(
+                s.product_uom_id._compute_quantity(s.scrap_qty, uom)
+                for s in scraps
+            )
+
+    @api.model
+    def _guapante_is_strict_prep_admin(self) -> bool:
+        """Administrador de Preparación (grupo propio; NO base.group_system,
+        que no es «dueño» de ningún producto)."""
+        return self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin')
+
+    def _compute_stopped_since(self) -> None:
+        Interval = self.env['guapante.preparation.interval'].sudo()
+        for claim in self:
+            interval = Interval.search([
+                ('claim_id', '=', claim.id), ('kind', '=', 'stopped'),
+            ], order='start_dt desc', limit=1) if claim.stop_reason else False
+            claim.stopped_since = interval.start_dt if interval else False
+
+    def _guapante_is_prep_admin(self) -> bool:
+        return (
+            self.env.user.has_group(
+                'ist_preparation_day_picking.group_preparation_admin')
+            or self.env.user.has_group('base.group_system')
+        )
+
+    def action_open_lines_admin(self) -> dict:
+        """«Ver líneas» de la lista de Productos detenidos: abre la lista de
+        líneas de la sesión filtrada por este producto (la misma que el
+        administrador ya edita inline para corregir pesos)."""
+        self.ensure_one()
+        if not self._guapante_is_prep_admin():
+            raise AccessError(
+                'Solo un administrador de Preparación puede ver esto.')
+        view = self.env.ref('ist_preparation_day.view_preparation_day_line_list')
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'Líneas — {self.product_tmpl_id.name}',
+            'res_model': 'guapante.preparation.day.line',
+            'view_mode': 'list',
+            'views': [(view.id, 'list')],
+            'domain': [
+                ('wizard_id', '=', self.wizard_id.id),
+                ('product_id', '=', self.product_tmpl_id.id),
+            ],
+            'target': 'current',
+        }
+
+    def _guapante_note_if_weighed(self, event: str, detail: str) -> None:
+        """Nota en el chatter de la sesión SOLO si el producto ya tiene
+        líneas pesadas (sin pedirle nada al operario)."""
+        self.ensure_one()
+        Lines = self._get_lines()
+        weighed = Lines.filtered(lambda l: l.is_done and l.actual_kg > 0)
+        if not weighed:
+            return
+        self.wizard_id.sudo().message_post(body=(
+            f"{event} con {len(weighed)} de {len(Lines)} línea(s) ya "
+            f"pesadas ({sum(weighed.mapped('actual_kg')):.2f} kg) — "
+            f"{self.product_tmpl_id.name}: {detail}. Un administrador puede "
+            "revisarlas en Productos detenidos."
+        ))
+
     def _get_lines(self):
         self.ensure_one()
         return self.wizard_id.line_ids.filtered(
@@ -648,6 +756,10 @@ class PreparationDayProductClaim(models.Model):
                 f"detenido por {reason_label}, por {stopped_by_name})."
             ),
         )
+        self._guapante_note_if_weighed(
+            'Liberado',
+            f'por {ReleasingEmployee.name}; estaba detenido por {reason_label}',
+        )
         self._notify_bus()
         return True
 
@@ -836,6 +948,10 @@ class PreparationDayProductClaim(models.Model):
                 f"{cross_operator_note}"
             ),
         )
+        self._guapante_note_if_weighed(
+            'Detenido',
+            f'{dict(STOP_REASONS)[reason]} (por {Employee.name})',
+        )
         self._notify_bus()
         return True
 
@@ -874,7 +990,8 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        if self.assigned_employee_id.id != employee_id:
+        if (self.assigned_employee_id.id != employee_id
+                and not self._guapante_is_strict_prep_admin()):
             raise UserError(
                 f'No puedes desechar {self.product_tmpl_id.name} — '
                 'no está asignado a ti.'
@@ -967,15 +1084,31 @@ class PreparationDayProductClaim(models.Model):
         }
 
     def get_my_open_interval(self) -> dict:
-        """Fase 2 (lote 2B, Tech Lead 2026-11-04) — lectura de solo
-        consulta para el cronómetro de Nivel 2: fuente de verdad del
-        start_dt del intervalo 'working' ABIERTO de este operario
-        sobre este claim, más la hora del servidor en el mismo
-        instante, para que el cliente calcule el tiempo transcurrido
-        sin depender del reloj de la tablet. UN solo mecanismo tanto
-        para la carga inicial de Nivel 2 como para cada
-        resincronización (bus 'reload', visibilitychange) — nunca dos
-        caminos distintos para leer lo mismo.
+        """Fase 2 (lote 2B, Tech Lead 2026-11-04; Tarea 5, Tech Lead/
+        David, 2026-11-05) — lectura de solo consulta para el
+        cronómetro de Nivel 2: fuente de verdad del start_dt del
+        intervalo 'working' ABIERTO de este operario sobre este
+        claim, más la hora del servidor en el mismo instante, para
+        que el cliente calcule el tiempo transcurrido sin depender
+        del reloj de la tablet. UN solo mecanismo tanto para la carga
+        inicial de Nivel 2 como para cada resincronización (bus
+        'reload', visibilitychange) — nunca dos caminos distintos
+        para leer lo mismo.
+
+        Tarea 5: el cronómetro deja de ser "tiempo de esta visita" y
+        pasa a ser "MI tiempo acumulado en este producto" — accumulated_s
+        suma duration_s de TODOS mis intervalos 'working' YA CERRADOS
+        sobre este claim (nunca el abierto, que el cliente ya mide en
+        vivo con start_dt/server_now; sumarlo acá lo contaría dos
+        veces). El cliente arma el total mostrado como accumulated_s +
+        el elapsed en vivo del abierto (si hay uno) — así el número
+        nunca vuelve a 00:00 al liberar/detener/retomar el mismo
+        claim (solo se reinicia con un claim/producto distinto, que
+        es otro employee_id+claim_id). Scoped a ESTE empleado — otro
+        operario que entre después al mismo claim arranca en 00:00
+        (sus propios intervalos cerrados, que no existen todavía). El
+        contador L1 (total de TODOS los operarios) no usa este
+        método — no se toca.
 
         refresh=False (mismo criterio que _compute_is_mine arriba):
         una resincronización pasiva en segundo plano no debe extender
@@ -985,7 +1118,7 @@ class PreparationDayProductClaim(models.Model):
         Nunca escribe nada. Si no hay intervalo abierto (ya se cerró
         por otra vía, o el operario solo entró a mirar sin pesar),
         start_dt viene en False — el cronómetro del cliente se queda
-        en 00:00 sin tiquear, nunca inventa un inicio."""
+        fijo en accumulated_s, sin tiquear, nunca inventa un inicio."""
         self.ensure_one()
         self._check_picking_access()
         employee_id = (
@@ -994,7 +1127,7 @@ class PreparationDayProductClaim(models.Model):
         )
         server_now = fields.Datetime.now()
         if not employee_id:
-            return {'start_dt': False, 'server_now': server_now}
+            return {'start_dt': False, 'server_now': server_now, 'accumulated_s': 0}
         Interval = self.env['guapante.preparation.interval']
         open_interval = Interval.sudo().search([
             ('employee_id', '=', employee_id),
@@ -1002,9 +1135,16 @@ class PreparationDayProductClaim(models.Model):
             ('kind', '=', 'working'),
             ('end_dt', '=', False),
         ], limit=1)
+        closed_intervals = Interval.sudo().search([
+            ('employee_id', '=', employee_id),
+            ('claim_id', '=', self.id),
+            ('kind', '=', 'working'),
+            ('end_dt', '!=', False),
+        ])
         return {
             'start_dt': open_interval.start_dt if open_interval else False,
             'server_now': server_now,
+            'accumulated_s': sum(closed_intervals.mapped('duration_s')),
         }
 
     # ── Ciclo de vida (Tech Lead, Fase B: robusto en creación de líneas,

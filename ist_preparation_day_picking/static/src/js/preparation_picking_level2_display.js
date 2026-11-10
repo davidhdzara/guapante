@@ -54,7 +54,6 @@ export class PickingLinesDisplay extends Component {
         this.orm = useService("orm");
         this.actionService = useService("action");
         this.busService = useService("bus_service");
-        this.pwaService = useService("pwa");
         this.dialog = useService("dialog");
         this.state = useState({
             wizardId: null,
@@ -175,15 +174,16 @@ export class PickingLinesDisplay extends Component {
         if (attrIds.length) {
             const attrs = await this.orm.read(
                 "product.template.attribute.value", attrIds,
-                ["name", "display_name", "color"],
+                ["name", "display_name", "guapante_chip_color"],
             );
             attrById = Object.fromEntries(attrs.map((a) => [a.id, a]));
         }
-        // Colores nativos (Tech Lead, 2026-10-31): mismo campo `color`
-        // (0-11) que ya usa el widget many2many_tags en el backend —
-        // el chip se pinta con la clase o_tag_color_N del core de Odoo
-        // (web/static/src/core/tags_list), cero CSS propio.
-        //
+        // Color POR VALOR (David, 2026-11-10, punto 3): el `color` nativo de
+        // product.template.attribute.value es aleatorio por producto (el
+        // mismo «Verde» sale con 9 colores), así que NO se usa. El servidor
+        // calcula `guapante_chip_color` desde el parámetro del sistema
+        // ist_preparation_day_picking.attribute_chip_colors (nombre del
+        // valor → clase nativa o_tag_color_N); sin mapear → 0 (neutro).
         // Texto (David, 2026-10-31): "Atributo: Valor" (display_name
         // nativo) cuando cabe sin alargar el chip — la columna de
         // Nivel 2 es angosta (w-25). Con los atributos reales de
@@ -206,7 +206,7 @@ export class PickingLinesDisplay extends Component {
                     name: (
                         fullText && fullText.length <= MAX_CHIP_TEXT_LENGTH
                     ) ? fullText : (attr?.name || ""),
-                    color: attr?.color || 0,
+                    color: attr?.guapante_chip_color || 0,
                 };
             });
         }
@@ -313,14 +313,6 @@ export class PickingLinesDisplay extends Component {
 
     onClickRefresh() {
         this.loadLines();
-    }
-
-    async onClickClose() {
-        // Punto 1 (Tech Lead, 2026-10-31): mismo fix que Nivel 1.
-        await clearOperator();
-        await this.actionService.doAction(PICKING_APP_ACTION_XMLID, {
-            clearBreadcrumbs: true,
-        });
     }
 
     toggleDoneGroup() {

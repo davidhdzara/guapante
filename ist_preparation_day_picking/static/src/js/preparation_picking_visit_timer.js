@@ -14,23 +14,33 @@ const TICK_MS = 1000;
 // 'reload' seguidos no deben disparar varias resincronizaciones.
 const RESYNC_DEBOUNCE_MS = 400;
 
-// Cronómetro de "visita actual" (lote 2B, Tech Lead 2026-11-04) —
+// Cronómetro de "MI tiempo acumulado en este producto" (lote 2B,
+// Tech Lead 2026-11-04; Tarea 5, Tech Lead/David, 2026-11-05) —
 // componente separado embebido en la barra de Nivel 2, mismo patrón
 // que PickingOperatorHeader (preparation_picking_operator_header.js):
 // no vive dentro de PickingLinesDisplay, se monta junto a ella.
 //
-// "Visita actual" = el intervalo 'working' abierto por ESTE operario
-// sobre ESTE claim — nunca el acumulado histórico del claim (eso ya
-// lo muestra el contador L1 del pie de tarjeta en Nivel 1).
+// Tarea 5: ya NO es "tiempo de esta visita" (que volvía a 00:00 al
+// liberar/detener y retomar, porque eso cierra el 'working' y abre
+// uno nuevo) — ahora es la SUMA de todos MIS intervalos 'working'
+// sobre ESTE claim (cerrados + el abierto, si hay uno), scoped a
+// este operario — nunca el acumulado de TODOS los operarios (eso ya
+// lo muestra el contador L1 del pie de tarjeta en Nivel 1, que no se
+// toca). Un segundo operario que entra después arranca en 00:00 (no
+// tiene intervalos cerrados propios todavía). accumulated_s (suma de
+// los cerrados) la calcula el servidor; este componente solo le
+// suma el elapsed en vivo del abierto, si lo hay.
 //
 // B cliente (Tech Lead, 2026-11-04): "← Productos" ya NO cierra el
 // intervalo (se quitó action_close_my_interval y su llamada) — es
 // navegación pura. Si el operario vuelve al mismo producto, sigue
-// siendo el MISMO intervalo abierto: este cronómetro NO vuelve a
-// 00:00, sigue corriendo desde la primera entrada (incluye el tiempo
-// que estuvo navegando fuera de Nivel 2). Solo vuelve a 00:00 cuando
-// se abre un intervalo de verdad nuevo (cambio de producto, cierre de
-// sesión, etc. — ver preparation_interval.py).
+// siendo el MISMO intervalo abierto: este cronómetro no se reinicia
+// por eso. Y ahora, con Tarea 5, tampoco se reinicia aunque SÍ se
+// cierre el intervalo (detener/liberar) y se abra uno nuevo al
+// retomar — accumulated_s ya incluye lo cerrado, así que el total
+// sigue desde donde iba. Solo vuelve a 00:00 con un claim/producto
+// distinto (otro employee_id+claim_id, sin intervalos cerrados
+// propios todavía).
 //
 // Ancla anti-drift: get_my_open_interval() da start_dt + server_now
 // del servidor en el MISMO instante — el elapsed inicial se calcula
@@ -150,9 +160,13 @@ export class PickingVisitTimer extends Component {
         if (this.isDestroyed) {
             return;
         }
+        // Tarea 5: accumulated_s (suma de mis intervalos YA CERRADOS
+        // sobre este claim) es la base — sin intervalo abierto, el
+        // total se queda fijo ahí, nunca en 0 (salvo que de verdad no
+        // haya acumulado nada todavía).
         if (!result.start_dt) {
             this.state.hasOpenInterval = false;
-            this.state.elapsedSeconds = 0;
+            this.state.elapsedSeconds = result.accumulated_s || 0;
             return;
         }
         // deserializeDateTime (core de Odoo): interpreta el string
@@ -160,7 +174,8 @@ export class PickingVisitTimer extends Component {
         // nunca un parseo manual de fechas acá.
         const startMs = deserializeDateTime(result.start_dt).toMillis();
         const serverNowMs = deserializeDateTime(result.server_now).toMillis();
-        this._anchorElapsedSeconds = Math.max(0, (serverNowMs - startMs) / 1000);
+        const openElapsed = Math.max(0, (serverNowMs - startMs) / 1000);
+        this._anchorElapsedSeconds = (result.accumulated_s || 0) + openElapsed;
         this._anchorPerfNow = performance.now();
         this.state.hasOpenInterval = true;
         this.state.elapsedSeconds = this._anchorElapsedSeconds;

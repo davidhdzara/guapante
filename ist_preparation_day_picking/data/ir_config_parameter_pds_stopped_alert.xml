@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- PDS Operación: minutos detenido a partir de los cuales la tarjeta se
+         marca como alerta (default 30, mín 1, máx 1440; inválido → 30). Se
+         cambia en Ajustes > Técnico > Parámetros del sistema; noupdate: un
+         -u no lo pisa. -->
+    <record id="param_pds_stopped_alert_minutes" model="ir.config_parameter">
+        <field name="key">ist_preparation_day_picking.pds_stopped_alert_minutes</field>
+        <field name="value">30</field>
+    </record>
+</odoo>

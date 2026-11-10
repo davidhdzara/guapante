@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from unittest.mock import MagicMock, patch
 
+from odoo.addons.ist_preparation_day.tests.box_helpers import set_box
+
 from odoo import fields
 from odoo.exceptions import UserError
 from odoo.tests.common import tagged
@@ -416,7 +418,7 @@ class TestPreparationDayPickingFaseD(TestPreparationDay):
         (R5, 2026-10-29) — por eso se arma una orden real en vez de
         forzar el valor directo en la línea, que ya es readonly."""
         order = self._create_confirmed_order()
-        order.daily_sequence = 7
+        set_box(order, 7)
         session = self._create_session()
         line = self.Line.create({
             'wizard_id': session.id,

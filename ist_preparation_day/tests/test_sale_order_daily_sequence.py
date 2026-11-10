@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from odoo.addons.ist_preparation_day.tests.box_helpers import set_box
+
 from odoo import fields
 from odoo.tests.common import TransactionCase, tagged
 
@@ -65,8 +67,8 @@ class TestDailySequence(TransactionCase):
         o2 = self._create_confirmed_order()
         d = fields.Date.add(fields.Date.context_today(self.env['sale.order']), days=14)
         self._set_pickings_scheduled_date((o1, o2), d)
-        o1.daily_sequence = 0
-        o2.daily_sequence = 0
+        set_box(o1, 0)
+        set_box(o2, 0)
         self.env['sale.order'].sudo()._assign_daily_sequences(d)
         self.assertGreater(o1.daily_sequence, 0)
         self.assertGreater(o2.daily_sequence, 0)
@@ -78,8 +80,8 @@ class TestDailySequence(TransactionCase):
         o2 = self._create_confirmed_order()
         d = fields.Date.add(fields.Date.context_today(self.env['sale.order']), days=21)
         self._set_pickings_scheduled_date((o1, o2), d)
-        o1.daily_sequence = 50
-        o2.daily_sequence = 0
+        set_box(o1, 50)
+        set_box(o2, 0)
         self.env['sale.order'].sudo()._assign_daily_sequences(d)
         self.assertEqual(o1.daily_sequence, 50)
         self.assertEqual(o2.daily_sequence, 51)

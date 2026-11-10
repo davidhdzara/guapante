@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Productos detenidos (punto 3, Tech Lead/David 2026-11-09): lista de
+         SOLO LECTURA para el administrador. La corrección de pesos sigue
+         por la lista de líneas existente («Ver líneas»). -->
+    <record id="view_claim_stopped_list" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.claim.stopped.list</field>
+        <field name="model">guapante.preparation.day.product.claim</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="wizard_id"/>
+                <field name="product_tmpl_id"/>
+                <field name="stop_reason"/>
+                <field name="stopped_by_employee_id"/>
+                <field name="stopped_since"/>
+                <field name="weighed_line_count"/>
+                <field name="total_line_count"/>
+                <field name="weighed_kg"/>
+                <field name="scrap_count"/>
+                <field name="scrap_qty"/>
+                <button name="action_open_lines_admin" type="object" string="Ver líneas" icon="fa-list"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_claim_stopped_search" model="ir.ui.view">
+        <field name="name">guapante.preparation.day.product.claim.stopped.search</field>
+        <field name="model">guapante.preparation.day.product.claim</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="product_tmpl_id"/>
+                <field name="wizard_id"/>
+                <filter name="f_stopped" string="Detenidos" domain="[('status', '=', 'stopped')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_claim_stopped" model="ir.actions.act_window">
+        <field name="name">Productos detenidos</field>
+        <field name="res_model">guapante.preparation.day.product.claim</field>
+        <field name="view_mode">list</field>
+        <field name="domain">[('status', '=', 'stopped')]</field>
+        <field name="context">{'search_default_f_stopped': 1}</field>
+        <field name="search_view_id" ref="view_claim_stopped_search"/>
+    </record>
+
+    <menuitem id="menu_claim_stopped" name="Productos detenidos"
+        parent="ist_preparation_day.menu_preparation_admin"
+        action="action_claim_stopped" sequence="5"
+        groups="group_preparation_admin,base.group_system"/>
+</odoo>

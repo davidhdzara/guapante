@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!-- Pantalla A (PDS Operación) — ver preparation_pds_operacion.js.
+
+         Sin CSS propio (regla de David, confirmada por Tech Lead para
+         esta pantalla): solo clases Bootstrap/Odoo nativas (card,
+         badge/text-bg-*, progress, list-group, d-flex, text-muted,
+         fs-*/display-*/gap-*), igual que ya hace Nivel 1
+         (preparation_picking_level1_display.xml) — misma clase
+         o_mrp_display/o_mrp_display_record de mrp_workorder (en
+         depends, sin copiar archivos — OEEL-1). Sin buscador, sin
+         filtros, sin botones: de solo lectura. -->
+    <t t-name="ist_preparation_day_picking.PdsOperacionDisplay">
+        <div class="o_action o_mrp_display h-100 d-flex flex-column">
+
+            <div t-if="!state.loaded" class="flex-grow-1 d-flex align-items-center justify-content-center">
+                <span class="fa fa-spin fa-circle-o-notch fs-1 text-muted"/>
+            </div>
+
+            <div t-elif="state.sessionExpired" class="flex-grow-1 d-flex align-items-center justify-content-center">
+                <div class="text-center">
+                    <p class="display-4 text-muted">Sesión expirada</p>
+                    <p class="fs-4 text-muted">Vuelve a iniciar sesión en este computador para reanudar la pantalla.</p>
+                </div>
+            </div>
+
+            <div t-elif="!state.hasSession" class="flex-grow-1 d-flex align-items-center justify-content-center">
+                <div class="text-center">
+                    <p class="display-4 text-muted">Sin jornada abierta</p>
+                    <p class="fs-4 text-muted" t-esc="state.sessionDate"/>
+                </div>
+            </div>
+
+            <t t-else="">
+                <div class="o_control_panel d-flex justify-content-between align-items-center gap-3 px-3 py-2 border-bottom">
+                    <div class="d-flex align-items-baseline gap-3">
+                        <span class="display-6 mb-0" t-esc="state.doneLines + ' / ' + state.totalLines"/>
+                        <span class="fs-3 text-muted" t-esc="Math.round(state.globalProgressPct) + '%'"/>
+                        <span class="fs-5 text-muted" t-esc="state.pendingLines + ' pendientes'"/>
+                    </div>
+                    <div class="progress flex-grow-1 mx-3">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             t-attf-style="width: #{state.globalProgressPct}%"/>
+                    </div>
+                    <span t-attf-class="badge rounded-pill fs-5 text-nowrap #{state.columns.stopped.length ? 'text-bg-danger' : 'text-bg-light border border-secondary'}">
+                        <t t-esc="state.columns.stopped.length"/> detenidos ahora
+                    </span>
+                    <small class="text-muted text-nowrap" t-esc="state.lastUpdatedLabel"/>
+                </div>
+
+                <div class="o_mrp_display_records flex-grow-1 m-2 d-flex gap-3 overflow-auto">
+                    <t t-foreach="statusOrder" t-as="status" t-key="status">
+                        <div class="d-flex flex-column w-25">
+                            <div class="d-flex align-items-center mb-2 text-muted">
+                                <strong class="fs-5" t-esc="statusLabels[status] + ' (' + state.columns[status].length + ')'"/>
+                            </div>
+                            <div class="d-flex flex-column overflow-auto">
+                                <t t-foreach="state.columns[status]" t-as="card" t-key="card.claim_id">
+                                    <div class="o_mrp_display_record card border rounded m-0 mb-2">
+                                        <div class="card-header">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="h6 mb-0 text-truncate" t-esc="card.product_name"/>
+                                                <small t-attf-class="rounded-pill px-2 text-nowrap #{status === 'done' ? 'text-bg-success' : status === 'stopped' ? 'text-bg-danger' : status === 'in_progress' ? 'text-bg-warning' : 'text-bg-light border border-secondary'}"
+                                                       t-esc="statusLabels[status]"/>
+                                            </div>
+                                        </div>
+                                        <ul class="list-group list-group-flush">
+                                            <li class="list-group-item">
+                                                <t t-esc="card.done_line_count"/> de <t t-esc="card.total_line_count"/> órdenes
+                                                <span t-if="card.zero_line_count" class="badge rounded-pill text-bg-warning ms-1">
+                                                    (<t t-esc="card.zero_line_count"/> sin stock)
+                                                </span>
+                                            </li>
+                                            <li t-if="elapsedLabel(card)" t-attf-class="list-group-item d-flex justify-content-between align-items-center #{isStoppedAlert(card, status) ? 'text-danger fw-bold' : ''}">
+                                                <span>
+                                                    <span t-if="isStoppedAlert(card, status)" class="fa fa-exclamation-triangle me-1"/>
+                                                    <span class="fa fa-clock-o me-1"/><t t-esc="elapsedLabel(card)"/>
+                                                </span>
+                                                <span t-if="card.no_weigh_yet" class="badge rounded-pill text-bg-warning">Sin pesar aún</span>
+                                            </li>
+                                            <li t-if="card.expected_kg" class="list-group-item">
+                                                <t t-esc="card.weighed_kg"/> / <t t-esc="card.expected_kg"/> kg
+                                            </li>
+                                            <li t-if="card.waiting_customers" class="list-group-item">
+                                                <t t-esc="card.waiting_customers"/> cliente(s) esperando
+                                            </li>
+                                            <li t-if="card.operator_name" class="list-group-item">
+                                                <span class="fa fa-user me-1"/><t t-esc="card.operator_name"/>
+                                            </li>
+                                            <li t-if="status === 'stopped'" class="list-group-item text-danger">
+                                                <t t-esc="card.stop_reason_label"/>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+            </t>
+        </div>
+    </t>
+</templates>

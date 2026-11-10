@@ -2,7 +2,10 @@
 """Fix urgente de read_group (Tech Lead, 2026-11-04) — además del fix
 puntual (preparation_interval_report.py: el parámetro se llamaba
 `fields_list`, el cliente llama por kwargs con `fields=`), test de
-ARRANQUE de las 5 acciones del menú Reportes: get_views() de cada
+ARRANQUE de las acciones del menú Reportes (Tarea 3, Tech Lead/David,
+2026-11-05: se quitó "Productos más solicitados" — quedaban 4;
+Tarea 12, 2026-11-05: se agregó "Tiempo por operario" — son 5):
+get_views() de cada
 vista declarada MÁS una llamada de read_group/web_read_group con los
 defaults REALES de pivote (arch `type="row"/"col"/"measure"`,
 sobreescritos por `pivot_row_groupby`/`pivot_column_groupby`/
@@ -13,7 +16,7 @@ kwargs que usa el navegador (`odoo.api.call_kw`, nunca posicional).
 El bug real (David, "Tiempo por producto" revienta) solo se veía por
 este camino — un test que llama `.read_group(domain, fields, groupby)`
 posicional (como ya hacían los tests existentes de los 3 reportes)
-nunca lo iba a notar. Esto cubre las 5 acciones, no solo la que David
+nunca lo iba a notar. Esto cubre las 4 acciones, no solo la que David
 probó primero — un error de arranque igual en otro reporte no debe
 esperar a que alguien lo abra a mano."""
 import xml.etree.ElementTree as ET
@@ -26,7 +29,7 @@ from .test_preparation_day_product_claim import TestPreparationDayProductClaim
 
 REPORT_ACTION_XMLIDS = [
     'ist_preparation_day_picking.action_preparation_operator_report',
-    'ist_preparation_day_picking.action_preparation_product_demand_report',
+    'ist_preparation_day_picking.action_preparation_interval_report_2',
     'ist_preparation_day_picking.action_preparation_interval_report_3',
     'ist_preparation_day_picking.action_preparation_interval_report_4',
     'ist_preparation_day_picking.action_preparation_interval_report_5',
@@ -107,3 +110,185 @@ class TestPreparationReportsActionsStartup(TestPreparationDayProductClaim):
                         'groupby': groupby[:1], 'lazy': False,
                     },
                 )
+
+    def test_graph_is_the_default_view_on_all_report_actions(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): vista gráfica por
+        defecto en los 4 reportes — view_mode debe empezar por
+        'graph', no 'pivot'/'list'."""
+        for action_xmlid in REPORT_ACTION_XMLIDS:
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                self.assertTrue(
+                    Action.view_mode.startswith('graph'),
+                    f'{action_xmlid}: view_mode={Action.view_mode!r}',
+                )
+
+    def _action_view_id(self, action, view_mode):
+        """El view_id REAL que el cliente usaría para este modo —
+        resuelto desde action.views (ir.actions.act_window._compute_
+        views, que federa view_ids/view_mode/view_id), NUNCA
+        adivinado con get_views([(False, view_mode)]) directo sobre el
+        modelo: eso ignora cualquier ir.actions.act_window.view
+        explícito y siempre cae al default del MODELO (el de menor
+        id), que es justo el bug que estos tests deben detectar si
+        reaparece."""
+        for view_id, mode in action.views:
+            if mode == view_mode:
+                return view_id
+        return False
+
+    def test_each_action_resolves_its_own_graph_view_explicitly(self):
+        """Tarea 12 (Tech Lead/David, 2026-11-05): desde que existe el
+        gráfico propio del Reporte 2 ("Tiempo por operario", línea por
+        jornada/operario), el modelo guapante.preparation.interval.
+        report tiene varias vistas gráfico — sin un view_id explícito
+        por acción (ir.actions.act_window.view, agregado en este mismo
+        commit para las acciones del modelo), get_views() podría
+        resolver cualquiera por un criterio implícito. Este test
+        confirma que cada acción abre EXACTAMENTE la que le
+        corresponde, no la de otro reporte por accidente.
+
+        Tarea 14 (Tech Lead/David, 2026-11-05): Reportes 4 y 5 suman
+        su PROPIA vista gráfico cada uno (antes compartían la bar/
+        product_tmpl_id del Reporte 3) — ordenadas DESC por la razón
+        (ver view_preparation_interval_report_kg_graph/_box_graph)."""
+        expectations = {
+            'ist_preparation_day_picking.action_preparation_interval_report_2': (
+                'line', ['date', 'employee_id'],
+            ),
+            'ist_preparation_day_picking.action_preparation_interval_report_3': (
+                'bar', ['product_tmpl_id'],
+            ),
+            'ist_preparation_day_picking.action_preparation_interval_report_4': (
+                'bar', ['product_tmpl_id'],
+            ),
+            'ist_preparation_day_picking.action_preparation_interval_report_5': (
+                'bar', ['product_tmpl_id'],
+            ),
+        }
+        for action_xmlid, (expected_type, expected_groupby) in expectations.items():
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                graph_view_id = self._action_view_id(Action, 'graph')
+                views = self.env[Action.res_model].get_views(
+                    [(graph_view_id, 'graph')]
+                )
+                root = ET.fromstring(views['views']['graph']['arch'])
+                self.assertEqual(root.get('type'), expected_type)
+                group_fields = [
+                    f.get('name') for f in root.findall('field')
+                    if f.get('type') != 'measure'
+                ]
+                self.assertEqual(group_fields, expected_groupby)
+
+    def _assert_graph_groupby_order_is_date_then_employee(self, action_xmlid):
+        """Tarea 12.0 (Tech Lead/David, 2026-11-05) — BUG: en Odoo 18 el
+        gráfico usa el groupBy ACTIVO del buscador cuando hay algún
+        search_default_group_* (graph_model.js:_buildMetaData,
+        "groupBy.length ? groupBy : this.initialGroupBy") — el orden de
+        <field> del arch del gráfico es solo un fallback que nunca se
+        usa mientras haya defaults activos.
+
+        El orden real de ese groupBy activo lo decide el defaultRank de
+        cada filtro (search_arch_parser.js: defaultRank = el VALOR del
+        search_default_* si es number, si no 100), ordenado en
+        search_model.js:_activateDefaultSearchItems con Array.sort
+        (estable desde ES2019) — NO el orden de las claves del
+        contexto ni, por sí solo, el orden de los <filter> del arch
+        (eso solo desempata entre rangos IGUALES, que es justo lo que
+        había ANTES de este fix: 1 y 1 para el Reporte 1). Por eso el
+        fix real es dar rangos EXPLÍCITOS y distintos: date_day=1,
+        employee=2 — así no depende de ningún desempate implícito.
+        Esta verifica los valores (rangos), no el orden de inserción
+        de las claves, sin levantar navegador."""
+        Action = self.env.ref(action_xmlid)
+        context = safe_eval(Action.context or '{}')
+        self.assertLess(
+            context['search_default_group_date_day'],
+            context['search_default_group_employee'],
+            f'{action_xmlid}: rango (defaultRank) de '
+            f'search_default_group_date_day '
+            f'({context["search_default_group_date_day"]!r}) debe ser '
+            f'MENOR que el de search_default_group_employee '
+            f'({context["search_default_group_employee"]!r}) — Odoo '
+            f'activa los filtros default ordenados por ese valor '
+            f'(Array.sort estable), no por el orden de las claves.',
+        )
+
+        graph_view_id = self._action_view_id(Action, 'graph')
+        graph_views = self.env[Action.res_model].get_views(
+            [(graph_view_id, 'graph')]
+        )
+        graph_root = ET.fromstring(graph_views['views']['graph']['arch'])
+        graph_fields = [f.get('name') for f in graph_root.findall('./field')]
+        self.assertEqual(
+            graph_fields[:2], ['date', 'employee_id'],
+            f'{action_xmlid}: orden de <field> en el arch del gráfico: '
+            f'{graph_fields!r} — fecha antes de operario, para que el '
+            f'fallback (sin ningún search_default activo) también '
+            f'quede correcto.',
+        )
+
+    def test_operator_report_graph_groupby_order_is_date_then_employee(self):
+        self._assert_graph_groupby_order_is_date_then_employee(
+            'ist_preparation_day_picking.action_preparation_operator_report'
+        )
+
+    def test_interval_report_2_graph_groupby_order_is_date_then_employee(self):
+        self._assert_graph_groupby_order_is_date_then_employee(
+            'ist_preparation_day_picking.action_preparation_interval_report_2'
+        )
+
+    def test_product_demand_report_was_fully_removed(self):
+        """Tarea 3 (Tech Lead/David, 2026-11-05): "Productos más
+        solicitados" se quitó completo — modelo, acción y menú no
+        deben existir. Guarda de regresión contra un revert parcial
+        (ej. manifest/ACL quitados pero el modelo Python olvidado)."""
+        self.assertNotIn(
+            'guapante.preparation.product.demand.report', self.env.registry,
+        )
+        self.assertFalse(self.env.ref(
+            'ist_preparation_day_picking.action_preparation_product_demand_report',
+            raise_if_not_found=False,
+        ))
+        self.assertFalse(self.env.ref(
+            'ist_preparation_day_picking.menu_preparation_product_demand_report',
+            raise_if_not_found=False,
+        ))
+
+    def test_all_5_actions_have_non_empty_help(self):
+        """Tarea 13, pedido de Tech Lead tras aprobar el hash: el
+        `help` es el estado vacío NATIVO de la acción (lo que el
+        cliente muestra cuando el filtro activo no devuelve filas) —
+        guarda de regresión general contra que alguna acción se quede
+        sin ayuda (nunca debe sentirse como un fallo, aunque el texto
+        de cada una cambie con el tiempo)."""
+        for action_xmlid in REPORT_ACTION_XMLIDS:
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                self.assertTrue(
+                    (Action.help or '').strip(),
+                    f'{action_xmlid}: sin texto de ayuda (estado vacío).',
+                )
+
+    def test_reports_3_4_5_help_explains_empty_today_filter(self):
+        """Tarea 13 (Tech Lead, tras aprobar el hash): Reportes 3/4/5
+        combinan el default "Hoy" con un domain que puede no tener
+        ninguna fila todavía (ej. temprano en la jornada, antes de la
+        primera caja cerrada) — el help debe decirlo explícitamente,
+        para que un reporte vacío no se sienta como un fallo. 1/2 no
+        llevan esta línea (su default es "Última semana", mucho menos
+        propenso a abrir vacío)."""
+        texto = (
+            'Sin datos para el filtro actual. Quita el filtro '
+            '"Hoy" o elige otro período para ver el histórico.'
+        )
+        for action_xmlid in (
+            'ist_preparation_day_picking.action_preparation_interval_report_3',
+            'ist_preparation_day_picking.action_preparation_interval_report_4',
+            'ist_preparation_day_picking.action_preparation_interval_report_5',
+        ):
+            with self.subTest(action=action_xmlid):
+                Action = self.env.ref(action_xmlid)
+                help_text = ' '.join((Action.help or '').split())
+                self.assertIn(texto, help_text)

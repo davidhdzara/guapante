@@ -9,6 +9,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 
+from .box_number import CTX_ORIGIN, ORIGIN_REUBICACION, box_origin
 from .const_preparation import get_active_prep_operator_id
 
 _logger = logging.getLogger(__name__)
@@ -407,6 +408,30 @@ class PreparationDayLine(models.Model):
         string='Completado el',
         readonly=True,
         copy=False,
+    )
+
+    # ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05): el
+    # hook liviano en stock.move (_action_done, ver models/stock_move.py)
+    # marca esta bandera para TODA validación de un PICK con línea de
+    # Preparación asociada — no evalúa ningún flag de contexto (ej.
+    # 'guapante_wizard_intent'); confía en que Preparación NUNCA llama
+    # button_validate/_action_done por su cuenta (ver nota de dominio
+    # en models/stock_picking.py), así que este hook solo se dispara
+    # de verdad cuando algo ajeno a Preparación (Inventario) validó el
+    # traslado — nunca hace el reflejo en la misma transacción. El cron propio
+    # (_cron_mirror_inventory_to_preparation) es quien la procesa y la
+    # limpia, con su propia transacción y su propio FOR UPDATE —
+    # "liviano" significa que el hook nunca puede tumbar ni demorar la
+    # validación del usuario de Inventario.
+    needs_inventory_mirror = fields.Boolean(
+        string='Pendiente de espejo (Inventario)',
+        default=False,
+        copy=False,
+        help=(
+            'Interno: el PICK de esta línea se completó por fuera de '
+            'Preparación (ej. validado directo desde Inventario) y '
+            'está pendiente de que el cron la refleje aquí.'
+        ),
     )
 
     dispatch_note = fields.Char(
@@ -816,6 +841,238 @@ class PreparationDayLine(models.Model):
             ['amount_untaxed', 'amount_tax', 'amount_total']
         )
 
+    @api.model
+    def _cron_mirror_inventory_to_preparation(self) -> None:
+        """ESPEJO Inventario→Preparación (David/Tech Lead, 2026-11-05).
+
+        Transacción propia, corre cada 2 minutos (ver data/ir_cron_
+        mirror_inventory.xml) — procesa las líneas marcadas por el
+        hook liviano de stock.move._action_done (ver models/
+        stock_move.py). Un SAVEPOINT por línea: si una falla, no tumba
+        las demás (mismo patrón que _guapante_relocate_picking).
+        """
+        # Lote 3 (David/Tech Lead, 2026-11-09): red de seguridad de
+        # «cancelar un pedido ⇒ sus líneas pendientes desaparecen».
+        # El camino normal es el override de sale.order._action_cancel();
+        # esto cubre una cancelación por otra ruta (SQL, script,
+        # sesión en uso, fallo del savepoint) — idempotente: solo toma
+        # líneas NO hechas de sesiones NO cerradas, así que no repite
+        # notas en cada corrida.
+        try:
+            with self.env.cr.savepoint():
+                CancelledPending = self.sudo().search([
+                    ('is_done', '=', False),
+                    ('sale_order_id.state', '=', 'cancel'),
+                    ('wizard_id.state', '!=', 'done'),
+                ])
+                if CancelledPending:
+                    self.env['guapante.preparation.day'].sudo(
+                    )._guapante_remove_cancelled_order_lines(
+                        CancelledPending.mapped('sale_order_id'),
+                    )
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: barrido de pedidos cancelados — fallo, se '
+                'reintenta en la próxima corrida.',
+            )
+
+        Flagged = self.sudo().search([('needs_inventory_mirror', '=', True)])
+        for line in Flagged:
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        'SELECT id FROM guapante_preparation_day_line '
+                        'WHERE id = %s FOR UPDATE',
+                        (line.id,),
+                    )
+                    line.invalidate_recordset()
+                    line._guapante_mirror_from_inventory()
+            except Exception:
+                _logger.exception(
+                    'Guapante: ESPEJO Inventario→Preparación — fallo '
+                    'al reflejar la línea %d, se reintenta en la '
+                    'próxima corrida.', line.id,
+                )
+
+    def _guapante_mirror_from_inventory(self) -> None:
+        """Aplica (o descarta) el reflejo de UNA línea marcada —
+        llamado solo desde _cron_mirror_inventory_to_preparation, ya
+        con el FOR UPDATE tomado.
+
+        NUNCA llama _sync_weight_to_stock/_propagate_weight_to_chain
+        (eso volvería a escribir el move y crearía un ciclo con el
+        hook de stock_move.py) — escribe la línea directo, con
+        skip_auto_save=True para no disparar el track_kg de write().
+
+        Decisión (b) (David/Tech Lead, 2026-11-05): basta con que el
+        PICK (self.stock_move_id) esté 'done' — no se espera al
+        traslado siguiente (move_dest_ids); ese ya es dueño de su
+        propio peso vía _action_done de theme_guapante/ist_
+        preparation_day, independiente de esto.
+        """
+        self.ensure_one()
+        move = self.stock_move_id
+        if not move:
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+        if move.state == 'cancel':
+            self._guapante_mirror_from_cancelled_move()
+            return
+        if move.state != 'done':
+            # Se marcó pero el estado retrocedió (raro) — se
+            # reintenta en la próxima corrida, sin limpiar la
+            # bandera todavía.
+            return
+
+        weight = move.quantity
+
+        if self.is_done:
+            # Decisión (c): gana quien llegó primero — el operario ya
+            # cerró esta línea (tablet o Productos) antes de que
+            # corriera el cron. Nunca se pisa is_done/actual_kg; si
+            # el peso de Inventario difiere, se deja constancia en el
+            # chatter de la sesión, sin cambiar nada más.
+            if abs(weight - self.actual_kg) > 0.001:
+                self.wizard_id.sudo().message_post(body=(
+                    f'Diferencia de peso detectada — Caja #'
+                    f'{self.daily_sequence} ({self.product_description}): '
+                    f'Preparación registró {self.actual_kg:.3f} kg, '
+                    f'Inventario confirmó {weight:.3f} kg en el mismo '
+                    f'traslado. Se mantiene el valor de Preparación (ya '
+                    f'estaba Terminada primero); revisar manualmente si '
+                    f'hace falta corregir.'
+                ))
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+
+        # Caso real: el PICK se validó desde Inventario y Preparación
+        # nunca cerró esta línea. Reflejar: mismo peso, Terminado, sin
+        # operario — done_by_employee_id vacío a propósito (Fase 2,
+        # David/Tech Lead 2026-11-05: una línea cerrada así no cuenta
+        # en "Pickings por operario", ver el filtro WHERE
+        # done_by_employee_id IS NOT NULL en preparation_operator_
+        # report.py — ya lo hace, no se tocó).
+        self.sudo().with_context(skip_auto_save=True).write({
+            'actual_kg': weight,
+            'is_done': True,
+            'done_by_employee_id': False,
+            'done_date': fields.Datetime.now(),
+            'needs_inventory_mirror': False,
+        })
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary._add_done_kg(weight)
+
+        self.wizard_id.sudo().message_post(body=(
+            f'Caja #{self.daily_sequence} ({self.product_description}) '
+            f'cerrada automáticamente — el traslado se validó desde '
+            f'Inventario (sin operario de Picking) con {weight:.3f} kg.'
+        ))
+        self._maybe_post_dispatch_zero_note('Inventario (sin operario)')
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
+
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.wizard_id.id),
+            ('is_done', '=', False),
+        ])
+        if pending_total == 0 and self.wizard_id.state != 'done':
+            self.wizard_id.action_mark_done()
+
+    def _guapante_mirror_from_cancelled_move(self) -> None:
+        """Espejo Inventario→Preparación — caso move 'cancel' (Tech
+        Lead/David, 2026-11-06): un PICK que se cancela (ej. "sin
+        stock", declinar backorder) SIN que Preparación la haya
+        cerrado antes — hueco encontrado por Tech Lead en producción
+        (sesión 226, 2026-11-06), simétrico al caso 'done' de arriba
+        pero sin ningún peso real que reflejar (nada se despachó).
+
+        Guard (David, vía Tech Lead): si el PEDIDO ENTERO está
+        cancelado (sale_order_id.state == 'cancel'), esta cancelación
+        del move es solo la cola de la cancelación del pedido, no una
+        decisión de despacho — NO se cierra la línea (no tiene sentido
+        marcar "Terminado" un despacho de un pedido que ya no existe).
+        Se limpia la bandera igual (no reintentar para siempre) y se
+        deja nota en el chatter para revisión manual — no se archiva
+        ni se cierra distinto, a propósito.
+
+        Fuera de ese guard: se cierra igual que el caso 'done' sin
+        operario (mismo done_by_employee_id=False, mismo
+        _maybe_post_dispatch_zero_note, mismo cierre de sesión si
+        pending_total llega a 0) pero con actual_kg=0 SIEMPRE (nunca
+        move.quantity — un move cancelado no tiene un peso real
+        despachado que leer, a diferencia del caso 'done').
+        Respeta "gana quien llegó primero" (decisión (c) de arriba):
+        si Preparación ya la había cerrado, no se pisa nada.
+        """
+        self.ensure_one()
+
+        if self.sale_order_id.state == 'cancel':
+            # Lote 3 (David, 2026-11-09): antes se dejaba la línea con una
+            # nota «revisar manualmente»; ahora un pedido cancelado
+            # entero RETIRA sus líneas pendientes (nunca las cierra en 0,
+            # no hubo despacho). Línea ya hecha o sesión cerrada: solo
+            # nota (condición iii del Tech Lead) — lo decide el propio
+            # método de retiro. Se limpia la bandera igual (no reintentar
+            # para siempre).
+            Order = self.sale_order_id
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            self.env['guapante.preparation.day'].sudo(
+            )._guapante_remove_cancelled_order_lines(Order)
+            return
+
+        if self.is_done:
+            self.sudo().with_context(skip_auto_save=True).write({
+                'needs_inventory_mirror': False,
+            })
+            return
+
+        self.sudo().with_context(skip_auto_save=True).write({
+            'actual_kg': 0.0,
+            'is_done': True,
+            'done_by_employee_id': False,
+            'done_date': fields.Datetime.now(),
+            'needs_inventory_mirror': False,
+        })
+
+        Summary = self.wizard_id.summary_ids.filtered(
+            lambda s: s.product_id == self.product_product_id
+        )
+        if Summary:
+            Summary._add_done_kg(0.0)
+
+        self.wizard_id.sudo().message_post(body=(
+            f'Caja #{self.daily_sequence} ({self.product_description}) '
+            f'cerrada automáticamente en 0 — el traslado se canceló '
+            f'desde Inventario (sin operario de Picking) sin que '
+            f'Preparación la hubiera terminado antes.'
+        ))
+        self._maybe_post_dispatch_zero_note('Inventario (traslado cancelado)')
+
+        self.sale_order_id.sudo().invalidate_recordset(
+            ['amount_untaxed', 'amount_tax', 'amount_total']
+        )
+
+        pending_total = self.env['guapante.preparation.day.line'].search_count([
+            ('wizard_id', '=', self.wizard_id.id),
+            ('is_done', '=', False),
+        ])
+        if pending_total == 0 and self.wizard_id.state != 'done':
+            self.wizard_id.action_mark_done()
+
     def action_undo_line(self) -> bool:
         """Devuelve una línea de los Hechos a Pendientes para corregirla."""
         for line in self:
@@ -1074,7 +1331,9 @@ class PreparationDay(models.Model):
                 'fecha programada.'
             )
 
-    def _guapante_relocate_picking(self, picking, old_scheduled_date):
+    def _guapante_relocate_picking(
+        self, picking, old_scheduled_date, exclude_picking_ids=None,
+    ):
         """Reubica, de forma incremental, la línea de preparación de
         *picking* cuando su scheduled_date cambia de día calendario.
 
@@ -1093,6 +1352,14 @@ class PreparationDay(models.Model):
         error acá se registra y se traga, nunca se propaga (la única
         excepción deliberada es el UserError de arriba, que corre
         ANTES del write real).
+
+        exclude_picking_ids (Propuesta A, Tech Lead 2026-11-04): ids de
+        TODOS los pickings reubicados en el mismo stock.picking.write()
+        que disparó esto (los pasa StockPicking.write(), ver su
+        docstring) — se reenvía tal cual a _assign_daily_sequences/
+        _guapante_max_daily_sequence_on_date para que el cálculo del
+        "máximo ya existente" no cuente a un hermano todavía sin
+        resetear en esta misma vuelta del loop.
         """
         new_scheduled_date = picking.scheduled_date
         if not new_scheduled_date:
@@ -1141,8 +1408,16 @@ class PreparationDay(models.Model):
                 # ANTES de pedirle uno nuevo para la fecha nueva, o se
                 # queda arrastrando el de la fecha vieja (caso d de la
                 # reproducción).
-                Order.sudo().write({'daily_sequence': 0})
-                self.env['sale.order']._assign_daily_sequences(new_date)
+                # Candado de cajas (lote 4): origen del sistema, queda
+                # en el historial como «reubicación».
+                Box = self.with_context(
+                    **{CTX_ORIGIN: box_origin(ORIGIN_REUBICACION)}
+                )
+                Box.env['sale.order'].browse(Order.ids).sudo().write(
+                    {'daily_sequence': 0})
+                Box.env['sale.order']._assign_daily_sequences(
+                    new_date, exclude_picking_ids=exclude_picking_ids,
+                )
                 # daily_sequence de la línea es related+store sobre la
                 # orden — se sincroniza solo al cambiar el de la orden.
 
@@ -1219,6 +1494,145 @@ class PreparationDay(models.Model):
         ese módulo hijo y no se mueven solos con wizard_id). self es
         new_session."""
         return
+
+    def _guapante_after_lines_removed(self, session, templates) -> None:
+        """Punto de extensión (lote 3, Tech Lead/David 2026-11-09): no
+        hace nada en este módulo — ist_preparation_day_picking lo
+        sobreescribe para borrar los claims del Nivel 1 que se quedan
+        sin ninguna línea y avisar a las tablets (los claims viven en
+        ese módulo hijo). `templates` = product.template de las líneas
+        retiradas; self es la sesión (mismo patrón que
+        _guapante_after_relocate)."""
+        return
+
+    @api.model
+    def _guapante_remove_cancelled_order_lines(self, orders) -> None:
+        """Lote 3 (David, 2026-11-09): cuando un pedido se cancela, sus
+        líneas PENDIENTES desaparecen de Preparación y del Picking —
+        no se ponen en 0 (no hubo despacho). Ventas e Inventario no se
+        tocan: el pedido y sus traslados quedan en «Cancelado» (las FK
+        de la línea hacia pedido/línea de venta/traslado son ON DELETE
+        SET NULL y ninguna otra tabla referencia la línea, verificado
+        en producción — ver DISENO_retiro_pedido_cancelado.md).
+
+        Reglas (Tech Lead, condiciones iii/iv):
+        - Solo líneas NO hechas, solo en sesiones que NO están 'done'.
+        - Línea ya hecha en un pedido cancelado, o sesión 'done': NO se
+          borra nada, solo se deja una nota con nombres.
+        - Las cajas NUNCA se renumeran: la caja del pedido queda como
+          hueco (esto no escribe daily_sequence en ninguna otra línea).
+        - Idempotente: sin líneas pendientes no hace nada (lo llama
+          también el barrido del cron del espejo).
+
+        Cada sesión va en su propio savepoint y con lock de sesión
+        (mismo patrón que _guapante_relocate_picking): un fallo acá se
+        registra y se traga, NUNCA puede tumbar la cancelación del
+        pedido; los errores de concurrencia sí se relanzan para que
+        Odoo reintente."""
+        Orders = orders.filtered(lambda o: o.state == 'cancel')
+        if not Orders:
+            return
+        Lines = self.env['guapante.preparation.day.line'].sudo().search([
+            ('sale_order_id', 'in', Orders.ids),
+        ])
+        for Session in Lines.mapped('wizard_id'):
+            SessionLines = Lines.filtered(lambda l, s=Session: l.wizard_id == s)
+            try:
+                with self.env.cr.savepoint():
+                    Session._guapante_remove_cancelled_lines_in_session(
+                        SessionLines,
+                    )
+            except _PG_CONCURRENCY_ERRORS:
+                raise
+            except Exception:
+                _logger.exception(
+                    'Guapante: no se pudieron retirar las líneas de los '
+                    'pedidos cancelados %s de la sesión %s (%s) — se '
+                    'reintenta en el barrido del cron del espejo.',
+                    ', '.join(SessionLines.mapped('order_name')),
+                    Session.id, Session.name,
+                )
+
+    def _guapante_review_box_numbering(self) -> None:
+        """Revisión de cajas (lote 4) al cargar/reabrir la sesión. Nunca
+        puede tumbar la carga: savepoint y se traga todo salvo
+        concurrencia (que Odoo reintenta)."""
+        self.ensure_one()
+        try:
+            with self.env.cr.savepoint():
+                self.env['sale.order']._guapante_check_box_numbering(self.date)
+        except _PG_CONCURRENCY_ERRORS:
+            raise
+        except Exception:
+            _logger.exception(
+                'Guapante: revisión de cajas falló en la sesión %s', self.id)
+
+    def _guapante_post_note_once(self, body) -> None:
+        """Nota informativa del retiro por pedido cancelado, SIN repetir
+        el mismo texto en el chatter de la sesión: el evento de
+        cancelación y el guard del espejo pueden pasar los dos por el
+        mismo caso (sesión cerrada, línea ya hecha) y la nota no debe
+        duplicarse."""
+        self.ensure_one()
+        if any(body in (m.body or '') for m in self.message_ids):
+            return
+        self.sudo().message_post(body=body)
+
+    def _guapante_remove_cancelled_lines_in_session(self, lines) -> None:
+        """Trabajo de UNA sesión (self) para _guapante_remove_cancelled_
+        order_lines — ver su docstring para las reglas."""
+        self.ensure_one()
+        self._guapante_lock_sessions(self)
+        # El lock invalida cachés: releer las líneas con el estado real.
+        lines = lines.exists()
+        Pending = lines.filtered(lambda l: not l.is_done)
+        Done = lines - Pending
+        order_names = ', '.join(sorted(set(lines.mapped('order_name'))))
+
+        if self.state == 'done':
+            if lines:
+                self._guapante_post_note_once(
+                    f'Pedido(s) {order_names} cancelado(s), pero esta '
+                    'operación ya está cerrada: no se retiró ninguna '
+                    'línea. Reábrela para limpiarla si hace falta.'
+                )
+            return
+
+        if Done:
+            done_orders = ', '.join(sorted(set(Done.mapped('order_name'))))
+            done_boxes = ', #'.join(
+                str(n) for n in sorted(set(Done.mapped('daily_sequence')))
+            )
+            self._guapante_post_note_once(
+                f'Pedido(s) {done_orders} cancelado(s) con {len(Done)} '
+                f'línea(s) ya terminada(s) (caja #{done_boxes}): se '
+                'conservan, revisar manualmente.'
+            )
+        if not Pending:
+            return
+
+        templates = Pending.mapped('product_id')
+        sequences = sorted(set(Pending.mapped('daily_sequence')))
+        pending_orders = ', '.join(sorted(set(Pending.mapped('order_name'))))
+        count = len(Pending)
+        boxes = ', #'.join(str(n) for n in sequences)
+        products = ', '.join(sorted({
+            ' '.join((l.product_description or '').split()) for l in Pending
+        }))
+        for Line in Pending:
+            self._guapante_patch_summary(self, Line, add=False)
+        Pending.unlink()
+        self._guapante_after_lines_removed(self, templates)
+        self.sudo().message_post(body=(
+            f'Pedido {pending_orders} cancelado: se retiraron {count} '
+            f'línea(s) pendiente(s) de esta sesión (caja #{boxes}). '
+            'Inventario y '
+            'Ventas no se tocaron; las cajas no se renumeran. '
+            f'Productos: {products}.'
+        ))
+        self.env['bus.bus']._sendone(
+            f'guapante_preparation_day-{self.id}', 'reload', {},
+        )
 
     def _guapante_patch_summary(self, session, line, add) -> None:
         """Ajusta, de forma incremental, el summary de *session* para
@@ -2131,6 +2545,8 @@ class PreparationDay(models.Model):
         if not self.date_start:
             self.date_start = fields.Datetime.now()
 
+        self._guapante_review_box_numbering()
+
         if added_count == 0:
             self.save_note = (
                 'Listado actualizado. No se detectaron productos nuevos.'
@@ -2348,13 +2764,33 @@ class PreparationDay(models.Model):
             # dentro de get_active_prep_operator_id.
             Employee = Employee.sudo().browse(employee_id)
 
+        # Move cancelado en Inventario (Tech Lead, 2026-11-07; hallazgo en
+        # el log de producción: 20 avisos en 48 h del núcleo «No puede
+        # cambiar un movimiento de existencias cancelado…»). Odoo no
+        # admite escribir quantity en un move 'cancel' (stock_move.py,
+        # write): antes la tablet reventaba con ese mensaje y la línea
+        # quedaba pendiente. Ahora: peso 0 → NO se toca el stock (no hay
+        # nada que despachar) y la línea se termina en 0 con nota; peso
+        # > 0 → error claro, mismo criterio que _sync_weight_to_stock.
+        move_cancelled = bool(
+            Line.stock_move_id and Line.stock_move_id.state == 'cancel'
+        )
+        if move_cancelled and Line.actual_kg > 0:
+            raise UserError(
+                f'No se puede registrar el peso de {Line.product_description} '
+                f'(Caja #{Line.daily_sequence}): el movimiento de stock de '
+                'esta línea está cancelado en Inventario y no admite '
+                'cantidad. Despáchala en 0 (sin stock) o contacta a '
+                'Inventario.'
+            )
+
         # Registrar peso real en stock.move.line (cantidad ejecutada).
         # sudo(): el operario de bodega puede no tener permisos de
         # escritura directa sobre stock.move.line del almacén.
         # skip_inverse_visual_qty: evita que el cambio en quantity
         # propague de vuelta a sale.order.line.product_uom_qty
         # a través del campo visual_qty compute/inverse.
-        if Line.stock_move_id:
+        if Line.stock_move_id and not move_cancelled:
             Move = Line.stock_move_id.sudo().with_context(
                 skip_inverse_visual_qty=True,
                 skip_recolectar_zero_check=True,
@@ -2394,6 +2830,13 @@ class PreparationDay(models.Model):
             'done_date': fields.Datetime.now(),
         })
         Line._maybe_post_dispatch_zero_note(Employee.name or self.env.user.name)
+        if move_cancelled:
+            self.sudo().message_post(body=(
+                f'{Employee.name or self.env.user.name} cerró '
+                f'{Line.product_description} (Caja #{Line.daily_sequence}) '
+                'en 0: el traslado de esta línea estaba cancelado en '
+                'Inventario (no se tocó el stock).'
+            ))
 
         # Actualizar total_done_kg en el resumen del producto
         Summary = self.summary_ids.filtered(
@@ -2526,6 +2969,7 @@ class PreparationDay(models.Model):
                 '"Actualizar pedidos" si hay pedidos tardíos que recoger.'
             )
         )
+        self._guapante_review_box_numbering()
         return False
 
     def action_export_excel(self) -> dict:

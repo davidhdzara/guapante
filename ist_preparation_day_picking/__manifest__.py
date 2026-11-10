@@ -1,6 +1,6 @@
 {
     'name': 'Picking (Guapante)',
-    'version': '18.0.1.3.0',
+    'version': '18.0.1.4.0',
     'category': 'Inventory/Inventory',
     'summary': 'Pantalla kanban a pantalla completa para pesaje de Picking',
     'description': """
@@ -28,6 +28,8 @@
         'security/ir.model.access.csv',
         'data/ir_cron_release_claims.xml',
         'data/ir_cron_release_intervals.xml',
+        'data/ir_config_parameter_chip_colors.xml',
+        'data/ir_config_parameter_pds_stopped_alert.xml',
         'views/preparation_day_form_views.xml',
         'views/preparation_day_picking_menus.xml',
         'views/hr_employee_config_views.xml',
@@ -35,9 +37,11 @@
         'views/preparation_day_note_template_views.xml',
         'views/preparation_settings_views.xml',
         'views/preparation_operator_report_views.xml',
-        'views/preparation_product_demand_report_views.xml',
         'views/preparation_interval_report_views.xml',
         'views/preparation_day_reports_menus.xml',
+        'views/preparation_pds_views.xml',
+        'views/box_number_menus.xml',
+        'views/preparation_stopped_products_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -59,6 +63,8 @@
             'ist_preparation_day_picking/static/src/js/preparation_picking_level2_display.js',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.xml',
             'ist_preparation_day_picking/static/src/js/preparation_day_productos_embedder.js',
+            'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.xml',
+            'ist_preparation_day_picking/static/src/js/preparation_pds_operacion.js',
         ],
     },
     'installable': True,

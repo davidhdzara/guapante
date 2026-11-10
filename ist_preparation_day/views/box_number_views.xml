@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Control de numeración de cajas (lote 4). Todo de solo lectura:
+         el historial es inalterable y no hay botón de corregir. -->
+    <record id="view_box_number_log_list" model="ir.ui.view">
+        <field name="name">guapante.box.number.log.list</field>
+        <field name="model">guapante.box.number.log</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="create_date" string="Fecha"/>
+                <field name="box_date"/>
+                <field name="order_id"/>
+                <field name="order_name" column_invisible="1"/>
+                <field name="old_sequence"/>
+                <field name="new_sequence"/>
+                <field name="origin"/>
+                <field name="reason"/>
+                <field name="user_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_box_number_log_search" model="ir.ui.view">
+        <field name="name">guapante.box.number.log.search</field>
+        <field name="model">guapante.box.number.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="order_name"/>
+                <field name="user_id"/>
+                <field name="box_date"/>
+                <filter name="f_alta" string="Alta" domain="[('origin', '=', 'alta')]"/>
+                <filter name="f_reubicacion" string="Reubicación" domain="[('origin', '=', 'reubicacion')]"/>
+                <filter name="f_reset" string="Reinicio" domain="[('origin', '=', 'reset')]"/>
+                <group string="Agrupar por">
+                    <filter name="g_date" string="Jornada" context="{'group_by': 'box_date'}"/>
+                    <filter name="g_origin" string="Origen" context="{'group_by': 'origin'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_box_number_log" model="ir.actions.act_window">
+        <field name="name">Historial de cajas</field>
+        <field name="res_model">guapante.box.number.log</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <record id="view_box_number_issue_list" model="ir.ui.view">
+        <field name="name">guapante.box.number.issue.list</field>
+        <field name="model">guapante.box.number.issue</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="box_date"/>
+                <field name="kind"/>
+                <field name="order_id"/>
+                <field name="sequence"/>
+                <field name="detail"/>
+                <field name="state"/>
+                <field name="resolved_date" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_box_number_issue_search" model="ir.ui.view">
+        <field name="name">guapante.box.number.issue.search</field>
+        <field name="model">guapante.box.number.issue</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="order_id"/>
+                <filter name="f_open" string="Abiertas" domain="[('state', '=', 'open')]"/>
+                <filter name="f_resolved" string="Resueltas" domain="[('state', '=', 'resolved')]"/>
+                <group string="Agrupar por">
+                    <filter name="g_kind" string="Tipo" context="{'group_by': 'kind'}"/>
+                    <filter name="g_date" string="Jornada" context="{'group_by': 'box_date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_box_number_issue" model="ir.actions.act_window">
+        <field name="name">Inconsistencias de cajas</field>
+        <field name="res_model">guapante.box.number.issue</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'search_default_f_open': 1}</field>
+    </record>
+
+    <record id="view_box_reset_wizard_form" model="ir.ui.view">
+        <field name="name">guapante.box.reset.wizard.form</field>
+        <field name="model">guapante.box.reset.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <p>
+                    Se pondrá en 0 el número de caja de los pedidos de las
+                    recolecciones seleccionadas. Es un reinicio
+                    administrativo: queda registrado en el historial con
+                    su usuario y este motivo.
+                </p>
+                <group>
+                    <field name="order_count"/>
+                    <field name="reason" required="1" placeholder="Por qué se reinician las cajas…"/>
+                </group>
+                <footer>
+                    <button string="Reiniciar cajas" name="action_confirm" type="object" class="btn-primary"/>
+                    <button string="Cancelar" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- «Administración» (Tech Lead/David, 2026-11-10): UN menú de primer nivel
+         que agrupa las herramientas de administrador, en vez de pestañas
+         sueltas. Aquí solo base.group_system; el módulo de Picking le AGREGA
+         group_preparation_admin con un <record> (nunca <menuitem>). -->
+    <menuitem id="menu_preparation_admin" name="Administración"
+        parent="menu_preparation_day_root" sequence="80"
+        groups="base.group_system"/>
+    <menuitem id="menu_box_number_log" name="Historial de cajas"
+        parent="menu_preparation_admin" action="action_box_number_log"
+        sequence="10" groups="base.group_system"/>
+    <menuitem id="menu_box_number_issue" name="Inconsistencias de cajas"
+        parent="menu_preparation_admin" action="action_box_number_issue"
+        sequence="20" groups="base.group_system"/>
+</odoo>

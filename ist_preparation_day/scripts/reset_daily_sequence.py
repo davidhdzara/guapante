@@ -18,6 +18,10 @@ from odoo import fields
 # CONFIGURAR LA FECHA AQUÍ ↓↓↓
 # ══════════════════════════════════════════════════════
 TARGET_DATE = '2026-04-04'  # Fecha de entrega del Preparation Day
+# Motivo OBLIGATORIO (queda en el historial de cajas con usuario y fecha).
+# Lote 4: daily_sequence ya no se escribe directo; el script usa el mismo
+# camino que el asistente «Resetear # de Cajas».
+REASON = ''
 # ══════════════════════════════════════════════════════
 
 delivery_date = fields.Date.from_string(TARGET_DATE)
@@ -42,24 +46,16 @@ print(f"  Órdenes encontradas con daily_sequence > 0: {len(Orders)}")
 for order in Orders.sorted('daily_sequence'):
     print(f"    {order.name} | Caja #{order.daily_sequence} | Estado: {order.state}")
 
-# 2. Reset de daily_sequence a 0
+# 2. Reset por el camino oficial (motivo + historial + ir.sequence del día)
+if not REASON.strip():
+    raise SystemExit('Falta REASON: el reinicio de cajas exige un motivo.')
 if Orders:
-    Orders.sudo().write({'daily_sequence': 0})
-    print(f"\n  {len(Orders)} órdenes reseteadas a daily_sequence = 0")
+    result = Pickings.filtered(lambda p: p.sale_id in Orders)._guapante_reset_boxes(REASON)
+    print(f"\n  Resultado: {result['params']['message']}")
 else:
     print("\n  No hay órdenes para resetear")
 
-# 3. Reset del ir.sequence diario
-cid = env.company.id
-seq_code = f'guapante.daily.{cid}.{delivery_date.strftime("%Y%m%d")}'
-IrSeq = env['ir.sequence'].sudo().search([('code', '=', seq_code)], limit=1)
-if IrSeq:
-    IrSeq.write({'number_next': 1})
-    print(f"  ir.sequence '{seq_code}' reseteado a number_next = 1")
-else:
-    print(f"  No existe ir.sequence con código '{seq_code}'")
-
-# 4. Commit
+# 3. Commit
 env.cr.commit()
 print(f"\n  COMMIT realizado. Todo listo.")
 print(f"  → Ahora elimina la sesión del Preparation Day y crea una nueva.")

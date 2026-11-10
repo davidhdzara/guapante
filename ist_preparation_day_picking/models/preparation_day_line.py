@@ -9,8 +9,26 @@ from odoo.addons.ist_preparation_day.models.const_preparation import (
 )
 
 
+RETIRED_LINE_MESSAGE = (
+    'Esta caja ya no está en la sesión: su pedido fue cancelado y la '
+    'línea se retiró. Actualiza la pantalla.'
+)
+
+
 class PreparationDayLine(models.Model):
     _inherit = 'guapante.preparation.day.line'
+
+    def _raise_if_retired(self) -> None:
+        """Lote 3 (David, 2026-11-09): un pedido cancelado retira sus
+        líneas pendientes de la sesión (ver PreparationDay._guapante_
+        remove_cancelled_order_lines). Si el operario tenía la tarjeta
+        abierta en la tablet y escribe sobre una línea que ya no existe,
+        el ORM da un MissingError crudo; acá se devuelve un mensaje
+        claro, solo desde el flujo de Picking."""
+        if self.env.context.get('guapante_picking_flow') and (
+            self - self.exists()
+        ):
+            raise UserError(RETIRED_LINE_MESSAGE)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -40,6 +58,8 @@ class PreparationDayLine(models.Model):
         entra un pedido nuevo de esa plantilla (action_load agrega
         líneas), el claim vuelve a Pendiente sin dueño, no a "En progreso"
         de alguien que ya se fue."""
+        # Lote 3: línea retirada por un pedido cancelado → mensaje claro.
+        self._raise_if_retired()
         # Trazabilidad cruzada (David/Tech Lead, 2026-11-02): sin
         # ownership, cualquier operario puede pesar/corregir una línea
         # de un producto asignado a OTRO — la nota automática de
@@ -353,6 +373,7 @@ class PreparationDayLine(models.Model):
         trabajando en esto" para efectos de abandono.
         """
         self.ensure_one()
+        self._raise_if_retired()
         clean_text = (text or '').strip()
         if not clean_text:
             raise UserError('La nota no puede estar vacía.')

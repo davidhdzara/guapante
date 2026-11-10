@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from odoo.addons.ist_preparation_day.tests.box_helpers import set_box
+
 from odoo import fields
 from odoo.tests.common import TransactionCase, tagged
 
@@ -134,7 +136,7 @@ class TestPreparationDayRenumbering(TransactionCase):
         toma MAX+1 real."""
         order_1, _p1 = self._order_on_day()
         self.assertEqual(order_1.daily_sequence, 1)
-        order_1.sudo().daily_sequence = 5  # hueco manual 2,3,4.
+        set_box(order_1, 5)  # hueco manual 2,3,4.
 
         order_2, _p2 = self._order_on_day()
 

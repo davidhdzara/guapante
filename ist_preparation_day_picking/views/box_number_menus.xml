@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lote 4: el Administrador de Preparación también ve el historial y
+         las inconsistencias de cajas (el menú base solo lo ve base.group_system).
+         Se agrega el grupo con un <record> sobre el menú existente: un
+         <menuitem> de otro módulo SIN name/parent_id no solo agrega el grupo,
+         también RESETEA el nombre al xmlid y deja el menú en la raíz (error
+         real encontrado en staging_dev, 2026-11-10: dos iconos «ist_preparation_day.menu_box_...»
+         en el lanzador de aplicaciones). -->
+    <record id="ist_preparation_day.menu_preparation_admin" model="ir.ui.menu">
+        <field name="groups_id" eval="[(4, ref('group_preparation_admin'))]"/>
+    </record>
+    <record id="ist_preparation_day.menu_box_number_log" model="ir.ui.menu">
+        <field name="groups_id" eval="[(4, ref('group_preparation_admin'))]"/>
+    </record>
+    <record id="ist_preparation_day.menu_box_number_issue" model="ir.ui.menu">
+        <field name="groups_id" eval="[(4, ref('group_preparation_admin'))]"/>
+    </record>
+</odoo>
