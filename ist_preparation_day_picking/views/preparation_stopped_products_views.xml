@@ -45,7 +45,7 @@
     </record>
 
     <menuitem id="menu_claim_stopped" name="Productos detenidos"
-        parent="ist_preparation_day.menu_preparation_day_root"
-        action="action_claim_stopped" sequence="85"
+        parent="ist_preparation_day.menu_preparation_admin"
+        action="action_claim_stopped" sequence="5"
         groups="group_preparation_admin,base.group_system"/>
 </odoo>

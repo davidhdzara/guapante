@@ -107,10 +107,17 @@
         </field>
     </record>
 
+    <!-- «Administración» (Tech Lead/David, 2026-11-10): UN menú de primer nivel
+         que agrupa las herramientas de administrador, en vez de pestañas
+         sueltas. Aquí solo base.group_system; el módulo de Picking le AGREGA
+         group_preparation_admin con un <record> (nunca <menuitem>). -->
+    <menuitem id="menu_preparation_admin" name="Administración"
+        parent="menu_preparation_day_root" sequence="80"
+        groups="base.group_system"/>
     <menuitem id="menu_box_number_log" name="Historial de cajas"
-        parent="menu_preparation_day_root" action="action_box_number_log"
-        sequence="90" groups="base.group_system"/>
+        parent="menu_preparation_admin" action="action_box_number_log"
+        sequence="10" groups="base.group_system"/>
     <menuitem id="menu_box_number_issue" name="Inconsistencias de cajas"
-        parent="menu_preparation_day_root" action="action_box_number_issue"
-        sequence="91" groups="base.group_system"/>
+        parent="menu_preparation_admin" action="action_box_number_issue"
+        sequence="20" groups="base.group_system"/>
 </odoo>

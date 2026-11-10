@@ -7,6 +7,9 @@
          también RESETEA el nombre al xmlid y deja el menú en la raíz (error
          real encontrado en staging_dev, 2026-11-10: dos iconos «ist_preparation_day.menu_box_...»
          en el lanzador de aplicaciones). -->
+    <record id="ist_preparation_day.menu_preparation_admin" model="ir.ui.menu">
+        <field name="groups_id" eval="[(4, ref('group_preparation_admin'))]"/>
+    </record>
     <record id="ist_preparation_day.menu_box_number_log" model="ir.ui.menu">
         <field name="groups_id" eval="[(4, ref('group_preparation_admin'))]"/>
     </record>
