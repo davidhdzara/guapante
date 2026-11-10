@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!-- PDS administrativo (Pantalla B), entrega 2 — ver preparation_pds_admin.js.
+         Sin CSS propio: solo clases Bootstrap/Odoo nativas. -->
+    <t t-name="ist_preparation_day_picking.PdsAdminBoard">
+        <div class="o_action d-flex flex-column h-100">
+            <div t-if="state.sessionExpired" class="alert alert-warning m-3 mb-0" role="alert">
+                Tu sesión expiró y la pantalla dejó de actualizarse. Recarga la página para volver a entrar.
+            </div>
+            <div t-elif="state.error" class="alert alert-info m-3 mb-0" role="alert">
+                No se pudo actualizar; se reintenta en la próxima vuelta. Se muestra lo último cargado.
+            </div>
+            <div class="flex-grow-1 overflow-auto">
+                <t t-if="state.loaded">
+                    <View t-key="state.tick" t-props="viewProps"/>
+                </t>
+            </div>
+            <small class="text-muted text-end px-3 py-1" t-if="state.loaded">
+                Actualizado a las <t t-esc="state.updatedAt"/> · se refresca cada <t t-esc="state.minutes"/> min
+            </small>
+        </div>
+    </t>
+</templates>

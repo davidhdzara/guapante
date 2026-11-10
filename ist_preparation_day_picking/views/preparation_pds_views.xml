@@ -32,33 +32,25 @@
         groups="group_preparation_reports_pds,-group_preparation_admin"
     />
 
-    <!-- PDS administrativo (Pantalla B), ENTREGA 1 (David/Tech Lead,
+    <!-- PDS administrativo (Pantalla B), ENTREGAS 1 y 2 (David/Tech Lead,
          2026-11-10): los reportes 1 «Pickings por operario» y 2 «Tiempo
          por operario» a pantalla completa, con sus vistas, filtros y
          permisos de siempre (mismos modelos y ACL de solo lectura de
-         «Reportes y PDS»). Acción de servidor que devuelve la acción
-         del reporte (con `views`, vía _for_xml_id) en target=fullscreen:
-         una sola fuente de verdad, nada duplicado. El refresco automático
-         llega en la ENTREGA 2. -->
-    <record id="action_pds_admin_operator" model="ir.actions.server">
+         «Reportes y PDS»). Client action `guapante_pds_admin` (preparation_pds_admin.js): monta la
+         View nativa del reporte (acción indicada en el contexto) y la refresca
+         cada N minutos (parámetro del sistema, default 5). Una sola fuente de
+         verdad: las acciones de reporte originales. -->
+    <record id="action_pds_admin_operator" model="ir.actions.client">
         <field name="name">PDS Pickings por operario</field>
-        <field name="model_id" ref="model_guapante_preparation_operator_report"/>
-        <field name="state">code</field>
-        <field name="code">
-action = env['ir.actions.actions']._for_xml_id('ist_preparation_day_picking.action_preparation_operator_report')
-action['target'] = 'fullscreen'
-action['name'] = 'PDS Pickings por operario'
-        </field>
+        <field name="tag">guapante_pds_admin</field>
+        <field name="target">fullscreen</field>
+        <field name="context">{'pds_action_xmlid': 'ist_preparation_day_picking.action_preparation_operator_report'}</field>
     </record>
-    <record id="action_pds_admin_interval" model="ir.actions.server">
+    <record id="action_pds_admin_interval" model="ir.actions.client">
         <field name="name">PDS Tiempo por operario</field>
-        <field name="model_id" ref="model_guapante_preparation_interval_report"/>
-        <field name="state">code</field>
-        <field name="code">
-action = env['ir.actions.actions']._for_xml_id('ist_preparation_day_picking.action_preparation_interval_report_2')
-action['target'] = 'fullscreen'
-action['name'] = 'PDS Tiempo por operario'
-        </field>
+        <field name="tag">guapante_pds_admin</field>
+        <field name="target">fullscreen</field>
+        <field name="context">{'pds_action_xmlid': 'ist_preparation_day_picking.action_preparation_interval_report_2'}</field>
     </record>
 
     <menuitem

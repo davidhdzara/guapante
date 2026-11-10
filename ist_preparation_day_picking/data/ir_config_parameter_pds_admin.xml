@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Refresco del PDS administrativo (Pantalla B), en minutos. Mínimo 1,
+         máximo 60; un valor inválido vuelve a 5. Se cambia en Ajustes >
+         Técnico > Parámetros del sistema; noupdate: un -u no lo pisa. -->
+    <record id="param_pds_admin_refresh_minutes" model="ir.config_parameter">
+        <field name="key">ist_preparation_day_picking.pds_admin_refresh_minutes</field>
+        <field name="value">5</field>
+    </record>
+</odoo>
