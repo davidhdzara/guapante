@@ -94,7 +94,9 @@ class PreparationDay(models.Model):
             card.update(self._pds_card_indicators(
                 claim, Lines, Session, open_working))
             if claim.status == 'in_progress':
-                card['operator_name'] = claim.assigned_employee_id.name or False
+                # sudo() solo para el NOMBRE: «Reportes y PDS» no es lector de
+                # hr.employee (perfil público restringido).
+                card['operator_name'] = claim.assigned_employee_id.sudo().name or False
             elif claim.status == 'done':
                 # claim.assigned_employee_id ya quedó en False acá —
                 # _maybe_release_finished_claim() (preparation_day_line.py)
@@ -109,7 +111,7 @@ class PreparationDay(models.Model):
                 )
                 card['operator_name'] = (
                     max(StampedLines, key=lambda l: (l.done_date, l.id))
-                    .done_by_employee_id.name
+                    .done_by_employee_id.sudo().name
                     if StampedLines else False
                 )
             if claim.status == 'stopped':

@@ -23,6 +23,10 @@ PARAM = 'ist_preparation_day_picking.pds_stopped_alert_minutes'
 class TestPreparationPdsIndicators(TestPreparationPdsOperacion):
 
     def _board(self):
+        # Como en una petición REAL: sin cachés llenos por el superusuario de
+        # la fixture, que ocultarían huecos de permisos (ACL de claims, perfil
+        # público de hr.employee) para quien solo tiene «Reportes y PDS».
+        self.env.invalidate_all()
         Model = self.env['guapante.preparation.day'].with_user(
             self.prep_admin_user)
         with patch('odoo.fields.Datetime.now',
@@ -220,3 +224,30 @@ class TestPreparationPdsIndicators(TestPreparationPdsOperacion):
         self.assertIn('Sin pesar aún', xml)
         self.assertIn('data.stopped_alert_s', js)
         self.assertEqual(js.count('window.setInterval'), 2)  # los que ya había
+
+    # ── permisos reales de «Reportes y PDS» (sin cachés de la fixture) ──
+
+    def test_reports_group_can_read_board_with_operator_names(self):
+        """Regresión: el grupo «Reportes y PDS» no tenía ACL de lectura sobre
+        guapante.preparation.day.product.claim ni puede leer hr.employee
+        (perfil público): el tablero reventaba con AccessError en una petición
+        fresca (en las pruebas pasaba por cachés llenos de la fixture)."""
+        session, claim = self._one_claim_session()
+        with patch(REQUEST_PATCH_TARGET_ALIAS, self._request_as(self.operator_a)):
+            claim.action_assign()
+        self._weigh(session.line_ids[0], 1.0)
+        data = self._board()
+        card = self._card(data, 'in_progress')
+        self.assertEqual(card['operator_name'], self.operator_a.name)
+        self._weigh(session.line_ids[1], 1.0)
+        data = self._board()
+        self.assertEqual(
+            self._card(data, 'done')['operator_name'], self.operator_a.name)
+
+    def test_reports_group_has_read_only_acl_on_claims(self):
+        acl = self.env['ir.model.access'].search([
+            ('model_id.model', '=', 'guapante.preparation.day.product.claim'),
+            ('group_id', '=', self.reports_group.id)])
+        self.assertTrue(acl)
+        self.assertTrue(acl.perm_read)
+        self.assertFalse(acl.perm_write or acl.perm_create or acl.perm_unlink)
