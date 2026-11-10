@@ -46,7 +46,10 @@ class TestPreparationBoxMenus(TransactionCase):
 
     def test_root_menu_has_only_the_expected_first_level_entries(self):
         root = self.env.ref('ist_preparation_day.menu_preparation_day_root')
-        names = set(self.env['ir.ui.menu'].sudo().search(
+        # ir_ui_menu_full_list: sin el filtro de visibilidad por grupos del
+        # usuario de la prueba (sudo() no lo salta).
+        names = set(self.env['ir.ui.menu'].with_context(
+            ir_ui_menu_full_list=True).search(
             [('parent_id', '=', root.id)]).mapped('name'))
         self.assertEqual(names, {
             'Sesiones', 'Pantallas', 'Reportes', 'Administración',
