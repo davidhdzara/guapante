@@ -161,6 +161,37 @@ class PreparationDayProductClaim(models.Model):
             claim.weighed_line_count = len(weighed)
             claim.weighed_kg = sum(weighed.mapped('actual_kg'))
 
+    scrap_count = fields.Integer(
+        string='Desechos', compute='_compute_scrap',
+    )
+    scrap_qty = fields.Float(
+        string='Cant. desechada', compute='_compute_scrap', digits=(10, 2),
+        help='En la unidad del producto. Solo desechos hechos (estado Hecho) '
+             'de esta sesión (origin = nombre de la sesión) y esta plantilla.',
+    )
+
+    def _compute_scrap(self) -> None:
+        Scrap = self.env['stock.scrap'].sudo()
+        for claim in self:
+            scraps = Scrap.search([
+                ('state', '=', 'done'),
+                ('origin', '=', claim.wizard_id.name),
+                ('product_id.product_tmpl_id', '=', claim.product_tmpl_id.id),
+            ]) if claim.wizard_id else Scrap
+            uom = claim.product_tmpl_id.uom_id
+            claim.scrap_count = len(scraps)
+            claim.scrap_qty = sum(
+                s.product_uom_id._compute_quantity(s.scrap_qty, uom)
+                for s in scraps
+            )
+
+    @api.model
+    def _guapante_is_strict_prep_admin(self) -> bool:
+        """Administrador de Preparación (grupo propio; NO base.group_system,
+        que no es «dueño» de ningún producto)."""
+        return self.env.user.has_group(
+            'ist_preparation_day_picking.group_preparation_admin')
+
     def _compute_stopped_since(self) -> None:
         Interval = self.env['guapante.preparation.interval'].sudo()
         for claim in self:
@@ -959,7 +990,8 @@ class PreparationDayProductClaim(models.Model):
         self.ensure_one()
         self._check_picking_access()
         employee_id = self._require_active_operator()
-        if self.assigned_employee_id.id != employee_id:
+        if (self.assigned_employee_id.id != employee_id
+                and not self._guapante_is_strict_prep_admin()):
             raise UserError(
                 f'No puedes desechar {self.product_tmpl_id.name} — '
                 'no está asignado a ti.'

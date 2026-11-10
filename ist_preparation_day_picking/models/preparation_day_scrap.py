@@ -53,7 +53,8 @@ class StockScrap(models.Model):
                     'este desecho — actualiza la pantalla.'
                 )
             Claim = self.env['guapante.preparation.day.product.claim'].browse(claim_id)
-            if Claim.assigned_employee_id.id != employee_id:
+            if (Claim.assigned_employee_id.id != employee_id
+                    and not Claim._guapante_is_strict_prep_admin()):
                 raise UserError(
                     f'No puedes desechar {Claim.product_tmpl_id.name} — '
                     'no está asignado a ti. Actualiza la pantalla.'
