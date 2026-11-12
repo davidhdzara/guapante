@@ -174,22 +174,24 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         self.assertEqual(Session.state, 'loaded')
         self.assertEqual(len(Session.line_ids), 1)
 
-    def test_cron_skips_draft_session_with_partial_lines(self):
+    def test_cron_loads_draft_session_with_partial_lines_without_duplicating(self):
+        """Antes (test_cron_skips_draft_session_with_partial_lines) el cron
+        NO tocaba una sesión draft con líneas. Incidente 2026-11-11: esa
+        misma situación la deja una reubicación y descartaba pedidos en
+        silencio, así que ahora el cron la carga (action_load es
+        idempotente: no duplica la línea ya puesta)."""
         order, date_val = self._confirm_order(qty=5.0)
         Session = self.env['guapante.preparation.day'].search(
             [('date', '=', date_val)], limit=1,
         )
-        # Queda 'draft' con una línea ya puesta — simula una carga a
-        # medias manual, no la rama de sesión vacía.
         Session.sudo().write({'state': 'draft'})
-        messages_before = len(Session.message_ids)
 
         self._run_cron()
 
         Session.invalidate_recordset()
-        self.assertEqual(Session.state, 'draft')
+        self.assertEqual(Session.state, 'loaded')
         self.assertEqual(len(Session.line_ids), 1)
-        self.assertEqual(len(Session.message_ids), messages_before)
+        self.assertEqual(Session.line_ids.sale_order_id, order)
 
     def test_cron_concurrency_error_in_one_session_does_not_abort_others(self):
         """Corrección de Tech Lead (2026-10-30): a diferencia de e2/
