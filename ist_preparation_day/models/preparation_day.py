@@ -1852,7 +1852,14 @@ class PreparationDay(models.Model):
                     ])
                     Orders = Pickings.mapped('sale_id')
 
-                    if not Session.line_ids and Session.state == 'draft':
+                    # Draft CON o SIN líneas: una reubicación deja la sesión
+                    # en draft con líneas ya puestas, y antes de este
+                    # cambio (condición `not line_ids`) ni este cron ni el
+                    # alta automática la cargaban — los pedidos nuevos de
+                    # esa fecha se descartaban en silencio (incidente
+                    # 2026-11-11). action_load() es idempotente con
+                    # líneas previas y deja la sesión en 'loaded'.
+                    if Session.state == 'draft':
                         if not Orders:
                             # Sesión draft sin pedidos elegibles todavía
                             # (p. ej. quedó vacía tras una reubicación, o
@@ -2152,9 +2159,14 @@ class PreparationDay(models.Model):
                     )
                     return
 
-                if not Day.line_ids and Day.state == 'draft':
-                    # Sesión recién creada por _ensure_session_for_date
-                    # (nunca se había cargado): autopuebla completo
+                if Day.state == 'draft':
+                    # Sesión draft (nunca cargada): vacía y recién creada
+                    # por _ensure_session_for_date, O con líneas que puso
+                    # una reubicación de picking (incidente 2026-11-11:
+                    # con líneas se descartaba el pedido en silencio).
+                    # action_load() es idempotente con líneas previas
+                    # (excluye sale_line_id existentes, no renumera cajas).
+                    # Autopuebla completo
                     # con TODAS las órdenes ya confirmadas de la
                     # fecha (no solo esta), igual que un action_load()
                     # manual — reusa esa lógica en vez de duplicarla
@@ -2164,8 +2176,7 @@ class PreparationDay(models.Model):
                     return
 
                 if Day.state != 'loaded':
-                    # 'draft' con líneas cargadas a medias a mano, o
-                    # cualquier estado no contemplado: no se toca —
+                    # Cualquier estado distinto de draft/loaded: no se toca —
                     # mismo comportamiento que antes de e2, Ver
                     # pedidos sigue resolviéndolo manualmente. Nivel
                     # info (no warning): no es un error, solo un caso
@@ -2174,7 +2185,7 @@ class PreparationDay(models.Model):
                         'Guapante: sesión %s en estado %s al '
                         'confirmar la orden %s — no se autopuebla '
                         'automáticamente (solo una sesión draft '
-                        'recién creada o ya loaded reciben alta '
+                        'o ya loaded reciben alta '
                         'automática).',
                         Day.date, Day.state, order.name,
                     )
