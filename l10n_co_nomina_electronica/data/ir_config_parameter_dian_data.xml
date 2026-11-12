@@ -11,6 +11,13 @@
              _ne_dian_endpoint()/_ne_dian_qr_host()/_ne_config_int_param()
              (models/res_company.py). -->
 
+        <!-- H-024: palabras que vuelven ambiguo un nombre para el prellenado de nombres y
+             apellidos del empleado (separadas por coma, minúsculas). Editable sin tocar código. -->
+        <record id="config_parameter_particulas_nombre" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.particulas_nombre</field>
+            <field name="value">de,del,la,las,los,y,san,santa,da,di,van,von</field>
+        </record>
+
         <record id="config_parameter_dian_soap_endpoint_1" model="ir.config_parameter">
             <field name="key">l10n_co_nomina_electronica.dian_soap_endpoint_1</field>
             <field name="value">https://vpfe.dian.gov.co/WcfDianCustomerServices.svc</field>
@@ -48,6 +55,14 @@
         <record id="config_parameter_recheck_max_hours" model="ir.config_parameter">
             <field name="key">l10n_co_nomina_electronica.recheck_max_hours</field>
             <field name="value">72</field>
+        </record>
+
+        <!-- Fila 9 del doc 50 (.184): cuantos documentos 'sent' reconsulta como maximo cada corrida del
+             cron por compañia (antes constante de codigo, 200). Decision de funcionamiento, segun el
+             volumen. Leido por _cron_recheck_sent_status() via ResCompany._ne_config_int_param(). -->
+        <record id="config_parameter_recheck_batch_limit" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.recheck_batch_limit</field>
+            <field name="value">200</field>
         </record>
     </data>
 </odoo>

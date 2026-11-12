@@ -134,27 +134,26 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <t t-foreach="o.line_ids" t-as="line">
-                                    <t t-if="line.appears_on_payslip">
-                                        <tr>
-                                            <td>
-                                                <span t-field="line.code"/>
-                                            </td>
-                                            <td>
-                                                <span t-field="line.name"/>
-                                            </td>
-                                            <td class="text-end">
-                                                <t t-if="line.total &gt;= 0">
-                                                    <span t-esc="'$ {:,.0f}'.format(line.total)"/>
-                                                </t>
-                                            </td>
-                                            <td class="text-end">
-                                                <t t-if="line.total &lt; 0">
-                                                    <span t-esc="'$ {:,.0f}'.format(abs(line.total))"/>
-                                                </t>
-                                            </td>
-                                        </tr>
-                                    </t>
+                                <t t-set="lineas_pdf" t-value="o._ne_pdf_lineas()"/>
+                                <t t-foreach="lineas_pdf" t-as="line">
+                                    <tr>
+                                        <td>
+                                            <span t-field="line.code"/>
+                                        </td>
+                                        <td>
+                                            <span t-field="line.name"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <t t-if="line.total &gt;= 0">
+                                                <span t-esc="'$ {:,.0f}'.format(line.total)"/>
+                                            </t>
+                                        </td>
+                                        <td class="text-end">
+                                            <t t-if="line.total &lt; 0">
+                                                <span t-esc="'$ {:,.0f}'.format(abs(line.total))"/>
+                                            </t>
+                                        </td>
+                                    </tr>
                                 </t>
                             </tbody>
                             <!-- ============================================
@@ -166,10 +165,10 @@
                                         <strong t-att-style="'color: ' + secondary">TOTALES</strong>
                                     </td>
                                     <td class="text-end">
-                                        <span t-esc="'$ {:,.0f}'.format(sum(line.total for line in o.line_ids if line.total &gt;= 0 and line.appears_on_payslip))"/>
+                                        <span t-esc="'$ {:,.0f}'.format(sum(line.total for line in lineas_pdf if line.total &gt;= 0))"/>
                                     </td>
                                     <td class="text-end">
-                                        <span t-esc="'$ {:,.0f}'.format(abs(sum(line.total for line in o.line_ids if line.total &lt; 0 and line.appears_on_payslip)))"/>
+                                        <span t-esc="'$ {:,.0f}'.format(abs(sum(line.total for line in lineas_pdf if line.total &lt; 0)))"/>
                                     </td>
                                 </tr>
                                 <tr t-att-style="'background-color: ' + primary + '; color: white; font-size: 14px;'">
@@ -178,7 +177,7 @@
                                     </td>
                                     <td class="text-end">
                                         <strong>
-                                            <span t-esc="'$ {:,.0f}'.format(sum(line.total for line in o.line_ids if line.appears_on_payslip))"/>
+                                            <span t-esc="'$ {:,.0f}'.format(o._ne_pdf_neto())"/>
                                         </strong>
                                     </td>
                                 </tr>

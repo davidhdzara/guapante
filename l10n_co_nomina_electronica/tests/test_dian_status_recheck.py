@@ -15,7 +15,7 @@ import hashlib
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
 class _FakeCertificate:
@@ -26,11 +26,12 @@ class _FakeCertificate:
         return True
 
 
+@tagged('post_install', '-at_install')
 class TestDianStatusRecheckCron(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Reconsulta DIAN',
         })
         cls.company.write({
@@ -76,15 +77,15 @@ class TestDianStatusRecheckCron(TransactionCase):
         # Odoo prohíbe cr.commit() en un test; se aísla también rollback() para poder
         # ejercer esa rama de _cron_recheck_sent_status() sin tocar la transacción de la prueba.
         self.commit_patcher = patch(
-            'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.'
-            'HrPayslip._cron_recheck_commit',
+            'odoo.addons.l10n_co_nomina_electronica.models.l10n_co_ne_documento_mixin.'
+            'L10nCoNeDocumentoMixin._cron_recheck_commit',
         )
         self.commit_patcher.start()
         self.addCleanup(self.commit_patcher.stop)
 
         self.rollback_patcher = patch(
-            'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.'
-            'HrPayslip._cron_recheck_rollback',
+            'odoo.addons.l10n_co_nomina_electronica.models.l10n_co_ne_documento_mixin.'
+            'L10nCoNeDocumentoMixin._cron_recheck_rollback',
         )
         self.rollback_patcher.start()
         self.addCleanup(self.rollback_patcher.stop)
@@ -104,7 +105,7 @@ class TestDianStatusRecheckCron(TransactionCase):
         ]).write({'l10n_co_ne_hab_state': 'running'})
 
     def _make_payslip(self, name, state='sent', zip_key='ZIPKEY-1'):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
             'identification_id': '30' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
@@ -112,7 +113,7 @@ class TestDianStatusRecheckCron(TransactionCase):
             # bank_account_id (UX-02) -- sin interés aquí, 'Efectivo' evita datos bancarios falsos.
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -395,6 +396,7 @@ class TestDianStatusRecheckCron(TransactionCase):
         self.assertEqual(payslip.l10n_co_ne_state, 'accepted')
 
 
+@tagged('post_install', '-at_install')
 class TestSetLevelStatusResponse(TestDianStatusRecheckCron):
     """H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
     GetStatusZip respondió StatusCode=2, IsValid=false, StatusDescription hablando del "set

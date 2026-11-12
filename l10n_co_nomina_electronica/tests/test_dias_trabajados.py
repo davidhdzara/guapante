@@ -20,16 +20,17 @@ inventar 30 cuando el dato no se puede determinar.
 from datetime import date
 
 from odoo.exceptions import UserError
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestDiasTrabajadosCommon(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Compañía dedicada y descartable -- la build de Odoo.sh corre los tests sobre una
         # COPIA de la BD real de Guapante (ver AUD-DIAN-34 en test_dian_matching.py).
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba DiasTrabajados',
         })
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
@@ -45,15 +46,17 @@ class TestDiasTrabajadosCommon(TransactionCase):
         })
 
     def _make_contract(self, name, date_start=date(2024, 1, 1), date_end=None, wage=1800000.0):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
+            'l10n_co_primer_nombre': 'Prueba',
+            'l10n_co_primer_apellido': 'Fixture',
             'identification_id': '40' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             # l10n_co_ne_payment_method default es '1' (Transferencia Bancaria), que exige
             # bank_account_id (UX-02) -- sin interés aquí, 'Efectivo' evita datos bancarios falsos.
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -77,6 +80,7 @@ class TestDiasTrabajadosCommon(TransactionCase):
         })
 
 
+@tagged('post_install', '-at_install')
 class TestNeDiasPagables(TestDiasTrabajadosCommon):
     """(a)(b)(c) del criterio de aceptación: _ne_dias_pagables() es la única fuente de días."""
 
@@ -159,6 +163,7 @@ class TestNeDiasPagables(TestDiasTrabajadosCommon):
         self.assertEqual(payslip._ne_dias_pagables(), 25)
 
 
+@tagged('post_install', '-at_install')
 class TestNeDiasPagablesLiquidacion(TestDiasTrabajadosCommon):
     """H-009 (2026-10-06, QA Bloque 2): hallazgo real en staging (NE0000000077, contrato desde
     2024-10-05, retiro 2026-11-15) -- el XML mostraba <Basico DiasTrabajados="11"
@@ -245,6 +250,7 @@ class TestNeDiasPagablesLiquidacion(TestDiasTrabajadosCommon):
         self.assertEqual(payslip._ne_dias_pagables(), 13)
 
 
+@tagged('post_install', '-at_install')
 class TestDevBasicoYTransporteGuard(TestDiasTrabajadosCommon):
     """(d) del criterio de aceptación: sin dato válido, UserError -- nunca un 30 inventado."""
 

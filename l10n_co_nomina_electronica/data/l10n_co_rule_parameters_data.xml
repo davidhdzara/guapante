@@ -216,6 +216,82 @@ legítimamente menor a 1, no es un error de escala. Valor vigente: <strong>0.522
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+    <record id="rule_parameter_pct_arl_clase_2" model="hr.rule.parameter">
+        <field name="name">Colombia: % ARL Clase de Riesgo II</field>
+        <field name="code">l10n_co_pct_arl_clase_2</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa de cotización ARL a cargo del empleador para la Clase de
+Riesgo II (Riesgo Bajo). H-005 (2026-11-09): CO_ARL_CIA y PILA la leen según la Clase de
+Riesgo ARL del contrato (l10n_co_pila_clase_riesgo). La Clase I vive en
+l10n_co_pct_arl_default. Clasificación de actividades: Decreto 768/2022; tarifas: Art.
+2.2.4.3.5 del Decreto 1072/2015.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número del porcentaje, <strong>NO</strong> la fracción decimal equivalente:
+escriba <strong>1.044</strong> para representar 1.044%. Valor vigente: <strong>1.044</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_arl_clase_2_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">1.044</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_arl_clase_2"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_arl_clase_3" model="hr.rule.parameter">
+        <field name="name">Colombia: % ARL Clase de Riesgo III</field>
+        <field name="code">l10n_co_pct_arl_clase_3</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa de cotización ARL a cargo del empleador para la Clase de
+Riesgo III (Riesgo Medio). H-005 (2026-11-09): CO_ARL_CIA y PILA la leen según la Clase de
+Riesgo ARL del contrato (l10n_co_pila_clase_riesgo). La Clase I vive en
+l10n_co_pct_arl_default. Clasificación de actividades: Decreto 768/2022; tarifas: Art.
+2.2.4.3.5 del Decreto 1072/2015.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número del porcentaje, <strong>NO</strong> la fracción decimal equivalente:
+escriba <strong>2.436</strong> para representar 2.436%. Valor vigente: <strong>2.436</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_arl_clase_3_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">2.436</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_arl_clase_3"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_arl_clase_4" model="hr.rule.parameter">
+        <field name="name">Colombia: % ARL Clase de Riesgo IV</field>
+        <field name="code">l10n_co_pct_arl_clase_4</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa de cotización ARL a cargo del empleador para la Clase de
+Riesgo IV (Riesgo Alto). H-005 (2026-11-09): CO_ARL_CIA y PILA la leen según la Clase de
+Riesgo ARL del contrato (l10n_co_pila_clase_riesgo). La Clase I vive en
+l10n_co_pct_arl_default. Clasificación de actividades: Decreto 768/2022; tarifas: Art.
+2.2.4.3.5 del Decreto 1072/2015.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número del porcentaje, <strong>NO</strong> la fracción decimal equivalente:
+escriba <strong>4.350</strong> para representar 4.350%. Valor vigente: <strong>4.350</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_arl_clase_4_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">4.350</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_arl_clase_4"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_arl_clase_5" model="hr.rule.parameter">
+        <field name="name">Colombia: % ARL Clase de Riesgo V</field>
+        <field name="code">l10n_co_pct_arl_clase_5</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tarifa de cotización ARL a cargo del empleador para la Clase de
+Riesgo V (Riesgo Máximo). H-005 (2026-11-09): CO_ARL_CIA y PILA la leen según la Clase de
+Riesgo ARL del contrato (l10n_co_pila_clase_riesgo). La Clase I vive en
+l10n_co_pct_arl_default. Clasificación de actividades: Decreto 768/2022; tarifas: Art.
+2.2.4.3.5 del Decreto 1072/2015.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número del porcentaje, <strong>NO</strong> la fracción decimal equivalente:
+escriba <strong>6.960</strong> para representar 6.960%. Valor vigente: <strong>6.960</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_arl_clase_5_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">6.960</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_arl_clase_5"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_pct_ccf" model="hr.rule.parameter">
         <field name="name">Colombia: % Caja de Compensación Familiar</field>
         <field name="code">l10n_co_pct_ccf</field>
@@ -280,6 +356,58 @@ escriba <strong>10</strong> para representar "10 SMMLV". Valor vigente: <strong>
     <record id="rule_parameter_tope_exoneracion_smmlv_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">10</field>
         <field name="rule_parameter_id" ref="rule_parameter_tope_exoneracion_smmlv"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_tabla_retencion_art383" model="hr.rule.parameter">
+        <field name="name">Colombia: Tabla de Retención en la Fuente (Art. 383 ET)</field>
+        <field name="code">l10n_co_tabla_retencion_art383</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tabla marginal de retención en la fuente por rentas de trabajo, Procedimiento 1 (Art. 383 ET):
+una lista de tramos <code>(límite inferior UVT, límite superior UVT, tarifa, UVT fijas)</code>. La retención de un
+tramo es <code>(base en UVT − límite inferior) × tarifa + UVT fijas</code>.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba la lista completa de tramos en formato Python, con la tarifa como fracción decimal (0.19 es 19%) y
+<strong>None</strong> como límite superior del último tramo (sin tope). Ejemplo del valor vigente:
+<code>[(0, 95, 0.0, 0), (95, 150, 0.19, 0), (150, 360, 0.28, 10), (360, 640, 0.33, 69), (640, 945, 0.35, 162),
+(945, 2300, 0.37, 268), (2300, None, 0.39, 770)]</code>. Si la ley cambia la tabla, cree un valor nuevo con su
+fecha de vigencia; no edite el anterior.</p></field>
+    </record>
+    <record id="rule_parameter_tabla_retencion_art383_2017" model="hr.rule.parameter.value">
+        <field name="parameter_value">[(0, 95, 0.0, 0), (95, 150, 0.19, 0), (150, 360, 0.28, 10), (360, 640, 0.33, 69), (640, 945, 0.35, 162), (945, 2300, 0.37, 268), (2300, None, 0.39, 770)]</field>
+        <field name="rule_parameter_id" ref="rule_parameter_tabla_retencion_art383"/>
+        <field name="date_from" eval="datetime(2017, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_aviso_anio_siguiente_desde_mes" model="hr.rule.parameter">
+        <field name="name">Colombia: Aviso de Parámetros del Año Siguiente (Desde el Mes)</field>
+        <field name="code">l10n_co_aviso_anio_siguiente_desde_mes</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Mes del año (1 a 12) desde el cual el panel de Nómina avisa si faltan el SMMLV, la UVT, el auxilio de
+transporte y la configuración de retención en la fuente del AÑO SIGUIENTE, para cargarlos antes de enero.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número del mes: escriba <strong>11</strong> para "desde noviembre". Valor vigente: <strong>11</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_aviso_anio_siguiente_desde_mes_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">11</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aviso_anio_siguiente_desde_mes"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_piso_salario_integral_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Piso Salario Integral (SMMLV)</field>
+        <field name="code">l10n_co_piso_salario_integral_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV que como mínimo debe devengar un trabajador de salario
+integral: 10 SMMLV de salario más 30 % de factor prestacional (CST art. 132 num. 2, Ley 50/1990).
+El contrato integral por debajo de este valor no se puede guardar.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número de veces el SMMLV, <strong>NO</strong> un valor en pesos: escriba <strong>13</strong>
+para "13 SMMLV". Valor vigente: <strong>13</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_piso_salario_integral_smmlv_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">13</field>
+        <field name="rule_parameter_id" ref="rule_parameter_piso_salario_integral_smmlv"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
@@ -366,14 +494,36 @@ Valor vigente: <strong>720</strong>.</p></field>
         <field name="name">Colombia: Días Incapacidad a Cargo del Empleador</field>
         <field name="code">l10n_co_dias_incapacidad_empleador</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Primeros días de incapacidad por enfermedad general pagados al 100%
-por el empleador antes de que la EPS asuma el pago (Art. 227 CST).</p>
+        <field name="description" type="html"><p>Primeros días de incapacidad por enfermedad general a cargo del
+empleador antes de que la EPS asuma el pago (Decreto 780/2016, Art. 3.2.1.10, parágrafo 1:
+"Serán a cargo de los respectivos empleadores las prestaciones económicas correspondientes a los
+dos (2) primeros días de incapacidad originada por enfermedad general y de las Entidades
+Promotoras de Salud a partir del tercer (3) día"). El porcentaje que se paga en esos días está
+en <code>l10n_co_pct_incapacidad_empleador</code>.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero de días. Valor vigente: <strong>2</strong>.</p></field>
     </record>
     <record id="rule_parameter_dias_incapacidad_empleador_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">2</field>
         <field name="rule_parameter_id" ref="rule_parameter_dias_incapacidad_empleador"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_incapacidad_empleador" model="hr.rule.parameter">
+        <field name="name">Colombia: % Incapacidad Días a Cargo del Empleador</field>
+        <field name="code">l10n_co_pct_incapacidad_empleador</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje del salario que el empleador paga en los primeros días
+de incapacidad por enfermedad general (los de <code>l10n_co_dias_incapacidad_empleador</code>).
+H-013 paso 3 (2026-11-09, norma confirmada por David): antes se pagaban al 100%.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
+decimal equivalente: escriba <strong>66.67</strong> para representar 66.67% (no 0.6667).
+Valor vigente: <strong>66.67</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_incapacidad_empleador_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">66.67</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_incapacidad_empleador"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
@@ -429,6 +579,25 @@ propio, no debe confundirse con ningún otro parámetro de días.</p>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+    <record id="rule_parameter_dias_interrupcion_prorroga" model="hr.rule.parameter">
+        <field name="name">Colombia: Incapacidad Común, Interrupción Máxima para Prórroga (Días)</field>
+        <field name="code">l10n_co_dias_interrupcion_prorroga</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Días libres máximos entre dos incapacidades por enfermedad general
+del mismo trabajador para contarlas como UNA sola (prórroga): el tramo de pago (2 días del empleador,
+3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la primera, no desde cada incapacidad ni
+cada recibo (H-170). Con 0 solo se encadenan las incapacidades contiguas (la siguiente empieza el día
+posterior al fin de la anterior). La norma de prórroga puede admitir más días: valor a confirmar por el
+área normativa.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de días. Valor vigente: <strong>0</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_dias_interrupcion_prorroga_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_dias_interrupcion_prorroga"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_pct_tope_embargo_alimentos" model="hr.rule.parameter">
         <field name="name">Colombia: % Tope Embargo Alimentos/Cooperativa</field>
         <field name="code">l10n_co_pct_tope_embargo_alimentos</field>
@@ -480,20 +649,22 @@ Valor vigente: <strong>25.0</strong>.</p></field>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
-    <record id="rule_parameter_max_renta_exenta_uvt" model="hr.rule.parameter">
-        <field name="name">Colombia: Tope Renta Exenta (UVT/mes)</field>
-        <field name="code">l10n_co_max_renta_exenta_uvt</field>
+    <record id="rule_parameter_max_renta_exenta_uvt_anual" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope Renta Exenta 25% (UVT/año)</field>
+        <field name="code">l10n_co_max_renta_exenta_uvt_anual</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Tope mensual de renta exenta expresado en UVT (Art. 206 num. 10 ET).</p>
+        <field name="description" type="html"><p>Tope ANUAL de la renta exenta del 25% de los pagos laborales, en UVT
+(Art. 206 num. 10 ET, modificado por el Art. 2 de la Ley 2277 de 2022; Concepto DIAN 15007 de 2023).
+En la retención en la fuente el tope mensual es este valor dividido en 12.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número de UVT, <strong>NO</strong> un valor en pesos -- Odoo lo convierte a
-pesos automáticamente usando la UVT vigente del período: escriba <strong>240</strong>
-para "240 UVT". Valor vigente: <strong>240.0</strong>.</p></field>
+<p>Escriba el número de UVT <strong>por año</strong>, <strong>NO</strong> un valor en pesos ni mensual:
+escriba <strong>790</strong> para "790 UVT anuales". Valor vigente desde 2023: <strong>790.0</strong>.
+(Hasta 2022 el tope era de 240 UVT mensuales; el módulo no calcula años anteriores a 2023.)</p></field>
     </record>
-    <record id="rule_parameter_max_renta_exenta_uvt_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">240.0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_max_renta_exenta_uvt"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    <record id="rule_parameter_max_renta_exenta_uvt_anual_2023" model="hr.rule.parameter.value">
+        <field name="parameter_value">790.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_max_renta_exenta_uvt_anual"/>
+        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
     </record>
 
     <record id="rule_parameter_pct_deduccion_dependientes" model="hr.rule.parameter">
@@ -1129,4 +1300,58 @@ término fijo, que no tiene este piso.</p>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+
+    <record id="rule_parameter_pct_tope_libranzas" model="hr.rule.parameter">
+        <field name="name">Colombia: % Mínimo del Neto de Ley que Debe Quedar al Trabajador (Libranzas)</field>
+        <field name="code">l10n_co_pct_tope_libranzas</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Ley 1527 de 2012, Art. 3 num. 5: el trabajador no puede quedar con menos
+del 50% de su neto después de descuentos de ley (salud, pensión, retención en la fuente) tras las libranzas.
+El tope de descuento por libranzas es la suma de TODAS las libranzas activas del empleado:
+<code>0,5 x neto de ley - embargos</code> (lectura más protectora, Corte Constitucional T-629/2016).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
+decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). Valor vigente: <strong>50</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_pct_tope_libranzas_2012" model="hr.rule.parameter.value">
+        <field name="parameter_value">50</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_tope_libranzas"/>
+        <field name="date_from" eval="datetime(2012, 7, 12).date()"/>
+    </record>
+
+    <record id="rule_parameter_ibc_min_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Piso del IBC (SMMLV)</field>
+        <field name="code">l10n_co_ibc_min_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Piso del Ingreso Base de Cotización en número de SMMLV (se prorratea por días cotizados: SMMLV/30 x días). Valor vigente: <strong>1</strong>.</p><h3 class="mt-5">Cómo ingresar el valor</h3><p>Escriba el número de salarios mínimos (1 = un SMMLV).</p></field>
+    </record>
+    <record id="rule_parameter_ibc_min_smmlv_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">1</field>
+        <field name="rule_parameter_id" ref="rule_parameter_ibc_min_smmlv"/>
+        <field name="date_from" eval="datetime(2002, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_ibc_max_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Techo del IBC (SMMLV)</field>
+        <field name="code">l10n_co_ibc_max_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Techo del Ingreso Base de Cotización en número de SMMLV (nunca se prorratea; Ley 797/2003 Art. 5, Consejo de Estado). Valor vigente: <strong>25</strong>.</p><h3 class="mt-5">Cómo ingresar el valor</h3><p>Escriba el número de salarios mínimos (25 = veinticinco SMMLV).</p></field>
+    </record>
+    <record id="rule_parameter_ibc_max_smmlv_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">25</field>
+        <field name="rule_parameter_id" ref="rule_parameter_ibc_max_smmlv"/>
+        <field name="date_from" eval="datetime(2003, 1, 29).date()"/>
+    </record>
+
+    <record id="rule_parameter_pct_tope_no_salarial" model="hr.rule.parameter">
+        <field name="name">Colombia: % Tope de Pagos No Salariales (Regla del 40%)</field>
+        <field name="code">l10n_co_pct_tope_no_salarial</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Ley 1393 de 2010, Art. 30: los pagos no salariales por pacto que superen este porcentaje de la remuneración total se suman al IBC (Consejo de Estado, SU 25185 de 2021). Valor vigente: <strong>40</strong>.</p><h3 class="mt-5">Cómo ingresar el valor</h3><p>Escriba el número entero del porcentaje, <strong>NO</strong> la fracción: <strong>40</strong> para 40%.</p></field>
+    </record>
+    <record id="rule_parameter_pct_tope_no_salarial_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">40</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pct_tope_no_salarial"/>
+        <field name="date_from" eval="datetime(2011, 1, 1).date()"/>
+    </record>
 </odoo>

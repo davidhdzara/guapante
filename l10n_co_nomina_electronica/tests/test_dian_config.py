@@ -16,10 +16,11 @@ Dos niveles de prueba:
 import unittest
 
 from odoo.addons.l10n_co_nomina_electronica.services import dian_utils
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import BaseCase, TransactionCase, tagged
 
 
-class TestDianUtilsUrlsPure(unittest.TestCase):
+@tagged('post_install', '-at_install')
+class TestDianUtilsUrlsPure(BaseCase):
     """(a)/(b) del criterio de aceptación, a nivel de la función pura."""
 
     def test_soap_endpoint_defaults_unchanged(self):
@@ -60,13 +61,14 @@ class TestDianUtilsUrlsPure(unittest.TestCase):
         self.assertEqual(dian_utils.parse_positive_int('-5', 45, 'x'), 45)
 
 
+@tagged('post_install', '-at_install')
 class TestResCompanyDianConfig(TransactionCase):
     """(b)/(c) del criterio de aceptación: ResCompany lee de verdad ir.config_parameter."""
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Config DIAN',
         })
 

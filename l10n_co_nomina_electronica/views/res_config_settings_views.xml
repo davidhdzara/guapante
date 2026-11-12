@@ -46,7 +46,7 @@
                  Odoo 18 prohíbe usar el atributo "string" como selector de
                  herencia de vistas ("View inheritance may not use attribute
                  'string' as a selector", reproducido por Tech Lead en el
-                 servidor) -- se ancla en el div id="localization_text" del
+                 servidor): se ancla en el div id="localization_text" del
                  botón nativo (el único id real y estable que existe ahí) y
                  se sube al <setting> ancestro. -->
             <xpath expr="//div[@id='localization_text']/ancestor::setting"
@@ -153,6 +153,18 @@
                         <setting help="Exoneración de aportes a SENA/ICBF para empleados con salario inferior a 10 SMMLV (Art. 114-1 ET, Ley 1607/2012).">
                             <field name="l10n_co_ne_exoneration_1607"/>
                         </setting>
+                        <setting help="En días de suspensión o licencia no remunerada la pensión patronal es opcional en el sector privado (Concepto Min. Protección Social 134658, CST art. 53).">
+                            <field name="l10n_co_ne_pension_patronal_sln"/>
+                        </setting>
+                        <setting string="Febrero en prestaciones" help="Cómo se cuentan los días de febrero en prima, cesantías, intereses, indemnización y vacaciones de la liquidación. No afecta el sueldo mensual ni los días de PILA.">
+                            <field name="l10n_co_ne_febrero_modo"/>
+                        </setting>
+                        <setting string="Redondeo de días del XML" help="Cómo se redondea un número de días fraccionario en los campos de días del XML de nómina electrónica (la DIAN exige enteros). Mismo método de redondeo nativo de Odoo.">
+                            <field name="l10n_co_ne_redondeo_dias"/>
+                        </setting>
+                        <setting string="Medio de Pago" help="Medio de pago de la nómina de la empresa. Un empleado puede tener otro propio (pestaña Nómina Colombia del empleado).">
+                            <field name="l10n_co_ne_payment_method"/>
+                        </setting>
                         <setting>
                             <div class="text-muted" id="l10n_co_ne_annual_params_text">
                                 Los valores de SMMLV, auxilio de transporte y UVT se configuran
@@ -164,11 +176,28 @@
                         <setting string="Tipo Aportante PILA" help="Tipo de aportante según la tabla de la Planilla Integrada de Liquidación de Aportes (Empleador, Independiente, Entidad Promotora de Salud, etc.).">
                             <field name="l10n_co_pila_tipo_aportante"/>
                         </setting>
-                        <setting string="Código ARL" help="Código de la ARL a la que está afiliada la empresa, según la tabla de administradoras de riesgos laborales de PILA (ej: 14-11).">
-                            <field name="l10n_co_pila_arl_code"/>
+                        <setting string="ARL" help="Contacto de la ARL a la que está afiliada la empresa. El código PILA (ej: 14-11) se toma del contacto.">
+                            <field name="l10n_co_pila_arl_id" options="{'no_create': True}"/>
                         </setting>
-                        <setting string="Nombre ARL" help="Nombre comercial de la ARL (ej: &quot;Positiva ARL&quot;, &quot;Sura ARL&quot;) -- complementa el Código ARL con un nombre legible para pantallas de consulta.">
-                            <field name="l10n_co_pila_arl_name"/>
+                        <setting string="Caja de Compensación" help="Si la empresa tiene empleados en diferentes ciudades, active la casilla y elija la caja en cada empleado; si no, elija aquí la caja de toda la empresa.">
+                            <field name="l10n_co_pila_ccf_por_empleado"/>
+                            <field name="l10n_co_pila_ccf_id" options="{'no_create': True}"
+                                   invisible="l10n_co_pila_ccf_por_empleado"/>
+                        </setting>
+                        <setting string="Clase de Riesgo ARL" help="Clase de riesgo de la empresa. Un contrato puede tener otra propia (pestaña PILA del contrato).">
+                            <field name="l10n_co_pila_clase_riesgo"/>
+                        </setting>
+                        <setting string="Centro de Trabajo ARL" help="Código del centro de trabajo ARL de la empresa. Un contrato puede tener otro propio (pestaña PILA del contrato).">
+                            <field name="l10n_co_pila_centro_trabajo"/>
+                        </setting>
+                        <setting string="SENA" help="Contacto al que se causa el aporte parafiscal al SENA.">
+                            <field name="l10n_co_sena_partner_id" options="{'no_create': True}"/>
+                        </setting>
+                        <setting string="ICBF" help="Contacto al que se causa el aporte parafiscal al ICBF.">
+                            <field name="l10n_co_icbf_partner_id" options="{'no_create': True}"/>
+                        </setting>
+                        <setting string="DIAN" help="Contacto de la DIAN, tercero de la retención en la fuente.">
+                            <field name="l10n_co_dian_partner_id" options="{'no_create': True}"/>
                         </setting>
                         <setting string="Forma Presentación PILA" help="Forma de presentación de la planilla ante el operador: Único (un solo pago consolidado) o Sucursal (aportante que declara por sucursales separadas).">
                             <field name="l10n_co_pila_forma_presentacion"/>

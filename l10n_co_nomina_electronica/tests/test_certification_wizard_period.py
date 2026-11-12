@@ -17,9 +17,10 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 
 from odoo import fields
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestCertificationWizardPeriod(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -28,7 +29,7 @@ class TestCertificationWizardPeriod(TransactionCase):
         # -- sin esto, el fallback de esta prueba podría chocar con payslips
         # 'done' reales de la compañía por defecto en la copia de la BD de
         # staging/Guapante sobre la que corre la build.
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Periodo Habilitación',
         })
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
@@ -48,13 +49,13 @@ class TestCertificationWizardPeriod(TransactionCase):
         })
 
     def _make_done_payslip(self, name, date_from, date_to):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
             'identification_id': '20' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,

@@ -33,6 +33,7 @@ from lxml import etree as _etree
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_is_zero, float_round
 
 from ..services import (
     cune as cune_service,
@@ -99,259 +100,21 @@ DEDUCTION_SIMPLE_CONCEPTS = {
     'Deuda': 'Deuda',
 }
 
-# Tope de documentos 'sent' que _cron_recheck_sent_status() reconsulta por
-# compañía en cada ejecución -- un lote acotado, no todo el histórico
-# pendiente de una sola vez (ver data/ir_cron_dian_status_recheck.xml, cuyo
-# intervalo SÍ es un dato editable en Ajustes, no una constante de código).
-_CRON_RECHECK_BATCH_LIMIT = 200
 
-# H-012 (2026-10-06): plazo máximo (horas) que un documento 'sent' se reconsulta
-# automáticamente antes de marcarse 'uncertain' y salir del cron -- valor por defecto,
-# overridable vía ir.config_parameter (ver data/ir_config_parameter_dian_data.xml). Evidencia
-# real (NA0000000049, payslip 944, ZipKey 98e2fdc3): un documento puede quedar "sent" para
-# siempre si la DIAN nunca vuelve a dar un veredicto del documento -- sin este límite el cron
-# lo reconsulta cada 10 minutos sin fin.
-_CRON_RECHECK_MAX_HOURS_DEFAULT = 72
 
 
 class HrPayslip(models.Model):
     """Nómina electrónica – modelo central con ciclo DIAN completo."""
 
-    _inherit = 'hr.payslip'
+    _name = 'hr.payslip'
+    _inherit = ['hr.payslip', 'l10n.co.ne.documento.mixin']
 
-    # ──────────────────────────────────────────────────────────────────
-    # Campos de estado y trazabilidad DIAN
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_state = fields.Selection(
-        selection=[
-            ('draft', 'Borrador'),
-            ('generated', 'XML Generado'),
-            ('sent', 'Enviado a DIAN'),
-            ('uncertain', 'Envío incierto - requiere conciliación'),
-            ('accepted', 'Aceptado por DIAN'),
-            ('rejected', 'Rechazado por DIAN'),
-        ],
-        string='Estado DIAN',
-        default='draft',
-        copy=False,
-        tracking=True,
-        help='Estado del documento de nómina electrónica ante la DIAN.\n'
-             '• Borrador: aún no se ha generado el XML.\n'
-             '• XML Generado: XML construido, firmado y listo para envío.\n'
-             '• Enviado a DIAN: transmitido al web service, pendiente respuesta.\n'
-             '• Envío incierto: no hubo acuse válido; requiere conciliación.\n'
-             '• Aceptado por DIAN: la DIAN validó y aceptó el documento.\n'
-             '• Rechazado por DIAN: la DIAN rechazó el documento.',
-    )
-    l10n_co_ne_cune = fields.Char(
-        string='CUNE',
-        readonly=True,
-        copy=False,
-        index=True,
-        help='Código Único de Nómina Electrónica. Identificador único '
-             'e irrepetible del documento calculado según el algoritmo '
-             'SHA-384 definido en el anexo técnico.',
-    )
-    l10n_co_ne_xml_attachment_id = fields.Many2one(
-        comodel_name='ir.attachment',
-        string='XML Firmado',
-        readonly=True,
-        copy=False,
-        ondelete='set null',
-        help='Adjunto que contiene el XML de nómina electrónica firmado '
-             'digitalmente con el certificado .p12 de la empresa.',
-    )
-    l10n_co_ne_dian_request = fields.Text(
-        string='Solicitud DIAN',
-        readonly=True,
-        copy=False,
-        help='Petición SOAP/XML completa enviada al servicio web de la '
-             'DIAN (SendTestSetAsync/GetStatusZip), guardada ANTES de '
-             'enviarla. Sin esto, diagnosticar un rechazo real requiere '
-             'reconstruir a ciegas qué se mandó a partir de la '
-             'respuesta de error (incidente real 2026-10-04: bug de '
-             'TestSetId solo se detectó indirectamente).',
-    )
-    l10n_co_ne_dian_response = fields.Text(
-        string='Respuesta DIAN',
-        readonly=True,
-        copy=False,
-        help='Respuesta completa del servicio web de la DIAN tras el '
-             'envío del documento de nómina electrónica.',
-    )
-    l10n_co_ne_zip_key = fields.Char(
-        string='ZipKey DIAN',
-        readonly=True,
-        copy=False,
-        help='Identificador (ZipKey/trackId) devuelto por la DIAN al '
-             'enviar el documento. Se usa para consultar el estado del '
-             'procesamiento (GetStatusZip).',
-    )
-    l10n_co_ne_exchange_ids = fields.Many2many(
-        comodel_name='l10n.co.ne.exchange',
-        relation='l10n_co_ne_exchange_payslip_rel',
-        column1='payslip_id', column2='exchange_id',
-        string='Historial de intercambios DIAN', readonly=True, copy=False,
-    )
 
-    def _ne_response_text(self, value):
-        # AUD-DIAN-34 (2026-10-04): este campo es un resumen para la vista
-        # del formulario, no evidencia -- la evidencia completa (sobre SOAP
-        # y ZIP de respuesta íntegros, sin truncar) vive en
-        # l10n.co.ne.exchange. Un SendTestSetAsync de 4 nóminas puede traer
-        # un ZIP base64 de varios MB; meterlo entero aquí infla el registro
-        # del payslip sin necesidad.
-        if isinstance(value, bytes):
-            value = value.decode('utf-8', errors='replace')
-        return (value or '')[:5000]
 
-    def _ne_store_exchange(self, operation, endpoint, response, manifest=None,
-                           queried_zip_key=None, parent_exchange=None,
-                           unidentified_count=0):
-        """Guarda evidencia completa (siempre, un registro histórico por intento) y
-        actualiza el resumen visible del documento SOLO si de verdad cambió.
 
-        H-012 (2026-10-06): un documento 'sent' sin resolver que el cron reconsulta cada 10
-        minutos escribía aquí sin condición -- aunque la respuesta de la DIAN fuera
-        exactamente la misma de la reconsulta anterior, write_date se actualizaba igual.
-        Eso hacía parecer que el documento se "tocaba" constantemente sin ningún cambio
-        real, y ensuciaba el orden por write_date que usa _cron_recheck_sent_status() para
-        priorizar el lote.
-        """
-        exchange = self.env['l10n.co.ne.exchange'].create_exchange(
-            self.company_id, operation, endpoint, response, self, manifest,
-            queried_zip_key=queried_zip_key, parent_exchange=parent_exchange,
-            unidentified_count=unidentified_count,
-        )
-        new_request = self._ne_response_text(response.get('RawRequest'))
-        new_response = self._ne_response_text(response.get('RawResponse'))
-        changed = self.filtered(
-            lambda slip: slip.l10n_co_ne_dian_request != new_request
-            or slip.l10n_co_ne_dian_response != new_response
-        )
-        if changed:
-            changed.write({
-                'l10n_co_ne_dian_request': new_request,
-                'l10n_co_ne_dian_response': new_response,
-            })
-        return exchange
 
-    @staticmethod
-    def _ne_cune_candidates(result):
-        """Extrae candidatos de CUNE de un resultado, sin confundirlos con IDs SOAP.
 
-        AUD-DIAN-34 (2026-10-04): evidencia real (GetStatusZip AUTORIZADO,
-        nómina SME-10) confirma que el CUNE del documento original viaja en
-        ``cac:DocumentResponse/cac:DocumentReference/cbc:UUID`` dentro del
-        ApplicationResponse -- ver ``soap_client.extract_document_cunes``.
-        """
-        candidates = set()
-        for key in ('XmlDocumentKey', 'CUNE', 'DocumentKey'):
-            value = result.get(key)
-            if value:
-                candidates.add(value.strip())
-        application = result.get('ApplicationResponse') or ''
-        if application:
-            candidates.update(soap_client.extract_document_cunes(application))
-        return candidates
 
-    @staticmethod
-    def _ne_number_candidates(result):
-        """Extrae el NÚMERO de negocio del documento original (no es CUNE).
-
-        ``cac:DocumentResponse/cac:DocumentReference/cbc:ID`` -- solo se usa
-        como respaldo cuando DIAN no entrega CUNE (ver
-        ``soap_client.extract_document_numbers``).
-        """
-        application = result.get('ApplicationResponse') or ''
-        if not application:
-            return set()
-        return soap_client.extract_document_numbers(application)
-
-    @staticmethod
-    def _ne_is_set_level_status(response):
-        """True si la respuesta de GetStatusZip es sobre el SET de pruebas completo, no
-        sobre el documento individual consultado.
-
-        H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
-        GetStatusZip respondió StatusCode="2", IsValid="false",
-        StatusDescription="Set de prueba con identificador e07c1748... se encuentra
-        Aceptado.", sin XmlDocumentKey ni ApplicationResponse (ningún dato que identifique
-        el documento). Esa combinación (StatusCode 2 + IsValid false + cero datos de
-        documento) es la FORMA de una respuesta de nivel set, no una hipótesis sobre por
-        qué la DIAN respondió así -- no se asume la causa (Tech Lead: "mi hipótesis no está
-        confirmada, el fix no debe depender de ella").
-        """
-        if str(response.get('StatusCode', '')).strip() != '2':
-            return False
-        if str(response.get('IsValid', '')).lower() == 'true':
-            return False
-        return not response.get('XmlDocumentKey') and not response.get('ApplicationResponse')
-
-    def _ne_match_dian_results(self, results, manifest):
-        """Asocia resultados solo cuando la evidencia identifica un documento.
-
-        Reglas confirmadas con Tech Lead (2026-10-04 y 2026-10-05, esta
-        última con evidencia real de una respuesta GetStatusZip AUTORIZADA
-        de la DIAN -- nómina SME-10, StatusCode 00):
-        (a) match estricto por CUNE (XmlDocumentKey o
-            DocumentReference/UUID) cuando DIAN lo entrega -- nunca por
-            nombre de archivo, que DIAN puede omitir o repetir;
-        (b) si DIAN no entrega CUNE pero sí el NÚMERO del documento
-            (DocumentReference/ID), se empareja por
-            ``l10n_co_ne_consecutive`` SOLO si ese número identifica
-            exactamente 1 documento en el manifiesto;
-        (c) si DIAN no entrega NINGÚN identificador (ni CUNE ni número) y
-            el manifiesto de este ZipKey tiene exactamente 1 documento, el
-            resultado solo puede ser de ese documento -- se aplica;
-        (d) en cualquier otro caso (identificador presente pero sin
-            coincidencia única, o sin identificador con >1 documento), no
-            se cambia ningún estado -- se cuenta como "sin identificar"
-            (valor de retorno ``unidentified``) para que quede visible en
-            vez de adivinar.
-        Un identificador que DIAN sí entrega pero que no coincide con nada
-        del manifiesto NUNCA cae al siguiente nivel -- sería una
-        contradicción, no una ausencia de dato.
-        """
-        by_cune = {}
-        by_number = {}
-        for line in manifest:
-            if line.cune:
-                by_cune.setdefault(line.cune, []).append(line)
-            number = line.payslip_id.l10n_co_ne_consecutive
-            if number:
-                by_number.setdefault(number, []).append(line)
-        matched = {}
-        ambiguous = set()
-        unidentified = 0
-        for result in results:
-            cune_candidates = self._ne_cune_candidates(result)
-            number_candidates = self._ne_number_candidates(result)
-            has_identifier = bool(cune_candidates or number_candidates)
-            if cune_candidates:
-                lines = [line for candidate in cune_candidates for line in by_cune.get(candidate, [])]
-            elif number_candidates:
-                lines = [line for candidate in number_candidates for line in by_number.get(candidate, [])]
-            elif len(manifest) == 1:
-                lines = list(manifest)
-            else:
-                unidentified += 1
-                continue
-            if len(lines) != 1:
-                if has_identifier:
-                    unidentified += 1
-                continue
-            line = lines[0]
-            target = line.payslip_id
-            # El resultado aplica exclusivamente a la misma versión firmada.
-            current_xml = base64.b64decode(target.l10n_co_ne_xml_attachment_id.datas) if target.l10n_co_ne_xml_attachment_id else b''
-            if target.l10n_co_ne_cune != line.cune or hashlib.sha256(current_xml).hexdigest() != line.sha256:
-                continue
-            if target.id in matched:
-                ambiguous.add(target.id)
-            else:
-                matched[target.id] = result
-        return matched, ambiguous, unidentified
 
     l10n_co_ne_is_salarial = fields.Boolean(
         string='Es Salarial (Bonificaciones)',
@@ -360,42 +123,7 @@ class HrPayslip(models.Model):
              'para el calculo de seguridad social y deducciones.',
     )
 
-    # ──────────────────────────────────────────────────────────────────
-    # Campos para Notas de Ajuste
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_is_adjustment = fields.Boolean(
-        string='Es Nota de Ajuste',
-        default=False,
-        copy=False,
-        help='Indica si este documento es una nota de ajuste (reemplazo '
-             'o eliminación) de una nómina electrónica previamente '
-             'aceptada por la DIAN.',
-    )
-    l10n_co_ne_hab_set_id = fields.Char(
-        string='Set de Habilitación DIAN',
-        copy=False,
-        index=True,
-        help='TestSetId con el que se preparó este documento durante la habilitación '
-             'automática. Permite que un set nuevo ignore los documentos de sets anteriores.',
-    )
-    l10n_co_ne_adjustment_ref_cune = fields.Char(
-        string='CUNE Nómina Original',
-        copy=False,
-        help='CUNE del documento de nómina electrónica original al que '
-             'hace referencia esta nota de ajuste.',
-    )
 
-    # ──────────────────────────────────────────────────────────────────
-    # Consecutivo de nómina electrónica
-    # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_consecutive = fields.Char(
-        string='Consecutivo NE',
-        readonly=True,
-        copy=False,
-        help='Consecutivo interno del documento de nómina electrónica '
-             'asignado automáticamente al generar el XML. Formato: '
-             'PREFIJO + número secuencial.',
-    )
 
     # ──────────────────────────────────────────────────────────────────
     # Liquidación de Contrato (doc 20 §6)
@@ -418,147 +146,494 @@ class HrPayslip(models.Model):
              'guarda para trazabilidad y reportes.',
     )
 
-    # ──────────────────────────────────────────────────────────────────
-    # SQL Constraints
-    # ──────────────────────────────────────────────────────────────────
-    _sql_constraints = [
-        (
-            'l10n_co_ne_cune_unique',
-            'UNIQUE(l10n_co_ne_cune)',
-            'El CUNE debe ser único. Ya existe un documento de nómina '
-            'electrónica con este CUNE.',
-        ),
-        (
-            'l10n_co_ne_consecutive_company_unique',
-            'UNIQUE(l10n_co_ne_consecutive, company_id)',
-            'El consecutivo de nómina electrónica debe ser único por empresa.',
-        ),
-    ]
 
-    # ──────────────────────────────────────────────────────────────────
-    # Validaciones
-    # ──────────────────────────────────────────────────────────────────
-    @api.constrains('l10n_co_ne_is_adjustment', 'l10n_co_ne_adjustment_ref_cune')
-    def _check_adjustment_ref_cune(self):
-        """Si es nota de ajuste, el CUNE de referencia es obligatorio."""
-        for payslip in self:
-            if (
-                payslip.l10n_co_ne_is_adjustment
-                and not payslip.l10n_co_ne_adjustment_ref_cune
-            ):
-                raise ValidationError(_(
-                    'Para una nota de ajuste debe indicar el CUNE de la '
-                    'nómina electrónica original. Nómina: %s',
-                    payslip.number or payslip.name,
-                ))
 
     # ══════════════════════════════════════════════════════════════════
     # ACCIONES PRINCIPALES
     # ══════════════════════════════════════════════════════════════════
 
-    def action_generate_ne_xml(self):
-        """
-        Genera el XML de nómina electrónica firmado.
 
-        Flujo:
-        1. Valida prerequisitos (nómina confirmada, datos completos).
-        2. Asigna consecutivo NE si no existe.
-        3. Recopila datos del payslip (``_collect_payslip_data``).
-        4. Construye el XML con ``nomina_xml_builder``.
-        5. Calcula el CUNE con ``cune_service``.
-        6. Inserta el CUNE en el XML.
-        7. Firma digitalmente con ``xml_signer``.
-        8. Crea ``ir.attachment`` con el XML firmado.
-        9. Actualiza estado a ``generated``.
+    # Deduccion (codigo de regla) -> campo del contrato con su tercero.
+    _NE_TERCERO_DEDUCCION_CONTRATO = {
+        'CO_SINDICATO': 'l10n_co_ne_sindicato_partner_id',
+        'CO_AFC': 'l10n_co_ne_afc_partner_id',
+        'CO_PENSION_VOL': 'l10n_co_ne_pension_voluntaria_partner_id',
+        'CO_PLAN_COMP': 'l10n_co_ne_plan_complementario_partner_id',
+        'CO_COOPERATIVA': 'l10n_co_ne_cooperativa_partner_id',
+        'CO_EDUCACION': 'l10n_co_ne_educacion_partner_id',
+    }
+
+    def _ne_validar_terceros_deducciones(self):
+        """Sin valores por defecto silenciosos: una deduccion calculada
+        (desde el contrato o desde un input manual) exige el contacto al que
+        se paga lo retenido, definido en el contrato."""
+        for slip in self:
+            for line in slip.line_ids:
+                campo = self._NE_TERCERO_DEDUCCION_CONTRATO.get(line.code)
+                if not campo or not line.total:
+                    continue
+                contract = slip.contract_id
+                if not contract[campo]:
+                    raise UserError(_(
+                        'La nomina "%(nomina)s" calcula la deduccion '
+                        '"%(regla)s", pero el contrato "%(contrato)s" no '
+                        'tiene el contacto de la entidad. Complete el campo '
+                        '"%(campo)s" en el contrato (pestana Deducciones '
+                        'Fijas).',
+                        nomina=slip.display_name,
+                        regla=line.name,
+                        contrato=contract.display_name,
+                        campo=contract._fields[campo].string,
+                    ))
+
+    # ──────────────────────────────────────────────────────────────────
+    # Libranzas (Ley 1527/2012) -- lineas en hr.salary.attachment
+    # ──────────────────────────────────────────────────────────────────
+    def _ne_libranzas_vigentes(self):
+        """Asignaciones salariales de libranza abiertas y vigentes en el
+        periodo, por antiguedad (date_start, id)."""
+        self.ensure_one()
+        return self.employee_id.salary_attachment_ids.filtered(
+            lambda a: a.state == 'open'
+            and a.other_input_type_id.code == 'L10N_CO_LIBRANZA'
+            and a.date_start <= self.date_to
+            and (not a.date_end or a.date_end >= self.date_from)
+        ).sorted(key=lambda a: (a.date_start, a.id))
+
+    def _ne_libranzas_aplican(self):
+        self.ensure_one()
+        return bool(self._ne_libranzas_vigentes())
+
+    def _ne_libranzas_calcular(self, neto_ley, embargo):
+        """Total a descontar por libranzas y su reparto por asignacion.
+
+        Tope sobre la SUMA de las libranzas (Ley 1527/2012, Art. 3 num. 5):
+            cupo = pct_tope x neto_de_ley - embargos   (pct = parametro)
+        Orden de imputacion (decision Tech Lead, principio general de
+        imputacion de pagos, Art. 1654 Codigo Civil): primero el saldo
+        pendiente de periodos anteriores, del mas antiguo al mas reciente, y
+        luego la cuota del periodo con el cupo que quede. Lo que no cabe en
+        el cupo no se pierde: queda como `deferred` y suma al saldo pendiente
+        de la asignacion al confirmar la nomina.
+        Persiste el reparto en l10n.co.payslip.tercero y devuelve el total.
         """
         self.ensure_one()
-        self._validate_ne_prerequisites()
+        pct = self._rule_parameter('l10n_co_pct_tope_libranzas', self._ne_fecha_parametros())
+        cupo = max(0.0, neto_ley * pct / 100.0 - embargo)
+        rows = {}
+        for att in self._ne_libranzas_vigentes():
+            if not att.l10n_co_partner_id:
+                raise UserError(_(
+                    'La libranza "%(libranza)s" del empleado %(empleado)s no '
+                    'tiene el contacto de la entidad. Complete "Juzgado / '
+                    'Entidad" en Asignaciones Salariales.',
+                    libranza=att.display_name, empleado=self.employee_id.name))
+            rows[att] = {'arrears_paid': 0.0, 'paid': 0.0, 'deferred': 0.0}
+        for att, r in rows.items():  # 1) atrasado, mas antiguo primero
+            r['arrears_paid'] = min(att.l10n_co_saldo_pendiente, cupo)
+            cupo -= r['arrears_paid']
+        for att, r in rows.items():  # 2) cuota del periodo con el cupo restante
+            cuota = att.monthly_amount
+            if att.has_total_amount:
+                cuota = min(cuota, max(
+                    0.0, att.remaining_amount - att.l10n_co_saldo_pendiente))
+            r['paid'] = min(cuota, cupo)
+            cupo -= r['paid']
+            r['deferred'] = cuota - r['paid']
+        self._ne_guardar_reparto('CO_LIBRANZAS', [{
+            'partner_id': att.l10n_co_partner_id.id, 'attachment_id': att.id,
+            'amount': r['arrears_paid'] + r['paid'],
+            'arrears_paid': r['arrears_paid'], 'deferred': r['deferred'],
+        } for att, r in rows.items()])
+        return sum(r['arrears_paid'] + r['paid'] for r in rows.values())
 
-        # Asignar consecutivo oficial si no tiene uno, si es el temporal
-        # PRE-NOM, o si tiene un prefijo que no corresponde a este tipo de
-        # documento (AUD-DIAN-34 2026-10-04: ver _ne_expected_prefix()).
-        expected_prefix = self._ne_expected_prefix()
-        if (
-            not self.l10n_co_ne_consecutive
-            or not self.l10n_co_ne_consecutive.startswith(expected_prefix)
-        ):
-            self.l10n_co_ne_consecutive = self._get_next_ne_consecutive()
+    def _ne_guardar_reparto(self, rule_code, filas):
+        """Reemplaza el reparto por tercero (aun no aplicado) de una regla."""
+        self.ensure_one()
+        Tercero = self.env['l10n.co.payslip.tercero'].sudo()
+        Tercero.search([('slip_id', '=', self.id), ('rule_code', '=', rule_code),
+                        ('applied', '=', False)]).unlink()
+        Tercero.create([dict(f, slip_id=self.id, rule_code=rule_code) for f in filas])
 
+    # Prelacion legal de embargos: alimentos/cooperativa (Art. 156 CST) antes
+    # que civil/ordinario (Art. 155 CST).
+    _NE_PRIORIDAD_EMBARGO = {
+        'L10N_CO_EMBARGO_ALIMENTOS': 0,
+        'L10N_CO_EMBARGO_COOPERATIVA': 1,
+        'L10N_CO_EMBARGO_CIVIL': 2,
+    }
 
-        # Recopilar datos
-        payslip_data = self._collect_payslip_data()
+    def _ne_embargos_calcular(self, salario_neto, smmlv, manual=0.0):
+        """Total de embargos a descontar y su reparto por asignacion.
 
-        # Construir XML sin firmar
-        # NOTA (doc 24 §17): corte a builder v2 (dict_to_xml) restaurado e
-        # instalado en staging_produccion 2026-09-12 por decisión explícita
-        # de David -- riesgo aceptado conscientemente de usar este builder
-        # para los envíos reales de habilitación ante la DIAN, ANTES de que
-        # ese proceso ocurra. Ver 00_ESTADO_ACTUAL.md y doc 24 §17.
-        if self.l10n_co_ne_is_adjustment:
-            xml_bytes = nomina_xml_builder.build_nota_ajuste_v2(payslip_data)
-        else:
-            xml_bytes = nomina_xml_builder.build_nomina_individual_v2(payslip_data)
+        Misma logica que tenia la regla CO_EMBARGO en linea: cada embargo con
+        su tope (Art. 155/156 CST), en orden de prelacion, reducido hasta que
+        el remanente no baje del SMMLV (piso de minimo vital). El input manual
+        `manual` tambien respeta el piso; como no tiene juzgado, si excede lo
+        que reparten las asignaciones con tercero se rechaza (sin tercero no
+        hay asiento por tercero).
+        """
+        self.ensure_one()
+        activos = self.employee_id.salary_attachment_ids.filtered(
+            lambda a: a.state == 'open'
+            and a.other_input_type_id.code in self._NE_PRIORIDAD_EMBARGO)
+        ordenados = activos.sorted(
+            key=lambda a: self._NE_PRIORIDAD_EMBARGO.get(a.other_input_type_id.code, 99))
+        factor = self._rule_parameter('l10n_co_factor_embargo_civil', self._ne_fecha_parametros())
+        pct = self._rule_parameter('l10n_co_pct_tope_embargo_alimentos', self._ne_fecha_parametros())
+        total = 0.0
+        filas = []
+        for emb in ordenados:
+            individual = emb._l10n_co_compute_embargo_amount(
+                salario_neto, smmlv, self.date_from,
+                factor_embargo_civil=factor, pct_tope_embargo_alimentos=pct)
+            espacio = max(0.0, (salario_neto - total) - smmlv)
+            aplicado = min(individual, espacio)
+            total += aplicado
+            filas.append({
+                'partner_id': emb.l10n_co_partner_id.id,
+                'attachment_id': emb.id, 'amount': aplicado})
+        if manual and manual > 0:
+            manual_topado = min(manual, max(0.0, salario_neto - smmlv))
+            if manual_topado > total + 0.005:
+                raise UserError(_(
+                    'El ajuste manual de embargo (%(manual).2f) de la nomina '
+                    '"%(nomina)s" excede lo que reparten las asignaciones '
+                    'salariales con juzgado/entidad (%(total).2f). Registre el '
+                    'embargo en Asignaciones Salariales con su "Juzgado / '
+                    'Entidad".',
+                    manual=manual_topado, nomina=self.display_name, total=total))
+        self._ne_guardar_reparto('CO_EMBARGO', filas)
+        return total
 
-        # Calcular CUNE (11 campos según Anexo Técnico, incluye Software-Pin)
-        company = self.company_id
-        cune_value, _raw = cune_service.compute_cune(
-            num_ne=self.l10n_co_ne_consecutive,
-            fec_ne=payslip_data['informacion_general']['FechaGen'],
-            hor_ne=payslip_data['informacion_general']['HoraGen'],
-            val_dev=payslip_data['totales']['DevengadosTotal'],
-            val_ded=payslip_data['totales']['DeduccionesTotal'],
-            val_tol=payslip_data['totales']['ComprobanteTotal'],
-            nit_ne=dian_utils.clean_nit(company.vat),
-            doc_trab=self.employee_id.identification_id or '',
-            cl_ne='103' if self.l10n_co_ne_is_adjustment else '102',
-            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
-            tipo_amb=company.l10n_co_ne_environment or '2',
-        )
-        self.l10n_co_ne_cune = cune_value
+    # ──────────────────────────────────────────────────────────────────
+    # Liquidacion: embargos y libranzas por tipo de concepto
+    # (CST arts. 154-156 y 344; Ley 1527/2012; SL3208-2022)
+    # ──────────────────────────────────────────────────────────────────
+    def _ne_liq_montos(self, result_rules):
+        """Valor positivo de cada tipo de concepto de la liquidacion, segun
+        el tratamiento (l10n_co_liq_tratamiento) de las reglas de la estructura."""
+        self.ensure_one()
+        montos = dict.fromkeys(
+            ('salario', 'vacaciones', 'prestacion', 'indemnizacion'), 0.0)
+        for regla in self.struct_id.rule_ids:
+            if regla.l10n_co_liq_tratamiento:
+                montos[regla.l10n_co_liq_tratamiento] += abs(
+                    result_rules[regla.code]['total'])
+        return montos
 
-        # Insertar CUNE y CodigoQR en el XML
-        xml_bytes = self._ne_insert_cune_and_qr(xml_bytes, cune_value)
+    def _ne_liq_embargos_vigentes(self):
+        self.ensure_one()
+        return self.employee_id.salary_attachment_ids.filtered(
+            lambda a: a.state == 'open'
+            and a.other_input_type_id.code in self._NE_PRIORIDAD_EMBARGO
+            and a.date_start <= self.date_to
+            and (not a.date_end or a.date_end >= self.date_from)
+        ).sorted(key=lambda a: self._NE_PRIORIDAD_EMBARGO[a.other_input_type_id.code])
 
-        # Firmar XML con XAdES-BES
-        private_key, cert_pem, cert_der, cert_obj, cert_chain = (
-            xml_signer.load_from_certificate(company._get_ne_certificate())
-        )
-        signed_xml = xml_signer.sign_xml(
-            xml_bytes=xml_bytes,
-            private_key=private_key,
-            cert_pem=cert_pem,
-            cert_der=cert_der,
-            cert_obj=cert_obj,
-            cert_chain=cert_chain,
-        )
+    def _ne_liq_libranzas_autorizadas(self):
+        self.ensure_one()
+        return self._ne_libranzas_vigentes().filtered(
+            lambda a: a.l10n_co_autoriza_liquidacion
+            and (a.remaining_amount if a.has_total_amount else a.l10n_co_saldo_pendiente) > 0)
 
-        # Crear attachment (signed_xml ya es bytes)
-        filename = self._get_ne_xml_filename()
-        attachment = self.env['ir.attachment'].create({
-            'name': filename,
-            'type': 'binary',
-            'datas': base64.b64encode(signed_xml),
-            'res_model': self._name,
-            'res_id': self.id,
-            'mimetype': 'application/xml',
-        })
-        self.l10n_co_ne_xml_attachment_id = attachment
-        self.l10n_co_ne_state = 'generated'
+    def _ne_liq_embargos_aplican(self):
+        return bool(self._ne_liq_embargos_vigentes())
 
-        _logger.info(
-            'XML de nómina electrónica generado para %s (CUNE: %s)',
-            self.number or self.name,
-            cune_value,
-        )
-        return True
+    def _ne_liq_libranzas_aplican(self):
+        return bool(self._ne_liq_libranzas_autorizadas())
+
+    def _ne_liq_embargos_distribuir(self, montos, legal):
+        """Reparto de embargos sobre la liquidacion (sin persistir).
+
+        Salario y vacaciones compensadas forman un solo grupo (las vacaciones
+        se tratan como salario). Civil: 1/5 del excedente sobre el SMMLV y
+        solo sobre ese grupo. Alimentos/cooperativa: hasta el 50% del grupo y,
+        si la orden alcanza prestaciones (Art. 344), hasta el 50% de ellas,
+        limitado a la deuda si tiene monto total. La indemnizacion solo si la
+        orden la alcanza. Piso de minimo vital solo sobre el grupo salarial.
+        Devuelve (filas, disponible) con lo que queda por concepto.
+        """
+        self.ensure_one()
+        smmlv = self._rule_parameter('l10n_co_smmlv', self._ne_fecha_parametros())
+        factor = self._rule_parameter('l10n_co_factor_embargo_civil', self._ne_fecha_parametros())
+        pct = self._rule_parameter('l10n_co_pct_tope_embargo_alimentos', self._ne_fecha_parametros())
+        sal, vac = montos['salario'], montos['vacaciones']
+        pres, ind = montos['prestacion'], montos['indemnizacion']
+        # descuentos de ley: primero contra salario, el resto contra vacaciones
+        sal_ley = max(0.0, sal - legal)
+        vac_ley = max(0.0, vac - max(0.0, legal - sal))
+        base_grupo = sal_ley + vac_ley
+        usado_grupo = usado_ind = usado_pres = 0.0
+        filas = []
+        for emb in self._ne_liq_embargos_vigentes():
+            con_ind = emb.l10n_co_alcanza_indemnizacion
+            base = base_grupo + (ind if con_ind else 0.0)
+            individual = emb._l10n_co_compute_embargo_amount(
+                base, smmlv, self.date_from,
+                factor_embargo_civil=factor, pct_tope_embargo_alimentos=pct)
+            espacio = max(0.0, (base - usado_grupo - usado_ind) - smmlv)
+            aplicado = min(individual, espacio)
+            en_grupo = min(aplicado, max(0.0, base_grupo - usado_grupo))
+            en_ind = aplicado - en_grupo
+            usado_grupo += en_grupo
+            usado_ind += en_ind
+            en_pres = 0.0
+            if emb.other_input_type_id.code != 'L10N_CO_EMBARGO_CIVIL' \
+                    and emb.l10n_co_alcanza_prestaciones and pres:
+                en_pres = max(0.0, min(pres * pct / 100.0 - usado_pres, pres - usado_pres))
+                if emb.has_total_amount:
+                    en_pres = min(en_pres, max(0.0, emb.remaining_amount - aplicado))
+                usado_pres += en_pres
+            filas.append({
+                'partner_id': emb.l10n_co_partner_id.id,
+                'attachment_id': emb.id, 'amount': aplicado + en_pres})
+        emb_sal = min(usado_grupo, sal_ley)
+        disponible = {
+            'salario_ley': sal_ley, 'emb_salario': emb_sal,
+            'salario': sal_ley - emb_sal,
+            'vacaciones': vac_ley - (usado_grupo - emb_sal),
+            'prestacion': pres - usado_pres,
+            'indemnizacion': ind - usado_ind,
+        }
+        return filas, disponible
+
+    def _ne_liq_embargos_calcular(self, result_rules, legal):
+        self.ensure_one()
+        filas, _disp = self._ne_liq_embargos_distribuir(
+            self._ne_liq_montos(result_rules), abs(legal))
+        self._ne_guardar_reparto('CO_LIQ_EMBARGO', filas)
+        return sum(f['amount'] for f in filas)
+
+    def _ne_liq_libranzas_calcular(self, result_rules, legal):
+        """Libranzas autorizadas contra la liquidacion, despues de embargos.
+
+        Deuda a cubrir: saldo insoluto si la libranza tiene monto total; si
+        no, el saldo pendiente. Orden de toma: salario (con el tope de la Ley
+        1527: 50% del neto de ley menos embargo), vacaciones, prestaciones e
+        indemnizacion (estas sin tope, SL3208-2022). Lo que no alcance queda
+        a cargo del trabajador frente a la entidad.
+        """
+        self.ensure_one()
+        montos = self._ne_liq_montos(result_rules)
+        _filas, disp = self._ne_liq_embargos_distribuir(montos, abs(legal))
+        pct = self._rule_parameter('l10n_co_pct_tope_libranzas', self._ne_fecha_parametros())
+        cupo_salario = max(0.0, pct / 100.0 * disp['salario_ley'] - disp['emb_salario'])
+        buckets = [
+            ['salario', min(disp['salario'], cupo_salario)],
+            ['vacaciones', disp['vacaciones']],
+            ['prestacion', disp['prestacion']],
+            ['indemnizacion', disp['indemnizacion']],
+        ]
+        filas = []
+        for att in self._ne_liq_libranzas_autorizadas():
+            if not att.l10n_co_partner_id:
+                raise UserError(_(
+                    'La libranza "%(libranza)s" del empleado %(empleado)s no '
+                    'tiene el contacto de la entidad. Complete "Juzgado / '
+                    'Entidad" en Asignaciones Salariales.',
+                    libranza=att.display_name, empleado=self.employee_id.name))
+            deuda = att.remaining_amount if att.has_total_amount else att.l10n_co_saldo_pendiente
+            tomado = 0.0
+            for b in buckets:
+                t = max(0.0, min(b[1], deuda - tomado))
+                b[1] -= t
+                tomado += t
+            filas.append({
+                'partner_id': att.l10n_co_partner_id.id, 'attachment_id': att.id,
+                'amount': tomado,
+                'arrears_paid': min(tomado, att.l10n_co_saldo_pendiente),
+                'deferred': 0.0})
+        self._ne_guardar_reparto('CO_LIQ_LIBRANZAS', filas)
+        return sum(f['amount'] for f in filas)
+
+    def _ne_aplicar_libranzas(self, revertir=False):
+        """Refleja (o revierte) lo descontado en pagado y saldo pendiente."""
+        signo = -1 if revertir else 1
+        for row in self.env['l10n.co.payslip.tercero'].sudo().search([
+                ('slip_id', 'in', self.ids),
+                ('rule_code', 'in', ('CO_LIBRANZAS', 'CO_LIQ_LIBRANZAS')),
+                ('applied', '=', revertir)]):
+            att = row.attachment_id
+            att.write({
+                'paid_amount': att.paid_amount + signo * row.amount,
+                'l10n_co_saldo_pendiente':
+                    att.l10n_co_saldo_pendiente + signo * (row.deferred - row.arrears_paid),
+            })
+            row.applied = not revertir
+            if row.rule_code == 'CO_LIQ_LIBRANZAS':
+                self._ne_cerrar_libranza_liquidada(att, revertir)
+                continue
+            if not revertir and att.has_total_amount and not att.remaining_amount \
+                    and att.state == 'open' and att.employee_count == 1:
+                att.action_done()
+
+    def _ne_cerrar_libranza_liquidada(self, att, revertir):
+        """Al confirmar la liquidacion la libranza se cierra y deja constancia
+        del saldo que el trabajador sigue debiendo a la entidad."""
+        if revertir:
+            if att.state == 'close':
+                att.action_open()
+            return
+        debe = att.remaining_amount if att.has_total_amount else att.l10n_co_saldo_pendiente
+        if debe > 0:
+            att.message_post(body=_(
+                'Liquidación confirmada: saldo no cubierto de %(saldo).2f. El '
+                'trabajador queda debiendo ese valor directamente a la entidad.',
+                saldo=debe))
+        if att.state == 'open':
+            att.action_done()
+
+    def _ne_refrescar_ibc_mensual(self):
+        """Recalcula el IBC consolidado de cada empleado/mes afectado (idempotente)."""
+        Consolidado = self.env['l10n.co.ibc.mensual']
+        for clave in {(s.company_id, s.employee_id, s.date_to.replace(day=1)) for s in self}:
+            Consolidado._refrescar(*clave)
+
+    def _ne_validar_terceros_attachments(self):
+        """Embargos y libranzas exigen el contacto (juzgado / entidad)."""
+        for slip in self:
+            for att in slip.salary_attachment_ids:
+                code = att.other_input_type_id.code
+                if (att.l10n_co_es_embargo or att.l10n_co_es_libranza) \
+                        and not att.l10n_co_partner_id:
+                    raise UserError(_(
+                        'La asignación salarial "%(att)s" (%(tipo)s) del '
+                        'empleado %(empleado)s no tiene "Juzgado / Entidad". '
+                        'Complételo en Asignaciones Salariales.',
+                        att=att.display_name, tipo=code,
+                        empleado=slip.employee_id.name))
+
+    def _ne_solo_colombia(self):
+        """Los recibos de companias colombianas (ver res.company._ne_es_colombia)."""
+        return self.filtered(lambda s: s.company_id._ne_es_colombia())
+
+    def compute_sheet(self):
+        colombia = self._ne_solo_colombia()
+        colombia._ne_validar_terceros_attachments()
+        # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
+        # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
+        res = True
+        for company in self.company_id:
+            recibos = self.filtered(lambda s, c=company: s.company_id == c).with_company(company)
+            res = super(HrPayslip, recibos).compute_sheet()
+        colombia._ne_validar_terceros_deducciones()
+        return res
+
+    # ──────────────────────────────────────────────────────────────────
+    # Asiento contable por tercero
+    # ──────────────────────────────────────────────────────────────────
+    _NE_TERCERO_ORIGEN_CAMPO = {
+        'employee_eps': ('employee_id', 'l10n_co_pila_eps_id'),
+        'employee_afp': ('employee_id', 'l10n_co_pila_afp_id'),
+        'employee_ccf': ('employee_id', 'l10n_co_pila_ccf_id'),
+        'company_arl': ('company_id', 'l10n_co_pila_arl_id'),
+        'company_sena': ('company_id', 'l10n_co_sena_partner_id'),
+        'company_icbf': ('company_id', 'l10n_co_icbf_partner_id'),
+        'company_dian': ('company_id', 'l10n_co_dian_partner_id'),
+        'contract_sindicato': ('contract_id', 'l10n_co_ne_sindicato_partner_id'),
+        'contract_afc': ('contract_id', 'l10n_co_ne_afc_partner_id'),
+        'contract_pension_voluntaria': ('contract_id', 'l10n_co_ne_pension_voluntaria_partner_id'),
+        'contract_plan_complementario': ('contract_id', 'l10n_co_ne_plan_complementario_partner_id'),
+        'contract_cooperativa': ('contract_id', 'l10n_co_ne_cooperativa_partner_id'),
+        'contract_educacion': ('contract_id', 'l10n_co_ne_educacion_partner_id'),
+    }
+
+    def _ne_repartos_tercero(self, line):
+        """[(partner, peso)] del tercero de una linea de nomina segun el
+        origen configurado en su regla. Sin tercero resoluble: UserError."""
+        origen = line.salary_rule_id.l10n_co_tercero_origen
+        if origen == 'distribution':
+            filas = self.env['l10n.co.payslip.tercero'].sudo().search([
+                ('slip_id', '=', self.id), ('rule_code', '=', line.code)])
+            filas = filas.filtered(lambda f: f.amount)
+            if any(not f.partner_id for f in filas):
+                raise UserError(_(
+                    'La nomina "%(nomina)s" tiene un reparto de "%(regla)s" '
+                    'sin contacto. Complete "Juzgado / Entidad".',
+                    nomina=self.display_name, regla=line.name))
+            if abs(sum(filas.mapped('amount')) - abs(line.total)) > 0.01:
+                raise UserError(_(
+                    'El reparto por tercero de "%(regla)s" (%(reparto).2f) no '
+                    'coincide con el valor de la linea (%(linea).2f) en la '
+                    'nomina "%(nomina)s". Recalcule la nomina.',
+                    regla=line.name, reparto=sum(filas.mapped('amount')),
+                    linea=abs(line.total), nomina=self.display_name))
+            return [(f.partner_id, f.amount) for f in filas]
+        if origen == 'employee_ccf':
+            return [(self.employee_id._ne_caja_compensacion(), 1.0)]
+        modelo, campo = self._NE_TERCERO_ORIGEN_CAMPO[origen]
+        partner = self[modelo][campo]
+        if not partner:
+            raise UserError(_(
+                'No se puede generar el asiento de la nomina "%(nomina)s": '
+                'la regla "%(regla)s" paga a un tercero y falta el campo '
+                '"%(campo)s" en %(donde)s "%(nombre)s".',
+                nomina=self.display_name, regla=line.name,
+                campo=self[modelo]._fields[campo].string,
+                donde=self[modelo]._description, nombre=self[modelo].display_name))
+        return [(partner, 1.0)]
+
+    def _prepare_slip_lines(self, date, line_ids):
+        new_lines = super()._prepare_slip_lines(date, line_ids)
+        precision = self.company_id.currency_id.decimal_places
+        procesadas = []
+        for line in self.line_ids.filtered(lambda l: l.category_id):
+            regla = line.salary_rule_id
+            if not regla.l10n_co_tercero_origen or not line.total:
+                continue
+            cuenta = regla._l10n_co_cuenta_pasivo()
+            if not cuenta:
+                continue
+            if self.company_id.batch_payroll_move_lines:
+                raise UserError(_(
+                    'El asiento por tercero no es compatible con el ajuste '
+                    '"Agrupar líneas de asiento de nómina" (lote). '
+                    'Desactívelo para generar asientos de la nomina "%s".',
+                    self.display_name))
+            nombre = line.name if regla.split_move_lines else regla.name
+            candidatas = [
+                e for e in new_lines
+                if e['name'] == nombre and e['account_id'] == cuenta.id
+                and id(e) not in procesadas]
+            if not candidatas:
+                continue  # monto neteado a cero por el nativo
+            entrada = candidatas[0]
+            reparto = self._ne_repartos_tercero(line)
+            pesos = sum(p for _p, p in reparto)
+            if not pesos:
+                continue
+            posicion = new_lines.index(entrada)
+            nuevas = []
+            acum_d = acum_c = 0.0
+            for i, (partner, peso) in enumerate(reparto):
+                nueva = dict(entrada, partner_id=partner.id)
+                if len(reparto) == 1:
+                    pass  # un solo tercero: la entrada nativa queda intacta
+                elif i == len(reparto) - 1:
+                    nueva['debit'] = round(entrada['debit'] - acum_d, precision)
+                    nueva['credit'] = round(entrada['credit'] - acum_c, precision)
+                else:
+                    nueva['debit'] = round(entrada['debit'] * peso / pesos, precision)
+                    nueva['credit'] = round(entrada['credit'] * peso / pesos, precision)
+                acum_d += nueva['debit']
+                acum_c += nueva['credit']
+                nuevas.append(nueva)
+                procesadas.append(id(nueva))
+            new_lines[posicion:posicion + 1] = nuevas
+        return new_lines
 
     def action_payslip_done(self):
         """
         Sobrescribe la confirmación de la nómina para asignar el consecutivo
         temporal PRE-NOM al número del payslip en Odoo.
         """
+        colombia = self._ne_solo_colombia()
+        colombia._ne_validar_sin_solape()
         res = super(HrPayslip, self).action_payslip_done()
-        for rec in self:
+        colombia._ne_aplicar_libranzas()
+        colombia._ne_refrescar_ibc_mensual()
+        for rec in colombia:
             company = rec.company_id
             if company.l10n_co_ne_pre_sequence_id:
                 if not rec.l10n_co_ne_consecutive or rec.l10n_co_ne_consecutive.startswith('PRE-NOM'):
@@ -567,149 +642,42 @@ class HrPayslip(models.Model):
                     rec.l10n_co_ne_consecutive = temporal_number
         return res
 
-    def action_send_ne_dian(self):
+    def _ne_validar_sin_solape(self):
+        """Límite conocido "recibos solapados": dos recibos confirmados del mismo empleado y
+        la MISMA estructura con periodos que se cruzan duplicarían días e IBC en el
+        consolidado. Estructuras distintas (liquidación, prima, bonificaciones) pueden
+        cruzarse con la nómina regular por diseño; notas de ajuste y notas crédito se cruzan
+        con su original. Solo valida al confirmar (hacia adelante)."""
+        vigentes = self.filtered(
+            lambda s: not s.l10n_co_ne_is_adjustment and not s.credit_note)
+        for slip in vigentes:
+            otros = self.search([
+                ('id', '!=', slip.id),
+                ('employee_id', '=', slip.employee_id.id),
+                ('company_id', '=', slip.company_id.id),
+                ('struct_id', '=', slip.struct_id.id),
+                ('state', 'in', ('done', 'paid')),
+                ('credit_note', '=', False),
+                ('l10n_co_ne_is_adjustment', '=', False),
+                ('date_from', '<=', slip.date_to),
+                ('date_to', '>=', slip.date_from),
+            ])
+            # Recibos del mismo lote que se confirman a la vez.
+            otros |= (vigentes - slip).filtered(
+                lambda o: o.employee_id == slip.employee_id
+                and o.company_id == slip.company_id and o.struct_id == slip.struct_id
+                and o.date_from <= slip.date_to and o.date_to >= slip.date_from)
+            if otros:
+                otro = otros[0]
+                raise UserError(_(
+                    'No se puede confirmar "%(slip)s" (%(desde)s a %(hasta)s): el periodo se '
+                    'cruza con "%(otro)s" (%(o_desde)s a %(o_hasta)s) del mismo empleado '
+                    '%(employee)s y la misma estructura, y duplicaría días e IBC. Corrija las '
+                    'fechas o cancele uno de los dos recibos.',
+                    slip=slip.number or slip.name, desde=slip.date_from, hasta=slip.date_to,
+                    otro=otro.number or otro.name, o_desde=otro.date_from,
+                    o_hasta=otro.date_to, employee=slip.employee_id.name))
 
-        """
-        Envía el XML firmado al servicio web de la DIAN.
-
-        Flujo:
-        1. Valida que el XML esté generado.
-        2. Lee el certificado digital de la empresa.
-        3. Llama a ``soap_client.send_nomina_sync()`` para transmitir.
-        4. Almacena la respuesta de la DIAN.
-        5. Actualiza estado según resultado (accepted/rejected).
-        """
-        self.ensure_one()
-        if self.l10n_co_ne_state not in ('generated', 'rejected'):
-            raise UserError(_(
-                'Solo puede enviar a la DIAN documentos en estado '
-                '"XML Generado" o "Rechazado". Estado actual: %s',
-                dict(self._fields['l10n_co_ne_state'].selection).get(
-                    self.l10n_co_ne_state, self.l10n_co_ne_state
-                ),
-            ))
-
-        if not self.l10n_co_ne_xml_attachment_id:
-            raise UserError(_(
-                'No se encontró el XML firmado. Genere el XML antes de '
-                'intentar el envío a la DIAN.'
-            ))
-
-        company = self.company_id
-        self._validate_company_ne_config(company)
-
-        if company.l10n_co_ne_demo_mode:
-            # Doc 37: Modo Demo -- equivalente a _send_bill_sync() del
-            # l10n_co_dian nativo (Facturación). El XML ya se construyó,
-            # calculó su CUNE y se firmó localmente en
-            # action_generate_ne_xml() -- este modo únicamente evita la
-            # transmisión real SendNominaSync al webservice de la DIAN.
-            # No aplica a action_send_test_set() (habilitación real).
-            self.l10n_co_ne_state = 'accepted'
-            if self.l10n_co_ne_consecutive:
-                self.number = self.l10n_co_ne_consecutive
-            self.message_post(
-                body=_(
-                    'Nómina electrónica %s validada localmente en Modo '
-                    'Demo (sin transmisión real a la DIAN).',
-                    self.number or self.name,
-                ),
-                message_type='comment',
-                subtype_xmlid='mail.mt_note',
-            )
-            return True
-
-        # Leer XML firmado del attachment (como bytes)
-        xml_content = base64.b64decode(
-            self.l10n_co_ne_xml_attachment_id.datas
-        )
-
-        # Cargar certificado para firmar el sobre SOAP
-        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
-            xml_signer.load_from_certificate(company._get_ne_certificate())
-        )
-
-        # Determinar endpoint según ambiente -- único punto, ver ResCompany._ne_dian_endpoint()
-        endpoint = company._ne_dian_endpoint()
-
-        # Enviar a DIAN vía SendNominaSync
-        filename = self._get_ne_xml_filename()
-        response = soap_client.send_nomina_sync(
-            xml_bytes=xml_content,
-            filename=filename,
-            private_key=private_key,
-            cert_pem=cert_pem,
-            endpoint=endpoint,
-            timeout=company._ne_config_int_param(
-                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
-        )
-
-        # Procesar respuesta DIAN y preservar el payload exacto del intento.
-        self._ne_store_exchange('send_sync', endpoint, response, [{
-            'payslip': self, 'filename': filename, 'xml': xml_content,
-        }])
-        zip_key = response.get('ZipKey', '')
-        if zip_key:
-            self.l10n_co_ne_zip_key = zip_key
-        is_valid = response.get('IsValid', '') == 'true'
-
-        if is_valid:
-            self.l10n_co_ne_state = 'accepted'
-            if self.l10n_co_ne_consecutive:
-                self.number = self.l10n_co_ne_consecutive
-            _logger.info(
-                'Nómina electrónica %s ACEPTADA por DIAN (CUNE: %s)',
-                self.number or self.name,
-                self.l10n_co_ne_cune,
-            )
-
-        else:
-            self.l10n_co_ne_state = 'rejected'
-            error_messages = response.get('ErrorMessages', [])
-            detail = '; '.join(error_messages) if error_messages else response.get('ErrorMessage', 'Sin detalle')
-            _logger.warning(
-                'Nómina electrónica %s RECHAZADA por DIAN. Errores: %s',
-                self.number or self.name,
-                detail,
-            )
-            
-            # Diagnóstico Inteligente para el Chatter
-            diagnosis = "Ocurrió un error general de validación con el webservice de la DIAN."
-            links = ""
-            detail_lower = detail.lower()
-            
-            if 'nit' in detail_lower or 'documento' in detail_lower or 'identificacion' in detail_lower:
-                diagnosis = "El número o tipo de identificación del trabajador o del empleador contiene caracteres inválidos o no está registrado."
-                links = f'<br/>🔗 <a href="/odoo/hr.employee/{self.employee_id.id}">Abrir ficha del empleado para corregir</a>'
-            elif 'correo' in detail_lower or 'email' in detail_lower:
-                diagnosis = "El correo electrónico de trabajo del empleado falta o tiene un formato incorrecto."
-                links = f'<br/>🔗 <a href="/odoo/hr.employee/{self.employee_id.id}">Corregir correo en ficha de empleado</a>'
-            elif 'cuenta' in detail_lower or 'banco' in detail_lower or 'metodo' in detail_lower:
-                diagnosis = "La información bancaria o método de pago del trabajador contiene datos erróneos o incompletos."
-                links = f'<br/>🔗 <a href="/odoo/hr.contract/{self.contract_id.id}">Revisar contrato para corregir información bancaria</a>'
-            elif 'salario' in detail_lower or 'ibc' in detail_lower or 'minimo' in detail_lower:
-                diagnosis = "El salario base o el ingreso base de cotización (IBC) reportado presenta discrepancias matemáticas o de ley."
-                links = f'<br/>🔗 <a href="/odoo/hr.contract/{self.contract_id.id}">Revisar salario en el contrato</a>'
-
-            body = (
-                f'❌ <b>Nómina rechazada por la DIAN</b><br/>'
-                f'Consecutivo utilizado: <b>{self.l10n_co_ne_consecutive}</b><br/><br/>'
-                f'📋 <b>Diagnóstico de Corrección:</b><br/>'
-                f'{diagnosis}{links}<br/><br/>'
-                f'<details>'
-                f'<summary>🔧 Detalle técnico de la DIAN</summary>'
-                f'<pre>{detail}</pre>'
-                f'</details><br/>'
-                f'Por favor corrija el dato y use <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo.'
-            )
-            
-            self.message_post(
-                body=body,
-                message_type='comment',
-                subtype_xmlid='mail.mt_note'
-            )
-
-        return True
 
     def action_send_payslip_email(self, template=None):
         """Genera el PDF del comprobante y lo envía por correo al empleado.
@@ -761,496 +729,24 @@ class HrPayslip(models.Model):
         )
         return True
 
-    def action_create_adjustment(self):
-        """
-        Abre el asistente para crear una nota de ajuste referenciando
-        el CUNE de esta nómina electrónica.
 
-        Solo disponible si la nómina fue aceptada por la DIAN.
-        """
-        self.ensure_one()
-        if self.l10n_co_ne_state != 'accepted':
-            raise UserError(_(
-                'Solo puede crear notas de ajuste para nóminas aceptadas '
-                'por la DIAN.'
-            ))
 
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Crear Nota de Ajuste de Nómina'),
-            'res_model': 'hr.payslip',
-            'view_mode': 'form',
-            'target': 'current',
-            'context': {
-                'default_l10n_co_ne_is_adjustment': True,
-                'default_l10n_co_ne_adjustment_ref_cune': self.l10n_co_ne_cune,
-                'default_employee_id': self.employee_id.id,
-                'default_contract_id': self.contract_id.id,
-                'default_struct_id': self.struct_id.id,
-                'default_date_from': str(self.date_from),
-                'default_date_to': str(self.date_to),
-            },
-        }
 
     # ──────────────────────────────────────────────────────────────────
     # Procesamiento masivo
     # ──────────────────────────────────────────────────────────────────
 
-    def action_mass_generate_ne_xml(self):
-        """Genera XML de nómina electrónica para múltiples nóminas."""
-        records = self.filtered(
-            lambda p: p.state == 'done'
-            and p.l10n_co_ne_state in ('draft', False)
-        )
-        if not records:
-            raise UserError(_('No hay nóminas confirmadas pendientes de generar XML.'))
 
-        errors = []
-        for payslip in records:
-            try:
-                payslip.action_generate_ne_xml()
-            except Exception as e:
-                errors.append(f'{payslip.number or payslip.name}: {e}')
-
-        if errors:
-            raise UserError(_(
-                'Se generaron %d de %d XMLs. Errores:\n%s',
-                len(records) - len(errors),
-                len(records),
-                '\n'.join(errors),
-            ))
-        return True
-
-    def action_mass_send_ne_dian(self):
-        """Envía múltiples XMLs firmados a la DIAN."""
-        records = self.filtered(
-            lambda p: p.l10n_co_ne_state in ('generated', 'rejected')
-        )
-        if not records:
-            raise UserError(_('No hay nóminas con XML generado pendientes de envío.'))
-
-        errors = []
-        for payslip in records:
-            try:
-                payslip.action_send_ne_dian()
-            except Exception as e:
-                errors.append(f'{payslip.number or payslip.name}: {e}')
-
-        if errors:
-            raise UserError(_(
-                'Se enviaron %d de %d nóminas. Errores:\n%s',
-                len(records) - len(errors),
-                len(records),
-                '\n'.join(errors),
-            ))
-        return True
 
     # ──────────────────────────────────────────────────────────────────
     # Integración SendTestSetAsync / GetStatusZip
     # ──────────────────────────────────────────────────────────────────
 
-    def action_send_test_set(self):
-        """Envía el set de pruebas a la DIAN (SendTestSetAsync).
 
-        Agrupa las nóminas en 'generated' (primer envío) o 'uncertain'
-        (envío previo sin acuse válido -- el XML firmado ya existe y es
-        reenviable tal cual, sin regenerar) y las envía como un set de
-        pruebas al endpoint de habilitación.
-        """
-        records = self.filtered(
-            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
-        )
-        if not records:
-            raise UserError(_(
-                'No hay nóminas con XML generado, ni en envío incierto, '
-                'para enviar como set de pruebas.'
-            ))
 
-        # La DIAN solo procesa UN documento por ZIP (Anexo 9.2; verificado 2026-10-04: de un
-        # ZIP con 4 XML solo evaluó el primero y los otros nunca quedaron registrados).
-        # Cada documento viaja en su propio ZIP y queda con su propio ZipKey.
-        if len(records) > 1:
-            results = [record.action_send_test_set() for record in records]
-            sent = records.filtered(lambda p: p.l10n_co_ne_state == 'sent')
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _('Set de Pruebas Enviado'),
-                    'message': _('Se enviaron %(sent)d de %(total)d documentos (un ZIP por documento).',
-                                 sent=len(sent), total=len(records)),
-                    'type': 'success' if len(sent) == len(records) else 'warning',
-                    'sticky': True,
-                },
-            }
 
-        company = records[0].company_id
-        self._validate_company_ne_config(company)
 
-        if not company.l10n_co_ne_certification_process:
-            raise UserError(_(
-                'Debe activar "Proceso de Certificación" en Ajustes > '
-                'Nómina antes de enviar el set de pruebas a la DIAN.'
-            ))
 
-        if not company.l10n_co_ne_operation_mode_ids.test_set_id:
-            raise UserError(_('Debe configurar el ID de Pruebas en el Modo de Operación de la compañía para enviar el set de pruebas.'))
-
-        # Collect all signed XMLs
-        # AUD-DIAN-34 (2026-10-04): si el SoftwareID/TestSetId de la
-        # compañía cambió (ej. David se re-registró en el portal DIAN)
-        # DESPUÉS de que el XML ya se generó y firmó, el SoftwareID
-        # embebido queda desactualizado -- enviarlo igual mezcla un
-        # SoftwareID viejo con un TestSetId nuevo, combinación inválida
-        # que la DIAN rechaza (StatusCode 2). Pasó real hoy: costó
-        # varios ciclos manuales de regenerar antes de notarlo.
-        current_software_id = (
-            company.l10n_co_ne_operation_mode_ids.software_id or ''
-        ).encode()
-        xml_files = {}
-        manifest = []
-        stale = []
-        for payslip in records:
-            if payslip.l10n_co_ne_xml_attachment_id:
-                filename = payslip._get_ne_xml_filename()
-                xml_bytes = base64.b64decode(payslip.l10n_co_ne_xml_attachment_id.datas)
-                if current_software_id and current_software_id not in xml_bytes:
-                    stale.append(payslip.name)
-                    continue
-                xml_files[filename] = xml_bytes
-                manifest.append({
-                    'payslip': payslip,
-                    'filename': filename,
-                    'xml': xml_bytes,
-                })
-
-        if stale:
-            raise UserError(_(
-                'El SoftwareID/TestSetId de la compañía cambió desde '
-                'que se generó el XML de estas nóminas -- regénerelas '
-                'antes de enviar (botón "Generar XML" o reiniciar el '
-                'proceso de habilitación):\n%s',
-                '\n'.join(stale),
-            ))
-
-        if not xml_files:
-            raise UserError(_('No se encontraron XMLs firmados en las nóminas seleccionadas.'))
-
-        # Load certificate
-        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
-            xml_signer.load_from_certificate(company._get_ne_certificate())
-        )
-
-        # Send test set -- SIEMPRE habilitación (el set de pruebas es un concepto propio de
-        # ese ambiente), sin importar l10n_co_ne_environment de la compañía.
-        endpoint = company._ne_dian_endpoint(environment='2')
-        response = soap_client.send_test_set_async(
-            xml_files=xml_files,
-            test_set_id=company.l10n_co_ne_operation_mode_ids.test_set_id,
-            private_key=private_key,
-            cert_pem=cert_pem,
-            endpoint=endpoint,
-            timeout=company._ne_config_int_param(
-                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
-        )
-
-        zip_key = response.get('ZipKey', '')
-        ack_valid = bool(zip_key and zip_key.strip()) and response.get('HttpStatus', 0) < 400 \
-            and response.get('HttpStatus', 0) >= 200 and not response.get('SOAPFault') \
-            and response.get('StatusCode') not in ('CONNECTION_ERROR', 'PARSE_ERROR', 'ERROR', '99') \
-            and not response.get('TransportError')
-        records._ne_store_exchange(
-            'send_test_set', endpoint, response, manifest,
-        )
-        # Un timeout o acuse sin ZipKey es incierto: queda evidencia, pero no
-        # se simula un envío exitoso ni se programa reintento automático.
-        if not ack_valid:
-            records.write({'l10n_co_ne_state': 'uncertain'})
-            return {
-                'type': 'ir.actions.client', 'tag': 'display_notification',
-                'params': {
-                    'title': _('Set de Pruebas no confirmado'),
-                    'message': _('La DIAN no confirmó un ZipKey válido. El intento quedó registrado para conciliación.'),
-                    'type': 'warning', 'sticky': True,
-                },
-            }
-        # AUD-DIAN-34 (2026-09-14): antes no se persistia el ZipKey real
-        # devuelto por SendTestSetAsync ni se marcaba 'sent' -- accion_
-        # check_dian_status() caia a usar el CUNE como trackId (formato
-        # distinto), y GetStatusZip lo rechazaba con StatusCode 89
-        # "Formato trackId invalido" en el 100% de los casos reales.
-        records.write({
-            'l10n_co_ne_zip_key': zip_key,
-            'l10n_co_ne_state': 'sent',
-        })
-        _logger.info(
-            'Set de pruebas enviado: %d documentos. ZipKey: %s',
-            len(xml_files), zip_key,
-        )
-
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('Set de Pruebas Enviado'),
-                'message': _('Se enviaron %d documentos. ZipKey: %s') % (len(xml_files), zip_key),
-                'type': 'success',
-                'sticky': True,
-            },
-        }
-
-    def action_regenerate_ne_xml(self):
-        """Regenera el XML con consecutivo y CUNE nuevos (no para documentos enviados/aceptados).
-
-        Un documento rechazado o con el SoftwareID/TestSetId desactualizado no se puede reenviar
-        tal cual: la DIAN devolvería el mismo veredicto viejo (regla 90, "procesado anteriormente").
-        """
-        for slip in self:
-            if slip.l10n_co_ne_state in ('sent', 'accepted'):
-                raise UserError(_(
-                    'No se puede regenerar el XML de %s: ya fue enviado o aceptado por la DIAN.',
-                    slip.name,
-                ))
-            slip.write({
-                'l10n_co_ne_state': 'draft',
-                'l10n_co_ne_consecutive': False,
-                'l10n_co_ne_cune': False,
-                'l10n_co_ne_zip_key': False,
-                'l10n_co_ne_xml_attachment_id': False,
-            })
-            slip.action_generate_ne_xml()
-        return True
-
-    def action_check_dian_status(self):
-        """Consulta una vez por ZipKey y distribuye solo resultados inequívocos."""
-        if not self:
-            return True
-        companies = self.mapped('company_id')
-        if len(companies) != 1:
-            raise UserError(_('Seleccione nóminas de una sola compañía para consultar DIAN.'))
-        company = companies
-        missing = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
-        if missing:
-            raise UserError(_('Hay nóminas sin ZipKey; no se consultan por CUNE porque no es un trackId válido.'))
-        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
-            xml_signer.load_from_certificate(company._get_ne_certificate())
-        )
-
-        endpoint = company._ne_dian_endpoint()
-        timeout = company._ne_config_int_param(
-            'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
-
-        summaries = []
-        for track_id in set(self.mapped('l10n_co_ne_zip_key')):
-            records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
-            response = soap_client.get_status_zip(
-                track_id=track_id, private_key=private_key, cert_pem=cert_pem,
-                endpoint=endpoint, timeout=timeout,
-            )
-            # Consultas usan el manifiesto del último envío del mismo ZipKey;
-            # nunca se reconstruye desde el XML actual de la nómina.
-            sent = self.env['l10n.co.ne.exchange'].search([
-                ('company_id', '=', company.id), ('operation', '=', 'send_test_set'),
-                ('zip_key', '=', track_id)], order='id desc', limit=1)
-            manifest = sent.document_ids
-            # El emparejamiento se calcula ANTES de guardar la evidencia
-            # para que "sin identificar" quede visible también en el
-            # historial, no solo en la notificación de la sesión actual.
-            matches, ambiguous, unidentified = records._ne_match_dian_results(
-                response.get('DianResponses', []), manifest)
-            # H-012 (2026-10-06): una respuesta de nivel SET (ver
-            # _ne_is_set_level_status) nunca resuelve un documento, aunque
-            # _ne_match_dian_results la haya emparejado por la regla "manifiesto de 1
-            # documento, sin identificador" (pensada para un resultado genuino del
-            # documento sin CUNE, no para un mensaje que ni siquiera es sobre el
-            # documento) -- se descarta el match explícitamente, nunca se infiere
-            # accepted/rejected de ella.
-            set_level = self._ne_is_set_level_status(response)
-            if set_level:
-                matches = {}
-            records._ne_store_exchange('get_status_zip', endpoint, response,
-                queried_zip_key=track_id, parent_exchange=sent,
-                unidentified_count=unidentified)
-            for slip in records:
-                result = matches.get(slip.id)
-                if not result or slip.id in ambiguous:
-                    continue
-                valid = str(result.get('IsValid', '')).lower() == 'true'
-                # AUD-DIAN-34 (2026-10-04): no existe en el Anexo Técnico
-                # una tabla exhaustiva de StatusCode de GetStatusZip -- solo
-                # el ejemplo real de rechazo que sí documenta (IsValid=false,
-                # StatusCode=99, con ErrorMessage poblado de reglas NIE/ZB).
-                # No se supone ningún otro código como rechazo: "fuera de
-                # ('','00','0','90')" degradaba a 'rejected' estados que
-                # solo estaban pendientes/incompletos, sin evidencia de
-                # rechazo real de la DIAN.
-                is_rejection = (
-                    str(result.get('StatusCode', '')).strip() == '99'
-                    or bool(result.get('ErrorMessages'))
-                )
-                # Una consulta pendiente/no identificada nunca degrada un
-                # accepted. Rechazo terminal individual sí queda registrado.
-                if valid and slip.l10n_co_ne_state != 'accepted':
-                    slip.l10n_co_ne_state = 'accepted'
-                    if slip.l10n_co_ne_consecutive:
-                        slip.number = slip.l10n_co_ne_consecutive
-                elif not valid and is_rejection and slip.l10n_co_ne_state != 'accepted':
-                    slip.l10n_co_ne_state = 'rejected'
-            summary = response.get('StatusDescription') or response.get('StatusMessage') or _('Sin respuesta')
-            if set_level:
-                # H-012 (2026-10-06, confirmado con el portal DIAN por David): esta
-                # respuesta no es un estado transitorio que una reconsulta futura vaya a
-                # resolver -- el set de pruebas ya quedó "Habilitado" y la DIAN no procesa
-                # más documentos de él. Se marca 'uncertain' de inmediato (nunca se espera
-                # al plazo de _CRON_RECHECK_MAX_HOURS_DEFAULT para un motivo ya conocido);
-                # un 'accepted' ya confirmado antes nunca se degrada.
-                to_mark = records.filtered(lambda slip: slip.l10n_co_ne_state == 'sent')
-                for slip in to_mark:
-                    slip.message_post(body=_(
-                        'La DIAN respondió sobre el SET de pruebas, no sobre este '
-                        'documento: "%(desc)s". El set ya está "Habilitado" y no procesa '
-                        'más documentos de prueba -- este documento no se va a resolver '
-                        'en este set. Revise el estado de habilitación de la compañía '
-                        '(Ajustes > Nómina) antes de seguir reintentando.',
-                        desc=summary,
-                    ))
-                to_mark.write({'l10n_co_ne_state': 'uncertain'})
-                summary = _(
-                    '%(summary)s (respuesta del SET de pruebas: ya está "Habilitado" y '
-                    'no va a resolver este documento -- marcado "Envío incierto")',
-                    summary=summary,
-                )
-            elif unidentified:
-                summary = _(
-                    '%(summary)s (%(n)d resultado(s) sin identificar -- '
-                    'requieren conciliación manual, ver Historial DIAN)',
-                    summary=summary, n=unidentified,
-                )
-            summaries.append(summary)
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('Estado DIAN'),
-                'message': ' | '.join(summaries),
-                'type': 'success' if any(s.l10n_co_ne_state == 'accepted' for s in self) else 'warning',
-                'sticky': True,
-            },
-        }
-
-    @api.model
-    def _cron_recheck_sent_status(self):
-        """Reconsulta documentos 'sent' que nadie volvió a consultar a mano (Ronda 1 DIAN,
-        2026-10-05): 5 nóminas aceptadas en segundos quedaron en 'sent' durante 15 min porque
-        nadie hizo clic en "Consultar Estado". El motor de habilitación sí reconsulta lo suyo
-        (su propio cron en l10n_co_ne_habilitacion.py); el envío normal no tenía nada equivalente.
-
-        No duplica la lógica SOAP: reutiliza action_check_dian_status() tal cual, agrupado por
-        ZipKey para no repetir una misma consulta por cada nómina del mismo envío. Aislamiento:
-        por compañía (ya lo exige action_check_dian_status), por lote acotado
-        (_CRON_RECHECK_BATCH_LIMIT), y un ZipKey con error se registra y no frena a los demás.
-
-        H-012 (2026-10-06): un documento que la DIAN nunca resuelve (evidencia real:
-        NA0000000049) se reconsultaba cada 10 minutos para siempre. Dos ajustes:
-        (1) pasado _CRON_RECHECK_MAX_HOURS_DEFAULT (u override), el documento sale del cron
-        y queda 'uncertain' -- el botón "Consultar Estado" sigue disponible para revisarlo a
-        mano en cualquier momento (ver su invisible en hr_payslip_views.xml).
-        (2) el lote se procesa en orden de envío ascendente -- el que más tiempo lleva
-        esperando entra primero, tanto al tope del lote como al orden de los grupos por
-        ZipKey.
-
-        H-012 (2026-10-07, hallazgo de Tech Lead corriendo esto en servidor real): "desde
-        cuándo espera" NO se puede medir con write_date -- ese campo lo toca CUALQUIER
-        escritura sobre el payslip, no solo esta integración DIAN (evidencia real: documentos
-        de una copia de BD llevaban 'sent' desde hace tiempo, pero su write_date marcaba
-        "hoy" por motivos ajenos a la DIAN -- con ese campo, el plazo nunca vencería). La
-        fecha estable es la del envío real: create_date del l10n.co.ne.exchange
-        ('send_sync'/'send_test_set') que produjo el ZipKey actual -- un registro histórico
-        que ya existe y nunca se reescribe después de creado.
-        """
-        now = fields.Datetime.now()
-        companies = self.env['res.company'].sudo().search([
-            ('l10n_co_ne_hab_state', '!=', 'running'),
-        ])
-        for company in companies:
-            # El motor de habilitación ya reconsulta sus propios 'sent' en su propio cron
-            # (l10n_co_ne_habilitacion.py, paso 2 de _step()) -- consultarlos aquí también
-            # duplicaría la consulta sobre el mismo ZipKey al mismo tiempo.
-            pending = self.sudo().search([
-                ('company_id', '=', company.id),
-                ('l10n_co_ne_state', '=', 'sent'),
-                ('l10n_co_ne_zip_key', '!=', False),
-            ])
-            if not pending:
-                continue
-
-            zip_keys = list(set(pending.mapped('l10n_co_ne_zip_key')))
-            sends = self.env['l10n.co.ne.exchange'].sudo().search([
-                ('company_id', '=', company.id),
-                ('operation', 'in', ('send_sync', 'send_test_set')),
-                ('zip_key', 'in', zip_keys),
-            ], order='create_date desc')
-            sent_since = {}
-            for send in sends:
-                sent_since.setdefault(send.zip_key, send.create_date)
-
-            def _waiting_since(slip, _sent_since=sent_since):
-                # Respaldo defensivo si no hay exchange (no debería pasar: zip_key solo se
-                # asigna junto con el exchange que lo produjo) -- nunca por write_date.
-                return _sent_since.get(slip.l10n_co_ne_zip_key) or slip.create_date
-
-            pending = pending.sorted(key=_waiting_since)[:_CRON_RECHECK_BATCH_LIMIT]
-
-            max_hours = company._ne_config_int_param(
-                'l10n_co_nomina_electronica.recheck_max_hours',
-                _CRON_RECHECK_MAX_HOURS_DEFAULT,
-            )
-            expired = pending.filtered(
-                lambda slip: now - _waiting_since(slip) >= timedelta(hours=max_hours))
-            if expired:
-                for slip in expired:
-                    slip.message_post(body=_(
-                        'Reconsulta automática DIAN suspendida: pasaron más de '
-                        '%(h)d horas sin que la DIAN diera un veredicto de este '
-                        'documento. Queda marcado "Envío incierto -- requiere '
-                        'conciliación" y ya no entra a la reconsulta automática -- '
-                        'use "Consultar Estado" para revisarlo a mano cuando quiera.',
-                        h=max_hours,
-                    ))
-                expired.write({'l10n_co_ne_state': 'uncertain'})
-                self._cron_recheck_commit()
-            pending = pending - expired
-            if not pending:
-                continue
-
-            # dict.fromkeys en vez de sorted(set(...)) -- conserva el orden de llegada de
-            # `pending` (ya viene ordenado por fecha de envío ascendente de arriba) en vez
-            # de reordenar alfabéticamente por ZipKey.
-            for zip_key in dict.fromkeys(pending.mapped('l10n_co_ne_zip_key')):
-                group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
-                try:
-                    group.action_check_dian_status()
-                except Exception:  # noqa: BLE001 -- un ZipKey con error nunca debe frenar a los demás
-                    _logger.exception(
-                        'Reconsulta automática DIAN: error consultando ZipKey %s (compañía %s)',
-                        zip_key, company.display_name,
-                    )
-                    self._cron_recheck_rollback()
-                    continue
-                self._cron_recheck_commit()
-
-    def _cron_recheck_commit(self):
-        """Confirma lo consultado hasta aquí (un ZipKey ya resuelto no puede perderse por un
-        fallo posterior). Aislado para que las pruebas lo reemplacen -- mismo motivo y mismo
-        patrón que l10n_co_ne_habilitacion._commit(): Odoo prohíbe cr.commit() en un test."""
-        self.env.cr.commit()
-
-    def _cron_recheck_rollback(self):
-        """Deshace lo que haya quedado a medias tras un error en un ZipKey. Aislado por el mismo
-        motivo que _cron_recheck_commit(): permite a las pruebas ejercer esta rama sin tocar la
-        transacción real de la prueba."""
-        self.env.cr.rollback()
-        self.env.invalidate_all()
 
     # ══════════════════════════════════════════════════════════════════
     # MÉTODOS DE RECOPILACIÓN DE DATOS
@@ -1417,8 +913,12 @@ class HrPayslip(models.Model):
                 'CUNENov': self.l10n_co_ne_adjustment_ref_cune,
                 'value': True,
             }
-            data['tipo_nota'] = '1'  # Reemplazar by default
-            data['reemplazar'] = self._ne_reemplazar(data)
+            if self.l10n_co_ne_adjustment_type == '2':
+                data['tipo_nota'] = '2'
+                data['eliminar'] = self._ne_eliminar(data)
+            else:
+                data['tipo_nota'] = '1'
+                data['reemplazar'] = self._ne_reemplazar(data)
 
         return data
 
@@ -1508,6 +1008,103 @@ class HrPayslip(models.Model):
             ))
         return codigo
 
+    # Salario neto / bruto (2026-11-09, hallazgo de QA, decisión de Tech Lead): net_wage y
+    # gross_wage nativos suman líneas con código 'NET'/'GROSS', creadas por las reglas que Odoo
+    # agrega por defecto a cada estructura con fórmulas sobre sus categorías nativas
+    # (BASIC/ALW/DED), a las que nuestras categorías (DEV, DEDU, ...) nunca se enlazaron: el neto
+    # nativo quedaba igual al básico. NO se enlazan las categorías (doble conteo del básico, y
+    # DEV_SAL es la base del IBC/PILA/UGPP); se corrige el cálculo del campo nativo.
+    # Cada estructura propia tiene su regla de neto; solo la general tiene "Total Devengados".
+    _NE_NETO_CODES = ('CO_NETO', 'CO_PRIMA_NETO', 'CO_LIQ_NETO', 'CO_BON_NETO')
+    _NE_BRUTO_CODES = ('CO_BRUTO',)
+    # Lineas que Odoo agrega por defecto a cada estructura (BASIC/GROSS/NET); no son conceptos
+    # del recibo y su valor es el de las categorias nativas, no el neto real.
+    _NE_NATIVOS_SIN_PDF = ('BASIC', 'GROSS', 'NET')
+
+    def _ne_pdf_lineas(self):
+        """Lineas que se imprimen como conceptos en el PDF del recibo: las que aparecen en el
+        recibo, sin las nativas BASIC/GROSS/NET ni las filas de total (bruto y neto de cada
+        estructura propia), que no son conceptos y sumarlas duplica el neto."""
+        self.ensure_one()
+        excluir = (set(self._NE_NATIVOS_SIN_PDF) | set(self._NE_NETO_CODES)
+                   | set(self._NE_BRUTO_CODES))
+        return self.line_ids.filtered(
+            lambda l: l.appears_on_payslip and l.code not in excluir)
+
+    def _ne_pdf_neto(self):
+        """NETO A PAGAR del PDF: el total de la linea de neto de la estructura del recibo
+        (CO_NETO, CO_PRIMA_NETO, CO_LIQ_NETO o CO_BON_NETO) -- la misma fuente de net_wage
+        (_compute_basic_net). Sin esa linea no hay neto confiable: error, nunca un valor por
+        defecto."""
+        self.ensure_one()
+        neto = self.line_ids.filtered(lambda l: l.code in self._NE_NETO_CODES)
+        if not neto:
+            raise UserError(_(
+                'El recibo "%(recibo)s" no tiene línea de neto: calcule la nómina '
+                '(botón Calcular) antes de imprimirla.', recibo=self.display_name))
+        return sum(neto.mapped('total'))
+
+
+    @api.depends('line_ids.total')
+    def _compute_basic_net(self):
+        super()._compute_basic_net()
+        for payslip in self:
+            neto = payslip.line_ids.filtered(lambda l: l.code in self._NE_NETO_CODES)
+            if neto:
+                payslip.net_wage = sum(neto.mapped('total'))
+            bruto = payslip.line_ids.filtered(lambda l: l.code in self._NE_BRUTO_CODES)
+            if bruto:
+                payslip.gross_wage = sum(bruto.mapped('total'))
+
+    # H-005 (2026-11-09): parámetro hr.rule.parameter de la tarifa ARL por Clase de Riesgo del
+    # contrato (l10n_co_pila_clase_riesgo). Los CÓDIGOS de parámetro viven aquí; los
+    # porcentajes, en data/l10n_co_rule_parameters_data.xml (cero hardcoded normativo).
+    _NE_ARL_PARAMETRO_POR_CLASE = {
+        '1': 'l10n_co_pct_arl_default',
+        '2': 'l10n_co_pct_arl_clase_2',
+        '3': 'l10n_co_pct_arl_clase_3',
+        '4': 'l10n_co_pct_arl_clase_4',
+        '5': 'l10n_co_pct_arl_clase_5',
+    }
+
+    def _ne_pct_arl(self):
+        """Porcentaje (p. ej. 1.044) de la tarifa ARL del empleador según la Clase de Riesgo
+        ARL del contrato (H-005). Única fuente para CO_ARL_CIA y para PILA, de modo que no
+        puedan divergir. Sin clase en el contrato: UserError que nombra al empleado (nunca se
+        asume la Clase I en silencio)."""
+        self.ensure_one()
+        contract = self.contract_id
+        clase = contract._ne_clase_riesgo()
+        codigo = self._NE_ARL_PARAMETRO_POR_CLASE.get(clase)
+        if not codigo:
+            raise UserError(_(
+                'El contrato de %(employee)s no tiene Clase de Riesgo ARL configurada '
+                '(pestaña de PILA del contrato). Complétela antes de calcular el aporte a ARL.',
+                employee=self.employee_id.name,
+            ))
+        return self._rule_parameter(codigo, self._ne_fecha_parametros())
+
+
+    def _ne_validar_cuenta_transferencia(self):
+        """H-021 (2026-11-09): única validación de "Transferencia exige cuenta bancaria".
+
+        Antes era un @api.constrains en hr.employee que corría en cada guardado y le impedía
+        guardar un empleado nuevo (el método por defecto es Transferencia). La cuenta solo
+        hace falta para armar <Pago>, así que se exige aquí, donde se usa. La llaman
+        _ne_pago() y _validate_ne_prerequisites() (esta última, antes de asignar el
+        consecutivo, para no gastar uno en un documento que no se puede armar)."""
+        self.ensure_one()
+        employee = self.employee_id
+        metodo = employee._ne_medio_pago()
+        if metodo == '1' and not employee.bank_account_id:
+            raise UserError(_(
+                'El empleado %(employee)s no tiene una Cuenta Bancaria configurada '
+                '(Información privada > Contacto privado) y el método de pago es '
+                'Transferencia Bancaria. Configure la cuenta o cambie el método de '
+                'pago antes de generar la nómina electrónica.',
+                employee=employee.name,
+            ))
+
     def _ne_pago(self):
         """Sección <Pago> del XML de nómina electrónica (UX-02, 2026-10-11, decisión de
         David + Tech Lead).
@@ -1541,16 +1138,9 @@ class HrPayslip(models.Model):
         """
         self.ensure_one()
         employee = self.employee_id
-        metodo = employee.l10n_co_ne_payment_method or '1'
+        metodo = employee._ne_medio_pago()
         cuenta = employee.bank_account_id
-        if metodo == '1' and not cuenta:
-            raise UserError(_(
-                'El empleado %(employee)s no tiene una Cuenta Bancaria configurada '
-                '(Información privada > Contacto privado) y el método de pago es '
-                'Transferencia Bancaria. Configure la cuenta o cambie el método de '
-                'pago antes de generar la nómina electrónica.',
-                employee=employee.name,
-            ))
+        self._ne_validar_cuenta_transferencia()
         return {
             'Forma': '1',  # 1=Contado
             'Metodo': metodo,
@@ -1562,11 +1152,11 @@ class HrPayslip(models.Model):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
         contract = self.contract_id
-        _name_parts = dian_utils.split_name(employee.name or '')
+        _name_parts = employee._l10n_co_nombre_dian()
         lugar_trabajo = self._ne_lugar_trabajo_partner()
         return {
-            'TipoTrabajador': employee.l10n_co_ne_worker_type or '01',
-            'SubTipoTrabajador': employee.l10n_co_ne_worker_subtype or '00',
+            'TipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_type'),
+            'SubTipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_subtype'),
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'
             ),
@@ -1590,90 +1180,16 @@ class HrPayslip(models.Model):
             'SalarioIntegral': (
                 'true' if contract.l10n_co_ne_integral_salary else 'false'
             ),
-            'TipoContrato': contract.l10n_co_ne_contract_type or '2',
+            'TipoContrato': contract._ne_valor_obligatorio('l10n_co_ne_contract_type'),
             'Sueldo': '%.2f' % contract.wage,
             'CodigoTrabajador': str(employee.id),
         }
 
-    def _ne_insert_cune_and_qr(self, xml_bytes, cune_value):
-        """Escribe CUNE/EncripCUNE en ``InformacionGeneral`` y la URL en ``CodigoQR``.
 
-        En las Notas de Ajuste ambos elementos viven dentro de ``<Reemplazar>`` (o
-        ``<Eliminar>``), no como hijos directos de la raiz: se buscan en todo el arbol. Si
-        no se encuentran el XML sale con ``CUNE=""`` y la DIAN rechaza con NIAE024.
-        """
-        company = self.company_id
-        tree = _etree.fromstring(xml_bytes)
-        ns = tree.nsmap.get(None, '')
-        info_gen = tree.find('.//{%s}InformacionGeneral' % ns)
-        if info_gen is not None:
-            info_gen.set('CUNE', cune_value)
-            info_gen.set('EncripCUNE', 'CUNE-SHA384')
-        # AUD-DIAN-34 (2026-09-14, consolidado 2026-10-05): el host del QR cambia segun el
-        # ambiente (Anexo Tecnico, seccion QRCode) -- unico punto, ver ResCompany.
-        # _ne_dian_qr_host() / dian_utils.get_qr_catalog_host().
-        qr_host = company._ne_dian_qr_host()
-        qr_url = 'https://%s/document/searchqr?documentkey=%s' % (qr_host, cune_value)
-        qr_el = tree.find('.//{%s}CodigoQR' % ns)
-        if qr_el is None and info_gen is not None:
-            parent = info_gen.getparent()
-            qr_el = _etree.Element('{%s}CodigoQR' % ns)
-            parent.insert(list(parent).index(info_gen) + 1, qr_el)
-        if qr_el is not None:
-            qr_el.text = qr_url
-        return _etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
 
-    def _ne_predecessor_values(self):
-        """(NumeroPred, FechaGenPred) del documento que reemplaza esta nota de ajuste.
 
-        Anexo DIAN NIAE190/NIAE192: ``NumeroPred`` es el NUMERO del documento a reemplazar
-        (prefijo + consecutivo, no un trozo del CUNE) y ``FechaGenPred`` la fecha de emision
-        de ese documento (su ``InformacionGeneral/@FechaGen``), no el fin del periodo.
-        """
-        self.ensure_one()
-        ref = self.l10n_co_ne_adjustment_ref_cune
-        if not ref:
-            return '', ''
-        pred = self.search([
-            ('l10n_co_ne_cune', '=', ref),
-            ('l10n_co_ne_is_adjustment', '=', False),
-            ('company_id', '=', self.company_id.id),
-        ], limit=1)
-        if not pred:
-            return '', ''
-        fecha = ''
-        if pred.l10n_co_ne_xml_attachment_id:
-            root = _etree.fromstring(base64.b64decode(pred.l10n_co_ne_xml_attachment_id.datas))
-            info = root.find('.//{*}InformacionGeneral')
-            if info is not None:
-                fecha = info.get('FechaGen', '')
-        return pred.l10n_co_ne_consecutive or '', fecha
 
-    def _ne_reemplazar(self, data):
-        """Sección <Reemplazar> de la nota de ajuste, reutilizando ``data``."""
-        numero_pred, fecha_gen_pred = self._ne_predecessor_values()
-        return {
-            'predecesor': {
-                'NumeroPred': numero_pred,
-                'CUNEPred': self.l10n_co_ne_adjustment_ref_cune or '',
-                'FechaGenPred': fecha_gen_pred,
-            },
-            # Include all the same sections
-            'periodo': data['periodo'],
-            'numero_secuencia': data['numero_secuencia'],
-            'lugar_generacion': data['lugar_generacion'],
-            'proveedor_xml': data['proveedor_xml'],
-            'informacion_general': data['informacion_general'],
-            'empleador': data['empleador'],
-            'trabajador': data['trabajador'],
-            'pago': data['pago'],
-            'fechas_pagos': data['fechas_pagos'],
-            'devengados': data['devengados'],
-            'deducciones': data['deducciones'],
-            'devengados_total': data['devengados_total'],
-            'deducciones_total': data['deducciones_total'],
-            'comprobante_total': data['comprobante_total'],
-        }
+
 
     def _map_salary_rules_to_xml(self):
         """
@@ -1732,6 +1248,155 @@ class HrPayslip(models.Model):
             return dias_mes
         return min(d.day, dias_mes)
 
+    def _ne_dias_prestacion(self, fecha_ini, fecha_fin):
+        """Dias de [fecha_ini, fecha_fin] (extremos incluidos) para prima, cesantias, intereses,
+        indemnizacion y vacaciones causadas de la liquidacion. El divisor del anio sigue siendo
+        360 (hr.rule.parameter l10n_co_dias_anio_comercial); aqui solo se cuentan los dias.
+
+        El tratamiento de febrero es un parametro de la compania (Ajustes > Nomina,
+        l10n_co_ne_febrero_modo), sin valor por defecto:
+        - 'real' (decision de David, Guapante): los dias reales que se tienen, ni mas ni menos:
+          febrero cuenta 28 (29 si es bisiesto), completo o parcial; el dia 31 de los meses de
+          31 dias no cuenta (se "regala"). Un semestre ene-jun = 178, jul-dic = 180, un anio = 358
+          (359 si es bisiesto).
+        - '30': mes comercial de 30 dias (el ultimo dia real de cada mes cuenta como 30; febrero
+          completo = 30; un semestre = 180, un anio = 360), con _ne_dia_comercial.
+        NO afecta al sueldo mensual ni a los dias de PILA (_ne_dias_bajo_contrato): ahi febrero
+        sigue siendo 30. 0 si el rango esta invertido. Sin el parametro: UserError."""
+        self.ensure_one()
+        modo = self.company_id.l10n_co_ne_febrero_modo
+        if not modo:
+            raise UserError(_(
+                'La empresa %(company)s no tiene configurado el tratamiento de febrero en las '
+                'prestaciones (Nómina > Configuración > Ajustes, bloque Parámetros Nómina '
+                'Colombia, "Febrero en prestaciones"). Se necesita para calcular la nómina '
+                '"%(nomina)s".', company=self.company_id.name, nomina=self.display_name))
+        if fecha_fin < fecha_ini:
+            return 0
+        if modo == 'real':
+            dias = (fecha_fin - fecha_ini).days + 1
+            anio, mes = fecha_ini.year, fecha_ini.month
+            while (anio, mes) <= (fecha_fin.year, fecha_fin.month):
+                if self._ne_dias_en_mes_calendario(anio, mes) == 31 \
+                        and fecha_ini <= fecha_fin.replace(year=anio, month=mes, day=31) <= fecha_fin:
+                    dias -= 1
+                mes += 1
+                if mes == 13:
+                    anio, mes = anio + 1, 1
+            return dias
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        meses = (fecha_fin.year - fecha_ini.year) * 12 + (fecha_fin.month - fecha_ini.month)
+        return (meses * dias_mes + self._ne_dia_comercial(fecha_fin, dias_mes)
+                - self._ne_dia_comercial(fecha_ini, dias_mes) + 1)
+
+    def _ne_retefuente_config(self):
+        """Configuracion de retencion en la fuente (l10n.co.retefuente.uvt) del anio de la
+        nomina (anio de _ne_fecha_parametros: la fecha de retiro en la liquidacion). Primero la de
+        la compania del recibo; si no hay, la del anio sin compania propia (mismo criterio de
+        siempre). Sin configuracion: UserError que nombra anio y compania -- antes las reglas
+        de retencion se omitian en silencio y la nomina salia sin retencion (.167)."""
+        self.ensure_one()
+        anio = str(self._ne_fecha_parametros().year)
+        config = self.env['l10n.co.retefuente.uvt']._ne_config_del_anio(anio, self.company_id)
+        if not config:
+            raise UserError(_(
+                'No hay configuración de retención en la fuente para el año %(anio)s de la '
+                'empresa %(company)s (Nómina > Configuración > Nómina Colombia > Retención en la '
+                'Fuente). Cárguela antes de calcular la nómina "%(nomina)s": sin ella no se '
+                'puede calcular la retención.',
+                anio=anio, company=self.company_id.name, nomina=self.display_name))
+        return config
+
+    def _ne_fecha_parametros(self):
+        """Fecha con la que se resuelven los hr.rule.parameter (SMMLV, auxilio, topes, divisores).
+
+        Liquidacion: la fecha de retiro (date_to). En ella date_from es contract.date_start, que
+        puede ser de anos atras y traeria el SMMLV/auxilio del ingreso (o ningun valor, si es
+        anterior al primer parametro cargado). Es tambien el criterio del nativo
+        (hr.payslip._rule_parameter sin fecha usa date_to). Demas estructuras: date_from, igual
+        que antes -- no se altera la nomina mensual (p. ej. el cambio de jornada del 15-jul-2026
+        cae dentro de un mismo recibo mensual)."""
+        self.ensure_one()
+        if self.struct_id == self.env.ref(
+                'l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion',
+                raise_if_not_found=False):
+            return self.date_to
+        return self.date_from
+
+    def _ne_validar_inicio_liquidacion(self):
+        """En la estructura de liquidacion el recibo va de inicio de contrato a retiro.
+
+        Las reglas que dependen del tramo contractual (vacaciones causadas y tomadas, tramo
+        pagable) asumen date_from = contract.date_start. Con otra fecha las vacaciones de meses
+        anteriores no se descuentan y el valor sale inflado SIN aviso (QA, recibo 12954).
+        No se corrige en silencio: se detiene con un error que dice que corregir."""
+        self.ensure_one()
+        if self.struct_id != self.env.ref(
+                'l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion',
+                raise_if_not_found=False):
+            return
+        inicio = self.contract_id.date_start
+        desde = self.date_from
+        if hasattr(desde, 'date'):
+            desde = desde.date()
+        if inicio and desde != inicio:
+            raise UserError(_(
+                "El recibo de liquidación '%(recibo)s' (empleado %(empleado)s) debe iniciar en "
+                "la fecha de inicio del contrato (%(esperada)s) y tiene %(actual)s. Con otra "
+                "fecha las vacaciones y demás conceptos de los meses anteriores no se descuentan "
+                "y el valor sale errado. Corrija el campo \"Desde\" del recibo a %(esperada)s "
+                "(o genere la liquidación con el asistente de liquidación del contrato); si "
+                "cambia la fecha, revise que la fecha \"Hasta\" siga siendo la de retiro.",
+                recibo=self.name or self.display_name, empleado=self.employee_id.display_name,
+                esperada=inicio, actual=desde))
+
+    def _ne_liq_vacaciones_dias(self):
+        """Dias de vacaciones causadas, ya tomadas y pendientes del contrato al retiro.
+
+        Causadas: dias de prestacion (_ne_dias_prestacion) de inicio de contrato a date_to x dias_mes / divisor_vacaciones (15 dias
+        habiles por 360 de servicio, Art. 186 CST; con los parametros 30 y 720 = dias / 24).
+        Ya tomadas, de las mismas fuentes que paga la nomina mensual (una sola fuente):
+        - disfrutadas: hr.leave validadas CO_VAC en dias HABILES del calendario del contrato
+          (_ne_ausencia_habil; el recibo de liquidacion va de inicio de contrato a retiro) y
+          dias del input CO_VAC en recibos confirmados del mismo contrato (respaldo manual;
+          nunca coexiste con una ausencia en un mismo recibo, ver _ne_resolver_dias_novedad);
+        - compensadas en dinero: lineas CO_VAC_COMP (monto) de recibos confirmados, a
+          valor-dia salario/dias_mes.
+        Pendientes = max(0, causadas - disfrutadas - compensadas): quien tomo mas de lo causado
+        no genera valor negativo. Solo ve lo registrado en el sistema."""
+        self.ensure_one()
+        self._ne_validar_inicio_liquidacion()
+        contract = self.contract_id
+        fecha = self._ne_fecha_parametros()
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', fecha)
+        divisor = self._rule_parameter('l10n_co_divisor_vacaciones', fecha)
+        dias_servicio = self._ne_dias_prestacion(contract.date_start, self.date_to)
+        causados = dias_servicio * dias_mes / divisor
+
+        disfrutados, _detalle = self._ne_ausencia_habil('CO_VAC')
+        compensado_dinero = 0.0
+        previos = self.env['hr.payslip'].search([
+            ('contract_id', '=', contract.id),
+            ('id', '!=', self.id),
+            ('state', 'in', ('done', 'paid')),
+            ('struct_id', '!=', self.struct_id.id),
+            ('credit_note', '=', False),
+            ('l10n_co_ne_is_adjustment', '=', False),
+        ])
+        for previo in previos:
+            disfrutados += sum(
+                previo.input_line_ids.filtered(lambda i: i.code == 'CO_VAC').mapped('amount'))
+            compensado_dinero += sum(
+                previo.line_ids.filtered(lambda l: l.code == 'CO_VAC_COMP').mapped('total'))
+        valor_dia = contract.wage / dias_mes
+        compensados = compensado_dinero / valor_dia if valor_dia else 0.0
+        pendientes = max(0.0, causados - disfrutados - compensados)
+        return {
+            'causados': causados, 'disfrutados': disfrutados,
+            'compensados': compensados, 'pendientes': pendientes,
+            'valor_dia': valor_dia,
+        }
+
     def _ne_tramo_pagable_periodo(self):
         """(periodo_ini, periodo_fin) -- el tramo del período de la nómina que realmente es
         pagable bajo la convención de mes comercial de 30 días.
@@ -1744,6 +1409,7 @@ class HrPayslip(models.Model):
         tal cual. Compartido por _ne_dias_pagables() y _ne_ausencia_calendario() (H-014) --
         ambos deben recortar al mismo tramo para no descontar/pagar fuera de él.
         """
+        self._ne_validar_inicio_liquidacion()
         periodo_ini = self.date_from
         periodo_fin = self.date_to
         if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
@@ -1761,6 +1427,22 @@ class HrPayslip(models.Model):
             return 0
         return self._ne_dia_comercial(fin, dias_mes) - self._ne_dia_comercial(ini, dias_mes) + 1
 
+    def _ne_dias_bajo_contrato(self):
+        """Dias (mes comercial) del tramo pagable en que el contrato estuvo vigente.
+        Delimita ING/RET: la fecha de ingreso y de retiro recortan el rango."""
+        self.ensure_one()
+        contract = self.contract_id
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_ini = contract.date_start
+        contrato_fin = contract.date_end or periodo_fin
+        activo_ini = max(periodo_ini, contrato_ini)
+        activo_fin = min(periodo_fin, contrato_fin)
+        if activo_ini > activo_fin:
+            return 0
+        return (self._ne_dia_comercial(activo_fin, dias_mes)
+                - self._ne_dia_comercial(activo_ini, dias_mes) + 1)
+
     def _ne_dias_pagables(self):
         """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
         usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
@@ -1776,22 +1458,7 @@ class HrPayslip(models.Model):
         recalcular.
         """
         self.ensure_one()
-        contract = self.contract_id
-        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
-        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
-        contrato_ini = contract.date_start
-        contrato_fin = contract.date_end or periodo_fin
-
-        activo_ini = max(periodo_ini, contrato_ini)
-        activo_fin = min(periodo_fin, contrato_fin)
-
-        if activo_ini > activo_fin:
-            dias_bajo_contrato = 0
-        else:
-            dias_bajo_contrato = (
-                self._ne_dia_comercial(activo_fin, dias_mes)
-                - self._ne_dia_comercial(activo_ini, dias_mes) + 1
-            )
+        dias_bajo_contrato = self._ne_dias_bajo_contrato()
 
         unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
         unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
@@ -1804,11 +1471,7 @@ class HrPayslip(models.Model):
         # distinto al básico (Art. 186 CST, Ley 100/1993, etc.). Por eso se excluyen SIEMPRE
         # estos códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
         dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
-        dias_excluidos = sum(
-            wd.number_of_days
-            for wd in self.worked_days_line_ids
-            if wd.work_entry_type_id.code in dias_excluidos_codes
-        )
+        dias_excluidos = self._ne_dias_habiles_excluidos(dias_excluidos_codes)
         # H-014 (2026-10-08, QA Bloque 5): CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
         # se pagan en días CALENDARIO corridos (ver _ne_ausencia_calendario) -- se excluyen
         # del básico por la misma cuenta, nunca por worked_days (ahí solo existirían los
@@ -1817,6 +1480,111 @@ class HrPayslip(models.Model):
         for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
             dias_excluidos += self._ne_ausencia_calendario(codigo)[0]
         return dias_bajo_contrato - dias_excluidos
+
+    def _ne_pago_ausencia_calendario(self, codigo, dias, previos=None):
+        """Valor a pagar por `dias` calendario corridos de una ausencia de pago por el empleador
+        o por terceros: CO_INC_COMUN, CO_INC_LABORAL, CO_LIC_MAT, CO_LIC_PAT. Unico lugar del
+        calculo, compartido por las reglas de la nomina general y de la liquidacion.
+
+        - CO_INC_COMUN (Decreto 780/2016 Art. 3.2.1.10 par. 1; H-013 paso 3): por tramos --
+          los primeros dias_incapacidad_empleador al pct_incapacidad_empleador (66,67 %); hasta
+          el limite 3-90 el pct_incapacidad_3_90 (EPS); mas alla el pct_incapacidad_91_mas.
+        - CO_INC_LABORAL: ARL al 100 % desde el primer dia. CO_LIC_MAT y CO_LIC_PAT: 100 % del
+          salario, a cargo de la EPS (H-014, CST Art. 236 mod. Ley 2114/2021).
+        Parametros normativos desde hr.rule.parameter a la fecha de _ne_fecha_parametros().
+        CO_INC_COMUN tiene piso de 1 SMMLV por dia (H-163, CST Art. 227): ver abajo. Su tramo se
+        cuenta desde el INICIO de la incapacidad y sus prorrogas (H-170): `previos` = dias de la
+        misma incapacidad anteriores al periodo; sin darlo, se deduce de Ausencias."""
+        self.ensure_one()
+        if codigo not in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            raise UserError(_(
+                'Código de ausencia "%(codigo)s" sin fórmula de pago (solo %(validos)s).',
+                codigo=codigo, validos=', '.join(sorted(_NOVEDAD_AUSENCIA_CALENDARIO_CODES))))
+        if dias <= 0:
+            return 0.0
+        fecha = self._ne_fecha_parametros()
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', fecha)
+        valor_dia = self.contract_id.wage / dias_mes
+        if codigo != 'CO_INC_COMUN':
+            return valor_dia * dias
+        dias_emp = self._rule_parameter('l10n_co_dias_incapacidad_empleador', fecha)
+        pct_emp = self._rule_parameter('l10n_co_pct_incapacidad_empleador', fecha) / 100
+        pct_3_90 = self._rule_parameter('l10n_co_pct_incapacidad_3_90', fecha) / 100
+        pct_91_mas = self._rule_parameter('l10n_co_pct_incapacidad_91_mas', fecha) / 100
+        limite_3_90 = self._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', fecha)
+        # H-163 (CST art. 227; T-468/2010): los porcentajes aplican "siempre y cuando el valor
+        # liquido a pagar no sea inferior al SMMLV": valor por dia = max(valor_dia x pct del
+        # tramo, SMMLV / dias_mes), en todos los tramos. Con salario de 1 SMMLV se paga el 100 %.
+        # LIMITE CONOCIDO: con salario MENOR a 1 SMMLV (jornada parcial) el piso diario pagaria mas
+        # del 100 % de su sueldo; no ocurre en Guapante y no se modela (decision pendiente).
+        smmlv_dia = self._rule_parameter('l10n_co_smmlv', fecha) / dias_mes
+
+        def _por_dia(pct):
+            return max(valor_dia * pct, smmlv_dia)
+
+        def _pago_posiciones(previos, cantidad):
+            """Pago de los dias que ocupan las posiciones previos+1 .. previos+cantidad DENTRO de
+            la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo."""
+            ini, fin = previos, previos + cantidad
+
+            def _solape(a, b):
+                return max(0, min(fin, b) - max(ini, a))
+            return (_solape(0, dias_emp) * _por_dia(pct_emp)
+                    + _solape(dias_emp, limite_3_90) * _por_dia(pct_3_90)
+                    + max(0, fin - max(ini, limite_3_90)) * _por_dia(pct_91_mas))
+
+        if previos is not None:
+            return _pago_posiciones(previos, dias)
+        cadenas = self._ne_incapacidad_cadenas()
+        if not cadenas or sum(en_periodo for _previos, en_periodo in cadenas) != dias:
+            # Sin ausencias que lo respalden (p. ej. input manual): la incapacidad empieza aqui.
+            cadenas = [(0, dias)]
+        return sum(_pago_posiciones(prev, en_periodo) for prev, en_periodo in cadenas)
+
+    def _ne_incapacidad_cadenas(self):
+        """[(dias_previos, dias_en_periodo)] de cada incapacidad comun -- con sus prorrogas -- que
+        cae en el periodo del recibo (H-170). Las incapacidades validadas del empleado se encadenan
+        cuando la siguiente empieza a mas tardar l10n_co_dias_interrupcion_prorroga + 1 dias despues
+        del fin de la anterior (con 0, solo contiguas). dias_previos = dias CALENDARIO reales de
+        la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones 1..previos, y los
+        del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar)."""
+        self.ensure_one()
+        _dias, detalle = self._ne_ausencia_calendario('CO_INC_COMUN')
+        if not detalle:
+            return []
+        interrupcion = int(self._rule_parameter(
+            'l10n_co_dias_interrupcion_prorroga', self._ne_fecha_parametros()))
+        periodo_ini = self._ne_tramo_pagable_periodo()[0]
+        tramo_ini = max(periodo_ini, self.contract_id.date_start)
+        todas = self.env['hr.leave'].search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'validate'),
+            ('holiday_status_id.work_entry_type_id.code', '=', 'CO_INC_COMUN'),
+        ], order='request_date_from, id')
+        cadenas, actual = [], []
+        for leave in todas:
+            if actual and leave.request_date_from <= actual[-1].request_date_to + timedelta(
+                    days=1 + interrupcion):
+                actual.append(leave)
+            else:
+                if actual:
+                    cadenas.append(actual)
+                actual = [leave]
+        if actual:
+            cadenas.append(actual)
+        en_periodo = {leave.id: dias for leave, dias, _ini, _fin in detalle}
+        resultado = []
+        for cadena in cadenas:
+            dias_periodo = sum(en_periodo.get(leave.id, 0) for leave in cadena)
+            if not dias_periodo:
+                continue
+            previos = 0
+            for leave in cadena:
+                fin = min(leave.request_date_to, tramo_ini - timedelta(days=1))
+                if fin >= leave.request_date_from:
+                    previos += (fin - leave.request_date_from).days + 1
+            resultado.append((previos, dias_periodo))
+        return resultado
 
     def _ne_ausencia_calendario(self, work_entry_code):
         """Única fuente de días CALENDARIO corridos (lunes a domingo, festivos incluidos)
@@ -1843,7 +1611,7 @@ class HrPayslip(models.Model):
         """
         self.ensure_one()
         contract = self.contract_id
-        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
         periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
         contrato_ini = contract.date_start
         contrato_fin = contract.date_end or periodo_fin
@@ -1875,7 +1643,32 @@ class HrPayslip(models.Model):
                 dias_totales += dias
         return dias_totales, detalle
 
-    def _ne_ausencia_habil(self, work_entry_code):
+    def _ne_dias_habiles_excluidos(self, codigos):
+        """Dias HABILES de las ausencias de worked_days (CO_VAC, CO_LIC_REM, CO_LIC_NR y tipos
+        'unpaid') que se excluyen del sueldo, acotados al tramo pagable.
+
+        Un recibo de un solo mes: suma de worked_days, como siempre. Un recibo que cruza meses
+        (Liquidacion: date_from = inicio de contrato, el sueldo es solo del ultimo mes):
+        worked_days cubre toda la vida del contrato y restaria ausencias de meses ya pagados;
+        se cuentan solo las del tramo (_ne_ausencia_habil con desde/hasta)."""
+        self.ensure_one()
+        tramo_ini, tramo_fin = self._ne_tramo_pagable_periodo()
+        if tramo_ini == self.date_from:
+            return sum(wd.number_of_days for wd in self.worked_days_line_ids
+                       if wd.work_entry_type_id.code in codigos)
+        return sum(self._ne_ausencia_habil(codigo, tramo_ini, tramo_fin)[0]
+                   for codigo in sorted(codigos))
+
+    def _ne_ausencia_habil_tramo(self, work_entry_code):
+        """Ausencias en dias HABILES acotadas al tramo pagable del recibo: lo que este documento
+        paga y reporta. Un recibo de un solo mes: el periodo completo (igual que
+        _ne_ausencia_habil()); Liquidacion (date_from = inicio de contrato): solo el ultimo mes,
+        porque los meses anteriores ya se pagaron y reportaron en sus propios documentos."""
+        self.ensure_one()
+        tramo_ini, tramo_fin = self._ne_tramo_pagable_periodo()
+        return self._ne_ausencia_habil(work_entry_code, tramo_ini, tramo_fin)
+
+    def _ne_ausencia_habil(self, work_entry_code, desde=None, hasta=None):
         """Única fuente de días HÁBILES (vía worked_days/hr.work.entry) para Vacaciones/
         LicenciaR/LicenciaNR (H-016, 2026-10-08, QA en staging -- NE0000000099).
 
@@ -1905,23 +1698,29 @@ class HrPayslip(models.Model):
         termina en un día sin work entry (festivo, sábado, lunes no laborable) -- a la DIAN
         va la fecha real de la ausencia, no la del primer/último día efectivamente pagado.
 
+        desde/hasta (opcionales, por defecto date_from/date_to del recibo) acotan la cuenta a
+        una ventana: en Liquidacion date_from es el inicio de contrato y el sueldo pendiente es
+        solo el tramo del ultimo mes (_ne_tramo_pagable_periodo()).
+
         Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
         mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
         _dev_prestaciones() los traten igual.
         """
         self.ensure_one()
+        desde = desde or self.date_from
+        hasta = hasta or self.date_to
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', self.employee_id.id),
             ('state', '=', 'validate'),
             ('holiday_status_id.work_entry_type_id.code', '=', work_entry_code),
-            ('request_date_from', '<=', self.date_to),
-            ('request_date_to', '>=', self.date_from),
+            ('request_date_from', '<=', hasta),
+            ('request_date_to', '>=', desde),
         ])
         if not leaves:
             return 0, []
 
-        periodo_ini_dt = datetime.combine(self.date_from, datetime.min.time())
-        periodo_fin_dt = datetime.combine(self.date_to + timedelta(days=1), datetime.min.time())
+        periodo_ini_dt = datetime.combine(desde, datetime.min.time())
+        periodo_fin_dt = datetime.combine(hasta + timedelta(days=1), datetime.min.time())
         work_entries = self.env['hr.work.entry'].search([
             ('employee_id', '=', self.employee_id.id),
             ('leave_id', 'in', leaves.ids),
@@ -1941,8 +1740,8 @@ class HrPayslip(models.Model):
                 continue
             dias = len({entry.date_start.date() for entry in entries})
             if dias > 0:
-                ini = max(leave.request_date_from, self.date_from)
-                fin = min(leave.request_date_to, self.date_to)
+                ini = max(leave.request_date_from, desde)
+                fin = min(leave.request_date_to, hasta)
                 detalle.append((leave, dias, ini, fin))
                 dias_totales += dias
         return dias_totales, detalle
@@ -2013,7 +1812,7 @@ class HrPayslip(models.Model):
         dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
         return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
 
-    def _ne_ultimo_ibc_anterior(self, contract):
+    def _ne_ultimo_ibc_anterior(self, contract, estructura=None, antes_de=None):
         """Último IBC de seguridad social confirmado antes de esta nómina (H-017a,
         2026-10-11, punto a del diseño -- decisión de David + Tech Lead).
 
@@ -2029,57 +1828,37 @@ class HrPayslip(models.Model):
         anterior tal cual, NUNCA un valor prorrateado al salario nuevo.
         """
         self.ensure_one()
+        # estructura / antes_de (opcionales): la liquidacion no tiene historial propio; su "ultimo
+        # IBC anterior" es el de la nomina general del contrato antes del tramo.
         payslip_anterior = self.env['hr.payslip'].search([
             ('contract_id', '=', contract.id),
-            ('struct_id', '=', self.struct_id.id),
+            ('struct_id', '=', (estructura or self.struct_id).id),
             ('state', '=', 'done'),
-            ('date_from', '<', self.date_from),
+            ('date_from', '<', antes_de or self.date_from),
         ], order='date_from desc', limit=1)
         if not payslip_anterior:
             return contract.wage
         linea_ibc = payslip_anterior.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
         return linea_ibc.total if linea_ibc else contract.wage
 
-    def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
-        """IBC de seguridad social del empleado (H-017a, 2026-10-11, decisión de David +
-        Tech Lead): incluye en la base de salud/pensión los días de vacaciones, licencia
-        remunerada ordinaria y licencia de maternidad/paternidad que hoy quedan fuera de
-        categories['DEV_SAL'] (CO_VAC/CO_LIC_REM/CO_LIC_MAT/CO_LIC_PAT tienen categoría
-        VAC/INC, parent DEV, no DEV_SAL).
+    def _ne_factor_dias_integral(self):
+        """Fraccion del mes comercial que cubre este recibo, para prorratear el salario
+        integral (que no sale de lineas de devengado sino del contrato). Con ella, dos
+        recibos del mismo mes (nomina + liquidacion) suman UN IBC, no dos (H-017b)."""
+        self.ensure_one()
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        return min(self._ne_dias_bajo_contrato(), dias_mes) / dias_mes
 
-        Maternidad/paternidad: base = result_rules['CO_LIC_MAT']/['CO_LIC_PAT']['total'] --
-        única fuente (no se recalcula la fórmula aparte). Tech Lead (2026-10-11) verificó
-        contra el código real de Enterprise hr_payroll (hr_payslip.py, _get_localdict()):
-        result_rules se crea UNA sola vez por payslip y el MISMO localdict se pasa tanto a
-        rule._satisfy_condition() como a rule._compute_rule() -- disponible en
-        condition_python y en amount_python_compute por igual. Es además un
-        DefaultDictPayroll: una clave aún no calculada (ej. una regla que no corrió este
-        período) devuelve totales en 0, nunca KeyError/NameError. CO_LIC_MAT/CO_LIC_PAT
-        (secuencia 55/56) corren antes que CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (100/101/102),
-        así que su resultado ya está disponible aquí.
-
-        Única fuente para CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP (las 3 reglas de empleado).
-        Alcance explícito de H-017a, NO tocar sin decisión de Tech Lead:
-        - Las 6 reglas patronales (CO_SALUD_CIA/CO_PENSION_CIA/CO_ARL_CIA/CO_CCF_CIA/
-          CO_SENA_CIA/CO_ICBF_CIA), el wizard de PILA y el reporte UGPP siguen leyendo su
-          propia base tal cual -- se alinean en H-017b (después del 15, antes del primer
-          pago de PILA), junto con la decisión normativa del piso de 1 SMMLV / techo de 25
-          SMMLV.
-        - Las incapacidades (CO_INC_COMUN, CO_INC_LABORAL) NO entran a esta base todavía --
-          quedan para el paso 3 de incapacidad (corte del día 90, piso de salario mínimo).
-          No agregar CO_INC_COMUN/CO_INC_LABORAL aquí sin que ese paso lo decida
-          explícitamente (decisión de Tech Lead, 2026-10-11).
-        """
+    def _ne_ibc_salarial(self, categories, contract, inputs, worked_days):
+        """Parte SALARIAL del IBC (H-017a): DEV_SAL + vacaciones y licencia remunerada
+        (base = ultimo IBC anterior, prorrateado por dias). Salario integral:
+        factor (70%) x salario. Ver _ne_ibc_seguridad_social para el alcance H-017a."""
         self.ensure_one()
         if contract.l10n_co_ne_integral_salary:
             return contract.wage * self._rule_parameter(
-                'l10n_co_factor_integral_salary', self.date_from)
-
+                'l10n_co_factor_integral_salary', self._ne_fecha_parametros()) * self._ne_factor_dias_integral()
         ibc = categories['DEV_SAL']
-        dias_mes_comercial = self._rule_parameter('l10n_co_dias_mes_comercial', self.date_from)
-
-        # Vacaciones y licencia remunerada: base = último IBC anterior a la novedad,
-        # prorrateado por los mismos días que ya paga la novedad (_ne_dias_novedad()).
+        dias_mes_comercial = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
         ultimo_ibc = None
         for work_entry_code in ('CO_VAC', 'CO_LIC_REM'):
             dias_ausencia, dias_input = self._ne_dias_novedad_ausencia_e_input(
@@ -2089,12 +1868,170 @@ class HrPayslip(models.Model):
                 if ultimo_ibc is None:
                     ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
                 ibc += (ultimo_ibc / dias_mes_comercial) * dias
-
-        # Maternidad/paternidad: base = lo que la licencia ya pagó -- result_rules es la
-        # única fuente, ver docstring.
-        ibc += result_rules.get('CO_LIC_MAT', {}).get('total', 0.0)
-        ibc += result_rules.get('CO_LIC_PAT', {}).get('total', 0.0)
         return ibc
+
+    def _ne_ibc_incap(self, contract, result_rules, codigos=None):
+        """Base de las ausencias de pago por tercero (maternidad/paternidad e
+        incapacidades): el valor del auxilio que la novedad ya pago (Decreto 780/2016
+        Art. 3.2.5.1; decision de David, 2026-11-10). Solo cuenta a salud y pension,
+        no a ARL ni parafiscales; el descuento al empleado es el normal (Art.
+        3.2.1.10), a diferencia de SLN. Integral: 0 (como H-017a).
+        `codigos` permite acotar; por defecto los 4 de ausencia calendario."""
+        if contract.l10n_co_ne_integral_salary:
+            return 0.0
+        if codigos is None:
+            codigos = _NOVEDAD_AUSENCIA_CALENDARIO_CODES
+        return sum(
+            result_rules.get(codigo, {}).get('total', 0.0) for codigo in sorted(codigos))
+
+    def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
+        """Base que guarda CO_SS_BASE_IBC y que _ne_ultimo_ibc_anterior() lee el mes
+        siguiente para prorratear vacaciones/licencia remunerada/SLN (H-017a): salario
+        ordinario + maternidad/paternidad, SIN el auxilio de incapacidad (IGE/IRL), que no
+        es salario (CST Art. 192; decision de David, 2026-11-10). El IBC de APORTES vive
+        en CO_IBC_SP y si incluye la incapacidad."""
+        return (self._ne_ibc_salarial(categories, contract, inputs, worked_days)
+                + self._ne_ibc_incap(
+                    contract, result_rules, codigos=('CO_LIC_MAT', 'CO_LIC_PAT')))
+
+    def _ne_ibc_salarial_liquidacion(self, categories, contract):
+        """Parte salarial del IBC en la liquidacion: el salario pendiente del tramo
+        (DEV_SAL = CO_LIQ_SALARIOS) o, con salario integral, factor x salario. No cotizan
+        (CST Art. 127/128, Ley 1393): vacaciones compensadas, prima, cesantias, intereses
+        e indemnizacion."""
+        self.ensure_one()
+        if contract.l10n_co_ne_integral_salary:
+            return contract.wage * self._rule_parameter(
+                'l10n_co_factor_integral_salary', self._ne_fecha_parametros()) * self._ne_factor_dias_integral()
+        # Vacaciones disfrutadas y licencia remunerada del tramo (se pagan en CO_LIQ_VAC_DISFRUTADAS
+        # y CO_LIQ_LIC_REM): cotizan con el mismo criterio de _ne_ibc_salarial -- ultimo IBC
+        # anterior (de la nomina general, antes del tramo) prorrateado por dias.
+        ibc = categories['DEV_SAL']
+        tramo_ini = self._ne_tramo_pagable_periodo()[0]
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        ultimo_ibc = None
+        for work_entry_code in ('CO_VAC', 'CO_LIC_REM'):
+            dias = self._ne_ausencia_habil_tramo(work_entry_code)[0]
+            if dias > 0:
+                if ultimo_ibc is None:
+                    ultimo_ibc = self._ne_ultimo_ibc_anterior(
+                        contract,
+                        estructura=self.env.ref(
+                            'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
+                        antes_de=tramo_ini)
+                ibc += (ultimo_ibc / dias_mes) * dias
+        return ibc
+
+    def _ne_ibc_remuneracion(self, contract, salarial):
+        """Base del 40%: remuneracion total. Integral: 100% del salario pactado."""
+        if contract.l10n_co_ne_integral_salary:
+            return contract.wage * self._ne_factor_dias_integral()
+        return salarial
+
+    def _ne_ibc_pactados(self, result_rules):
+        """Suma de los pagos no salariales POR PACTO (regla del 40%). Un concepto no
+        salarial con valor y sin clasificar es error (sin default silencioso)."""
+        self.ensure_one()
+        total = 0.0
+        for regla in self.struct_id.rule_ids:
+            if regla.category_id.code != 'DEV_NOSAL':
+                continue
+            valor = abs(result_rules[regla.code]['total'])
+            if not valor:
+                continue
+            if not regla.l10n_co_pila_origen_no_salarial:
+                raise UserError(_(
+                    'La regla "%(regla)s" es un pago no salarial con valor en la '
+                    'nomina "%(nomina)s", pero no tiene "Origen del Pago No '
+                    'Salarial (IBC)". Defina si es por naturaleza o por pacto '
+                    'de desalarizacion en la regla salarial.',
+                    regla=regla.name, nomina=self.display_name))
+            if regla.l10n_co_pila_origen_no_salarial == 'pacto':
+                total += valor
+        return total
+
+    def _ne_dias_sln(self):
+        """Dias de suspension / licencia no remunerada (SLN) desde Ausencias: tipos
+        'unpaid' de hr.leave.type y CO_LIC_NR."""
+        self.ensure_one()
+        unpaid = self.env['hr.leave.type'].search([('unpaid', '=', True)])
+        codigos = set(unpaid.mapped('work_entry_type_id.code')) - {False}
+        codigos.add('CO_LIC_NR')
+        codigos -= {'CO_VAC', 'CO_LIC_REM'}
+        return self._ne_dias_habiles_excluidos(codigos)
+
+    def _ne_dias_cotizados(self):
+        """Dias cotizados por subsistema (tabla de David, 2026-11-09).
+
+        Total del tramo = dias bajo contrato (mes comercial, tope 30; ING/RET lo
+        delimitan) -> salud y pension: incluye laborados, VAC, licencia remunerada,
+        incapacidades (IGE, IRL), maternidad/paternidad (LMA) y SLN.
+        ARL y parafiscales: solo laborados + VAC + licencia remunerada, es decir el
+        total menos IGE, IRL, LMA y SLN. Mismas fuentes de dias que
+        _ne_dias_pagables() (no se recalcula nada aparte)."""
+        self.ensure_one()
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        total = min(self._ne_dias_bajo_contrato(), dias_mes)
+        sin_arl = self._ne_dias_sln()
+        for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            sin_arl += self._ne_ausencia_calendario(codigo)[0]
+        con_arl = max(0, total - sin_arl)
+        return {'sp': total, 'arl': con_arl, 'paraf': con_arl}
+
+    def _ne_ibc_sln(self, contract):
+        """Base de los dias SLN: IBC del mes anterior prorrateado por esos dias (solo
+        salud y pension; el empleador asume el 100%, por lo que no se descuenta al
+        empleado)."""
+        self.ensure_one()
+        dias = self._ne_dias_sln()
+        if dias <= 0:
+            return 0.0
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        tramo_ini = self._ne_tramo_pagable_periodo()[0]
+        if tramo_ini != self.date_from:
+            # Liquidacion (H-168): no tiene historial propio; la base es el ultimo IBC de la
+            # nomina general del contrato antes del tramo (mismo criterio que sus vacaciones).
+            ultimo_ibc = self._ne_ultimo_ibc_anterior(
+                contract,
+                estructura=self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
+                antes_de=tramo_ini)
+        else:
+            ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
+        return ultimo_ibc / dias_mes * dias
+
+    def _ne_ibc_limites(self, salarial, incap, remuneracion, pactados, dias):
+        """IBC del recibo con regla del 40%, techo (sin prorratear) y piso (prorrateado
+        por dias). Ley 1393/2010 Art. 30; Ley 797/2003; SU 25185/2021."""
+        self.ensure_one()
+        smmlv = self._rule_parameter('l10n_co_smmlv', self._ne_fecha_parametros())
+        pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
+        minimo = self._rule_parameter('l10n_co_ibc_min_smmlv', self._ne_fecha_parametros())
+        maximo = self._rule_parameter('l10n_co_ibc_max_smmlv', self._ne_fecha_parametros())
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        excedente = max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
+        ibc = min(salarial + incap + excedente, maximo * smmlv)
+        if dias > 0:
+            ibc = max(ibc, minimo * smmlv / dias_mes * dias)
+        return ibc
+
+    def _ne_dias_xml(self, valor):
+        """Entero para los campos de DIAS del XML (DiasTrabajados, Cantidad de vacaciones, primas,
+        incapacidades, licencias y huelga: el XSD v1.0.6 los exige enteros). Un valor que ya es
+        entero pasa tal cual. Uno fraccionario se redondea con el modo que la compania configura
+        (l10n_co_ne_redondeo_dias, vocabulario nativo de float_round / account.cash.rounding:
+        HALF-UP, UP, DOWN); sin configurar es un error claro: antes se truncaba en silencio."""
+        self.ensure_one()
+        if float_is_zero(valor - round(valor), precision_digits=6):
+            return int(round(valor))
+        modo = self.company_id.l10n_co_ne_redondeo_dias
+        if not modo:
+            raise UserError(_(
+                'La empresa %(company)s no tiene configurado el redondeo de días del XML '
+                '(Nómina > Configuración > Ajustes, bloque Parámetros Nómina Colombia, '
+                '"Redondeo de días del XML"). Se necesita para el valor %(valor)s de la nómina '
+                '"%(nomina)s": la DIAN exige días enteros.',
+                company=self.company_id.name, valor=valor, nomina=self.display_name))
+        return int(float_round(valor, precision_rounding=1.0, rounding_method=modo))
 
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
@@ -2111,7 +2048,7 @@ class HrPayslip(models.Model):
                     employee=self.employee_id.name, ini=self.date_from, fin=self.date_to,
                 ))
             devengados['Basico'] = {
-                'DiasTrabajados': str(int(dias_pagables)),
+                'DiasTrabajados': str(self._ne_dias_xml(dias_pagables)),
                 'SueldoTrabajado': '%.2f' % sum(l.total for l in sueldo_lines),
             }
 
@@ -2145,6 +2082,26 @@ class HrPayslip(models.Model):
                 l.total for l in concept_lines['ViaticoNS']
             )
 
+    # Porcentaje (tabla 5.5.5 del Anexo) de cada hora extra/recargo, derivado del MISMO factor
+    # hr.rule.parameter con el que se calcula el pago: (factor - 1) x 100 en las extras (el
+    # factor incluye la hora ordinaria) y factor x 100 en el recargo nocturno (solo el recargo).
+    # PENDIENTE (decision de David): los 4 conceptos dominicales/festivos (HEDDF, HRDDF, HENDF,
+    # HRNDF) -- la tabla 5.5.5 y la Ley 2466/2025 no coinciden; mientras tanto conservan line.rate.
+    _NE_PORCENTAJE_HORA_FACTOR = {
+        'HED': ('l10n_co_factor_hed', -1.0),
+        'HEN': ('l10n_co_factor_hen', -1.0),
+        'HRN': ('l10n_co_factor_hrn', 0.0),
+    }
+
+    def _ne_porcentaje_hora(self, concepto, line):
+        self.ensure_one()
+        parametro = self._NE_PORCENTAJE_HORA_FACTOR.get(concepto)
+        if not parametro:
+            return line.rate or 0.0
+        codigo, ajuste = parametro
+        factor = self._rule_parameter(codigo, self._ne_fecha_parametros())
+        return round((factor + ajuste) * 100.0, 2)
+
     def _dev_horas_extra(self, concept_lines, devengados):
         """Devengados: horas extras y recargos."""
         for he_concept in HORA_EXTRA_CONCEPTS:
@@ -2155,8 +2112,9 @@ class HrPayslip(models.Model):
                     items.append({
                         'HoraInicio': '',
                         'HoraFin': '',
-                        'Cantidad': str(int(line.quantity)) if line.quantity else '0',
-                        'Porcentaje': '%.2f' % (line.rate if line.rate else 0),
+                        # Anexo/XSD v1.0.6: Cantidad de las horas extra es xsd:decimal.
+                        'Cantidad': '%.2f' % line.quantity,
+                        'Porcentaje': '%.2f' % self._ne_porcentaje_hora(he_concept, line),
                         'Pago': '%.2f' % line.total,
                     })
                 devengados[container_key] = items
@@ -2232,7 +2190,7 @@ class HrPayslip(models.Model):
                 # (_ne_ausencia_habil()), no días calendario puros
                 # (_get_overlapping_leaves_data(), causa real del defecto reportado por QA
                 # en NE0000000099).
-                dias_totales, detalle = self._ne_ausencia_habil('CO_VAC')
+                dias_totales, detalle = self._ne_ausencia_habil_tramo('CO_VAC')
                 if detalle:
                     items = []
                     total_pago = sum(l.total for l in vac_comunes)
@@ -2241,7 +2199,7 @@ class HrPayslip(models.Model):
                         items.append({
                             'FechaInicio': str(ini),
                             'FechaFin': str(fin),
-                            'Cantidad': str(int(dias)),
+                            'Cantidad': str(self._ne_dias_xml(dias)),
                             'Pago': '%.2f' % pago,
                         })
                     vacaciones['VacacionesComunes'] = items
@@ -2263,7 +2221,7 @@ class HrPayslip(models.Model):
                     ))
             if vac_compensadas:
                 vacaciones['VacacionesCompensadas'] = [{
-                    'Cantidad': str(int(sum(l.quantity for l in vac_compensadas))),
+                    'Cantidad': str(self._ne_dias_xml(sum(l.quantity for l in vac_compensadas))),
                     'Pago': '%.2f' % sum(l.total for l in vac_compensadas),
                 }]
             devengados['Vacaciones'] = vacaciones
@@ -2271,7 +2229,7 @@ class HrPayslip(models.Model):
         # Primas
         if 'Primas' in concept_lines:
             devengados['Primas'] = {
-                'Cantidad': str(int(sum(
+                'Cantidad': str(self._ne_dias_xml(sum(
                     l.quantity for l in concept_lines['Primas']
                 ))),
                 'Pago': '%.2f' % sum(l.total for l in concept_lines['Primas']),
@@ -2336,7 +2294,7 @@ class HrPayslip(models.Model):
                     items.append({
                         'FechaInicio': str(ini),
                         'FechaFin': str(fin),
-                        'Cantidad': str(int(dias)),
+                        'Cantidad': str(self._ne_dias_xml(dias)),
                         'Tipo': tipo,
                         'Pago': '%.2f' % pago,
                     })
@@ -2376,7 +2334,7 @@ class HrPayslip(models.Model):
                     items.append({
                         'FechaInicio': str(ini),
                         'FechaFin': str(fin),
-                        'Cantidad': str(int(dias)),
+                        'Cantidad': str(self._ne_dias_xml(dias)),
                         'Pago': '%.2f' % pago,
                     })
                 licencias['LicenciaMP'] = items
@@ -2405,7 +2363,7 @@ class HrPayslip(models.Model):
         }
         for xml_key, work_entry_code in licencia_concepts.items():
             concept_key = xml_key
-            dias_totales, detalle = self._ne_ausencia_habil(work_entry_code)
+            dias_totales, detalle = self._ne_ausencia_habil_tramo(work_entry_code)
 
             if detalle:
                 items = []
@@ -2417,7 +2375,7 @@ class HrPayslip(models.Model):
                     lic_data = {
                         'FechaInicio': str(ini),
                         'FechaFin': str(fin),
-                        'Cantidad': str(int(dias)),
+                        'Cantidad': str(self._ne_dias_xml(dias)),
                     }
                     if concept_key != 'LicenciaNR':
                         lic_data['Pago'] = '%.2f' % pago
@@ -2441,7 +2399,7 @@ class HrPayslip(models.Model):
                     'que lo respalde con fechas reales -- la DIAN exige las fechas reales '
                     'de la licencia, no las del período completo. Registre la ausencia en '
                     'Ausencias antes de generar el XML.',
-                    cantidad=str(int(sum(
+                    cantidad=str(self._ne_dias_xml(sum(
                         l.quantity for l in concept_lines[concept_key]
                     ))),
                     employee=self.employee_id.name,
@@ -2474,7 +2432,7 @@ class HrPayslip(models.Model):
             devengados['HuelgasLegales'] = [{
                 'FechaInicio': str(self.date_from),
                 'FechaFin': str(self.date_to),
-                'Cantidad': str(int(sum(
+                'Cantidad': str(self._ne_dias_xml(sum(
                     l.quantity for l in concept_lines['HuelgaLegal']
                 ))),
             }]
@@ -2644,156 +2602,22 @@ class HrPayslip(models.Model):
     # MÉTODOS AUXILIARES PRIVADOS
     # ══════════════════════════════════════════════════════════════════
 
-    def _validate_ne_prerequisites(self):
-        """Valida que la nómina cumpla los prerequisitos para generar XML."""
-        self.ensure_one()
-
-        if self.state != 'done':
-            raise UserError(_(
-                'La nómina debe estar confirmada (estado "Hecho") antes '
-                'de generar el XML de nómina electrónica.'
-            ))
-
-        if self.l10n_co_ne_state not in ('draft', 'rejected'):
-            raise UserError(_(
-                'Solo puede generar XML para nóminas en estado DIAN '
-                '"Borrador" o "Rechazado".'
-            ))
-
-        company = self.company_id
-        self._validate_company_ne_config(company)
-
-        employee = self.employee_id
-        if not employee.identification_id:
-            raise UserError(_(
-                'El empleado %s no tiene número de identificación configurado.',
-                employee.name,
-            ))
-
-        contract = self.contract_id
-        if not contract:
-            raise UserError(_(
-                'La nómina %s no tiene contrato asociado.',
-                self.number or self.name,
-            ))
-
-    def _validate_company_ne_config(self, company):
-        """Valida la configuración de nómina electrónica de la empresa."""
-        missing = []
-        mode = company.l10n_co_ne_operation_mode_ids
-        if not mode or not mode.software_id:
-            missing.append(_('ID Software Nómina'))
-        if not mode or not mode.software_pin:
-            missing.append(_('PIN Software Nómina'))
-        if not company._get_ne_certificate():
-            missing.append(_('Certificado Digital'))
-        if missing:
-            raise UserError(_(
-                'Faltan los siguientes datos de configuración de nómina '
-                'electrónica en la empresa %s:\n• %s',
-                company.name,
-                '\n• '.join(missing),
-            ))
-
-        certificate = company._get_ne_certificate()
-        if certificate and certificate.date_end and certificate.date_end < fields.Datetime.now():
-            raise UserError(_(
-                'El certificado digital de la empresa %s está vencido '
-                '(venció el %s). Cargue o seleccione un certificado '
-                'vigente antes de continuar.',
-                company.name,
-                certificate.date_end,
-            ))
-
-        # AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030) es explícito -- "Para Colombia
-        # se debe colocar 'COP'" en TipoMoneda, sin excepción. No se parametriza: es una
-        # constante del Anexo (nomina_xml_builder.NE_TIPO_MONEDA), así que una compañía en
-        # otra moneda debe fallar aquí, antes de generar un XML inválido, en vez de enviar
-        # "COP" por encima de montos que en realidad están en otra moneda.
-        if company.currency_id.name != nomina_xml_builder.NE_TIPO_MONEDA:
-            raise UserError(_(
-                'La compañía %(company)s tiene moneda "%(currency)s" configurada, pero la '
-                'Nómina Electrónica DIAN exige TipoMoneda="%(cop)s" (Anexo Técnico, NIE030: '
-                '"Para Colombia se debe colocar \'%(cop)s\'"). Configure la compañía en '
-                'pesos colombianos antes de generar nómina electrónica.',
-                company=company.name, currency=company.currency_id.name,
-                cop=nomina_xml_builder.NE_TIPO_MONEDA,
-            ))
-
-    def _ne_expected_prefix(self):
-        """Prefijo que DEBE tener un consecutivo oficial de este payslip.
-
-        AUD-DIAN-34 (2026-10-04): incidente real en Guapante -- la
-        secuencia temporal (``l10n_co_ne_pre_sequence_id``) quedó mal
-        configurada apuntando a la de Notas de Ajuste, así que una
-        nómina INDIVIDUAL terminó con consecutivo "NA..." (prefijo de
-        ajuste). El único chequeo que existía ("no empieza por
-        PRE-NOM") no detecta esto -- un valor con el prefijo *equivocado*
-        pero que no es PRE-NOM pasaba como si fuera válido. Defensa en
-        profundidad: el consecutivo solo se considera válido si tiene
-        el prefijo que corresponde a este tipo de documento.
-        """
-        self.ensure_one()
-        company = self.company_id
-        if self.l10n_co_ne_is_adjustment:
-            return company.l10n_co_ne_adjust_prefix or 'NA'
-        return company.l10n_co_ne_payroll_prefix or 'NE'
-
-    def _get_next_ne_consecutive(self):
-        """
-        Genera el siguiente consecutivo de nómina electrónica para la empresa
-        utilizando las secuencias configuradas en la compañía.
-        """
-        self.ensure_one()
-        company = self.company_id
-
-        # Si ya tiene un consecutivo asignado con el prefijo correcto para
-        # este tipo de documento, lo reutilizamos -- cualquier otro caso
-        # (temporal PRE-NOM, o el prefijo de ajuste/nómina equivocado) se
-        # reasigna.
-        expected_prefix = self._ne_expected_prefix()
-        if self.l10n_co_ne_consecutive and self.l10n_co_ne_consecutive.startswith(expected_prefix):
-            return self.l10n_co_ne_consecutive
-
-        if self.l10n_co_ne_is_adjustment:
-            seq = self.env['ir.sequence'].search([
-                ('code', '=', 'l10n_co_nomina.ajuste'),
-                ('|'),
-                ('company_id', '=', company.id),
-                ('company_id', '=', False)
-            ], limit=1)
-            if seq:
-                return seq.next_by_id()
-            prefix = company.l10n_co_ne_adjust_prefix or 'NA'
-        else:
-            if company.l10n_co_ne_sequence_id:
-                return company.l10n_co_ne_sequence_id.next_by_id()
-            prefix = company.l10n_co_ne_payroll_prefix or 'NE'
-
-        # Fallback manual por si no hay secuencia configurada
-        last_payslip = self.search(
-            [
-                ('company_id', '=', company.id),
-                ('l10n_co_ne_consecutive', '!=', False),
-                ('l10n_co_ne_consecutive', '=like', prefix + '%'),
-            ],
-            order='l10n_co_ne_consecutive desc',
-            limit=1,
-        )
-        if last_payslip and last_payslip.l10n_co_ne_consecutive and not last_payslip.l10n_co_ne_consecutive.startswith('PRE-NOM'):
-            last_num_str = last_payslip.l10n_co_ne_consecutive[len(prefix):]
-            try:
-                next_num = int(last_num_str) + 1
-            except ValueError:
-                next_num = 1
-        else:
-            next_num = 1
-
-        return '%s%s' % (prefix, str(next_num).zfill(8))
 
 
-    def _get_ne_xml_filename(self):
-        """Genera el nombre del archivo XML de nómina electrónica."""
-        company = self.company_id
-        nit = (company.vat or 'SIN_NIT').replace('-', '').strip()
-        return 'ne_%s_%s.xml' % (nit, self.l10n_co_ne_consecutive or 'DRAFT')
+
+
+
+
+    def action_payslip_draft(self):
+        colombia = self._ne_solo_colombia()
+        colombia._ne_aplicar_libranzas(revertir=True)
+        res = super().action_payslip_draft()
+        colombia._ne_refrescar_ibc_mensual()
+        return res
+
+    def action_payslip_cancel(self):
+        colombia = self._ne_solo_colombia()
+        colombia._ne_aplicar_libranzas(revertir=True)
+        res = super().action_payslip_cancel()
+        colombia._ne_refrescar_ibc_mensual()
+        return res

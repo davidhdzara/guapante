@@ -16,32 +16,34 @@
                 <field name="currency_id" invisible="1"/>
 
                 <!-- ================================================ -->
-                <!-- PASO 1: Seleccion de periodo y parametros         -->
+                <!-- PASO 1: Selección de periodo y parámetros         -->
                 <!-- ================================================ -->
                 <div invisible="state != 'draft'">
                     <div class="alert alert-info" role="alert">
-                        <strong>Paso 1 de 3: Seleccion de Periodo</strong>
+                        <strong>Paso 1 de 3: Selección de Período</strong>
                         <br/>
-                        Seleccione el periodo de cotizacion y los parametros
+                        Seleccione el período de cotización y los parámetros
                         de la planilla. Al hacer clic en "Validar", se
                         verificaran los datos de los empleados.
                     </div>
                     <group>
-                        <group string="Periodo de Cotizacion">
-                            <field name="year" string="Ano"/>
+                        <group string="Período de Cotización">
+                            <field name="year" string="Año"/>
                             <field name="month" string="Mes"/>
                         </group>
                         <group string="Tipo de Planilla">
                             <field name="tipo_planilla"/>
                             <field name="modalidad_planilla"/>
                             <field name="company_id"
-                                   string="Compania"
+                                   string="Compañía"
                                    groups="base.group_multi_company"/>
                         </group>
                     </group>
                     <group string="Correccion (solo para planilla tipo N)"
                            invisible="tipo_planilla != 'N'">
                         <group>
+                            <field name="planilla_original_id" required="tipo_planilla == 'N'"
+                                   options="{'no_create': True}"/>
                             <field name="numero_planilla_asociada"/>
                             <field name="fecha_pago_asociada"/>
                         </group>
@@ -113,7 +115,7 @@
                     <!-- Info del periodo seleccionado -->
                     <group string="Periodo Seleccionado" invisible="not validation_ok">
                         <group>
-                            <field name="year" string="Ano" readonly="1"/>
+                            <field name="year" string="Año" readonly="1"/>
                             <field name="month" string="Mes" readonly="1"/>
                         </group>
                         <group>

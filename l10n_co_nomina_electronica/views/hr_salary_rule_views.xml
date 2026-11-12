@@ -8,12 +8,20 @@
         <field name="priority">99</field>
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
-                <page string="Clasificación Colombia" name="clasificacion_colombia">
+                <page string="Clasificación Colombia" name="clasificacion_colombia"
+                      invisible="l10n_co_struct_country_code != 'CO'">
+                    <field name="l10n_co_struct_country_code" invisible="1"/>
 
                     <group string="Concepto DIAN - Nómina Electrónica" name="dian_concept">
                         <group>
                             <field name="l10n_co_ne_dian_concept"
                                    string="Concepto DIAN"/>
+                        </group>
+                    </group>
+
+                    <group string="Asiento Contable" name="tercero_asiento">
+                        <group>
+                            <field name="l10n_co_tercero_origen"/>
                         </group>
                     </group>
 

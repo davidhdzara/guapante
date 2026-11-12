@@ -1,3 +1,4 @@
+from odoo.tests.common import BaseCase, tagged
 """Fixtures sin datos personales para el parser de respuestas DIAN."""
 
 import base64
@@ -36,7 +37,8 @@ _load_service_module('dian_utils')
 soap_client = _load_service_module('soap_client')
 
 
-class TestDianResponseParser(unittest.TestCase):
+@tagged('post_install', '-at_install')
+class TestDianResponseParser(BaseCase):
     def test_error_message_list_and_soap_fault_are_not_document_results(self):
         response = soap_client._parse_response(
             '<Envelope><DianResponse><ErrorMessage><string>ZE02</string>'

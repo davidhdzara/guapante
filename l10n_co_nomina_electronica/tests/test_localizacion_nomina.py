@@ -18,22 +18,25 @@ from datetime import date
 
 from lxml import etree
 
-from odoo.tests.common import TransactionCase
+from odoo.addons.base.models.ir_model import MODULE_UNINSTALL_FLAG
+from odoo.tests.common import TransactionCase, tagged
 from odoo.tools.safe_eval import safe_eval
 
 
+@tagged('post_install', '-at_install')
 class TestSeleccionPaquete(TransactionCase):
     def test_seleccion_incluye_colombia(self):
         opciones = dict(self.env['res.company']._selection_l10n_co_ne_payroll_package())
         self.assertIn('l10n_co_nomina_electronica', opciones)
 
 
+@tagged('post_install', '-at_install')
 class TestHasPayrollEntries(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Compañía dedicada y descartable (ver AUD-DIAN-34 en test_dian_matching.py).
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Has Payroll Entries',
         })
         cls.company.partner_id.country_id = cls.env.ref('base.co').id
@@ -49,13 +52,13 @@ class TestHasPayrollEntries(TransactionCase):
         self.assertFalse(settings.l10n_co_ne_has_payroll_entries)
 
     def test_con_nomina_confirmada_si_tiene_entradas(self):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': 'EmpleadoPaquete',
             'identification_id': '888999000',
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato EmpleadoPaquete',
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -78,11 +81,12 @@ class TestHasPayrollEntries(TransactionCase):
         self.assertTrue(settings.l10n_co_ne_has_payroll_entries)
 
 
+@tagged('post_install', '-at_install')
 class TestReloadPayrollPackage(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Recargar Paquete',
         })
         cls.company.partner_id.country_id = cls.env.ref('base.co').id
@@ -94,7 +98,10 @@ class TestReloadPayrollPackage(TransactionCase):
         -u (odoo.tools.convert.convert_file), no una copia reescrita."""
         xmlid = 'l10n_co_nomina_electronica.input_l10n_co_embargo_civil'
         tipo = self.env.ref(xmlid)
-        tipo.unlink()
+        # hr.payslip.input.type prohíbe borrar registros con xmlid de un módulo ("You cannot
+        # delete ... as it is used in another module"); el flag de desinstalación es la vía
+        # estándar de Odoo para simular el borrado que Recargar debe reparar.
+        tipo.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         self.assertFalse(self.env.ref(xmlid, raise_if_not_found=False))
 
         self.company._l10n_co_ne_reload_payroll_package()
@@ -116,21 +123,23 @@ class TestReloadPayrollPackage(TransactionCase):
         self.company._l10n_co_ne_reload_payroll_package()
         self.env.invalidate_all()
 
+        # parameter_value es Text (Odoo lo guarda como cadena): se compara el número.
         self.assertEqual(
-            parametro.parameter_value, 999999999.0,
+            float(parametro.parameter_value), 999999999.0,
             'Recargar no debe tocar hr.rule.parameter.value.',
         )
 
     def test_action_reload_delega_en_la_compania(self):
         settings = self.env['res.config.settings'].create({'company_id': self.company.id})
         xmlid = 'l10n_co_nomina_electronica.input_l10n_co_embargo_cooperativa'
-        self.env.ref(xmlid).unlink()
+        self.env.ref(xmlid).with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         result = settings.action_reload_payroll_package()
         self.env.invalidate_all()
         self.assertTrue(self.env.ref(xmlid, raise_if_not_found=False))
         self.assertEqual(result.get('tag'), 'reload')
 
 
+@tagged('post_install', '-at_install')
 class TestOpenPayrollModulesDomain(TransactionCase):
     def test_colombia_incluida_en_choose_payroll_localization(self):
         action = self.env.ref('hr_payroll.open_payroll_modules')
@@ -139,6 +148,7 @@ class TestOpenPayrollModulesDomain(TransactionCase):
         self.assertIn('l10n_co_nomina_electronica', modulos.mapped('name'))
 
 
+@tagged('post_install', '-at_install')
 class TestArchVistaLocalizacion(TransactionCase):
     def _arch(self, xmlid):
         return etree.fromstring(self.env.ref(xmlid).arch_db.encode('utf-8'))
@@ -156,7 +166,7 @@ class TestArchVistaLocalizacion(TransactionCase):
     def test_setting_nativo_payroll_rules_queda_oculto_con_paquete(self):
         arch = self._arch('l10n_co_nomina_electronica.res_config_settings_view_form')
         xpaths = arch.xpath(
-            "//xpath[@expr=\"//block[@id='hr_payroll_settings']/setting[@string='Payroll Rules']\"]")
+            "//xpath[@expr=\"//div[@id='localization_text']/ancestor::setting\"]")
         self.assertEqual(len(xpaths), 1)
         atributo = xpaths[0].find(".//attribute[@name='invisible']")
         self.assertIsNotNone(atributo)

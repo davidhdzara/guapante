@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Vinculo "Prórroga de" en la ausencia, solo para Incapacidad Común de compañías colombianas.
+         Es solo el dato; no cambia el cálculo (doc 50, punto 5). -->
+    <record id="hr_leave_view_form_prorroga_ne" model="ir.ui.view">
+        <field name="name">hr.leave.form.prorroga.ne</field>
+        <field name="model">hr.leave</field>
+        <field name="inherit_id" ref="hr_holidays.hr_leave_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='holiday_status_id']" position="after">
+                <field name="l10n_co_ne_es_incapacidad_comun" invisible="1"/>
+                <field name="l10n_co_ne_prorroga_de_id"
+                       invisible="not l10n_co_ne_es_incapacidad_comun"
+                       options="{'no_create': True}"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

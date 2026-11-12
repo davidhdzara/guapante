@@ -10,7 +10,7 @@ de 90 días de incapacidad común, que antes vivían como literales sueltos en l
 import re
 from datetime import date
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 _RULE_PARAMETER_CODE = re.compile(r"""_rule_parameter\(\s*['"]([a-z0-9_]+)['"]""")
 
@@ -24,6 +24,7 @@ _NUEVOS_PARAMETROS_INDEMNIZACION = (
 )
 
 
+@tagged('post_install', '-at_install')
 class TestRuleParametersExist(TransactionCase):
     def _module_rules(self):
         xmlids = self.env['ir.model.data'].search([

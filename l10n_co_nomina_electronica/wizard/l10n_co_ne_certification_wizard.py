@@ -117,6 +117,12 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         compute='_compute_counts', string='Aceptadas (Ajuste)',
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        wizards = super().create(vals_list)
+        wizards.company_id._ne_exigir_colombia()
+        return wizards
+
     @api.depends(
         'payslip_individual_ids.l10n_co_ne_state',
         'payslip_ajuste_ids.l10n_co_ne_state',
@@ -298,6 +304,10 @@ class L10nCoNeCertificationWizard(models.TransientModel):
             'company_id': self.company_id.id,
             'name': employee_def['name'],
             'identification_id': employee_def['identification_id'],
+            # H-024: los nombres de prueba son ambiguos para el prellenado automático.
+            'l10n_co_primer_nombre': employee_def['primer_nombre'],
+            'l10n_co_primer_apellido': employee_def['primer_apellido'],
+            'l10n_co_segundo_apellido': employee_def['segundo_apellido'],
             **habilitacion_test_data.TEST_EMPLOYEE_COMMON_VALUES,
         })
         # UX-02 (2026-10-11): el tipo de documento ya no se fija al crear el

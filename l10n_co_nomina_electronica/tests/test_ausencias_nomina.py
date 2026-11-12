@@ -45,18 +45,23 @@ ningún dato.
 from datetime import date, datetime
 
 from odoo.exceptions import UserError
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestAusenciasNomina(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Compañía dedicada y descartable (ver AUD-DIAN-34 en test_dian_matching.py: la
         # build de Odoo.sh corre los tests sobre una COPIA de la BD real de Guapante).
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Ausencias',
         })
+        # .167: sin configuración de retención del año el cálculo falla (antes se omitía); algunas
+        # pruebas de este archivo usan enero de 2027, que los datos no traen.
+        cls.env['l10n.co.retefuente.uvt'].create({
+            'year': '2027', 'company_id': cls.company.id, 'procedure': '1'})
         # H-013 (2026-10-08, hallazgo de Tech Lead en servidor real): la conversión nativa
         # de hr.leave a hr.work.entry filtra el resource.calendar.leaves por la compañía
         # del CONTRATO -- si el entorno de la prueba sigue en env.company (compañía 1) y
@@ -119,8 +124,10 @@ class TestAusenciasNomina(TransactionCase):
             'l10n_co_nomina_electronica.hr_leave_type_co_lic_pat')
 
     def _make_contract(self, name, wage=1800000.0, date_start=date(2024, 1, 1), calendar=None):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
+            'l10n_co_primer_nombre': 'Prueba',
+            'l10n_co_primer_apellido': 'Fixture',
             'identification_id': '80' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             # l10n_co_ne_payment_method default es '1' (Transferencia Bancaria), que exige
@@ -133,6 +140,7 @@ class TestAusenciasNomina(TransactionCase):
         employee.l10n_co_ne_identification_type_id = self.env.ref(
             'l10n_co.national_citizen_id').id
         contract_vals = {
+            'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00',
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -270,16 +278,66 @@ class TestAusenciasNomina(TransactionCase):
         self.assertLess(round(basico, 2), round(wage, 2))
 
     def test_incapacidad_comun_sin_doble_pago(self):
-        """Incapacidad corta (1-2 días) -- se mantiene dentro del tramo "100% a cargo del
-        empleador" (Art. 227 CST) sin importar el tramo exacto, para no reproducir aquí la
-        fórmula escalonada completa de CO_INC_COMUN."""
-        wage = 1800000.0
+        """Incapacidad corta (2 días) -- H-013 paso 3 (2026-11-09, Decreto 780/2016 Art.
+        3.2.1.10 par. 1): los 2 primeros días los paga el empleador al 66.67% (antes 100%).
+        Ya no rige "básico + novedad = sueldo" para este concepto: el 33.33% restante de
+        esos días NO se paga. Lo que sí debe seguir cumpliéndose: sin doble pago (el básico
+        descuenta exactamente los días de la incapacidad)."""
+        # .163: con 3.000.000 el 66,67 % supera el piso de 1 SMMLV por dia (el piso se prueba en
+        # test_incapacidad_piso_smmlv).
+        wage = 3000000.0
         employee, contract = self._make_contract('IncComun', wage=wage)
         self._make_validated_leave(
             employee, contract, self.leave_type_inc_comun, date(2026, 9, 1), date(2026, 9, 2))
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
         payslip.compute_sheet()
-        self._assert_sin_doble_pago(payslip, 'CO_INC_COMUN', wage, dias_max=2)
+        dias = self._dias_worked(payslip, 'CO_INC_COMUN')
+        self.assertGreaterEqual(dias, 1)
+        self.assertLessEqual(dias, 2)
+        valor_dia = wage / 30.0
+        self.assertAlmostEqual(
+            self._sueldo_basico(payslip), wage - valor_dia * dias, delta=0.01)
+        self.assertAlmostEqual(
+            self._novedad(payslip, 'CO_INC_COMUN'), valor_dia * dias * 0.6667, delta=0.01)
+
+    def _incapacidad_comun_pagada(self, nombre, ini, fin, wage=3000000.0):
+        employee, contract = self._make_contract(nombre, wage=wage)
+        self._make_validated_leave(
+            employee, contract, self.leave_type_inc_comun, ini, fin)
+        payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
+        payslip.compute_sheet()
+        return self._novedad(payslip, 'CO_INC_COMUN'), wage / 30.0
+
+    def test_incapacidad_comun_dos_dias_empleador_al_6667(self):
+        """H-013 paso 3: 2 días calendario (1-2 sep) = 2 * valor_dia * 66.67%."""
+        pagado, valor_dia = self._incapacidad_comun_pagada(
+            'IncEmp2', date(2026, 9, 1), date(2026, 9, 2))
+        self.assertAlmostEqual(pagado, 2 * valor_dia * 0.6667, delta=0.01)
+
+    def test_incapacidad_comun_un_dia_empleador_al_6667(self):
+        pagado, valor_dia = self._incapacidad_comun_pagada(
+            'IncEmp1', date(2026, 9, 1), date(2026, 9, 1))
+        self.assertAlmostEqual(pagado, valor_dia * 0.6667, delta=0.01)
+
+    def test_incapacidad_comun_cinco_dias_tramo_empleador_y_eps(self):
+        """5 días: 2 del empleador + 3 de la EPS, ambos tramos al 66.67% -- el total no
+        puede ser el de 5 días al 100% ni el de 2 días al 100% + 3 al 66.67% (pre-H-013 p3)."""
+        pagado, valor_dia = self._incapacidad_comun_pagada(
+            'IncEmp5', date(2026, 9, 1), date(2026, 9, 5))
+        self.assertAlmostEqual(pagado, 5 * valor_dia * 0.6667, delta=0.01)
+        self.assertLess(pagado, valor_dia * (2 + 3 * 0.6667) - 1)
+
+    def test_incapacidad_comun_pct_empleador_sale_del_parametro(self):
+        """El 66.67% de los días del empleador vive en l10n_co_pct_incapacidad_empleador
+        (hr.rule.parameter), separado del de la EPS: cambiarlo cambia solo esos días."""
+        valor = self.env.ref('l10n_co_nomina_electronica.rule_parameter_pct_incapacidad_empleador_2024')
+        valor.parameter_value = '50'
+        # 4.000.000: valor dia 133.333 x 50 % = 66.667 supera el piso (58.363,5 en 2026).
+        pagado, valor_dia = self._incapacidad_comun_pagada(
+            'IncEmpParam', date(2026, 9, 1), date(2026, 9, 4), wage=4000000.0)
+        # 2 días del empleador al 50% + 2 días de la EPS al 66.67%
+        self.assertAlmostEqual(
+            pagado, valor_dia * (2 * 0.5 + 2 * 0.6667), delta=0.01)
 
     def test_incapacidad_laboral_sin_doble_pago(self):
         wage = 1800000.0
@@ -1014,7 +1072,7 @@ class TestAusenciasNomina(TransactionCase):
         del salario, Art. 132 CST) -- una ausencia de vacaciones no debe alterarlo;
         _ne_ibc_seguridad_social() devuelve ese valor directo sin pasar por DEV_SAL ni
         por la base especial de vacaciones/licencias."""
-        wage = 10000000.0
+        wage = 20000000.0  # integral: piso 13 SMMLV (2024: 16.900.000), validado al marcarlo
         employee, contract = self._make_contract('IbcIntegral', wage=wage)
         contract.write({'l10n_co_ne_integral_salary': True})
         self._make_validated_leave(
@@ -1026,14 +1084,13 @@ class TestAusenciasNomina(TransactionCase):
         ibc_esperado = wage * 0.70
         self.assertEqual(round(abs(salud), 2), round(ibc_esperado * 0.04, 2))
 
-    def test_incapacidad_no_entra_al_ibc_todavia(self):
-        """Punto (c), decisión explícita de Tech Lead (2026-10-11): las incapacidades
-        (CO_INC_COMUN/CO_INC_LABORAL) NO entran a la base de salud/pensión en este
-        ciclo -- quedan para el paso 3 de incapacidad (corte del día 90, piso de
-        salario mínimo). Esta prueba existe para que nadie lo dé por hecho sin querer
-        en un cambio futuro: si alguien agrega CO_INC_COMUN a
-        _ne_ibc_seguridad_social() sin que ese paso lo decida explícitamente, esta
-        prueba debe fallar."""
+    def test_incapacidad_suma_dias_y_base_a_salud_pension_pero_no_a_arl(self):
+        """H-017b (2026-11-10) SUPERA la limitacion temporal de H-017a ("las incapacidades
+        no entran a la base todavia"), por decision de David: la incapacidad (IGE) cuenta
+        como DIAS cotizados de salud y pension (CO_DIAS_SP = 30, no ARL: CO_DIAS_ARL = 28)
+        y su BASE es el auxilio pagado (Decreto 780/2016 Art. 3.2.5.1): IBC = basico de los
+        dias trabajados + CO_INC_COMUN. El descuento al empleado es el normal (4%) sobre ese
+        IBC -- a diferencia de SLN, el empleador no lo asume."""
         wage = 1800000.0
         employee, contract = self._make_contract('IbcIncapacidad', wage=wage)
         self._make_validated_leave(
@@ -1043,10 +1100,19 @@ class TestAusenciasNomina(TransactionCase):
 
         basico = self._sueldo_basico(payslip)
         inc = self._novedad(payslip, 'CO_INC_COMUN')
-        salud = self._novedad(payslip, 'CO_SALUD_EMP')
         self.assertGreater(inc, 0)
-        self.assertEqual(round(abs(salud), 2), round(basico * 0.04, 2))
-        self.assertNotEqual(round(abs(salud), 2), round((basico + inc) * 0.04, 2))
+        self.assertEqual(round(self._novedad(payslip, 'CO_DIAS_SP'), 2), 30.0)
+        self.assertEqual(round(self._novedad(payslip, 'CO_DIAS_ARL'), 2), 28.0)
+        smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
+        esperado = max(basico + inc, smmlv)   # piso de 30 dias
+        ibc_sp = self._novedad(payslip, 'CO_IBC_SP')
+        self.assertEqual(round(ibc_sp, 2), round(esperado, 2))
+        self.assertGreater(ibc_sp, basico)    # la base de la incapacidad SI entra
+        salud = self._novedad(payslip, 'CO_SALUD_EMP')
+        self.assertEqual(round(abs(salud), 2), round(ibc_sp * 0.04, 2))
+        # La base que lee el mes siguiente para vacaciones/licencia remunerada NO incluye el
+        # auxilio de incapacidad (no es salario, CST Art. 192): solo salario ordinario.
+        self.assertEqual(round(self._novedad(payslip, 'CO_SS_BASE_IBC'), 2), round(basico, 2))
 
     def test_co_ss_base_ibc_no_aparece_ni_afecta_totales(self):
         """Punto (d): el acumulador CO_SS_BASE_IBC es invisible (appears_on_payslip=

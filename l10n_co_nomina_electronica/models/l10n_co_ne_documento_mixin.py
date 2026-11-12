@@ -1,0 +1,1460 @@
+# -*- coding: utf-8 -*-
+# Part of InSoTech. See LICENSE file for full copyright and licensing details.
+
+"""
+Mixin del ciclo DIAN de la nómina electrónica (etapa 1a del documento mensual).
+
+Movimiento MECÁNICO desde hr_payslip.py: campos de estado/trazabilidad DIAN, consecutivo,
+notas de ajuste, generación/envío/reconsulta y cron. Sin cambio de lógica. Hoy lo hereda solo
+hr.payslip (1 recibo = 1 documento); en la etapa 1b el modelo l10n.co.ne.documento lo
+reutilizará para el documento mensual por empleado.
+
+Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica V1.0,
+Resolución DIAN 000013 de 2021.
+"""
+
+import base64
+import calendar
+import hashlib
+import logging
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+from pytz import timezone as _pytz_timezone
+from lxml import etree as _etree
+
+from odoo import api, fields, models, _
+from odoo.exceptions import UserError, ValidationError
+
+from ..services import (
+    cune as cune_service,
+    dian_utils,
+    nomina_xml_builder,
+    soap_client,
+    xml_signer,
+)
+
+_logger = logging.getLogger(__name__)
+
+
+
+# Tope de documentos 'sent' que _cron_recheck_sent_status() reconsulta por
+# compañía en cada ejecución -- un lote acotado, no todo el histórico
+# pendiente de una sola vez (ver data/ir_cron_dian_status_recheck.xml, cuyo
+# intervalo SÍ es un dato editable en Ajustes, no una constante de código).
+_CRON_RECHECK_BATCH_LIMIT = 200  # valor por defecto; el vigente es el ir.config_parameter recheck_batch_limit
+
+# H-012 (2026-10-06): plazo máximo (horas) que un documento 'sent' se reconsulta
+# automáticamente antes de marcarse 'uncertain' y salir del cron -- valor por defecto,
+# overridable vía ir.config_parameter (ver data/ir_config_parameter_dian_data.xml). Evidencia
+# real (NA0000000049, payslip 944, ZipKey 98e2fdc3): un documento puede quedar "sent" para
+# siempre si la DIAN nunca vuelve a dar un veredicto del documento -- sin este límite el cron
+# lo reconsulta cada 10 minutos sin fin.
+_CRON_RECHECK_MAX_HOURS_DEFAULT = 72
+
+
+class L10nCoNeDocumentoMixin(models.AbstractModel):
+    """Ciclo DIAN de un documento de nómina electrónica (estado, CUNE, envío, ajustes)."""
+
+    _name = 'l10n.co.ne.documento.mixin'
+    _description = 'Ciclo DIAN del documento de nómina electrónica'
+
+    # ──────────────────────────────────────────────────────────────────
+    # Campos de estado y trazabilidad DIAN
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_state = fields.Selection(
+        selection=[
+            ('draft', 'Borrador'),
+            ('generated', 'XML Generado'),
+            ('sent', 'Enviado a DIAN'),
+            ('uncertain', 'Envío incierto - requiere conciliación'),
+            ('accepted', 'Aceptado por DIAN'),
+            ('rejected', 'Rechazado por DIAN'),
+            ('eliminated', 'Eliminado por nota de ajuste'),
+        ],
+        string='Estado DIAN',
+        default='draft',
+        copy=False,
+        tracking=True,
+        help='Estado del documento de nómina electrónica ante la DIAN.\n'
+             '• Borrador: aún no se ha generado el XML.\n'
+             '• XML Generado: XML construido, firmado y listo para envío.\n'
+             '• Enviado a DIAN: transmitido al web service, pendiente respuesta.\n'
+             '• Envío incierto: no hubo acuse válido; requiere conciliación.\n'
+             '• Aceptado por DIAN: la DIAN validó y aceptó el documento.\n'
+             '• Rechazado por DIAN: la DIAN rechazó el documento.',
+    )
+
+    l10n_co_ne_cune = fields.Char(
+        string='CUNE',
+        readonly=True,
+        copy=False,
+        index=True,
+        help='Código Único de Nómina Electrónica. Identificador único '
+             'e irrepetible del documento calculado según el algoritmo '
+             'SHA-384 definido en el anexo técnico.',
+    )
+
+    l10n_co_ne_xml_attachment_id = fields.Many2one(
+        comodel_name='ir.attachment',
+        string='XML Firmado',
+        readonly=True,
+        copy=False,
+        ondelete='set null',
+        help='Adjunto que contiene el XML de nómina electrónica firmado '
+             'digitalmente con el certificado .p12 de la empresa.',
+    )
+
+    l10n_co_ne_dian_request = fields.Text(
+        string='Solicitud DIAN',
+        readonly=True,
+        copy=False,
+        help='Petición SOAP/XML completa enviada al servicio web de la '
+             'DIAN (SendTestSetAsync/GetStatusZip), guardada ANTES de '
+             'enviarla. Sin esto, diagnosticar un rechazo real requiere '
+             'reconstruir a ciegas qué se mandó a partir de la '
+             'respuesta de error (incidente real 2026-10-04: bug de '
+             'TestSetId solo se detectó indirectamente).',
+    )
+
+    l10n_co_ne_dian_response = fields.Text(
+        string='Respuesta DIAN',
+        readonly=True,
+        copy=False,
+        help='Respuesta completa del servicio web de la DIAN tras el '
+             'envío del documento de nómina electrónica.',
+    )
+
+    l10n_co_ne_zip_key = fields.Char(
+        string='ZipKey DIAN',
+        readonly=True,
+        copy=False,
+        help='Identificador (ZipKey/trackId) devuelto por la DIAN al '
+             'enviar el documento. Se usa para consultar el estado del '
+             'procesamiento (GetStatusZip).',
+    )
+
+    l10n_co_ne_exchange_ids = fields.Many2many(
+        comodel_name='l10n.co.ne.exchange',
+        relation='l10n_co_ne_exchange_payslip_rel',
+        column1='payslip_id', column2='exchange_id',
+        string='Historial de intercambios DIAN', readonly=True, copy=False,
+    )
+
+    def _ne_response_text(self, value):
+        # AUD-DIAN-34 (2026-10-04): este campo es un resumen para la vista
+        # del formulario, no evidencia -- la evidencia completa (sobre SOAP
+        # y ZIP de respuesta íntegros, sin truncar) vive en
+        # l10n.co.ne.exchange. Un SendTestSetAsync de 4 nóminas puede traer
+        # un ZIP base64 de varios MB; meterlo entero aquí infla el registro
+        # del payslip sin necesidad.
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='replace')
+        return (value or '')[:5000]
+
+    def _ne_store_exchange(self, operation, endpoint, response, manifest=None,
+                           queried_zip_key=None, parent_exchange=None,
+                           unidentified_count=0):
+        """Guarda evidencia completa (siempre, un registro histórico por intento) y
+        actualiza el resumen visible del documento SOLO si de verdad cambió.
+
+        H-012 (2026-10-06): un documento 'sent' sin resolver que el cron reconsulta cada 10
+        minutos escribía aquí sin condición -- aunque la respuesta de la DIAN fuera
+        exactamente la misma de la reconsulta anterior, write_date se actualizaba igual.
+        Eso hacía parecer que el documento se "tocaba" constantemente sin ningún cambio
+        real, y ensuciaba el orden por write_date que usa _cron_recheck_sent_status() para
+        priorizar el lote.
+        """
+        exchange = self.env['l10n.co.ne.exchange'].create_exchange(
+            self.company_id, operation, endpoint, response, self, manifest,
+            queried_zip_key=queried_zip_key, parent_exchange=parent_exchange,
+            unidentified_count=unidentified_count,
+        )
+        new_request = self._ne_response_text(response.get('RawRequest'))
+        new_response = self._ne_response_text(response.get('RawResponse'))
+        changed = self.filtered(
+            lambda slip: slip.l10n_co_ne_dian_request != new_request
+            or slip.l10n_co_ne_dian_response != new_response
+        )
+        if changed:
+            changed.write({
+                'l10n_co_ne_dian_request': new_request,
+                'l10n_co_ne_dian_response': new_response,
+            })
+        return exchange
+
+    @staticmethod
+    def _ne_cune_candidates(result):
+        """Extrae candidatos de CUNE de un resultado, sin confundirlos con IDs SOAP.
+
+        AUD-DIAN-34 (2026-10-04): evidencia real (GetStatusZip AUTORIZADO,
+        nómina SME-10) confirma que el CUNE del documento original viaja en
+        ``cac:DocumentResponse/cac:DocumentReference/cbc:UUID`` dentro del
+        ApplicationResponse -- ver ``soap_client.extract_document_cunes``.
+        """
+        candidates = set()
+        for key in ('XmlDocumentKey', 'CUNE', 'DocumentKey'):
+            value = result.get(key)
+            if value:
+                candidates.add(value.strip())
+        application = result.get('ApplicationResponse') or ''
+        if application:
+            candidates.update(soap_client.extract_document_cunes(application))
+        return candidates
+
+    @staticmethod
+    def _ne_number_candidates(result):
+        """Extrae el NÚMERO de negocio del documento original (no es CUNE).
+
+        ``cac:DocumentResponse/cac:DocumentReference/cbc:ID`` -- solo se usa
+        como respaldo cuando DIAN no entrega CUNE (ver
+        ``soap_client.extract_document_numbers``).
+        """
+        application = result.get('ApplicationResponse') or ''
+        if not application:
+            return set()
+        return soap_client.extract_document_numbers(application)
+
+    @staticmethod
+    def _ne_is_set_level_status(response):
+        """True si la respuesta de GetStatusZip es sobre el SET de pruebas completo, no
+        sobre el documento individual consultado.
+
+        H-012 (2026-10-06): evidencia real (NA0000000049, payslip 944, ZipKey 98e2fdc3) --
+        GetStatusZip respondió StatusCode="2", IsValid="false",
+        StatusDescription="Set de prueba con identificador e07c1748... se encuentra
+        Aceptado.", sin XmlDocumentKey ni ApplicationResponse (ningún dato que identifique
+        el documento). Esa combinación (StatusCode 2 + IsValid false + cero datos de
+        documento) es la FORMA de una respuesta de nivel set, no una hipótesis sobre por
+        qué la DIAN respondió así -- no se asume la causa (Tech Lead: "mi hipótesis no está
+        confirmada, el fix no debe depender de ella").
+        """
+        if str(response.get('StatusCode', '')).strip() != '2':
+            return False
+        if str(response.get('IsValid', '')).lower() == 'true':
+            return False
+        return not response.get('XmlDocumentKey') and not response.get('ApplicationResponse')
+
+    def _ne_match_dian_results(self, results, manifest):
+        """Asocia resultados solo cuando la evidencia identifica un documento.
+
+        Reglas confirmadas con Tech Lead (2026-10-04 y 2026-10-05, esta
+        última con evidencia real de una respuesta GetStatusZip AUTORIZADA
+        de la DIAN -- nómina SME-10, StatusCode 00):
+        (a) match estricto por CUNE (XmlDocumentKey o
+            DocumentReference/UUID) cuando DIAN lo entrega -- nunca por
+            nombre de archivo, que DIAN puede omitir o repetir;
+        (b) si DIAN no entrega CUNE pero sí el NÚMERO del documento
+            (DocumentReference/ID), se empareja por
+            ``l10n_co_ne_consecutive`` SOLO si ese número identifica
+            exactamente 1 documento en el manifiesto;
+        (c) si DIAN no entrega NINGÚN identificador (ni CUNE ni número) y
+            el manifiesto de este ZipKey tiene exactamente 1 documento, el
+            resultado solo puede ser de ese documento -- se aplica;
+        (d) en cualquier otro caso (identificador presente pero sin
+            coincidencia única, o sin identificador con >1 documento), no
+            se cambia ningún estado -- se cuenta como "sin identificar"
+            (valor de retorno ``unidentified``) para que quede visible en
+            vez de adivinar.
+        Un identificador que DIAN sí entrega pero que no coincide con nada
+        del manifiesto NUNCA cae al siguiente nivel -- sería una
+        contradicción, no una ausencia de dato.
+        """
+        by_cune = {}
+        by_number = {}
+        for line in manifest:
+            if line.cune:
+                by_cune.setdefault(line.cune, []).append(line)
+            number = line.payslip_id.l10n_co_ne_consecutive
+            if number:
+                by_number.setdefault(number, []).append(line)
+        matched = {}
+        ambiguous = set()
+        unidentified = 0
+        for result in results:
+            cune_candidates = self._ne_cune_candidates(result)
+            number_candidates = self._ne_number_candidates(result)
+            has_identifier = bool(cune_candidates or number_candidates)
+            if cune_candidates:
+                lines = [line for candidate in cune_candidates for line in by_cune.get(candidate, [])]
+            elif number_candidates:
+                lines = [line for candidate in number_candidates for line in by_number.get(candidate, [])]
+            elif len(manifest) == 1:
+                lines = list(manifest)
+            else:
+                unidentified += 1
+                continue
+            if len(lines) != 1:
+                if has_identifier:
+                    unidentified += 1
+                continue
+            line = lines[0]
+            target = line.payslip_id
+            # El resultado aplica exclusivamente a la misma versión firmada.
+            current_xml = base64.b64decode(target.l10n_co_ne_xml_attachment_id.datas) if target.l10n_co_ne_xml_attachment_id else b''
+            if target.l10n_co_ne_cune != line.cune or hashlib.sha256(current_xml).hexdigest() != line.sha256:
+                continue
+            if target.id in matched:
+                ambiguous.add(target.id)
+            else:
+                matched[target.id] = result
+        return matched, ambiguous, unidentified
+
+    # ──────────────────────────────────────────────────────────────────
+    # Campos para Notas de Ajuste
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_is_adjustment = fields.Boolean(
+        string='Es Nota de Ajuste',
+        default=False,
+        copy=False,
+        help='Indica si este documento es una nota de ajuste (reemplazo '
+             'o eliminación) de una nómina electrónica previamente '
+             'aceptada por la DIAN.',
+    )
+
+    l10n_co_ne_adjustment_type = fields.Selection(
+        selection=[
+            ('1', 'Reemplazar'),
+            ('2', 'Eliminar'),
+        ],
+        string='Tipo de Nota de Ajuste',
+        default='1',
+        copy=False,
+        help='TipoNota del Anexo Técnico (5.5.8): Reemplazar sustituye el documento por uno '
+             'corregido; Eliminar lo retira "por errores contables o de procedimiento". La DIAN '
+             'no borra el documento original: solo lo marca como eliminado (H-001).',
+    )
+
+    l10n_co_ne_hab_set_id = fields.Char(
+        string='Set de Habilitación DIAN',
+        copy=False,
+        index=True,
+        help='TestSetId con el que se preparó este documento durante la habilitación '
+             'automática. Permite que un set nuevo ignore los documentos de sets anteriores.',
+    )
+
+    l10n_co_ne_adjustment_ref_cune = fields.Char(
+        string='CUNE Nómina Original',
+        copy=False,
+        help='CUNE del documento de nómina electrónica original al que '
+             'hace referencia esta nota de ajuste.',
+    )
+
+    # ──────────────────────────────────────────────────────────────────
+    # Consecutivo de nómina electrónica
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_consecutive = fields.Char(
+        string='Consecutivo NE',
+        readonly=True,
+        copy=False,
+        help='Consecutivo interno del documento de nómina electrónica '
+             'asignado automáticamente al generar el XML. Formato: '
+             'PREFIJO + número secuencial.',
+    )
+
+    # ──────────────────────────────────────────────────────────────────
+    # SQL Constraints
+    # ──────────────────────────────────────────────────────────────────
+    _sql_constraints = [
+        (
+            'l10n_co_ne_cune_unique',
+            'UNIQUE(l10n_co_ne_cune)',
+            'El CUNE debe ser único. Ya existe un documento de nómina '
+            'electrónica con este CUNE.',
+        ),
+        (
+            'l10n_co_ne_consecutive_company_unique',
+            'UNIQUE(l10n_co_ne_consecutive, company_id)',
+            'El consecutivo de nómina electrónica debe ser único por empresa.',
+        ),
+    ]
+
+    # ──────────────────────────────────────────────────────────────────
+    # Validaciones
+    # ──────────────────────────────────────────────────────────────────
+    @api.constrains('l10n_co_ne_is_adjustment', 'l10n_co_ne_adjustment_ref_cune')
+    def _check_adjustment_ref_cune(self):
+        """Si es nota de ajuste, el CUNE de referencia es obligatorio."""
+        for payslip in self:
+            if (
+                payslip.l10n_co_ne_is_adjustment
+                and not payslip.l10n_co_ne_adjustment_ref_cune
+            ):
+                raise ValidationError(_(
+                    'Para una nota de ajuste debe indicar el CUNE de la '
+                    'nómina electrónica original. Nómina: %s',
+                    payslip.number or payslip.name,
+                ))
+
+    def action_generate_ne_xml(self):
+        """
+        Genera el XML de nómina electrónica firmado.
+
+        Flujo:
+        1. Valida prerequisitos (nómina confirmada, datos completos).
+        2. Asigna consecutivo NE si no existe.
+        3. Recopila datos del payslip (``_collect_payslip_data``).
+        4. Construye el XML con ``nomina_xml_builder``.
+        5. Calcula el CUNE con ``cune_service``.
+        6. Inserta el CUNE en el XML.
+        7. Firma digitalmente con ``xml_signer``.
+        8. Crea ``ir.attachment`` con el XML firmado.
+        9. Actualiza estado a ``generated``.
+        """
+        self.ensure_one()
+        self._validate_ne_prerequisites()
+
+        # Asignar consecutivo oficial si no tiene uno, si es el temporal
+        # PRE-NOM, o si tiene un prefijo que no corresponde a este tipo de
+        # documento (AUD-DIAN-34 2026-10-04: ver _ne_expected_prefix()).
+        expected_prefix = self._ne_expected_prefix()
+        if (
+            not self.l10n_co_ne_consecutive
+            or not self.l10n_co_ne_consecutive.startswith(expected_prefix)
+        ):
+            # H-023: todo lo que no depende del número se prueba ANTES de gastarlo.
+            self._ne_corrida_en_seco()
+            self.l10n_co_ne_consecutive = self._get_next_ne_consecutive()
+
+
+        # Recopilar datos
+        payslip_data = self._collect_payslip_data()
+
+        # Construir XML sin firmar
+        # NOTA (doc 24 §17): corte a builder v2 (dict_to_xml) restaurado e
+        # instalado en staging_produccion 2026-09-12 por decisión explícita
+        # de David -- riesgo aceptado conscientemente de usar este builder
+        # para los envíos reales de habilitación ante la DIAN, ANTES de que
+        # ese proceso ocurra. Ver 00_ESTADO_ACTUAL.md y doc 24 §17.
+        if self.l10n_co_ne_is_adjustment:
+            xml_bytes = nomina_xml_builder.build_nota_ajuste_v2(payslip_data)
+        else:
+            xml_bytes = nomina_xml_builder.build_nomina_individual_v2(payslip_data)
+
+        # Calcular CUNE (11 campos según Anexo Técnico, incluye Software-Pin)
+        company = self.company_id
+        valores = self._ne_cune_valores(payslip_data)
+        cune_value, _raw = cune_service.compute_cune(
+            num_ne=self.l10n_co_ne_consecutive,
+            fec_ne=payslip_data['informacion_general']['FechaGen'],
+            hor_ne=payslip_data['informacion_general']['HoraGen'],
+            val_dev=valores['val_dev'],
+            val_ded=valores['val_ded'],
+            val_tol=valores['val_tol'],
+            nit_ne=dian_utils.clean_nit(company.vat),
+            doc_trab=valores['doc_trab'],
+            cl_ne='103' if self.l10n_co_ne_is_adjustment else '102',
+            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
+            tipo_amb=company.l10n_co_ne_environment or '2',
+        )
+        self.l10n_co_ne_cune = cune_value
+
+        # Insertar CUNE y CodigoQR en el XML
+        xml_bytes = self._ne_insert_cune_and_qr(xml_bytes, cune_value)
+
+        # Firmar XML con XAdES-BES
+        private_key, cert_pem, cert_der, cert_obj, cert_chain = (
+            xml_signer.load_from_certificate(company._get_ne_certificate())
+        )
+        signed_xml = xml_signer.sign_xml(
+            xml_bytes=xml_bytes,
+            private_key=private_key,
+            cert_pem=cert_pem,
+            cert_der=cert_der,
+            cert_obj=cert_obj,
+            cert_chain=cert_chain,
+        )
+
+        # Crear attachment (signed_xml ya es bytes)
+        filename = self._get_ne_xml_filename()
+        attachment = self.env['ir.attachment'].create({
+            'name': filename,
+            'type': 'binary',
+            'datas': base64.b64encode(signed_xml),
+            'res_model': self._name,
+            'res_id': self.id,
+            'mimetype': 'application/xml',
+        })
+        self.l10n_co_ne_xml_attachment_id = attachment
+        self.l10n_co_ne_state = 'generated'
+
+        _logger.info(
+            'XML de nómina electrónica generado para %s (CUNE: %s)',
+            self.number or self.name,
+            cune_value,
+        )
+        return True
+
+    def action_send_ne_dian(self):
+
+        """
+        Envía el XML firmado al servicio web de la DIAN.
+
+        Flujo:
+        1. Valida que el XML esté generado.
+        2. Lee el certificado digital de la empresa.
+        3. Llama a ``soap_client.send_nomina_sync()`` para transmitir.
+        4. Almacena la respuesta de la DIAN.
+        5. Actualiza estado según resultado (accepted/rejected).
+        """
+        self.ensure_one()
+        if self.l10n_co_ne_state not in ('generated', 'rejected'):
+            raise UserError(_(
+                'Solo puede enviar a la DIAN documentos en estado '
+                '"XML Generado" o "Rechazado". Estado actual: %s',
+                dict(self._fields['l10n_co_ne_state'].selection).get(
+                    self.l10n_co_ne_state, self.l10n_co_ne_state
+                ),
+            ))
+
+        if not self.l10n_co_ne_xml_attachment_id:
+            raise UserError(_(
+                'No se encontró el XML firmado. Genere el XML antes de '
+                'intentar el envío a la DIAN.'
+            ))
+
+        company = self.company_id
+        self._validate_company_ne_config(company)
+
+        if company.l10n_co_ne_demo_mode:
+            # Doc 37: Modo Demo -- equivalente a _send_bill_sync() del
+            # l10n_co_dian nativo (Facturación). El XML ya se construyó,
+            # calculó su CUNE y se firmó localmente en
+            # action_generate_ne_xml() -- este modo únicamente evita la
+            # transmisión real SendNominaSync al webservice de la DIAN.
+            # No aplica a action_send_test_set() (habilitación real).
+            self.l10n_co_ne_state = 'accepted'
+            if self.l10n_co_ne_consecutive:
+                self.number = self.l10n_co_ne_consecutive
+            self._ne_marcar_original_eliminado()
+            self.message_post(
+                body=_(
+                    'Nómina electrónica %s validada localmente en Modo '
+                    'Demo (sin transmisión real a la DIAN).',
+                    self.number or self.name,
+                ),
+                message_type='comment',
+                subtype_xmlid='mail.mt_note',
+            )
+            return True
+
+        # Leer XML firmado del attachment (como bytes)
+        xml_content = base64.b64decode(
+            self.l10n_co_ne_xml_attachment_id.datas
+        )
+
+        # Cargar certificado para firmar el sobre SOAP
+        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
+            xml_signer.load_from_certificate(company._get_ne_certificate())
+        )
+
+        # Determinar endpoint según ambiente -- único punto, ver ResCompany._ne_dian_endpoint()
+        endpoint = company._ne_dian_endpoint()
+
+        # Enviar a DIAN vía SendNominaSync
+        filename = self._get_ne_xml_filename()
+        response = soap_client.send_nomina_sync(
+            xml_bytes=xml_content,
+            filename=filename,
+            private_key=private_key,
+            cert_pem=cert_pem,
+            endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
+        )
+
+        # Procesar respuesta DIAN y preservar el payload exacto del intento.
+        self._ne_store_exchange('send_sync', endpoint, response, [{
+            'payslip': self, 'filename': filename, 'xml': xml_content,
+        }])
+        zip_key = response.get('ZipKey', '')
+        if zip_key:
+            self.l10n_co_ne_zip_key = zip_key
+        is_valid = response.get('IsValid', '') == 'true'
+
+        if is_valid:
+            self.l10n_co_ne_state = 'accepted'
+            if self.l10n_co_ne_consecutive:
+                self.number = self.l10n_co_ne_consecutive
+            self._ne_marcar_original_eliminado()
+            _logger.info(
+                'Nómina electrónica %s ACEPTADA por DIAN (CUNE: %s)',
+                self.number or self.name,
+                self.l10n_co_ne_cune,
+            )
+
+        else:
+            self.l10n_co_ne_state = 'rejected'
+            error_messages = response.get('ErrorMessages', [])
+            detail = '; '.join(error_messages) if error_messages else response.get('ErrorMessage', 'Sin detalle')
+            _logger.warning(
+                'Nómina electrónica %s RECHAZADA por DIAN. Errores: %s',
+                self.number or self.name,
+                detail,
+            )
+            
+            # Diagnóstico Inteligente para el Chatter
+            diagnosis = "Ocurrió un error general de validación con el webservice de la DIAN."
+            links = ""
+            detail_lower = detail.lower()
+            
+            if 'nit' in detail_lower or 'documento' in detail_lower or 'identificacion' in detail_lower:
+                diagnosis = "El número o tipo de identificación del trabajador o del empleador contiene caracteres inválidos o no está registrado."
+                links = f'<br/>🔗 <a href="/odoo/hr.employee/{self.employee_id.id}">Abrir ficha del empleado para corregir</a>'
+            elif 'correo' in detail_lower or 'email' in detail_lower:
+                diagnosis = "El correo electrónico de trabajo del empleado falta o tiene un formato incorrecto."
+                links = f'<br/>🔗 <a href="/odoo/hr.employee/{self.employee_id.id}">Corregir correo en ficha de empleado</a>'
+            elif 'cuenta' in detail_lower or 'banco' in detail_lower or 'metodo' in detail_lower:
+                diagnosis = "La información bancaria o método de pago del trabajador contiene datos erróneos o incompletos."
+                links = f'<br/>🔗 <a href="/odoo/hr.contract/{self.contract_id.id}">Revisar contrato para corregir información bancaria</a>'
+            elif 'salario' in detail_lower or 'ibc' in detail_lower or 'minimo' in detail_lower:
+                diagnosis = "El salario base o el ingreso base de cotización (IBC) reportado presenta discrepancias matemáticas o de ley."
+                links = f'<br/>🔗 <a href="/odoo/hr.contract/{self.contract_id.id}">Revisar salario en el contrato</a>'
+
+            body = (
+                f'❌ <b>Nómina rechazada por la DIAN</b><br/>'
+                f'Consecutivo utilizado: <b>{self.l10n_co_ne_consecutive}</b><br/><br/>'
+                f'📋 <b>Diagnóstico de Corrección:</b><br/>'
+                f'{diagnosis}{links}<br/><br/>'
+                f'<details>'
+                f'<summary>🔧 Detalle técnico de la DIAN</summary>'
+                f'<pre>{detail}</pre>'
+                f'</details><br/>'
+                f'Por favor corrija el dato y use <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo.'
+            )
+            
+            self.message_post(
+                body=body,
+                message_type='comment',
+                subtype_xmlid='mail.mt_note'
+            )
+
+        return True
+
+    def action_create_adjustment(self):
+        """
+        Abre el asistente para crear una nota de ajuste referenciando
+        el CUNE de esta nómina electrónica.
+
+        Solo disponible si la nómina fue aceptada por la DIAN.
+        """
+        return self._ne_open_adjustment_form('1')
+
+    def action_create_elimination(self):
+        """Abre la nota de ajuste tipo Eliminar (H-001) del documento aceptado por la DIAN."""
+        return self._ne_open_adjustment_form('2')
+
+    def _ne_open_adjustment_form(self, tipo):
+        self.ensure_one()
+        if self.l10n_co_ne_state != 'accepted':
+            raise UserError(_(
+                'Solo puede crear notas de ajuste para nóminas aceptadas '
+                'por la DIAN.'
+            ))
+        if self.l10n_co_ne_is_adjustment and tipo == '2':
+            raise UserError(_(
+                'Por ahora solo se pueden eliminar nóminas individuales originales, no notas '
+                'de ajuste.'
+            ))
+
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Crear Nota de Ajuste de Nómina'),
+            'res_model': 'hr.payslip',
+            'view_mode': 'form',
+            'target': 'current',
+            'context': {
+                'default_l10n_co_ne_is_adjustment': True,
+                'default_l10n_co_ne_adjustment_type': tipo,
+                'default_l10n_co_ne_adjustment_ref_cune': self.l10n_co_ne_cune,
+                'default_employee_id': self.employee_id.id,
+                'default_contract_id': self.contract_id.id,
+                'default_struct_id': self.struct_id.id,
+                'default_date_from': str(self.date_from),
+                'default_date_to': str(self.date_to),
+            },
+        }
+
+    def action_mass_generate_ne_xml(self):
+        """Genera XML de nómina electrónica para múltiples nóminas."""
+        records = self.filtered(
+            lambda p: p.state == 'done'
+            and p.l10n_co_ne_state in ('draft', False)
+        )
+        if not records:
+            raise UserError(_('No hay nóminas confirmadas pendientes de generar XML.'))
+
+        errors = []
+        for payslip in records:
+            try:
+                payslip.action_generate_ne_xml()
+            except Exception as e:
+                errors.append(f'{payslip.number or payslip.name}: {e}')
+
+        if errors:
+            raise UserError(_(
+                'Se generaron %d de %d XMLs. Errores:\n%s',
+                len(records) - len(errors),
+                len(records),
+                '\n'.join(errors),
+            ))
+        return True
+
+    def action_mass_send_ne_dian(self):
+        """Envía múltiples XMLs firmados a la DIAN."""
+        records = self.filtered(
+            lambda p: p.l10n_co_ne_state in ('generated', 'rejected')
+        )
+        if not records:
+            raise UserError(_('No hay nóminas con XML generado pendientes de envío.'))
+
+        errors = []
+        for payslip in records:
+            try:
+                payslip.action_send_ne_dian()
+            except Exception as e:
+                errors.append(f'{payslip.number or payslip.name}: {e}')
+
+        if errors:
+            raise UserError(_(
+                'Se enviaron %d de %d nóminas. Errores:\n%s',
+                len(records) - len(errors),
+                len(records),
+                '\n'.join(errors),
+            ))
+        return True
+
+    def action_send_test_set(self):
+        """Envía el set de pruebas a la DIAN (SendTestSetAsync).
+
+        Agrupa las nóminas en 'generated' (primer envío) o 'uncertain'
+        (envío previo sin acuse válido -- el XML firmado ya existe y es
+        reenviable tal cual, sin regenerar) y las envía como un set de
+        pruebas al endpoint de habilitación.
+        """
+        records = self.filtered(
+            lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
+        )
+        if not records:
+            raise UserError(_(
+                'No hay nóminas con XML generado, ni en envío incierto, '
+                'para enviar como set de pruebas.'
+            ))
+
+        # La DIAN solo procesa UN documento por ZIP (Anexo 9.2; verificado 2026-10-04: de un
+        # ZIP con 4 XML solo evaluó el primero y los otros nunca quedaron registrados).
+        # Cada documento viaja en su propio ZIP y queda con su propio ZipKey.
+        if len(records) > 1:
+            results = [record.action_send_test_set() for record in records]
+            sent = records.filtered(lambda p: p.l10n_co_ne_state == 'sent')
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Set de Pruebas Enviado'),
+                    'message': _('Se enviaron %(sent)d de %(total)d documentos (un ZIP por documento).',
+                                 sent=len(sent), total=len(records)),
+                    'type': 'success' if len(sent) == len(records) else 'warning',
+                    'sticky': True,
+                },
+            }
+
+        company = records[0].company_id
+        self._validate_company_ne_config(company)
+
+        if not company.l10n_co_ne_certification_process:
+            raise UserError(_(
+                'Debe activar "Proceso de Certificación" en Ajustes > '
+                'Nómina antes de enviar el set de pruebas a la DIAN.'
+            ))
+
+        if not company.l10n_co_ne_operation_mode_ids.test_set_id:
+            raise UserError(_('Debe configurar el ID de Pruebas en el Modo de Operación de la compañía para enviar el set de pruebas.'))
+
+        # Collect all signed XMLs
+        # AUD-DIAN-34 (2026-10-04): si el SoftwareID/TestSetId de la
+        # compañía cambió (ej. David se re-registró en el portal DIAN)
+        # DESPUÉS de que el XML ya se generó y firmó, el SoftwareID
+        # embebido queda desactualizado -- enviarlo igual mezcla un
+        # SoftwareID viejo con un TestSetId nuevo, combinación inválida
+        # que la DIAN rechaza (StatusCode 2). Pasó real hoy: costó
+        # varios ciclos manuales de regenerar antes de notarlo.
+        current_software_id = (
+            company.l10n_co_ne_operation_mode_ids.software_id or ''
+        ).encode()
+        xml_files = {}
+        manifest = []
+        stale = []
+        for payslip in records:
+            if payslip.l10n_co_ne_xml_attachment_id:
+                filename = payslip._get_ne_xml_filename()
+                xml_bytes = base64.b64decode(payslip.l10n_co_ne_xml_attachment_id.datas)
+                if current_software_id and current_software_id not in xml_bytes:
+                    stale.append(payslip.name)
+                    continue
+                xml_files[filename] = xml_bytes
+                manifest.append({
+                    'payslip': payslip,
+                    'filename': filename,
+                    'xml': xml_bytes,
+                })
+
+        if stale:
+            raise UserError(_(
+                'El SoftwareID/TestSetId de la compañía cambió desde '
+                'que se generó el XML de estas nóminas -- regénerelas '
+                'antes de enviar (botón "Generar XML" o reiniciar el '
+                'proceso de habilitación):\n%s',
+                '\n'.join(stale),
+            ))
+
+        if not xml_files:
+            raise UserError(_('No se encontraron XMLs firmados en las nóminas seleccionadas.'))
+
+        # Load certificate
+        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
+            xml_signer.load_from_certificate(company._get_ne_certificate())
+        )
+
+        # Send test set -- SIEMPRE habilitación (el set de pruebas es un concepto propio de
+        # ese ambiente), sin importar l10n_co_ne_environment de la compañía.
+        endpoint = company._ne_dian_endpoint(environment='2')
+        response = soap_client.send_test_set_async(
+            xml_files=xml_files,
+            test_set_id=company.l10n_co_ne_operation_mode_ids.test_set_id,
+            private_key=private_key,
+            cert_pem=cert_pem,
+            endpoint=endpoint,
+            timeout=company._ne_config_int_param(
+                'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT),
+        )
+
+        zip_key = response.get('ZipKey', '')
+        ack_valid = bool(zip_key and zip_key.strip()) and response.get('HttpStatus', 0) < 400 \
+            and response.get('HttpStatus', 0) >= 200 and not response.get('SOAPFault') \
+            and response.get('StatusCode') not in ('CONNECTION_ERROR', 'PARSE_ERROR', 'ERROR', '99') \
+            and not response.get('TransportError')
+        records._ne_store_exchange(
+            'send_test_set', endpoint, response, manifest,
+        )
+        # Un timeout o acuse sin ZipKey es incierto: queda evidencia, pero no
+        # se simula un envío exitoso ni se programa reintento automático.
+        if not ack_valid:
+            records.write({'l10n_co_ne_state': 'uncertain'})
+            return {
+                'type': 'ir.actions.client', 'tag': 'display_notification',
+                'params': {
+                    'title': _('Set de Pruebas no confirmado'),
+                    'message': _('La DIAN no confirmó un ZipKey válido. El intento quedó registrado para conciliación.'),
+                    'type': 'warning', 'sticky': True,
+                },
+            }
+        # AUD-DIAN-34 (2026-09-14): antes no se persistia el ZipKey real
+        # devuelto por SendTestSetAsync ni se marcaba 'sent' -- accion_
+        # check_dian_status() caia a usar el CUNE como trackId (formato
+        # distinto), y GetStatusZip lo rechazaba con StatusCode 89
+        # "Formato trackId invalido" en el 100% de los casos reales.
+        records.write({
+            'l10n_co_ne_zip_key': zip_key,
+            'l10n_co_ne_state': 'sent',
+        })
+        _logger.info(
+            'Set de pruebas enviado: %d documentos. ZipKey: %s',
+            len(xml_files), zip_key,
+        )
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Set de Pruebas Enviado'),
+                'message': _('Se enviaron %d documentos. ZipKey: %s') % (len(xml_files), zip_key),
+                'type': 'success',
+                'sticky': True,
+            },
+        }
+
+    def action_regenerate_ne_xml(self):
+        """Regenera el XML con consecutivo y CUNE nuevos (no para documentos enviados/aceptados).
+
+        Un documento rechazado o con el SoftwareID/TestSetId desactualizado no se puede reenviar
+        tal cual: la DIAN devolvería el mismo veredicto viejo (regla 90, "procesado anteriormente").
+        """
+        for slip in self:
+            if slip.l10n_co_ne_state in ('sent', 'accepted'):
+                raise UserError(_(
+                    'No se puede regenerar el XML de %s: ya fue enviado o aceptado por la DIAN.',
+                    slip.name,
+                ))
+            slip.write({
+                'l10n_co_ne_state': 'draft',
+                'l10n_co_ne_consecutive': False,
+                'l10n_co_ne_cune': False,
+                'l10n_co_ne_zip_key': False,
+                'l10n_co_ne_xml_attachment_id': False,
+            })
+            slip.action_generate_ne_xml()
+        return True
+
+    def action_check_dian_status(self):
+        """Consulta una vez por ZipKey y distribuye solo resultados inequívocos."""
+        if not self:
+            return True
+        companies = self.mapped('company_id')
+        if len(companies) != 1:
+            raise UserError(_('Seleccione nóminas de una sola compañía para consultar DIAN.'))
+        company = companies
+        missing = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
+        if missing:
+            raise UserError(_('Hay nóminas sin ZipKey; no se consultan por CUNE porque no es un trackId válido.'))
+        private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
+            xml_signer.load_from_certificate(company._get_ne_certificate())
+        )
+
+        endpoint = company._ne_dian_endpoint()
+        timeout = company._ne_config_int_param(
+            'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
+
+        summaries = []
+        for track_id in set(self.mapped('l10n_co_ne_zip_key')):
+            records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
+            response = soap_client.get_status_zip(
+                track_id=track_id, private_key=private_key, cert_pem=cert_pem,
+                endpoint=endpoint, timeout=timeout,
+            )
+            # Consultas usan el manifiesto del último envío del mismo ZipKey;
+            # nunca se reconstruye desde el XML actual de la nómina.
+            sent = self.env['l10n.co.ne.exchange'].search([
+                ('company_id', '=', company.id), ('operation', '=', 'send_test_set'),
+                ('zip_key', '=', track_id)], order='id desc', limit=1)
+            manifest = sent.document_ids
+            # El emparejamiento se calcula ANTES de guardar la evidencia
+            # para que "sin identificar" quede visible también en el
+            # historial, no solo en la notificación de la sesión actual.
+            matches, ambiguous, unidentified = records._ne_match_dian_results(
+                response.get('DianResponses', []), manifest)
+            # H-012 (2026-10-06): una respuesta de nivel SET (ver
+            # _ne_is_set_level_status) nunca resuelve un documento, aunque
+            # _ne_match_dian_results la haya emparejado por la regla "manifiesto de 1
+            # documento, sin identificador" (pensada para un resultado genuino del
+            # documento sin CUNE, no para un mensaje que ni siquiera es sobre el
+            # documento) -- se descarta el match explícitamente, nunca se infiere
+            # accepted/rejected de ella.
+            set_level = self._ne_is_set_level_status(response)
+            if set_level:
+                matches = {}
+            records._ne_store_exchange('get_status_zip', endpoint, response,
+                queried_zip_key=track_id, parent_exchange=sent,
+                unidentified_count=unidentified)
+            for slip in records:
+                result = matches.get(slip.id)
+                if not result or slip.id in ambiguous:
+                    continue
+                valid = str(result.get('IsValid', '')).lower() == 'true'
+                # AUD-DIAN-34 (2026-10-04): no existe en el Anexo Técnico
+                # una tabla exhaustiva de StatusCode de GetStatusZip -- solo
+                # el ejemplo real de rechazo que sí documenta (IsValid=false,
+                # StatusCode=99, con ErrorMessage poblado de reglas NIE/ZB).
+                # No se supone ningún otro código como rechazo: "fuera de
+                # ('','00','0','90')" degradaba a 'rejected' estados que
+                # solo estaban pendientes/incompletos, sin evidencia de
+                # rechazo real de la DIAN.
+                is_rejection = (
+                    str(result.get('StatusCode', '')).strip() == '99'
+                    or bool(result.get('ErrorMessages'))
+                )
+                # Una consulta pendiente/no identificada nunca degrada un
+                # accepted. Rechazo terminal individual sí queda registrado.
+                # H-001: 'eliminated' tampoco se degrada -- la DIAN sigue respondiendo el
+                # veredicto viejo de aceptación del original al reconsultarlo.
+                if valid and slip.l10n_co_ne_state not in ('accepted', 'eliminated'):
+                    slip.l10n_co_ne_state = 'accepted'
+                    if slip.l10n_co_ne_consecutive:
+                        slip.number = slip.l10n_co_ne_consecutive
+                    slip._ne_marcar_original_eliminado()
+                elif not valid and is_rejection and slip.l10n_co_ne_state not in ('accepted', 'eliminated'):
+                    slip.l10n_co_ne_state = 'rejected'
+            summary = response.get('StatusDescription') or response.get('StatusMessage') or _('Sin respuesta')
+            if set_level:
+                # H-012 (2026-10-06, confirmado con el portal DIAN por David): esta
+                # respuesta no es un estado transitorio que una reconsulta futura vaya a
+                # resolver -- el set de pruebas ya quedó "Habilitado" y la DIAN no procesa
+                # más documentos de él. Se marca 'uncertain' de inmediato (nunca se espera
+                # al plazo de _CRON_RECHECK_MAX_HOURS_DEFAULT para un motivo ya conocido);
+                # un 'accepted' ya confirmado antes nunca se degrada.
+                to_mark = records.filtered(lambda slip: slip.l10n_co_ne_state == 'sent')
+                for slip in to_mark:
+                    slip.message_post(body=_(
+                        'La DIAN respondió sobre el SET de pruebas, no sobre este '
+                        'documento: "%(desc)s". El set ya está "Habilitado" y no procesa '
+                        'más documentos de prueba -- este documento no se va a resolver '
+                        'en este set. Revise el estado de habilitación de la compañía '
+                        '(Ajustes > Nómina) antes de seguir reintentando.',
+                        desc=summary,
+                    ))
+                to_mark.write({'l10n_co_ne_state': 'uncertain'})
+                summary = _(
+                    '%(summary)s (respuesta del SET de pruebas: ya está "Habilitado" y '
+                    'no va a resolver este documento -- marcado "Envío incierto")',
+                    summary=summary,
+                )
+            elif unidentified:
+                summary = _(
+                    '%(summary)s (%(n)d resultado(s) sin identificar -- '
+                    'requieren conciliación manual, ver Historial DIAN)',
+                    summary=summary, n=unidentified,
+                )
+            summaries.append(summary)
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Estado DIAN'),
+                'message': ' | '.join(summaries),
+                'type': 'success' if any(s.l10n_co_ne_state == 'accepted' for s in self) else 'warning',
+                'sticky': True,
+            },
+        }
+
+    @api.model
+    def _cron_recheck_sent_status(self):
+        """Reconsulta documentos 'sent' que nadie volvió a consultar a mano (Ronda 1 DIAN,
+        2026-10-05): 5 nóminas aceptadas en segundos quedaron en 'sent' durante 15 min porque
+        nadie hizo clic en "Consultar Estado". El motor de habilitación sí reconsulta lo suyo
+        (su propio cron en l10n_co_ne_habilitacion.py); el envío normal no tenía nada equivalente.
+
+        No duplica la lógica SOAP: reutiliza action_check_dian_status() tal cual, agrupado por
+        ZipKey para no repetir una misma consulta por cada nómina del mismo envío. Aislamiento:
+        por compañía (ya lo exige action_check_dian_status), por lote acotado
+        (_CRON_RECHECK_BATCH_LIMIT), y un ZipKey con error se registra y no frena a los demás.
+
+        H-012 (2026-10-06): un documento que la DIAN nunca resuelve (evidencia real:
+        NA0000000049) se reconsultaba cada 10 minutos para siempre. Dos ajustes:
+        (1) pasado _CRON_RECHECK_MAX_HOURS_DEFAULT (u override), el documento sale del cron
+        y queda 'uncertain' -- el botón "Consultar Estado" sigue disponible para revisarlo a
+        mano en cualquier momento (ver su invisible en hr_payslip_views.xml).
+        (2) el lote se procesa en orden de envío ascendente -- el que más tiempo lleva
+        esperando entra primero, tanto al tope del lote como al orden de los grupos por
+        ZipKey.
+
+        H-012 (2026-10-07, hallazgo de Tech Lead corriendo esto en servidor real): "desde
+        cuándo espera" NO se puede medir con write_date -- ese campo lo toca CUALQUIER
+        escritura sobre el payslip, no solo esta integración DIAN (evidencia real: documentos
+        de una copia de BD llevaban 'sent' desde hace tiempo, pero su write_date marcaba
+        "hoy" por motivos ajenos a la DIAN -- con ese campo, el plazo nunca vencería). La
+        fecha estable es la del envío real: create_date del l10n.co.ne.exchange
+        ('send_sync'/'send_test_set') que produjo el ZipKey actual -- un registro histórico
+        que ya existe y nunca se reescribe después de creado.
+        """
+        now = fields.Datetime.now()
+        companies = self.env['res.company'].sudo().search([
+            ('l10n_co_ne_hab_state', '!=', 'running'),
+            ('partner_id.country_id.code', '=', 'CO'),
+        ])
+        for company in companies:
+            # El motor de habilitación ya reconsulta sus propios 'sent' en su propio cron
+            # (l10n_co_ne_habilitacion.py, paso 2 de _step()) -- consultarlos aquí también
+            # duplicaría la consulta sobre el mismo ZipKey al mismo tiempo.
+            pending = self.sudo().search([
+                ('company_id', '=', company.id),
+                ('l10n_co_ne_state', '=', 'sent'),
+                ('l10n_co_ne_zip_key', '!=', False),
+            ])
+            if not pending:
+                continue
+
+            zip_keys = list(set(pending.mapped('l10n_co_ne_zip_key')))
+            sends = self.env['l10n.co.ne.exchange'].sudo().search([
+                ('company_id', '=', company.id),
+                ('operation', 'in', ('send_sync', 'send_test_set')),
+                ('zip_key', 'in', zip_keys),
+            ], order='create_date desc')
+            sent_since = {}
+            for send in sends:
+                sent_since.setdefault(send.zip_key, send.create_date)
+
+            def _waiting_since(slip, _sent_since=sent_since):
+                # Respaldo defensivo si no hay exchange (no debería pasar: zip_key solo se
+                # asigna junto con el exchange que lo produjo) -- nunca por write_date.
+                return _sent_since.get(slip.l10n_co_ne_zip_key) or slip.create_date
+
+            batch_limit = company._ne_config_int_param(
+                'l10n_co_nomina_electronica.recheck_batch_limit', _CRON_RECHECK_BATCH_LIMIT)
+            pending = pending.sorted(key=_waiting_since)[:batch_limit]
+
+            max_hours = company._ne_config_int_param(
+                'l10n_co_nomina_electronica.recheck_max_hours',
+                _CRON_RECHECK_MAX_HOURS_DEFAULT,
+            )
+            expired = pending.filtered(
+                lambda slip: now - _waiting_since(slip) >= timedelta(hours=max_hours))
+            if expired:
+                for slip in expired:
+                    slip.message_post(body=_(
+                        'Reconsulta automática DIAN suspendida: pasaron más de '
+                        '%(h)d horas sin que la DIAN diera un veredicto de este '
+                        'documento. Queda marcado "Envío incierto -- requiere '
+                        'conciliación" y ya no entra a la reconsulta automática -- '
+                        'use "Consultar Estado" para revisarlo a mano cuando quiera.',
+                        h=max_hours,
+                    ))
+                expired.write({'l10n_co_ne_state': 'uncertain'})
+                self._cron_recheck_commit()
+            pending = pending - expired
+            if not pending:
+                continue
+
+            # dict.fromkeys en vez de sorted(set(...)) -- conserva el orden de llegada de
+            # `pending` (ya viene ordenado por fecha de envío ascendente de arriba) en vez
+            # de reordenar alfabéticamente por ZipKey.
+            for zip_key in dict.fromkeys(pending.mapped('l10n_co_ne_zip_key')):
+                group = pending.filtered(lambda slip: slip.l10n_co_ne_zip_key == zip_key)
+                try:
+                    group.action_check_dian_status()
+                except Exception:  # noqa: BLE001 -- un ZipKey con error nunca debe frenar a los demás
+                    _logger.exception(
+                        'Reconsulta automática DIAN: error consultando ZipKey %s (compañía %s)',
+                        zip_key, company.display_name,
+                    )
+                    self._cron_recheck_rollback()
+                    continue
+                self._cron_recheck_commit()
+
+    def _cron_recheck_commit(self):
+        """Confirma lo consultado hasta aquí (un ZipKey ya resuelto no puede perderse por un
+        fallo posterior). Aislado para que las pruebas lo reemplacen -- mismo motivo y mismo
+        patrón que l10n_co_ne_habilitacion._commit(): Odoo prohíbe cr.commit() en un test."""
+        self.env.cr.commit()
+
+    def _cron_recheck_rollback(self):
+        """Deshace lo que haya quedado a medias tras un error en un ZipKey. Aislado por el mismo
+        motivo que _cron_recheck_commit(): permite a las pruebas ejercer esta rama sin tocar la
+        transacción real de la prueba."""
+        self.env.cr.rollback()
+        self.env.invalidate_all()
+
+    def _ne_corrida_en_seco(self):
+        """H-023: arma los datos y el XML con un consecutivo provisional, sin firmar ni
+        persistir nada (savepoint que siempre se revierte), para que un error de datos o
+        del constructor del XML salga ANTES de tomar un número de la secuencia.
+
+        Las secuencias NE son ``no_gap`` (migración .137), así que un fallo posterior
+        (firma, adjunto) también devuelve el número con el rollback; esta corrida evita
+        además tocar la secuencia en los fallos más comunes."""
+        self.ensure_one()
+
+        class _CorridaEnSecoTerminada(Exception):
+            pass
+
+        try:
+            with self.env.cr.savepoint():
+                self.l10n_co_ne_consecutive = '%s1' % self._ne_expected_prefix()
+                payslip_data = self._collect_payslip_data()
+                if self.l10n_co_ne_is_adjustment:
+                    nomina_xml_builder.build_nota_ajuste_v2(payslip_data)
+                else:
+                    nomina_xml_builder.build_nomina_individual_v2(payslip_data)
+                raise _CorridaEnSecoTerminada()
+        except _CorridaEnSecoTerminada:
+            pass
+
+    def _ne_insert_cune_and_qr(self, xml_bytes, cune_value):
+        """Escribe CUNE/EncripCUNE en ``InformacionGeneral`` y la URL en ``CodigoQR``.
+
+        En las Notas de Ajuste ambos elementos viven dentro de ``<Reemplazar>`` (o
+        ``<Eliminar>``), no como hijos directos de la raiz: se buscan en todo el arbol. Si
+        no se encuentran el XML sale con ``CUNE=""`` y la DIAN rechaza con NIAE024.
+        """
+        company = self.company_id
+        tree = _etree.fromstring(xml_bytes)
+        ns = tree.nsmap.get(None, '')
+        info_gen = tree.find('.//{%s}InformacionGeneral' % ns)
+        if info_gen is not None:
+            info_gen.set('CUNE', cune_value)
+            info_gen.set('EncripCUNE', 'CUNE-SHA384')
+        # AUD-DIAN-34 (2026-09-14, consolidado 2026-10-05): el host del QR cambia segun el
+        # ambiente (Anexo Tecnico, seccion QRCode) -- unico punto, ver ResCompany.
+        # _ne_dian_qr_host() / dian_utils.get_qr_catalog_host().
+        qr_host = company._ne_dian_qr_host()
+        qr_url = 'https://%s/document/searchqr?documentkey=%s' % (qr_host, cune_value)
+        qr_el = tree.find('.//{%s}CodigoQR' % ns)
+        if qr_el is None and info_gen is not None:
+            parent = info_gen.getparent()
+            qr_el = _etree.Element('{%s}CodigoQR' % ns)
+            parent.insert(list(parent).index(info_gen) + 1, qr_el)
+        if qr_el is not None:
+            qr_el.text = qr_url
+        return _etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
+
+    def _ne_predecessor_values(self):
+        """(NumeroPred, FechaGenPred) del documento que reemplaza esta nota de ajuste.
+
+        Anexo DIAN NIAE190/NIAE192: ``NumeroPred`` es el NUMERO del documento a reemplazar
+        (prefijo + consecutivo, no un trozo del CUNE) y ``FechaGenPred`` la fecha de emision
+        de ese documento (su ``InformacionGeneral/@FechaGen``), no el fin del periodo.
+        """
+        self.ensure_one()
+        ref = self.l10n_co_ne_adjustment_ref_cune
+        if not ref:
+            return '', ''
+        pred = self.search([
+            ('l10n_co_ne_cune', '=', ref),
+            ('l10n_co_ne_is_adjustment', '=', False),
+            ('company_id', '=', self.company_id.id),
+        ], limit=1)
+        if not pred:
+            return '', ''
+        fecha = ''
+        if pred.l10n_co_ne_xml_attachment_id:
+            root = _etree.fromstring(base64.b64decode(pred.l10n_co_ne_xml_attachment_id.datas))
+            info = root.find('.//{*}InformacionGeneral')
+            if info is not None:
+                fecha = info.get('FechaGen', '')
+        return pred.l10n_co_ne_consecutive or '', fecha
+
+    def _ne_eliminar(self, data):
+        """Sección <Eliminar> de la nota de ajuste (H-001, Anexo Técnico 5.5.8 TipoNota=2).
+
+        Solo lleva lo que el XSD admite dentro de <Eliminar>: predecesor, secuencia, lugar de
+        generación, proveedor, QR, información general, notas y empleador. NO lleva periodo,
+        trabajador, pago, devengados, deducciones ni totales. Sin CodigoTrabajador en la
+        secuencia (el XSD de Eliminar no lo admite)."""
+        numero_pred, fecha_gen_pred = self._ne_predecessor_values()
+        numero_secuencia = {
+            k: v for k, v in data['numero_secuencia'].items() if k != 'CodigoTrabajador'}
+        return {
+            'predecesor': {
+                'NumeroPred': numero_pred,
+                'CUNEPred': self.l10n_co_ne_adjustment_ref_cune or '',
+                'FechaGenPred': fecha_gen_pred,
+            },
+            'numero_secuencia': numero_secuencia,
+            'lugar_generacion': data['lugar_generacion'],
+            'proveedor_xml': data['proveedor_xml'],
+            'informacion_general': data['informacion_general'],
+            'empleador': data['empleador'],
+        }
+
+    def _ne_cune_valores(self, payslip_data):
+        """Valores variables del CUNE (ValDev, ValDed, ValTol, DocEmp), numeral 8.1.1.4 del Anexo.
+
+        Nómina individual y nota de ajuste Reemplazar: los totales y el documento del trabajador
+        del propio documento. Nota de ajuste Eliminar (H-001): el Anexo fija valores literales
+        -- ValDev=0.00, ValDed=0.00, ValTol=0.00 y DocEmp=0 -- porque ese documento no lleva
+        totales ni trabajador. El resto (NumNIAE, FecNIAE, HorNIAE, NitNIAE, TipoXML, TipAmb)
+        sale igual que en los otros documentos."""
+        self.ensure_one()
+        if self.l10n_co_ne_is_adjustment and self.l10n_co_ne_adjustment_type == '2':
+            return {'val_dev': '0.00', 'val_ded': '0.00', 'val_tol': '0.00', 'doc_trab': '0'}
+        return {
+            'val_dev': payslip_data['totales']['DevengadosTotal'],
+            'val_ded': payslip_data['totales']['DeduccionesTotal'],
+            'val_tol': payslip_data['totales']['ComprobanteTotal'],
+            'doc_trab': self.employee_id.identification_id or '',
+        }
+
+    def _ne_marcar_original_eliminado(self):
+        """H-001: cuando una nota de ajuste tipo Eliminar queda 'accepted', el documento
+        ORIGINAL pasa a 'eliminated'. La DIAN no borra el original ni invalida su CUNE: solo
+        lo marca con una observación (Anexo Técnico), así que el estado propio lo llevamos
+        aquí, para que reportes y conciliación no lo sigan viendo como "Aceptado por DIAN".
+        Se resuelve el original igual que _ne_predecessor_values(): por CUNE de referencia."""
+        for note in self:
+            if not (note.l10n_co_ne_is_adjustment and note.l10n_co_ne_adjustment_type == '2'
+                    and note.l10n_co_ne_state == 'accepted' and note.l10n_co_ne_adjustment_ref_cune):
+                continue
+            original = self.search([
+                ('l10n_co_ne_cune', '=', note.l10n_co_ne_adjustment_ref_cune),
+                ('l10n_co_ne_is_adjustment', '=', False),
+                ('company_id', '=', note.company_id.id),
+            ], limit=1)
+            if original and original.l10n_co_ne_state != 'eliminated':
+                original.l10n_co_ne_state = 'eliminated'
+                original.message_post(body=_(
+                    'La DIAN aceptó la nota de ajuste tipo Eliminar %(nota)s: este documento '
+                    'queda marcado como eliminado (la DIAN no lo borra, solo lo anota).',
+                    nota=note.l10n_co_ne_consecutive or note.name))
+
+    def _ne_reemplazar(self, data):
+        """Sección <Reemplazar> de la nota de ajuste, reutilizando ``data``."""
+        numero_pred, fecha_gen_pred = self._ne_predecessor_values()
+        return {
+            'predecesor': {
+                'NumeroPred': numero_pred,
+                'CUNEPred': self.l10n_co_ne_adjustment_ref_cune or '',
+                'FechaGenPred': fecha_gen_pred,
+            },
+            # Include all the same sections
+            'periodo': data['periodo'],
+            'numero_secuencia': data['numero_secuencia'],
+            'lugar_generacion': data['lugar_generacion'],
+            'proveedor_xml': data['proveedor_xml'],
+            'informacion_general': data['informacion_general'],
+            'empleador': data['empleador'],
+            'trabajador': data['trabajador'],
+            'pago': data['pago'],
+            'fechas_pagos': data['fechas_pagos'],
+            'devengados': data['devengados'],
+            'deducciones': data['deducciones'],
+            'devengados_total': data['devengados_total'],
+            'deducciones_total': data['deducciones_total'],
+            'comprobante_total': data['comprobante_total'],
+        }
+
+    def _validate_ne_prerequisites(self):
+        """Valida que la nómina cumpla los prerequisitos para generar XML."""
+        self.ensure_one()
+
+        if self.state != 'done':
+            raise UserError(_(
+                'La nómina debe estar confirmada (estado "Hecho") antes '
+                'de generar el XML de nómina electrónica.'
+            ))
+
+        if self.l10n_co_ne_state not in ('draft', 'rejected'):
+            raise UserError(_(
+                'Solo puede generar XML para nóminas en estado DIAN '
+                '"Borrador" o "Rechazado".'
+            ))
+
+        company = self.company_id
+        self._validate_company_ne_config(company)
+
+        employee = self.employee_id
+        if not employee.identification_id:
+            raise UserError(_(
+                'El empleado %s no tiene número de identificación configurado.',
+                employee.name,
+            ))
+
+        contract = self.contract_id
+        if not contract:
+            raise UserError(_(
+                'La nómina %s no tiene contrato asociado.',
+                self.number or self.name,
+            ))
+
+        # H-021: antes de que action_generate_ne_xml() asigne el consecutivo.
+        self._ne_validar_cuenta_transferencia()
+        # H-024: nombre y apellido completos, también antes de gastar el consecutivo.
+        employee._l10n_co_nombre_dian()
+
+    def _validate_company_ne_config(self, company):
+        """Valida la configuración de nómina electrónica de la empresa."""
+        missing = []
+        mode = company.l10n_co_ne_operation_mode_ids
+        if not mode or not mode.software_id:
+            missing.append(_('ID Software Nómina'))
+        if not mode or not mode.software_pin:
+            missing.append(_('PIN Software Nómina'))
+        if not company._get_ne_certificate():
+            missing.append(_('Certificado Digital'))
+        if missing:
+            raise UserError(_(
+                'Faltan los siguientes datos de configuración de nómina '
+                'electrónica en la empresa %s:\n• %s',
+                company.name,
+                '\n• '.join(missing),
+            ))
+
+        certificate = company._get_ne_certificate()
+        if certificate and certificate.date_end and certificate.date_end < fields.Datetime.now():
+            raise UserError(_(
+                'El certificado digital de la empresa %s está vencido '
+                '(venció el %s). Cargue o seleccione un certificado '
+                'vigente antes de continuar.',
+                company.name,
+                certificate.date_end,
+            ))
+
+        # AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030) es explícito -- "Para Colombia
+        # se debe colocar 'COP'" en TipoMoneda, sin excepción. No se parametriza: es una
+        # constante del Anexo (nomina_xml_builder.NE_TIPO_MONEDA), así que una compañía en
+        # otra moneda debe fallar aquí, antes de generar un XML inválido, en vez de enviar
+        # "COP" por encima de montos que en realidad están en otra moneda.
+        if company.currency_id.name != nomina_xml_builder.NE_TIPO_MONEDA:
+            raise UserError(_(
+                'La compañía %(company)s tiene moneda "%(currency)s" configurada, pero la '
+                'Nómina Electrónica DIAN exige TipoMoneda="%(cop)s" (Anexo Técnico, NIE030: '
+                '"Para Colombia se debe colocar \'%(cop)s\'"). Configure la compañía en '
+                'pesos colombianos antes de generar nómina electrónica.',
+                company=company.name, currency=company.currency_id.name,
+                cop=nomina_xml_builder.NE_TIPO_MONEDA,
+            ))
+
+    def _ne_expected_prefix(self):
+        """Prefijo que DEBE tener un consecutivo oficial de este payslip.
+
+        AUD-DIAN-34 (2026-10-04): incidente real en Guapante -- la
+        secuencia temporal (``l10n_co_ne_pre_sequence_id``) quedó mal
+        configurada apuntando a la de Notas de Ajuste, así que una
+        nómina INDIVIDUAL terminó con consecutivo "NA..." (prefijo de
+        ajuste). El único chequeo que existía ("no empieza por
+        PRE-NOM") no detecta esto -- un valor con el prefijo *equivocado*
+        pero que no es PRE-NOM pasaba como si fuera válido. Defensa en
+        profundidad: el consecutivo solo se considera válido si tiene
+        el prefijo que corresponde a este tipo de documento.
+        """
+        self.ensure_one()
+        company = self.company_id
+        if self.l10n_co_ne_is_adjustment:
+            return company.l10n_co_ne_adjust_prefix or 'NA'
+        return company.l10n_co_ne_payroll_prefix or 'NE'
+
+    def _get_next_ne_consecutive(self):
+        """
+        Genera el siguiente consecutivo de nómina electrónica para la empresa
+        utilizando las secuencias configuradas en la compañía.
+        """
+        self.ensure_one()
+        company = self.company_id
+
+        # Si ya tiene un consecutivo asignado con el prefijo correcto para
+        # este tipo de documento, lo reutilizamos -- cualquier otro caso
+        # (temporal PRE-NOM, o el prefijo de ajuste/nómina equivocado) se
+        # reasigna.
+        expected_prefix = self._ne_expected_prefix()
+        if self.l10n_co_ne_consecutive and self.l10n_co_ne_consecutive.startswith(expected_prefix):
+            return self.l10n_co_ne_consecutive
+
+        if self.l10n_co_ne_is_adjustment:
+            seq = self.env['ir.sequence'].search([
+                ('code', '=', 'l10n_co_nomina.ajuste'),
+                ('|'),
+                ('company_id', '=', company.id),
+                ('company_id', '=', False)
+            ], order='company_id', limit=1)  # la propia de la compania primero (NULL al final)
+            if seq:
+                return seq.next_by_id()
+            prefix = company.l10n_co_ne_adjust_prefix or 'NA'
+        else:
+            if company.l10n_co_ne_sequence_id:
+                return company.l10n_co_ne_sequence_id.next_by_id()
+            prefix = company.l10n_co_ne_payroll_prefix or 'NE'
+
+        # Fallback manual por si no hay secuencia configurada
+        last_payslip = self.search(
+            [
+                ('company_id', '=', company.id),
+                ('l10n_co_ne_consecutive', '!=', False),
+                ('l10n_co_ne_consecutive', '=like', prefix + '%'),
+            ],
+            order='l10n_co_ne_consecutive desc',
+            limit=1,
+        )
+        if last_payslip and last_payslip.l10n_co_ne_consecutive and not last_payslip.l10n_co_ne_consecutive.startswith('PRE-NOM'):
+            last_num_str = last_payslip.l10n_co_ne_consecutive[len(prefix):]
+            try:
+                next_num = int(last_num_str) + 1
+            except ValueError:
+                next_num = 1
+        else:
+            next_num = 1
+
+        return '%s%s' % (prefix, str(next_num).zfill(8))
+
+    def _get_ne_xml_filename(self):
+        """Genera el nombre del archivo XML de nómina electrónica."""
+        company = self.company_id
+        nit = (company.vat or 'SIN_NIT').replace('-', '').strip()
+        return 'ne_%s_%s.xml' % (nit, self.l10n_co_ne_consecutive or 'DRAFT')

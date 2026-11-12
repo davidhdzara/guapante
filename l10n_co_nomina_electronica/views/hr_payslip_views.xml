@@ -17,43 +17,49 @@
                         string="Enviar y Procesar"
                         type="action"
                         class="oe_highlight"
-                        invisible="l10n_co_ne_state not in ('draft', 'generated', 'uncertain', 'rejected') or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state not in ('draft', 'generated', 'uncertain', 'rejected') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_generate_ne_xml"
                         string="Generar XML"
                         type="object"
                         class="btn-primary"
-                        invisible="l10n_co_ne_state != 'draft' or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state != 'draft' or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_regenerate_ne_xml"
                         string="Regenerar XML"
                         type="object"
-                        invisible="l10n_co_ne_state not in ('generated', 'rejected', 'uncertain') or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state not in ('generated', 'rejected', 'uncertain') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_send_ne_dian"
                         string="Enviar a DIAN"
                         type="object"
                         class="btn-primary"
-                        invisible="l10n_co_ne_state != 'generated' or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state != 'generated' or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_check_dian_status"
                         string="Consultar Estado"
                         type="object"
                         class="btn-secondary"
-                        invisible="l10n_co_ne_state not in ('sent', 'generated', 'rejected', 'uncertain') or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state not in ('sent', 'generated', 'rejected', 'uncertain') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_create_adjustment"
                         string="Nota de Ajuste"
                         type="object"
                         class="btn-secondary"
-                        invisible="l10n_co_ne_state != 'accepted' or state != 'done'"
+                        invisible="country_code != 'CO' or l10n_co_ne_state != 'accepted' or state != 'done'"
+                        groups="hr_payroll.group_hr_payroll_manager"/>
+                <button name="action_create_elimination"
+                        string="Eliminar Documento"
+                        type="object"
+                        class="btn-secondary"
+                        invisible="country_code != 'CO' or l10n_co_ne_state != 'accepted' or state != 'done' or l10n_co_ne_is_adjustment"
                         groups="hr_payroll.group_hr_payroll_manager"/>
 
             </xpath>
 
             <!-- NE Status bar -->
             <xpath expr="//header" position="after">
-                <div class="oe_title" name="ne_statusbar">
+                <div class="oe_title" name="ne_statusbar" invisible="country_code != 'CO'">
                     <field name="l10n_co_ne_state"
                            widget="statusbar"
                            statusbar_visible="draft,generated,sent,uncertain,accepted"
@@ -94,7 +100,8 @@
 
             <!-- Notebook page for NE details -->
             <xpath expr="//notebook" position="inside">
-                <page string="Nómina Electrónica" name="nomina_electronica">
+                <page string="Nómina Electrónica" name="nomina_electronica"
+                      invisible="country_code != 'CO'">
                     <group>
                         <group string="Datos de Transmisión">
                             <field name="l10n_co_ne_consecutive"
@@ -114,7 +121,8 @@
                                    decoration-info="l10n_co_ne_state == 'draft'"
                                    decoration-warning="l10n_co_ne_state in ('generated','sent','uncertain')"
                                    decoration-success="l10n_co_ne_state == 'accepted'"
-                                   decoration-danger="l10n_co_ne_state == 'rejected'"/>
+                                   decoration-danger="l10n_co_ne_state == 'rejected'"
+                                   decoration-muted="l10n_co_ne_state == 'eliminated'"/>
                             <field name="l10n_co_ne_xml_attachment_id"
                                    string="Archivo XML"
                                    readonly="1"/>
@@ -143,6 +151,9 @@
                                readonly="1"/>
                         <field name="l10n_co_ne_adjustment_ref_cune"
                                string="CUNE Nómina Original"
+                               readonly="l10n_co_ne_state != 'draft'"/>
+                        <field name="l10n_co_ne_adjustment_type"
+                               string="Tipo de Nota de Ajuste"
                                readonly="l10n_co_ne_state != 'draft'"/>
                     </group>
                     <group string="Solicitud DIAN">
@@ -193,7 +204,8 @@
                        decoration-info="l10n_co_ne_state == 'draft'"
                        decoration-warning="l10n_co_ne_state in ('generated','sent','uncertain')"
                        decoration-success="l10n_co_ne_state == 'accepted'"
-                       decoration-danger="l10n_co_ne_state == 'rejected'"/>
+                       decoration-danger="l10n_co_ne_state == 'rejected'"
+                       decoration-muted="l10n_co_ne_state == 'eliminated'"/>
                 <field name="l10n_co_ne_cune"
                        string="CUNE"
                        optional="hide"/>

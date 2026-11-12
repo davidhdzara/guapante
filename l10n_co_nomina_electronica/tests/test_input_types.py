@@ -5,11 +5,12 @@ Ronda 1 DIAN, 2026-10-05: vacaciones, prima, cesantías, incapacidades y otras n
 
 import re
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 _INPUT_CODE = re.compile(r"""inputs\[['"]([A-Z0-9_]+)['"]\]|inputs\.get\(['"]([A-Z0-9_]+)['"]\)|inputs\.([A-Z][A-Z0-9_]+)\b""")
 
 
+@tagged('post_install', '-at_install')
 class TestInputTypes(TransactionCase):
     def _module_rules(self):
         xmlids = self.env['ir.model.data'].search([

@@ -30,42 +30,72 @@ normativo (SMMLV, UVT, etc.) sino contenido de prueba inventado.
 TEST_EMPLOYEES = [
     {
         'name': 'EMPLEADO PRUEBA UNO',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'UNO',
         'identification_id': '1000000001',
     },
     {
         'name': 'EMPLEADO PRUEBA DOS',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'DOS',
         'identification_id': '1000000002',
     },
     {
         'name': 'EMPLEADO PRUEBA TRES',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'TRES',
         'identification_id': '1000000003',
     },
     {
         'name': 'EMPLEADO PRUEBA CUATRO',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'CUATRO',
         'identification_id': '1000000004',
     },
     {
         'name': 'EMPLEADO PRUEBA CINCO',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'CINCO',
         'identification_id': '1000000005',
     },
     {
         'name': 'EMPLEADO PRUEBA SEIS',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'SEIS',
         'identification_id': '1000000006',
     },
     {
         'name': 'EMPLEADO PRUEBA SIETE',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'SIETE',
         'identification_id': '1000000007',
     },
     {
         'name': 'EMPLEADO PRUEBA OCHO',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'OCHO',
         'identification_id': '1000000008',
     },
     {
         'name': 'EMPLEADO PRUEBA NUEVE',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'NUEVE',
         'identification_id': '1000000009',
     },
     {
         'name': 'EMPLEADO PRUEBA DIEZ',
+        'primer_nombre': 'EMPLEADO',
+        'primer_apellido': 'PRUEBA',
+        'segundo_apellido': 'DIEZ',
         'identification_id': '1000000010',
     },
 ]
@@ -93,6 +123,8 @@ TEST_CONTRACT_WAGE = 1800000.0
 TEST_CONTRACT_START_YEARS_AGO = 2
 TEST_CONTRACT_COMMON_VALUES = {
     'l10n_co_ne_contract_type': '2',  # Término Indefinido
+    'l10n_co_pila_tipo_cotizante': '01',  # Dependiente (sin default: el contrato en proceso lo exige)
+    'l10n_co_pila_subtipo_cotizante': '00',  # No aplica
     'l10n_co_ne_integral_salary': False,
     'wage': TEST_CONTRACT_WAGE,
     'state': 'open',

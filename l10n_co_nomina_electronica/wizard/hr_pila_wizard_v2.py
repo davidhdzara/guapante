@@ -78,7 +78,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     )
     modalidad_planilla = fields.Selection(
         selection=[
-            ('1', '1 - Planilla unica'),
+            ('1', '1 - Planilla única'),
             ('2', '2 - Planilla acumulada'),
         ],
         string='Modalidad Planilla',
@@ -87,7 +87,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     )
     company_id = fields.Many2one(
         comodel_name='res.company',
-        string='Compania',
+        string='Compañía',
         required=True,
         default=lambda self: self.env.company,
     )
@@ -96,17 +96,20 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         string='Moneda',
     )
 
-    # Número de planilla asociada (para correcciones)
+    # Planilla corregida (solo tipo N): el numero, la fecha de pago y el operador salen de
+    # la planilla original registrada (l10n.co.pila.planilla), no se digitan.
+    planilla_original_id = fields.Many2one(
+        'l10n.co.pila.planilla', string='Planilla a Corregir',
+        domain="[('company_id', '=', company_id), ('period', '=', periodo_date)]",
+        help='Planilla original del MISMO mes que corrige esta planilla tipo N. Debe tener su número de '
+             'planilla y fecha de pago, y haberse generado con el mismo operador.')
+    periodo_date = fields.Date(
+        string='Período (primer día)', compute='_compute_periodo_date',
+        help='Primer día del mes cotizado; filtra la planilla a corregir.')
     numero_planilla_asociada = fields.Char(
-        string='No. Planilla Asociada',
-        help='Numero de planilla asociada. Solo aplica para planillas '
-             'de correccion (tipo N).',
-    )
+        string='No. Planilla Asociada', related='planilla_original_id.numero_planilla')
     fecha_pago_asociada = fields.Date(
-        string='Fecha Pago Asociada',
-        help='Fecha de pago de la planilla asociada. '
-             'Solo para correcciones.',
-    )
+        string='Fecha Pago Asociada', related='planilla_original_id.fecha_pago')
 
     # ──────────────────────────────────────────────────────────────────
     # Estado del wizard (multi-step)
@@ -201,6 +204,12 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     # ──────────────────────────────────────────────────────────────────
     # Computed display name
     # ──────────────────────────────────────────────────────────────────
+    @api.model_create_multi
+    def create(self, vals_list):
+        wizards = super().create(vals_list)
+        wizards.company_id._ne_exigir_colombia()
+        return wizards
+
     @api.depends('year', 'month', 'company_id')
     def _compute_display_name(self):
         """Calcula el nombre para mostrar del wizard."""
@@ -214,6 +223,47 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     # ──────────────────────────────────────────────────────────────────
     # Paso 1 → 2: Validar datos de empleados
     # ──────────────────────────────────────────────────────────────────
+    @api.depends('year', 'month')
+    def _compute_periodo_date(self):
+        for rec in self:
+            try:
+                rec.periodo_date = date(int(rec.year), int(rec.month), 1)
+            except (TypeError, ValueError):
+                rec.periodo_date = False
+
+    def _validar_planilla_correccion(self):
+        """E (y las demas) no llevan planilla original; N la exige, completa y del mismo
+        operador (restriccion del operador: la correccion va con el mismo operador)."""
+        self.ensure_one()
+        original = self.planilla_original_id
+        if self.tipo_planilla != 'N':
+            if original:
+                raise UserError(_(
+                    'Solo la planilla tipo N (corrección) lleva "Planilla a Corregir". '
+                    'Quite la planilla original o cambie el tipo.'))
+            return
+        if not original:
+            raise UserError(_('La planilla tipo N exige elegir la "Planilla a Corregir".'))
+        if not original.numero_planilla or not original.fecha_pago:
+            raise UserError(_(
+                'La planilla "%s" no tiene número de planilla o fecha de pago. Complételos '
+                'en Nómina > Reportes > Planillas PILA antes de corregirla.',
+                original.display_name))
+        if original.period != date(int(self.year), int(self.month), 1):
+            raise UserError(_(
+                'La planilla "%(orig)s" es del mes %(mes_orig)s; una planilla N corrige '
+                'la presentación de ESE mes y esta es del %(mes)s-%(anio)s.',
+                orig=original.display_name, mes_orig=original.period.strftime('%Y-%m'),
+                mes=self.month, anio=self.year))
+        operador = self.company_id.l10n_co_pila_operador_code
+        if not operador:
+            raise UserError(_('Defina el Código Operador PILA de la compañía.'))
+        if original.operador_code != operador:
+            raise UserError(_(
+                'La corrección debe presentarse con el MISMO operador de la planilla '
+                'original (%(orig)s), y la compañía tiene configurado %(actual)s.',
+                orig=original.operador_code, actual=operador))
+
     def action_validate(self):
         """Valida que los empleados tengan todos los datos PILA requeridos.
 
@@ -233,6 +283,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             UserError: Si no hay nóminas en el período.
         """
         self.ensure_one()
+        self._validar_planilla_correccion()
         _logger.info(
             'Validando datos PILA para %s/%s - %s',
             self.month, self.year, self.company_id.name,
@@ -256,8 +307,8 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         errors = []
         if not company.l10n_co_pila_arl_code:
             errors.append(
-                '- Compania: Falta configurar el codigo ARL '
-                '(Configuracion > Compania > PILA).'
+                '- Compania: Falta configurar la ARL (con su codigo PILA) '
+                '(Configuracion > Nomina > PILA).'
             )
         if not company.vat:
             errors.append(
@@ -278,7 +329,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             # Validar código EPS
             if not getattr(emp, 'l10n_co_pila_eps_code', None):
                 errors.append(
-                    '- %s: Falta codigo EPS.' % emp_name
+                    '- %s: Falta EPS o el contacto no tiene Codigo PILA.' % emp_name
                 )
 
             # Validar código AFP
@@ -288,14 +339,19 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
                     emp, 'l10n_co_ne_foreigner_no_pension', False
                 ):
                     errors.append(
-                        '- %s: Falta codigo AFP.' % emp_name
+                        '- %s: Falta AFP o el contacto no tiene Codigo PILA.' % emp_name
                     )
 
             # Validar código CCF
-            if not getattr(emp, 'l10n_co_pila_ccf_code', None):
-                errors.append(
-                    '- %s: Falta codigo CCF.' % emp_name
-                )
+            try:
+                ccf = emp._ne_caja_compensacion()
+            except UserError as err:
+                errors.append('- %s: %s' % (emp_name, err.args[0]))
+            else:
+                if not ccf.l10n_co_pila_entity_code:
+                    errors.append(
+                        '- %s: La Caja de Compensación no tiene Codigo PILA.' % emp_name
+                    )
 
             # Validar número de identificación
             if not emp.identification_id:
@@ -414,11 +470,14 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         )
 
         # Construir datos de cotizantes (Tipo 02)
+        # H-017b: PILA reporta UNA linea por cotizante y mes; los recibos del mes
+        # (nomina, liquidacion parcial, bonificacion) se agrupan por empleado y el IBC y
+        # los dias salen del consolidado mensual (l10n.co.ibc.mensual).
         cotizantes = []
         seq = 1
-        for payslip in payslips:
-            cotizante = self._build_cotizante_data(payslip, seq)
-            cotizantes.append(cotizante)
+        for employee in payslips.mapped('employee_id'):
+            slips = payslips.filtered(lambda s: s.employee_id == employee)
+            cotizantes.append(self._build_cotizante_data(slips[-1], seq, slips))
             seq += 1
 
         # Generar archivo completo
@@ -432,6 +491,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             self.year,
             self.month,
         )
+        self._validar_planilla_correccion()
         self.write({
             'file_data': base64.b64encode(
                 file_content.encode('utf-8'),
@@ -439,6 +499,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             'file_name': filename,
             'state': 'generated',
         })
+        self._registrar_planilla(payslips)
 
         _logger.info(
             'Archivo PILA generado: %s (%d cotizantes)',
@@ -491,6 +552,26 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     # ──────────────────────────────────────────────────────────────────
     # Búsqueda de nóminas del período
     # ──────────────────────────────────────────────────────────────────
+    def _registrar_planilla(self, payslips):
+        """Deja constancia de la planilla generada y de los IBC consolidados que uso."""
+        self.ensure_one()
+        periodo = date(int(self.year), int(self.month), 1)
+        planilla = self.env['l10n.co.pila.planilla'].create({
+            'company_id': self.company_id.id, 'period': periodo,
+            'tipo_planilla': self.tipo_planilla,
+            'operador_code': self.company_id.l10n_co_pila_operador_code or '',
+            'planilla_original_id': self.planilla_original_id.id,
+            'file_name': self.file_name,
+        })
+        for consolidado in self.env['l10n.co.ibc.mensual'].search([
+                ('company_id', '=', self.company_id.id), ('period', '=', periodo),
+                ('employee_id', 'in', payslips.mapped('employee_id').ids)]):
+            consolidado.write({
+                'planilla_id': planilla.id, 'ibc_sp_planilla': consolidado.ibc_sp,
+                'ibc_arl_planilla': consolidado.ibc_arl,
+                'ibc_paraf_planilla': consolidado.ibc_paraf})
+        return planilla
+
     def _get_period_payslips(self, company, year, month):
         """Busca nóminas confirmadas del período indicado.
 
@@ -510,9 +591,10 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
 
         return self.env['hr.payslip'].search([
             ('company_id', '=', company.id),
-            ('state', '=', 'done'),
-            ('date_from', '>=', date_from),
-            ('date_from', '<', date_to),
+            ('state', 'in', ('done', 'paid')),
+            # date_to y no date_from: la liquidacion tiene date_from = inicio de contrato.
+            ('date_to', '>=', date_from),
+            ('date_to', '<', date_to),
             # doc 39 (2026-10-04): excluir empleados sintéticos del
             # wizard de habilitación DIAN -- nunca son personal real,
             # no deben contarse en un reporte PILA real.
@@ -567,8 +649,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             'numero_planilla_asociada': self.numero_planilla_asociada or '',
             'fecha_pago_asociada': str(self.fecha_pago_asociada)
             if self.fecha_pago_asociada else '',
-            'forma_presentacion': company.l10n_co_pila_forma_presentacion
-            or 'U',
+            'forma_presentacion': company._ne_valor_obligatorio('l10n_co_pila_forma_presentacion'),
             'codigo_sucursal': company.l10n_co_pila_codigo_sucursal or '',
             'nombre_sucursal': company.l10n_co_pila_nombre_sucursal or '',
             'codigo_arl': company.l10n_co_pila_arl_code or '',
@@ -576,7 +657,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             'periodo_cotizacion_pension': periodo_str,
             'numero_total_cotizantes': len(payslips),
             'valor_total_nomina': total_nomina,
-            'tipo_aportante': company.l10n_co_pila_tipo_aportante or '1',
+            'tipo_aportante': company._ne_valor_obligatorio('l10n_co_pila_tipo_aportante'),
             'codigo_operador': company.l10n_co_pila_operador_code or '',
             'fecha_pago': '',
             'numero_planilla': '',
@@ -585,24 +666,59 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
     # ──────────────────────────────────────────────────────────────────
     # Builder: Datos de cotizante (Tipo 02)
     # ──────────────────────────────────────────────────────────────────
-    def _build_cotizante_data(self, payslip, seq):
+    def _aportes_salud_pension(self, ibc_sp, ibc_sln, dias_sp, dias_sln, tarifa_afp, tarifa_eps, _p,
+                               exonerado=False):
+        """Salud y pensión del cotizante con la regla de SLN.
+
+        Sobre los días de suspensión o licencia no remunerada el trabajador no paga su cuota;
+        el empleador paga solo su tarifa de salud y, si la compañía lo decide (opcional en el
+        sector privado: Concepto Min. Protección Social 134658, CST art. 53), su tarifa de
+        pensión. Si el cotizante está exonerado del aporte patronal en salud, la tarifa patronal
+        de salud sobre los días SLN es cero (guía del Min. Salud a los operadores, "Cotizante
+        exonerado aporte patronal en salud y reporte de la novedad SLN"). Sin pensión SLN, IBC
+        y días de pensión excluyen los días SLN."""
+        cotiza = self.company_id.l10n_co_ne_pension_patronal_sln
+        ibc_normal = ibc_sp - ibc_sln
+        return {
+            'ibc_pension': ibc_sp if cotiza else ibc_normal,
+            'dias_pension': dias_sp if cotiza else dias_sp - dias_sln,
+            'cotizacion_pension': round(
+                ibc_normal * tarifa_afp
+                + (ibc_sln * _p('l10n_co_pct_pension_empleador') / 100 if cotiza else 0.0)),
+            'cotizacion_salud': round(
+                ibc_normal * tarifa_eps
+                + (0.0 if exonerado else ibc_sln * _p('l10n_co_pct_salud_empleador') / 100)),
+        }
+
+    def _build_cotizante_data(self, payslip, seq, payslips=None):
         """Construye el diccionario de datos de un cotizante (Tipo 02).
 
         Lee datos del empleado, contrato y líneas de nómina para
         generar los 98 campos del registro Tipo 02.
 
         Args:
-            payslip: hr.payslip recordset (una nómina).
+            payslip: hr.payslip recordset (la nómina más reciente del mes).
             seq: int, número de secuencia.
+            payslips: todos los recibos del empleado en el mes (por defecto, solo `payslip`).
 
         Returns:
             dict con todos los campos del registro Tipo 02.
         """
         employee = payslip.employee_id
         contract = payslip.contract_id
+        payslips = payslips or payslip
+
+        # IBC y dias consolidados del empleado en el mes (H-017b): unica fuente.
+        consolidado = self.env['l10n.co.ibc.mensual']._refrescar(
+            payslip.company_id, employee, payslip.date_to)
+        if not consolidado:
+            raise UserError(_(
+                'No hay IBC consolidado para %(empleado)s en %(mes)s: ningun recibo '
+                'confirmado trae las lineas de IBC. Recalcule y confirme la nomina.',
+                empleado=employee.name, mes=payslip.date_to.strftime('%Y-%m')))
 
         # Separar nombre completo en componentes
-        name_parts = dian_utils.split_name(employee.name or '')
+        name_parts = employee._l10n_co_nombre_dian()
 
         # Mapeo tipo de documento al formato PILA
         doc_type_code = dian_utils.get_doc_type_code(
@@ -630,8 +746,8 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         # Función auxiliar para obtener valor de línea de nómina
         def get_line(code):
             """Obtiene el valor absoluto de una línea de nómina por código."""
-            line = payslip.line_ids.filtered(lambda l: l.code == code)
-            return abs(line.total) if line else 0.0
+            lines = payslips.line_ids.filtered(lambda l: l.code == code)
+            return sum(abs(l.total) for l in lines)
 
         RuleParameter = self.env['hr.rule.parameter']
 
@@ -644,19 +760,13 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         integral = bool(
             getattr(contract, 'l10n_co_ne_integral_salary', False))
 
-        # Cálculo del IBC
-        ibc_base = get_line('CO_BRUTO') or salario
-        if integral:
-            # Salario integral: IBC = factor_integral_salary del salario
-            ibc_base = salario * _p('l10n_co_factor_integral_salary')
-
-        # Días trabajados
-        _dias_mes_comercial = _p('l10n_co_dias_mes_comercial')
-        dias = _dias_mes_comercial  # Default: mes completo
-        worked = payslip.worked_days_line_ids.filtered(
-            lambda w: w.code == 'WORK100')
-        if worked:
-            dias = min(int(worked.number_of_days), _dias_mes_comercial)
+        # IBC y dias por subsistema: del consolidado mensual (40%, piso, techo ya aplicados)
+        ibc_sp = consolidado.ibc_sp
+        ibc_arl = consolidado.ibc_arl
+        ibc_paraf = consolidado.ibc_paraf
+        dias_sp = consolidado.dias_sp
+        dias_arl = consolidado.dias_arl
+        dias_paraf = consolidado.dias_paraf
 
         # Aportes desde líneas de nómina
         salud_emp = get_line('CO_SALUD_EMP')
@@ -678,7 +788,8 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             _p('l10n_co_pct_salud_empleado')
             + _p('l10n_co_pct_salud_empleador')
         ) / 100
-        tarifa_arl = _p('l10n_co_pct_arl_default') / 100  # Riesgo I por defecto
+        # H-005: tarifa según la Clase de Riesgo ARL del contrato (misma fuente que CO_ARL_CIA).
+        tarifa_arl = payslip._ne_pct_arl() / 100
         tarifa_ccf = _p('l10n_co_pct_ccf') / 100
         tarifa_sena = _p('l10n_co_pct_sena') / 100
         tarifa_icbf = _p('l10n_co_pct_icbf') / 100
@@ -690,18 +801,27 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         # -- mismo criterio centralizado que usan las reglas salariales
         # CO_SENA_CIA/CO_ICBF_CIA/CO_SALUD_CIA, para que PILA y nómina no
         # puedan divergir para el mismo empleado.
+        ibc_sln = min(consolidado.ibc_sln, ibc_sp)
+        dias_sln = min(consolidado.dias_sln, dias_sp)
+        # La base SLN no es remuneracion devengada: no cuenta para el umbral de exoneracion.
         exonerado = 'S' if self.company_id._is_exonerado_parafiscales(
-            ibc_base, payslip.date_from) else 'N'
+            ibc_sp - ibc_sln, payslip.date_from) else 'N'
 
         # Cálculos de aportes
-        cotizacion_pension = round(ibc_base * tarifa_afp)
-        cotizacion_salud = round(ibc_base * tarifa_eps)
-        cotizacion_arl = round(arl) if arl else round(ibc_base * tarifa_arl)
-        aporte_ccf_val = round(ccf) if ccf else round(ibc_base * tarifa_ccf)
-        aporte_sena_val = round(sena) if sena else round(
-            ibc_base * tarifa_sena)
-        aporte_icbf_val = round(icbf) if icbf else round(
-            ibc_base * tarifa_icbf)
+        # Sobre el IBC consolidado (lo que realmente se paga en la planilla). Las lineas de
+        # los recibos pueden diferir en meses con varios documentos; la diferencia queda
+        # auditable en l10n.co.ibc.mensual (ajuste patronal), no se reescribe el recibo.
+        sp = self._aportes_salud_pension(
+            ibc_sp, ibc_sln, dias_sp, dias_sln, tarifa_afp, tarifa_eps, _p,
+            exonerado=exonerado == 'S')
+        ibc_pension = sp['ibc_pension']
+        dias_pension = sp['dias_pension']
+        cotizacion_pension = sp['cotizacion_pension']
+        cotizacion_salud = sp['cotizacion_salud']
+        cotizacion_arl = round(ibc_arl * tarifa_arl)
+        aporte_ccf_val = round(ibc_paraf * tarifa_ccf)
+        aporte_sena_val = round(ibc_paraf * tarifa_sena)
+        aporte_icbf_val = round(ibc_paraf * tarifa_icbf)
         avp_afiliado = get_line('CO_PENSION_VOL')
         total_pension = cotizacion_pension + round(fsp) + avp_afiliado
 
@@ -711,10 +831,8 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             'secuencia': str(seq).zfill(5),
             'tipo_documento': tipo_doc_pila,
             'numero_documento': employee.identification_id or '',
-            'tipo_cotizante': getattr(
-                contract, 'l10n_co_pila_tipo_cotizante', '01') or '01',
-            'subtipo_cotizante': getattr(
-                contract, 'l10n_co_pila_subtipo_cotizante', '00') or '00',
+            'tipo_cotizante': contract._ne_valor_obligatorio('l10n_co_pila_tipo_cotizante'),
+            'subtipo_cotizante': contract._ne_valor_obligatorio('l10n_co_pila_subtipo_cotizante'),
             'extranjero_no_pension': 'X' if getattr(
                 employee, 'l10n_co_ne_foreigner_no_pension', False
             ) else '',
@@ -755,24 +873,23 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
                 employee, 'l10n_co_pila_eps_code', '') or '',
             'codigo_eps_traslado': getattr(
                 employee, 'l10n_co_pila_eps_traslado', '') or '',
-            'codigo_ccf': getattr(
-                employee, 'l10n_co_pila_ccf_code', '') or '',
+            'codigo_ccf': employee._ne_caja_compensacion().l10n_co_pila_entity_code or '',
 
             # Días cotizados
-            'dias_pension': dias,
-            'dias_salud': dias,
-            'dias_arl': dias,
-            'dias_ccf': dias,
+            'dias_pension': dias_pension,
+            'dias_salud': dias_sp,
+            'dias_arl': dias_arl,
+            'dias_ccf': dias_paraf,
 
             # Salario
             'salario_basico': salario,
             'salario_integral': 'X' if integral else '',
 
             # IBC por subsistema
-            'ibc_pension': ibc_base,
-            'ibc_salud': ibc_base,
-            'ibc_arl': ibc_base,
-            'ibc_ccf': ibc_base,
+            'ibc_pension': ibc_pension,
+            'ibc_salud': ibc_sp,
+            'ibc_arl': ibc_arl,
+            'ibc_ccf': ibc_paraf,
 
             # Pensión
             'tarifa_pension': tarifa_afp,
@@ -795,8 +912,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
 
             # ARL
             'tarifa_arl': tarifa_arl,
-            'centro_trabajo': getattr(
-                contract, 'l10n_co_pila_centro_trabajo', '') or '',
+            'centro_trabajo': contract._ne_centro_trabajo(),
             'cotizacion_arl': cotizacion_arl,
 
             # Parafiscales
@@ -819,8 +935,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             # ARL detalle
             'codigo_arl': getattr(
                 self.company_id, 'l10n_co_pila_arl_code', '') or '',
-            'clase_riesgo': getattr(
-                contract, 'l10n_co_pila_clase_riesgo', '1') or '1',
+            'clase_riesgo': contract._ne_clase_riesgo(),
             'tarifa_especial_pension': getattr(
                 contract, 'l10n_co_pila_tarifa_especial_afp', '') or '',
 
@@ -842,15 +957,15 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
             'fecha_fin_irl': novedades.get('fecha_fin_irl', ''),
 
             # Campos finales
-            'ibc_otros_parafiscales': ibc_base,
-            'horas_laboradas': dias * 8,
+            'ibc_otros_parafiscales': ibc_paraf,
+            'horas_laboradas': dias_paraf * 8,
             'fecha_radicacion_exterior': str(
                 getattr(employee, 'l10n_co_pila_fecha_radicacion_ext', '')
                 or '') if getattr(
                 employee, 'l10n_co_pila_colombiano_exterior', False
             ) else '',
-            'actividad_economica_arl': getattr(
-                contract, 'l10n_co_pila_actividad_economica', '') or '',
+            'actividad_economica_arl': (
+                contract.l10n_co_pila_actividad_economica.code or ''),
         }
 
     # ──────────────────────────────────────────────────────────────────

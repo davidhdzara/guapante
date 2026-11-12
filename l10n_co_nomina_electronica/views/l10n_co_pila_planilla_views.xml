@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Registro de planillas PILA generadas: se completan numero y fecha de pago cuando el
+         operador las asigna; la planilla tipo N las exige. -->
+    <record id="view_l10n_co_pila_planilla_list" model="ir.ui.view">
+        <field name="name">l10n.co.pila.planilla.list</field>
+        <field name="model">l10n.co.pila.planilla</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="period"/>
+                <field name="tipo_planilla"/>
+                <field name="operador_code"/>
+                <field name="numero_planilla"/>
+                <field name="fecha_pago"/>
+                <field name="cotizantes"/>
+                <field name="requiere_correccion"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_pila_planilla_form" model="ir.ui.view">
+        <field name="name">l10n.co.pila.planilla.form</field>
+        <field name="model">l10n.co.pila.planilla</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="period"/>
+                            <field name="tipo_planilla"/>
+                            <field name="operador_code"/>
+                            <field name="planilla_original_id"/>
+                        </group>
+                        <group>
+                            <field name="numero_planilla"/>
+                            <field name="fecha_pago"/>
+                            <field name="file_name"/>
+                            <field name="user_id"/>
+                            <field name="requiere_correccion"/>
+                        </group>
+                    </group>
+                    <field name="ibc_mensual_ids">
+                        <list>
+                            <field name="employee_id"/>
+                            <field name="ibc_sp"/>
+                            <field name="ibc_sp_planilla"/>
+                            <field name="ibc_arl"/>
+                            <field name="ibc_paraf"/>
+                            <field name="requiere_planilla_n"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_l10n_co_pila_planilla" model="ir.actions.act_window">
+        <field name="name">Planillas PILA</field>
+        <field name="res_model">l10n.co.pila.planilla</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_l10n_co_pila_planilla"
+              name="Planillas PILA"
+              parent="menu_l10n_co_nomina_reportes"
+              action="action_l10n_co_pila_planilla"
+              sequence="22"/>
+</odoo>

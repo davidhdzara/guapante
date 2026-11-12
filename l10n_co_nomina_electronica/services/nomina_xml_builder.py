@@ -1974,10 +1974,9 @@ def _build_reemplazar_v2(parent: etree._Element, data: dict) -> None:
 def _build_eliminar_v2(parent: etree._Element, data: dict) -> None:
     """Equivalente a _build_eliminar(), migrado -- ver build_nomina_individual_v2().
 
-    Nota (doc 31): hereda tal cual el bug preexistente de atributos invalidos
-    contra el XSD de Ajuste (CodigoTrabajador/PeriodoNomina) -- no se corrige
-    aqui, doc 24 migra la construccion del XML, no corrige bugs normativos
-    independientes encontrados en el camino."""
+    Nota (doc 31, corregido en H-001): ya no emite PeriodoNomina ni TipoMoneda en
+    InformacionGeneral, ni CodigoTrabajador en NumeroSecuenciaXML (el llamador no lo pasa),
+    que el XSD de Eliminar no admite."""
     elim = _el(parent, 'Eliminar')
 
     pred = data.get('predecesor', {})
@@ -1995,8 +1994,13 @@ def _build_eliminar_v2(parent: etree._Element, data: dict) -> None:
 
     _el(elim, 'CodigoQR', text=data.get('codigo_qr', ''))
 
-    _append_dict_section(elim, 'InformacionGeneral',
-                          _get_informacion_general_node(data.get('informacion_general', {})), _NSMAP_AJUSTE)
+    # H-001: el XSD de Eliminar/InformacionGeneral solo admite Version, Ambiente, TipoXML, CUNE,
+    # EncripCUNE, FechaGen y HoraGen -- NO PeriodoNomina ni TipoMoneda (ni TRM), que
+    # _get_informacion_general_node() agrega siempre para Reemplazar y la nómina individual.
+    info_general = _get_informacion_general_node(data.get('informacion_general', {}))
+    for atributo in ('PeriodoNomina', 'TipoMoneda', 'TRM'):
+        info_general.pop(atributo, None)
+    _append_dict_section(elim, 'InformacionGeneral', info_general, _NSMAP_AJUSTE)
 
     notas = data.get('notas')
     if notas:

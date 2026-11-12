@@ -64,6 +64,7 @@ class L10nCoNominaUgpp(models.Model):
     """Generador de reportes UGPP para Storm User."""
 
     _name = 'l10n_co_nomina.ugpp'
+    _check_company_auto = True
     _description = 'Reporte UGPP – Storm User'
     _order = 'year desc, month desc'
 
@@ -206,9 +207,11 @@ class L10nCoNominaUgpp(models.Model):
         # Buscar nóminas del período
         payslips = self.env['hr.payslip'].search([
             ('company_id', '=', self.company_id.id),
-            ('date_from', '>=', self.date_from),
+            # date_to y no date_from: la liquidacion tiene date_from = inicio de contrato
+            # (H-017b); y los recibos pagados tambien se reportan.
+            ('date_to', '>=', self.date_from),
             ('date_to', '<=', self.date_to),
-            ('state', '=', 'done'),
+            ('state', 'in', ('done', 'paid')),
             # doc 39 (2026-10-04): excluir empleados sintéticos del
             # wizard de habilitación DIAN -- nunca son personal real,
             # no deben contarse en un reporte UGPP real.
@@ -461,32 +464,38 @@ class L10nCoNominaUgpp(models.Model):
     # IBC Calculation
     # ──────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _compute_ibc(total_salarial, total_no_salarial, contract, smmlv,
-                      factor_integral_salary=0.70):
-        """Calcula el IBC según normativa colombiana.
-
-        - Art. 132 CST: Salario integral → IBC = factor_integral_salary
-          del salario (Parámetros Anuales, 70% por defecto).
-        - Art. 127/128 CST + Art. 30 Ley 1393/2010: pagos no salariales
-          se excluyen hasta el 40% de la remuneración total.
-        - Decreto 780/2016: piso 1 SMMLV, techo 25 SMMLV.
-        """
-        if contract and contract.l10n_co_ne_integral_salary:
-            ibc = contract.wage * factor_integral_salary
-        else:
-            total_remuneracion = total_salarial + total_no_salarial
-            limite_no_salarial = total_remuneracion * 0.40
-            exceso_no_salarial = max(0, total_no_salarial - limite_no_salarial)
-            ibc = total_salarial + exceso_no_salarial
-
-        ibc = max(ibc, smmlv)       # Piso: 1 SMMLV
-        ibc = min(ibc, smmlv * 25)  # Techo: 25 SMMLV
-        return ibc
-
     # ──────────────────────────────────────────────────────────────────
     # Hoja 3: nomina – UGPP Storm User V-20.1
     # ──────────────────────────────────────────────────────────────────
+
+    @api.model
+    def _dias_ugpp(self, consolidado):
+        """Días del empleado-mes para las columnas 19-26 del reporte.
+
+        Total = ``consolidado.dias_sp`` (misma fuente que PILA). Cada novedad se suma de las
+        mismas funciones de días que usan las reglas de nómina y PILA, sobre los recibos del
+        consolidado; los días trabajados son lo que resta del total (sin negativos).
+        ``huelga`` no tiene fuente en el módulo y queda en 0."""
+        dias = dict.fromkeys(
+            ('incapacidad', 'lic_mat', 'lic_rem', 'suspension', 'vacaciones', 'huelga'), 0)
+        for slip in consolidado.payslip_ids:
+            for codigo in ('CO_INC_COMUN', 'CO_INC_LABORAL'):
+                dias['incapacidad'] += slip._ne_ausencia_calendario(codigo)[0]
+            for codigo in ('CO_LIC_MAT', 'CO_LIC_PAT'):
+                dias['lic_mat'] += slip._ne_ausencia_calendario(codigo)[0]
+            dias['suspension'] += slip._ne_dias_sln()
+            for wd in slip.worked_days_line_ids:
+                codigo = wd.work_entry_type_id.code
+                if codigo == 'CO_LIC_REM':
+                    dias['lic_rem'] += wd.number_of_days
+                elif codigo == 'CO_VAC':
+                    dias['vacaciones'] += wd.number_of_days
+        dias = {k: int(v) for k, v in dias.items()}
+        total = int(consolidado.dias_sp)
+        dias['total'] = total
+        dias['trabajados'] = max(0, total - sum(
+            v for k, v in dias.items() if k != 'total'))
+        return dias
 
     def _generate_sheet_nomina(
         self, ws, payslips, header_font, header_fill,
@@ -556,16 +565,12 @@ class L10nCoNominaUgpp(models.Model):
         # ── Preparar mapeos ──────────────────────────────────────────
         from ..services import dian_utils
 
-        RuleParameter = self.env['hr.rule.parameter']
-        smmlv = RuleParameter._get_parameter_from_code(
-            'l10n_co_smmlv', self.date_from)
-        factor_integral_salary = RuleParameter._get_parameter_from_code(
-            'l10n_co_factor_integral_salary', self.date_from)
         period_start = self.date_from
         period_end = self.date_to
 
         # ── Iterar nóminas ───────────────────────────────────────────
         row_num = 2
+        ibc_reportados = set()
         for payslip in payslips.sorted(
             key=lambda p: (p.employee_id.name, p.number or '')
         ):
@@ -595,44 +600,38 @@ class L10nCoNominaUgpp(models.Model):
                         # Compensaciones son salariales para IBC
                         total_salarial += line.total
 
-            # -- Días por tipo UGPP ------------------------------------
-            # Simplificación: se toma quantity de las líneas de nómina
-            # cuya regla tiene el tipo UGPP correspondiente.
-            days_by_type = {}
-            for line in payslip.line_ids:
-                ugpp_type = line.salary_rule_id.l10n_co_ugpp_payment_type
-                if ugpp_type and line.quantity:
-                    days_by_type[ugpp_type] = (
-                        days_by_type.get(ugpp_type, 0.0) + line.quantity
-                    )
+            # -- Días e IBC: del consolidado mensual (H-017b / UGPP días) ----
+            # El consolidado es por empleado y mes: PILA, nómina y este reporte comparten la
+            # misma fuente. Si hay varios recibos, días e IBC van solo en la primera fila de
+            # ese empleado y mes; las siguientes en 0 para no duplicar.
+            clave_ibc = (employee.id, payslip.date_to.strftime('%Y-%m'))
+            if clave_ibc in ibc_reportados:
+                ibc_data = [0.0, 0.0, 0.0, 0.0]
+                dias = dict.fromkeys(
+                    ('trabajados', 'incapacidad', 'lic_mat', 'lic_rem', 'suspension',
+                     'vacaciones', 'huelga', 'total'), 0)
+            else:
+                consolidado = self.env['l10n.co.ibc.mensual']._refrescar(
+                    payslip.company_id, employee, payslip.date_to)
+                if not consolidado:
+                    raise UserError(_(
+                        'No hay IBC consolidado para %(empleado)s en %(mes)s: ningun '
+                        'recibo confirmado trae las lineas de IBC. Recalcule y confirme '
+                        'la nomina.',
+                        empleado=employee.name, mes=payslip.date_to.strftime('%Y-%m')))
+                ibc_reportados.add(clave_ibc)
+                ibc_data = [consolidado.ibc_sp, consolidado.ibc_sp,
+                            consolidado.ibc_arl, consolidado.ibc_paraf]
+                dias = self._dias_ugpp(consolidado)
 
-            dias_incapacidad = int(days_by_type.get('tp_incapacidad', 0))
-            dias_licencia_mat = int(days_by_type.get('tp_licencia_mat_pat', 0))
-            dias_lic_remunerada = int(
-                days_by_type.get('tp_licencia_remunerada', 0)
-            )
-            dias_vacaciones = int(
-                days_by_type.get('tp_vacaciones', 0)
-                + days_by_type.get('tp_vacaciones_terminacion', 0)
-                + days_by_type.get('tp_descanso_anual', 0)
-            )
-
-            # Días trabajados (WORK100)
-            dias_trabajados = int(sum(
-                wd.number_of_days
-                for wd in payslip.worked_days_line_ids
-                if wd.work_entry_type_id.code == 'WORK100'
-            ) or 30)
-
-            dias_suspension = 0
-            dias_huelga = 0
-
-            total_dias = min(
-                dias_trabajados + dias_incapacidad + dias_licencia_mat
-                + dias_lic_remunerada + dias_suspension + dias_vacaciones
-                + dias_huelga,
-                30,
-            )
+            dias_trabajados = dias['trabajados']
+            dias_incapacidad = dias['incapacidad']
+            dias_licencia_mat = dias['lic_mat']
+            dias_lic_remunerada = dias['lic_rem']
+            dias_suspension = dias['suspension']
+            dias_vacaciones = dias['vacaciones']
+            dias_huelga = dias['huelga']
+            total_dias = dias['total']
 
             # -- Novedades (X / vacío) ---------------------------------
             nov_incapacidad = 'X' if dias_incapacidad > 0 else ''
@@ -642,7 +641,7 @@ class L10nCoNominaUgpp(models.Model):
             nov_vacaciones = 'X' if dias_vacaciones > 0 else ''
 
             # -- Nombre: APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2 -----------
-            name_parts = dian_utils.split_name(employee.name)
+            name_parts = employee._l10n_co_nombre_dian()
             nombre_cotizante = ' '.join(filter(None, [
                 name_parts.get('primer_apellido', ''),
                 name_parts.get('segundo_apellido', ''),
@@ -740,15 +739,6 @@ class L10nCoNominaUgpp(models.Model):
             concept_data = [
                 rule_totals.get(rule.id, 0.0) for rule in ugpp_rules
             ]
-
-            # ═════════════════════════════════════════════════════════
-            # Columnas IBC
-            # ═════════════════════════════════════════════════════════
-            ibc = self._compute_ibc(
-                total_salarial, total_no_salarial, contract, smmlv,
-                factor_integral_salary=factor_integral_salary,
-            )
-            ibc_data = [ibc, ibc, ibc, ibc]
 
             # ═════════════════════════════════════════════════════════
             # Escribir fila completa

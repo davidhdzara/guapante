@@ -152,7 +152,7 @@ class HrPayslipLeaveIntegration(models.Model):
 
     def compute_sheet(self):
         res = super(HrPayslipLeaveIntegration, self).compute_sheet()
-        for payslip in self:
+        for payslip in self._ne_solo_colombia():
             payslip.action_detect_leaves()
         return res
 

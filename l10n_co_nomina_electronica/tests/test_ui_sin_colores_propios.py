@@ -17,9 +17,10 @@ los campos/divs señalados por Tech Lead ya no tienen esos atributos."""
 
 from lxml import etree
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestUiSinColoresPropios(TransactionCase):
 
     def _arch(self, xmlid):

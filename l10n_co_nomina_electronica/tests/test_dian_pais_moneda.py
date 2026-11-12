@@ -14,7 +14,7 @@ from datetime import date
 from unittest.mock import patch
 
 from odoo.exceptions import UserError
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.l10n_co_nomina_electronica.services import dian_utils
 
@@ -28,6 +28,7 @@ class _FakeCertificate:
         return True
 
 
+@tagged('post_install', '-at_install')
 class TestDianPaisMoneda(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -43,7 +44,7 @@ class TestDianPaisMoneda(TransactionCase):
         cls.cop_currency = cop_currency
         cls.usd_currency = usd_currency
 
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba País/Moneda',
             'currency_id': cls.cop_currency.id,
         })
@@ -107,6 +108,8 @@ class TestDianPaisMoneda(TransactionCase):
             'identification_id': '60' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
+            'l10n_co_ne_worker_type': '01',  # sin default (.181)
+            'l10n_co_ne_worker_subtype': '00',
         }
         employee = self.env['hr.employee'].create(employee_vals)
         # UX-02 (2026-10-11): _ne_tipo_documento() exige un tipo de documento con
@@ -115,7 +118,7 @@ class TestDianPaisMoneda(TransactionCase):
             'l10n_co.national_citizen_id').id
         if work_address is not None:
             employee.address_id = work_address.id
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato Prueba',
             'employee_id': employee.id,
             'company_id': self.company.id,

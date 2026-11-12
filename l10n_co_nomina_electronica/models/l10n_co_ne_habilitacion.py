@@ -25,7 +25,7 @@ import logging
 from datetime import timedelta
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 from ..services import habilitacion_test_data, soap_client
 
@@ -51,6 +51,7 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     def start(self, company):
         """Inicia (o retoma) la habilitación de ``company``. Devuelve una notificación."""
         company.ensure_one()
+        self._check_puede_habilitar(company)
         if company.l10n_co_ne_hab_state == 'running':
             return self._toast(
                 _('Habilitación en proceso'),
@@ -73,6 +74,24 @@ class L10nCoNeHabilitacion(models.AbstractModel):
             message = _('Se regeneraron %d documento(s) rechazado(s) con consecutivo nuevo. ',
                         replaced) + message
         return self._toast(_('Habilitación iniciada'), message, 'success')
+
+    @api.model
+    def _check_puede_habilitar(self, company):
+        """H-022: ``start`` es público (RPC) y escribe con sudo y gasta cupo real del set de
+        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Mismo criterio del
+        asistente de certificación que este motor reutiliza: administrador de nómina o de
+        sistema, y solo sobre una compañía a la que el usuario pertenece."""
+        user = self.env.user
+        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager')
+        if not (user.has_group('hr_payroll.group_hr_payroll_manager')
+                or user.has_group('base.group_system')):
+            raise AccessError(_(
+                'No tiene permiso para iniciar la habilitación DIAN. Solicite que le asignen '
+                'el rol "%(rol)s" o el de administrador del sistema.', rol=grupo.full_name))
+        if company not in user.company_ids:
+            raise AccessError(_(
+                'No puede iniciar la habilitación DIAN de la compañía "%(company)s": usted no '
+                'tiene acceso a ella.', company=company.sudo().name))
 
     @api.model
     def progress(self, company):
@@ -100,7 +119,10 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _cron_step(self):
-        companies = self.env['res.company'].sudo().search([('l10n_co_ne_hab_state', '=', 'running')])
+        companies = self.env['res.company'].sudo().search([
+            ('l10n_co_ne_hab_state', '=', 'running'),
+            ('partner_id.country_id.code', '=', 'CO'),
+        ])
         for company in companies:
             try:
                 finished = self.with_company(company)._step(company)

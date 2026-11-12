@@ -23,13 +23,8 @@ class HrContractDeductions(models.Model):
     # ──────────────────────────────────────────────────────────────────
     # Deducciones Legales
     # ──────────────────────────────────────────────────────────────────
-    l10n_co_ne_libranza = fields.Monetary(
-        string='Libranza Mensual',
-        currency_field='currency_id',
-        help='Valor mensual de descuento por libranza. '
-             'Se aplica automaticamente en cada nomina. '
-             'Si se ingresa un valor manual en la nomina, este tiene prioridad.',
-    )
+    # Libranzas: ya no es un monto en el contrato; viven en Asignaciones
+    # Salariales (hr.salary.attachment, tipo Libranza), una por entidad.
     l10n_co_ne_sindicato = fields.Monetary(
         string='Cuota Sindical Mensual',
         currency_field='currency_id',
@@ -47,7 +42,7 @@ class HrContractDeductions(models.Model):
              'Art. 126-4 ET. Se deduce automaticamente cada mes.',
     )
     l10n_co_ne_pension_voluntaria = fields.Monetary(
-        string='Pension Voluntaria Mensual',
+        string='Pensión Voluntaria Mensual',
         currency_field='currency_id',
         help='Aporte voluntario a fondo de pensiones. '
              'Art. 126-1 ET. Se deduce automaticamente cada mes.',
@@ -74,3 +69,33 @@ class HrContractDeductions(models.Model):
         help='Descuento mensual por credito educativo o convenio. '
              'Se deduce automaticamente cada mes.',
     )
+
+    # ──────────────────────────────────────────────────────────────────
+    # Tercero de cada deduccion (contacto real al que se paga lo retenido).
+    # Sin tercero no se calcula la nomina de un empleado que tenga esa
+    # deduccion (ver hr_payslip._ne_validar_terceros_deducciones).
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_sindicato_partner_id = fields.Many2one(
+        'res.partner', string='Sindicato',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto del sindicato al que se paga la cuota sindical.')
+    l10n_co_ne_afc_partner_id = fields.Many2one(
+        'res.partner', string='Entidad AFC',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto de la entidad donde está la cuenta AFC.')
+    l10n_co_ne_pension_voluntaria_partner_id = fields.Many2one(
+        'res.partner', string='Fondo Pensión Voluntaria',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto del fondo de pensión voluntaria.')
+    l10n_co_ne_plan_complementario_partner_id = fields.Many2one(
+        'res.partner', string='Entidad Plan Complementario',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto de la entidad del plan complementario de salud.')
+    l10n_co_ne_cooperativa_partner_id = fields.Many2one(
+        'res.partner', string='Cooperativa / Fondo',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto de la cooperativa o fondo de empleados.')
+    l10n_co_ne_educacion_partner_id = fields.Many2one(
+        'res.partner', string='Entidad Educación',
+        domain=[('l10n_co_entity_type', '=', 'other')],
+        help='Contacto de la entidad educativa o del convenio.')

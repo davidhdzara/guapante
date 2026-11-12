@@ -15,10 +15,27 @@
         <field name="inherit_id" ref="hr_payroll.hr_salary_attachment_view_form"/>
         <field name="arch" type="xml">
             <field name="monthly_amount" invisible="is_quantity" position="after">
-                <field name="l10n_co_embargo_porcentaje"/>
+                <field name="l10n_co_company_country_code" invisible="1"/>
+                <field name="l10n_co_embargo_porcentaje"
+                       invisible="l10n_co_company_country_code != 'CO'"/>
             </field>
             <field name="date_start" position="after">
-                <field name="l10n_co_embargo_juzgado"/>
+                <field name="l10n_co_es_libranza" invisible="1"/>
+                <field name="l10n_co_es_embargo" invisible="1"/>
+                <field name="l10n_co_partner_id"
+                       invisible="l10n_co_company_country_code != 'CO'"
+                       required="l10n_co_es_libranza or l10n_co_es_embargo"
+                       options="{'no_create': True}"/>
+                <field name="l10n_co_embargo_juzgado"
+                       invisible="l10n_co_company_country_code != 'CO' or not l10n_co_embargo_juzgado"/>
+                <field name="l10n_co_saldo_pendiente"
+                       invisible="l10n_co_company_country_code != 'CO' or not l10n_co_es_libranza"/>
+                <field name="l10n_co_autoriza_liquidacion"
+                       invisible="l10n_co_company_country_code != 'CO' or not l10n_co_es_libranza"/>
+                <field name="l10n_co_alcanza_prestaciones"
+                       invisible="l10n_co_company_country_code != 'CO' or not l10n_co_es_embargo"/>
+                <field name="l10n_co_alcanza_indemnizacion"
+                       invisible="l10n_co_company_country_code != 'CO' or not l10n_co_es_embargo"/>
             </field>
         </field>
     </record>

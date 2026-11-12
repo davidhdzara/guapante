@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_l10n_co_ne_status_cune_wizard_form" model="ir.ui.view">
+        <field name="name">l10n.co.ne.status.cune.wizard.form</field>
+        <field name="model">l10n.co.ne.status.cune.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Consultar estado DIAN por CUNE">
+                <group>
+                    <field name="cune"/>
+                </group>
+                <footer>
+                    <button name="action_check_status" string="Consultar" type="object"
+                            class="btn-primary" data-hotkey="q"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_l10n_co_ne_status_cune_wizard" model="ir.actions.act_window">
+        <field name="name">Consultar estado DIAN por CUNE</field>
+        <field name="res_model">l10n.co.ne.status.cune.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_l10n_co_ne_status_cune_wizard"
+              name="Consultar estado DIAN por CUNE"
+              parent="hr_payroll.menu_hr_payroll_payslips"
+              action="action_l10n_co_ne_status_cune_wizard"
+              sequence="66"
+              groups="hr_payroll.group_hr_payroll_manager"/>
+
+</odoo>

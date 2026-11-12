@@ -14,7 +14,7 @@ función migrate() real del repo, no una copia reescrita para la prueba.
 import importlib.util
 import os
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
 def _cargar_migracion():
@@ -29,6 +29,7 @@ def _cargar_migracion():
     return modulo
 
 
+@tagged('post_install', '-at_install')
 class TestMigracionIdentificacion(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -37,14 +38,14 @@ class TestMigracionIdentificacion(TransactionCase):
         # Compañía dedicada y descartable (ver AUD-DIAN-34 en
         # test_dian_matching.py), colombiana -- el backfill del tipo solo
         # aplica a compañías colombianas.
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Migración Identificación',
         })
         cls.co_country = cls.env.ref('base.co')
         cls.company.partner_id.country_id = cls.co_country.id
 
     def _make_employee(self, name, identification_id, tipo_xmlid):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
             'identification_id': identification_id,
             'company_id': self.company.id,
@@ -121,7 +122,7 @@ class TestMigracionIdentificacion(TransactionCase):
         sobrescribiendo el UPDATE con el valor viejo. flush_all() ANTES del
         UPDATE deja nada pendiente que pueda pisarlo; una lectura SQL
         directa confirma el estado de partida antes de seguir."""
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': 'MigracionNumeroYTipo',
             'identification_id': '777888999',
             'company_id': self.company.id,

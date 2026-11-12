@@ -9,6 +9,7 @@ from . import l10n_latam_identification_type
 from . import res_partner
 from . import hr_contract
 from . import hr_salary_rule
+from . import l10n_co_ne_documento_mixin
 from . import hr_payslip
 from . import l10n_co_ne_habilitacion
 from . import l10n_co_ne_exchange
@@ -18,3 +19,10 @@ from . import hr_leave_ne
 from . import hr_salary_attachment
 from . import hr_contract_deductions
 from . import hr_contract_retefuente
+from . import l10n_co_pila_ciiu
+from . import l10n_co_payslip_tercero
+from . import l10n_co_pila_planilla
+from . import l10n_co_ibc_mensual
+from . import ir_sequence
+from . import report_payslip_ne
+from . import hr_leave_prorroga

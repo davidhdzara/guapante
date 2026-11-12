@@ -355,29 +355,29 @@ def get_city_code(city_record) -> str:
 # Separación de nombre en formato colombiano
 # =====================================================================
 
-def split_name(full_name: str) -> dict:
-    """Separa un nombre completo en componentes colombianos.
+def split_name(full_name: str, particulas=()) -> dict:
+    """Prellena nombres y apellidos colombianos SOLO cuando no hay ambigüedad.
 
-    La convención colombiana ordena los nombres como:
-        PrimerNombre [SegundoNombre] PrimerApellido [SegundoApellido]
+    La convención es ``PrimerNombre [OtrosNombres] PrimerApellido [SegundoApellido]``,
+    pero a partir de un único texto no se puede saber dónde termina el nombre
+    (``Juan Carlos Pérez`` vs. ``Juan Pérez Gómez``) ni dónde empiezan los apellidos
+    compuestos (``de la Cruz``). Por eso se prellena únicamente:
+
+    - 1 palabra: primer nombre;
+    - 2 palabras: primer nombre + primer apellido;
+    - 4 palabras sin partículas: nombre, otro nombre, primer y segundo apellido.
+
+    Cualquier otro caso (3 palabras, 5 o más, o con alguna de ``particulas``: de, del,
+    la...) devuelve todo vacío: lo completa una persona, nunca se adivina.
 
     Args:
-        full_name: Nombre completo (ej: 'Juan Carlos García López').
+        full_name: Nombre completo.
+        particulas: palabras (minúsculas) que vuelven ambiguo un nombre; salen de un
+            parámetro del sistema, no del código.
 
     Returns:
-        Diccionario con las claves:
-        - ``primer_nombre``
-        - ``otros_nombres``
-        - ``primer_apellido``
-        - ``segundo_apellido``
-
-    Examples:
-        >>> split_name('Juan Carlos García López')
-        {'primer_nombre': 'Juan', 'otros_nombres': 'Carlos', \
-'primer_apellido': 'García', 'segundo_apellido': 'López'}
-        >>> split_name('María Rodríguez')
-        {'primer_nombre': 'María', 'otros_nombres': '', \
-'primer_apellido': 'Rodríguez', 'segundo_apellido': ''}
+        dict con ``primer_nombre``, ``otros_nombres``, ``primer_apellido``,
+        ``segundo_apellido``.
     """
     result = {
         'primer_nombre': '',
@@ -385,27 +385,18 @@ def split_name(full_name: str) -> dict:
         'primer_apellido': '',
         'segundo_apellido': '',
     }
-    if not full_name or not full_name.strip():
+    parts = (full_name or '').split()
+    if not parts:
         return result
-
-    parts = full_name.strip().split()
-    length = len(parts)
-
-    if length == 1:
+    if any(part.lower() in particulas for part in parts):
+        return result
+    if len(parts) == 1:
         result['primer_nombre'] = parts[0]
-    elif length == 2:
-        result['primer_nombre'] = parts[0]
-        result['primer_apellido'] = parts[1]
-    elif length == 3:
-        result['primer_nombre'] = parts[0]
-        result['primer_apellido'] = parts[1]
-        result['segundo_apellido'] = parts[2]
-    else:  # 4 o más palabras
-        result['primer_nombre'] = parts[0]
-        result['otros_nombres'] = ' '.join(parts[1:-2])
-        result['primer_apellido'] = parts[-2]
-        result['segundo_apellido'] = parts[-1]
-
+    elif len(parts) == 2:
+        result['primer_nombre'], result['primer_apellido'] = parts
+    elif len(parts) == 4:
+        (result['primer_nombre'], result['otros_nombres'],
+         result['primer_apellido'], result['segundo_apellido']) = parts
     return result
 
 
@@ -437,6 +428,56 @@ def compute_worked_time(date_start, date_end) -> int:
     if isinstance(date_end, str):
         date_end = _date_type.fromisoformat(date_end)
     return (date_end - date_start).days
+
+
+def compute_worked_time_360(date_start, date_end, *, inclusive) -> int:
+    """TiempoLaborado según el Anexo Técnico de Nómina Electrónica §8.3.1 (p. 249).
+
+    Convención 1 año = 360 días y 1 mes = 30 días, MISMA del mes comercial que usa la
+    nómina (HrPayslip._ne_dia_comercial): el último día real de cada mes (28/29-feb, 30 o
+    31) vale 30 y ningún día pasa de 30. Cuenta = años*360 + meses*30 + días comerciales.
+    Mínimo 1 (regla NIE006: valor >= 1).
+
+    USO PREVISTO: ``inclusive=True``. Decisión de David (D19, 2026-11-11): el día de
+    ingreso SÍ cuenta (el empleado no pierde ni un día), igual que ``_ne_dias_bajo_contrato``
+    (ingreso el 10 de un mes de 31 días: 10..30 = 21 días). ``inclusive`` sigue siendo
+    obligatorio, sin valor por defecto.
+
+    NO está conectada al XML todavía: ``compute_worked_time`` (días calendario) sigue en
+    uso hasta cerrar D3/D6/D10/D14 (doc 53 §21.1).
+
+    Args:
+        date_start: Fecha de ingreso (date o 'YYYY-MM-DD').
+        date_end:   Fecha final del periodo (date o 'YYYY-MM-DD').
+        inclusive:  True cuenta ambos extremos; False no cuenta el día de ingreso.
+
+    Returns:
+        Entero >= 1. Retorna 0 si alguna fecha es None.
+
+    Examples:
+        >>> from datetime import date
+        >>> compute_worked_time_360(date(2018, 1, 1), date(2023, 4, 18), inclusive=True)
+        1908
+    """
+    import calendar
+
+    if not date_start or not date_end:
+        return 0
+    if isinstance(date_start, str):
+        date_start = _date_type.fromisoformat(date_start)
+    if isinstance(date_end, str):
+        date_end = _date_type.fromisoformat(date_end)
+
+    def comercial(d):
+        ultimo = calendar.monthrange(d.year, d.month)[1]
+        return 30 if d.day == ultimo else min(d.day, 30)
+
+    dias = ((date_end.year - date_start.year) * 360
+            + (date_end.month - date_start.month) * 30
+            + comercial(date_end) - comercial(date_start))
+    if inclusive:
+        dias += 1
+    return max(1, dias)
 
 
 # =====================================================================

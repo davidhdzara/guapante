@@ -19,20 +19,22 @@ from datetime import date
 from unittest.mock import patch
 
 from odoo.exceptions import UserError, ValidationError
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestIdentificacionSincronizada(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Compañía dedicada y descartable (ver AUD-DIAN-34 en test_dian_matching.py).
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Identificación Sincronizada',
         })
 
     def _make_employee(self, name, identification_id=None, vals=None):
         create_vals = {
+            'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00',
             'name': name,
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
@@ -239,7 +241,7 @@ class TestIdentificacionSincronizada(TransactionCase):
             'name': 'Nómina Prueba Sin Codigo Dian',
             'type_id': structure_type.id,
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato TipoSinCodigoDian',
             'employee_id': employee.id,
             'company_id': self.company.id,

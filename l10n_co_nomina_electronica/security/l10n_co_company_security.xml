@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Aislamiento multiempresa de los modelos propios con company_id (doc 51, M4 paso 2).
+         Mismo patron que hr_payroll para recibo/linea/lote: reglas globales
+         company_id in company_ids. La configuracion de retencion admite ademas filas
+         compartidas (company_id vacio, M2). -->
+    <record id="rule_l10n_co_retefuente_uvt_company" model="ir.rule">
+        <field name="name">Configuración de retención: compañías autorizadas y compartidas</field>
+        <field name="model_id" ref="model_l10n_co_retefuente_uvt"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_retefuente_procedure2_company" model="ir.rule">
+        <field name="name">Retención Procedimiento 2: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_retefuente_procedure2"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_ibc_mensual_company" model="ir.rule">
+        <field name="name">IBC mensual: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_ibc_mensual"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_nomina_ugpp_company" model="ir.rule">
+        <field name="name">UGPP: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_nomina_ugpp"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_pila_planilla_company" model="ir.rule">
+        <field name="name">Planillas PILA: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_pila_planilla"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_payslip_tercero_company" model="ir.rule">
+        <field name="name">Distribución por tercero: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_payslip_tercero"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_ne_operation_mode_company" model="ir.rule">
+        <field name="name">Modo de operación de nómina electrónica: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_ne_operation_mode"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

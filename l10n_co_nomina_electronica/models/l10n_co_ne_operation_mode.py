@@ -28,6 +28,7 @@ from odoo import api, fields, models
 
 class L10nCoNeOperationMode(models.Model):
     _name = 'l10n.co.ne.operation_mode'
+    _check_company_auto = True
     _description = 'Modo de Operación de Nómina Electrónica DIAN'
 
     software_id = fields.Char(

@@ -16,7 +16,7 @@ import hashlib
 from datetime import date
 from unittest.mock import patch
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
 def _application_response_xml(document_id=None, cune=None):
@@ -44,6 +44,7 @@ class _FakeCertificate:
         return True
 
 
+@tagged('post_install', '-at_install')
 class TestDianMatchingCommon(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -56,7 +57,7 @@ class TestDianMatchingCommon(TransactionCase):
         # UNIQUE(company_id) y abortó la carga del módulo ("Failed to
         # load registry"). Compañía dedicada y descartable para todo
         # el aislamiento de estas pruebas.
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba DIAN Matching',
         })
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
@@ -72,7 +73,7 @@ class TestDianMatchingCommon(TransactionCase):
         })
 
     def _make_payslip(self, name, cune, state='sent', zip_key='ZIPKEY-1', consecutive=None):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
             'identification_id': '10' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
@@ -82,7 +83,7 @@ class TestDianMatchingCommon(TransactionCase):
             # para estas pruebas, 'Efectivo' evita fabricar datos bancarios.
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,
@@ -133,6 +134,7 @@ class TestDianMatchingCommon(TransactionCase):
         })
 
 
+@tagged('post_install', '-at_install')
 class TestDianResultMatching(TestDianMatchingCommon):
     """Regla (a)(b)(c) de _ne_match_dian_results."""
 
@@ -263,6 +265,7 @@ class TestDianResultMatching(TestDianMatchingCommon):
         self.assertEqual(matches, {})
 
 
+@tagged('post_install', '-at_install')
 class TestDianStateTransitions(TestDianMatchingCommon):
     """Reenvío de 'uncertain' y la regla de rechazo restringida."""
 

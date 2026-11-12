@@ -123,6 +123,20 @@
             <field name="country_id" ref="base.co"/>
         </record>
 
+        <!-- Estructura por defecto del tipo "Empleado Colombia" (.102, pedido de David):
+             sin esto, el campo nativo "Regular Pay Structure" (default_struct_id) del tipo
+             queda vacío y el usuario tiene que elegir la estructura a mano. Se escribe SOLO
+             sobre el tipo colombiano de este módulo (su propio xml-id), nunca sobre el
+             tipo genérico ni sobre el de otra localización - default_struct_id es un
+             campo plano de cada registro, sin default global (verificado en
+             hr_payroll/models/hr_payroll_structure_type.py por el Tech Lead, 2026-11-09).
+             Record parcial sobre el xmlid ya creado arriba (mismo patrón que
+             l10n_co_embargo_input_types_data.xml); este archivo es noupdate="0", así que
+             un -u lo aplica. -->
+        <record id="hr_payroll_structure_type_co" model="hr.payroll.structure.type">
+            <field name="default_struct_id" ref="hr_payroll_structure_co_nomina"/>
+        </record>
+
         <!-- ============================================================ -->
         <!--                                                                -->
         <!--  REGLAS SALARIALES — DEVENGADOS                               -->
@@ -145,7 +159,8 @@
 # un conteo distinto (WORK100), produciendo un DiasTrabajados incoherente con el sueldo.
 _dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 dias_pagables = payslip._ne_dias_pagables()
-result = contract.wage / _dias_mes * dias_pagables
+result = contract.wage / _dias_mes
+result_qty = dias_pagables
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Sueldo</field>
@@ -171,7 +186,8 @@ result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.da
 # "mes comercial" ni el ajuste por dias no remunerados.
 _dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 dias_pagables = payslip._ne_dias_pagables()
-result = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from) / _dias_mes * dias_pagables
+result = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from) / _dias_mes
+result_qty = dias_pagables
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Transporte</field>
@@ -192,7 +208,8 @@ result = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from) / 
             <field name="amount_python_compute">
 # HED = valor hora * factor_hed (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hed', payslip.date_from) * inputs['CO_HED'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hed', payslip.date_from) 
+result_qty = inputs['CO_HED'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HED</field>
@@ -211,7 +228,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hed', payslip.date
             <field name="amount_python_compute">
 # HEN = valor hora * factor_hen (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hen', payslip.date_from) * inputs['CO_HEN'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hen', payslip.date_from) 
+result_qty = inputs['CO_HEN'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HEN</field>
@@ -230,7 +248,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hen', payslip.date
             <field name="amount_python_compute">
 # HRN = valor hora * factor_hrn (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrn', payslip.date_from) * inputs['CO_HRN'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrn', payslip.date_from) 
+result_qty = inputs['CO_HRN'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRN</field>
@@ -249,7 +268,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrn', payslip.date
             <field name="amount_python_compute">
 # HEDDF = valor hora * factor_heddf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_heddf', payslip.date_from) * inputs['CO_HEDDF'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_heddf', payslip.date_from) 
+result_qty = inputs['CO_HEDDF'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HEDDF</field>
@@ -268,7 +288,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_heddf', payslip.da
             <field name="amount_python_compute">
 # HENDF = valor hora * factor_hendf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hendf', payslip.date_from) * inputs['CO_HENDF'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hendf', payslip.date_from) 
+result_qty = inputs['CO_HENDF'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HENDF</field>
@@ -287,7 +308,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hendf', payslip.da
             <field name="amount_python_compute">
 # HRDDF = valor hora * factor_hrddf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrddf', payslip.date_from) * inputs['CO_HRDDF'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrddf', payslip.date_from) 
+result_qty = inputs['CO_HRDDF'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRDDF</field>
@@ -306,7 +328,8 @@ result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrddf', payslip.da
             <field name="amount_python_compute">
 # HRNDF = valor hora * factor_hrndf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrndf', payslip.date_from) * inputs['CO_HRNDF'].amount
+result = valor_hora * payslip._rule_parameter('l10n_co_factor_hrndf', payslip.date_from) 
+result_qty = inputs['CO_HRNDF'].amount
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRNDF</field>
@@ -460,7 +483,8 @@ result = _dias_aus > 0 or _dias_inp > 0
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Primeros dias_incapacidad_empleador días: 100% a cargo del empleador
+# Primeros dias_incapacidad_empleador días: a cargo del empleador al pct_incapacidad_empleador
+# (66.67%; H-013 paso 3, Decreto 780/2016 Art. 3.2.1.10 par. 1 -- antes 100%)
 # Días 3-90: pct_incapacidad_3_90 pagado por EPS
 # Días 91+: pct_incapacidad_91_mas pagado por EPS
 # AUD-DIAN-34 (2026-10-05): el "90" (limite del tramo EPS) era un literal
@@ -470,22 +494,12 @@ result = _dias_aus > 0 or _dias_inp > 0
 # Ausencias (hr.leave, _ne_ausencia_calendario) o, de respaldo, del input manual -- nunca
 # de los dos a la vez (_ne_dias_novedad_calendario falla explicito si coinciden). Unica
 # fuente que tambien usa _ne_dias_pagables() para descontar el basico.
-_dias_emp = payslip._rule_parameter('l10n_co_dias_incapacidad_empleador', payslip.date_from)
-_pct_3_90 = payslip._rule_parameter('l10n_co_pct_incapacidad_3_90', payslip.date_from) / 100
-_pct_91_mas = payslip._rule_parameter('l10n_co_pct_incapacidad_91_mas', payslip.date_from) / 100
-_limite_3_90 = payslip._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', payslip.date_from)
 dias = payslip._ne_dias_novedad_calendario('CO_INC_COMUN', 'CO_INC_COMUN', inputs)
-valor_dia = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
-if dias &lt;= _dias_emp:
-    result = valor_dia * dias
-elif dias &lt;= _limite_3_90:
-    result = valor_dia * _dias_emp + (valor_dia * _pct_3_90 * (dias - _dias_emp))
-else:
-    result = (
-        valor_dia * _dias_emp
-        + (valor_dia * _pct_3_90 * (_limite_3_90 - _dias_emp))
-        + (valor_dia * _pct_91_mas * (dias - _limite_3_90))
-    )
+# Calculo por tramos en un solo lugar: HrPayslip._ne_pago_ausencia_calendario() (compartido con la
+# liquidacion). Cantidad = dias; valor unitario = promedio por dia (el total no cambia).
+_pago = payslip._ne_pago_ausencia_calendario('CO_INC_COMUN', dias)
+result_qty = dias
+result = _pago / dias if dias else 0.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Incapacidad</field>
@@ -508,7 +522,9 @@ result = _dias_aus > 0 or _dias_inp > 0
 # ARL paga 100% desde el primer día. H-014 (2026-10-08): dias CALENDARIO corridos desde
 # Ausencias o input manual de respaldo, nunca los dos -- ver _ne_dias_novedad_calendario().
 dias = payslip._ne_dias_novedad_calendario('CO_INC_LABORAL', 'CO_INC_LABORAL', inputs)
-result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+_pago = payslip._ne_pago_ausencia_calendario('CO_INC_LABORAL', dias)
+result_qty = dias
+result = _pago / dias if dias else 0.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Incapacidad</field>
@@ -532,7 +548,9 @@ result = _dias_aus > 0 or _dias_inp > 0
 # 236 mod. Ley 2114/2021): dias CALENDARIO corridos desde Ausencias o input manual de
 # respaldo, nunca los dos -- ver _ne_dias_novedad_calendario().
 dias = payslip._ne_dias_novedad_calendario('CO_LIC_MAT', 'CO_LIC_MAT', inputs)
-result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+_pago = payslip._ne_pago_ausencia_calendario('CO_LIC_MAT', dias)
+result_qty = dias
+result = _pago / dias if dias else 0.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
@@ -556,7 +574,9 @@ result = _dias_aus > 0 or _dias_inp > 0
 # 2114/2021): dias CALENDARIO corridos desde Ausencias o input manual de respaldo, nunca
 # los dos -- ver _ne_dias_novedad_calendario().
 dias = payslip._ne_dias_novedad_calendario('CO_LIC_PAT', 'CO_LIC_PAT', inputs)
-result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+_pago = payslip._ne_pago_ausencia_calendario('CO_LIC_PAT', dias)
+result_qty = dias
+result = _pago / dias if dias else 0.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
@@ -579,7 +599,8 @@ result = _dias_aus > 0 or _dias_inp > 0
 # H-013 (2026-10-08): dias desde Ausencias o input manual de respaldo, nunca los dos --
 # ver _ne_dias_novedad().
 dias = payslip._ne_dias_novedad('CO_LIC_REM', 'CO_LIC_REM', inputs, worked_days)
-result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+result_qty = dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaR</field>
@@ -626,7 +647,8 @@ result = _dias_aus > 0 or _dias_inp > 0
 # Guapante, es una duda normativa que David resuelve aparte, no se inventa regla propia
 # aqui) o, de respaldo, del input manual -- nunca los dos a la vez.
 dias = payslip._ne_dias_novedad('CO_VAC', 'CO_VAC', inputs, worked_days)
-result = (contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)) * dias
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+result_qty = dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">VacacionesComunes</field>
@@ -805,8 +827,9 @@ result = inputs['CO_INT_CES'].amount
 # ver _ne_ibc_seguridad_social(). Alcance H-017a: solo esta regla y
 # CO_PENSION_EMP/CO_FSP. Las 6 reglas patronales (CIA) y PILA/UGPP quedan
 # para H-017b -- no cambian aqui.
-ibc = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
-result = -abs(ibc * payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from) / 100)
+ibc = max(0.0, result_rules['CO_IBC_SP']['total'] - result_rules['CO_IBC_SLN']['total'])  # IBC unico (H-017b); en SLN el trabajador no paga su cuota ni nadie la asume
+result = -abs(ibc)
+result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Salud</field>
@@ -827,8 +850,9 @@ result = not employee.l10n_co_ne_foreigner_no_pension
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # H-017a (2026-10-11): misma fuente que CO_SALUD_EMP -- ver _ne_ibc_seguridad_social().
-ibc = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
-result = -abs(ibc * payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from) / 100)
+ibc = max(0.0, result_rules['CO_IBC_SP']['total'] - result_rules['CO_IBC_SLN']['total'])  # IBC unico (H-017b); en SLN el trabajador no paga su cuota ni nadie la asume
+result = -abs(ibc)
+result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.date_from)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoPension</field>
@@ -847,7 +871,7 @@ result = -abs(ibc * payslip._rule_parameter('l10n_co_pct_pension_empleado', pays
 # H-017a (2026-10-11): misma fuente que CO_SALUD_EMP -- ver _ne_ibc_seguridad_social().
 SMMLV = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 _umbral_base = payslip._rule_parameter('l10n_co_fsp_umbral_base', payslip.date_from)
-ibc = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
+ibc = max(0.0, result_rules['CO_IBC_SP']['total'] - result_rules['CO_IBC_SLN']['total'])  # IBC unico (H-017b); en SLN el trabajador no paga su cuota ni nadie la asume
 result = ibc &gt;= SMMLV * _umbral_base
             </field>
             <field name="amount_select">code</field>
@@ -857,7 +881,7 @@ result = ibc &gt;= SMMLV * _umbral_base
 # desde fsp_umbral_tier1 SMMLV (tramos de subsistencia).
 # H-017a (2026-10-11): misma fuente que CO_SALUD_EMP -- ver _ne_ibc_seguridad_social().
 SMMLV = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
-ibc = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
+ibc = max(0.0, result_rules['CO_IBC_SP']['total'] - result_rules['CO_IBC_SLN']['total'])  # IBC unico (H-017b); en SLN el trabajador no paga su cuota ni nadie la asume
 
 _pct_base = payslip._rule_parameter('l10n_co_fsp_pct_base', payslip.date_from) / 100
 _umbral_t1 = payslip._rule_parameter('l10n_co_fsp_umbral_tier1', payslip.date_from)
@@ -882,7 +906,8 @@ elif ibc >= SMMLV * _umbral_t2:
     pct = _pct_t2
 elif ibc >= SMMLV * _umbral_t1:
     pct = _pct_t1
-result = -abs(ibc * pct)
+result = -abs(ibc)
+result_rate = pct * 100
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">FondoSP</field>
@@ -890,6 +915,164 @@ result = -abs(ibc * pct)
         </record>
 
         <!-- ==================== BASE IBC SS (invisible, acumulador H-017a) ==================== -->
+        <record id="hr_salary_rule_co_ibc_sln" model="hr.salary.rule">
+            <field name="name">IBC Suspension / Licencia No Remunerada (interno)</field>
+            <field name="code">CO_IBC_SLN</field>
+            <field name="sequence">86</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_ibc_sln(contract)</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Base de los dias SLN (IBC del mes anterior prorrateado). Solo salud y pension; el empleador asume el 100%.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_dias_sp" model="hr.salary.rule">
+            <field name="name">Dias Cotizados Salud y Pension (interno)</field>
+            <field name="code">CO_DIAS_SP</field>
+            <field name="sequence">87</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_dias_cotizados()['sp']</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Dias que cotizan a salud y pension.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_dias_arl" model="hr.salary.rule">
+            <field name="name">Dias Cotizados ARL (interno)</field>
+            <field name="code">CO_DIAS_ARL</field>
+            <field name="sequence">88</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_dias_cotizados()['arl']</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Dias que cotizan a ARL.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_dias_paraf" model="hr.salary.rule">
+            <field name="name">Dias Cotizados Parafiscales (interno)</field>
+            <field name="code">CO_DIAS_PARAF</field>
+            <field name="sequence">89</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_dias_cotizados()['paraf']</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Dias que cotizan a CCF, SENA e ICBF.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_salarial" model="hr.salary.rule">
+            <field name="name">IBC Salarial (interno)</field>
+            <field name="code">CO_IBC_SALARIAL</field>
+            <field name="sequence">90</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_ibc_salarial(categories, contract, inputs, worked_days)</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Componente salarial del IBC del recibo.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_incap" model="hr.salary.rule">
+            <field name="name">IBC Maternidad/Paternidad (interno)</field>
+            <field name="code">CO_IBC_INCAP</field>
+            <field name="sequence">91</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_ibc_incap(contract, result_rules)</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Base de licencias de maternidad/paternidad: solo salud y pension.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_remuneracion" model="hr.salary.rule">
+            <field name="name">IBC Remuneracion Base 40% (interno)</field>
+            <field name="code">CO_IBC_REMUN</field>
+            <field name="sequence">92</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_ibc_remuneracion(contract, result_rules['CO_IBC_SALARIAL']['total'])</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Remuneracion sobre la que se mide la regla del 40%.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_pactados" model="hr.salary.rule">
+            <field name="name">IBC Pactados No Salariales (interno)</field>
+            <field name="code">CO_IBC_PACTADOS</field>
+            <field name="sequence">93</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_ibc_pactados(result_rules)</field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Pagos no salariales por pacto de desalarizacion.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_sp" model="hr.salary.rule">
+            <field name="name">IBC Salud y Pension (interno)</field>
+            <field name="code">CO_IBC_SP</field>
+            <field name="sequence">94</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+_r = result_rules
+result = payslip._ne_ibc_limites(
+    _r['CO_IBC_SALARIAL']['total'], _r['CO_IBC_INCAP']['total'] + _r['CO_IBC_SLN']['total'],
+    _r['CO_IBC_REMUN']['total'], _r['CO_IBC_PACTADOS']['total'], _r['CO_DIAS_SP']['total'])
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">IBC unico de salud y pension del recibo, con 40%, piso y techo. Lo leen deducciones, PILA y UGPP.</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_arl" model="hr.salary.rule">
+            <field name="name">IBC ARL (interno)</field>
+            <field name="code">CO_IBC_ARL</field>
+            <field name="sequence">95</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+_r = result_rules
+result = payslip._ne_ibc_limites(
+    _r['CO_IBC_SALARIAL']['total'], 0.0,
+    _r['CO_IBC_REMUN']['total'], _r['CO_IBC_PACTADOS']['total'], _r['CO_DIAS_ARL']['total'])
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">IBC de ARL del recibo (sin maternidad/paternidad).</field>
+        </record>
+
+        <record id="hr_salary_rule_co_ibc_paraf" model="hr.salary.rule">
+            <field name="name">IBC Parafiscales (interno)</field>
+            <field name="code">CO_IBC_PARAF</field>
+            <field name="sequence">96</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+_r = result_rules
+result = payslip._ne_ibc_limites(
+    _r['CO_IBC_SALARIAL']['total'], 0.0,
+    _r['CO_IBC_REMUN']['total'], _r['CO_IBC_PACTADOS']['total'], _r['CO_DIAS_PARAF']['total'])
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">IBC de CCF, SENA e ICBF del recibo (sin maternidad/paternidad).</field>
+        </record>
+
         <record id="hr_salary_rule_co_ss_base_ibc" model="hr.salary.rule">
             <field name="name">Base IBC Seguridad Social (acumulador interno)</field>
             <field name="code">CO_SS_BASE_IBC</field>
@@ -923,29 +1106,15 @@ recibo ni afecta el neto.</field>
             <field name="condition_select">python</field>
             <field name="condition_python">
 # Calculo automatico de retencion en la fuente
-# Busca configuracion del ano; si no existe, no aplica
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+# Configuracion de retencion del ano; si no existe, error claro (.167: antes se omitia en silencio)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 result = bool(_rete_cfg)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Calculo automatico: Procedimiento 1 o 2 segun configuracion
 # Usa el metodo compute_retefuente() del modelo l10n.co.retefuente.uvt
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 
 # Calcular IBC y bruto para la depuracion
 _gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
@@ -979,15 +1148,8 @@ La depuracion incluye: aportes obligatorios, voluntarios, AFC, dependientes, ren
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+# Misma configuracion que CO_RETEFUENTE (error claro si falta la del ano, .167)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 result = bool(_rete_cfg)
             </field>
             <field name="amount_select">code</field>
@@ -999,14 +1161,7 @@ result = bool(_rete_cfg)
 # patron que las reglas de provisiones (doc 18): un valor que se necesita
 # leer despues, no una deduccion real. Recalcula compute_retefuente() --
 # mismos inputs deterministicos que CO_RETEFUENTE, sin efectos secundarios.
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 
 _gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
 _ibc_pension = categories.get('DEV_SAL', contract.wage)
@@ -1037,15 +1192,8 @@ en meses futuros via payslip._sum().</field>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+# Misma configuracion que CO_RETEFUENTE (error claro si falta la del ano, .167)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 result = bool(_rete_cfg)
             </field>
             <field name="amount_select">code</field>
@@ -1073,15 +1221,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Misma condicion que CO_RETEFUENTE -- solo aplica si hay config de retefuente
-_rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-    ('year', '=', str(payslip.date_from.year)),
-    ('company_id', '=', employee.company_id.id),
-], limit=1)
-if not _rete_cfg:
-    _rete_cfg = employee.env['l10n.co.retefuente.uvt'].search([
-        ('year', '=', str(payslip.date_from.year)),
-    ], limit=1)
+# Misma configuracion que CO_RETEFUENTE (error claro si falta la del ano, .167)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
 result = bool(_rete_cfg)
             </field>
             <field name="amount_select">code</field>
@@ -1099,20 +1240,6 @@ result = _ibc_pension
             <field name="note">Acumulador interno (doc 08): guarda el IBC mensual para que
 action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el %
 fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto.</field>
-        </record>
-
-        <record id="hr_salary_rule_co_libranzas" model="hr.salary.rule">
-            <field name="name">Libranzas</field>
-            <field name="code">CO_LIBRANZAS</field>
-            <field name="sequence">120</field>
-            <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
-            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">python</field>
-            <field name="condition_python">result = inputs.get('CO_LIBRANZAS') and inputs.get('CO_LIBRANZAS').amount > 0</field>
-            <field name="amount_select">code</field>
-            <field name="amount_python_compute">result = -abs(inputs['CO_LIBRANZAS'].amount)</field>
-            <field name="appears_on_payslip" eval="True"/>
-            <field name="l10n_co_ne_dian_concept">Libranza</field>
         </record>
 
         <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">
@@ -1174,7 +1301,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_embargo" model="hr.salary.rule">
             <field name="name">Embargo Fiscal</field>
             <field name="code">CO_EMBARGO</field>
-            <field name="sequence">125</field>
+            <field name="sequence">118</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
@@ -1187,62 +1314,14 @@ result = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0) o
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Embargo con topes legales Art. 155 CST (civil, 20% del excedente sobre
-# SMMLV) y Art. 156 CST (alimentos/cooperativa, 50% del salario). Ninguno
-# de los dos articulos fija un tope CONJUNTO cuando concurren varios
-# embargos -- cada uno opera de forma independiente por texto expreso del
-# CST (confirmado por David, normativa 2026-09-07).
-#
-# Pero existe un PISO jurisprudencial de minimo vital que si limita el
-# resultado agregado: Corte Constitucional T-864/14 (los descuentos
-# simultaneos -- embargos y libranzas -- no pueden dejar al trabajador
-# por debajo de lo necesario para su subsistencia) y Corte Suprema de
-# Justicia, Sala de Casacion Laboral, sentencia de febrero de 2026
-# ("ningun embargo puede dejar al trabajador sin el equivalente al
-# salario minimo para cubrir sus necesidades basicas, incluso cuando
-# existan deudas alimentarias que permitan llegar al 50%"). Esto aplica
-# incluso a UN SOLO embargo de alimentos en salarios bajos, no solo
-# cuando concurren varios tipos.
-#
-# Mecanismo (2026-09-07, confirmado por David): al concurrir varios
-# embargos, se aplican en orden de prelacion legal -- alimentos/
-# cooperativa (Art. 156) antes que civil/ordinario (Art. 155) -- y se
-# reduce el de menor prelacion hasta que el remanente (salario_neto -
-# total_embargado) no baje del SMMLV. El input manual CO_EMBARGO
-# (override de RRHH) tambien respeta este piso (2026-09-07, confirmado
-# via QA): la cita de la Corte Suprema no distingue el mecanismo del
-# descuento -- protege el remanente del trabajador sin importar si el
-# monto vino del calculo automatico o de un valor digitado a mano.
-#
-# Base = salario NETO (devengados - deducciones ya calculadas hasta aqui),
-# no el bruto -- mismo criterio que usa CO_NETO (categories['DEV'] + categories['DEDU']).
-# Limitacion conocida: CO_EMBARGO corre en sequence 125, antes de otras
-# deducciones (ej. CO_PLAN_COMP, sequence 126) -- este "neto" es el neto
-# hasta este punto del pipeline, no el neto final del periodo completo.
+# Topes Art. 155/156 CST, prelacion y piso de minimo vital (T-864/14, CSJ 2026):
+# la logica vive en hr.payslip._ne_embargos_calcular, que tambien persiste el
+# reparto por juzgado/beneficiario para el asiento contable. Base = salario
+# NETO de ley (esta regla corre antes de libranzas y deducciones voluntarias).
 _smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 _salario_neto = categories['DEV'] + categories['DEDU']
-_PRIORIDAD_EMBARGO = {
-    'L10N_CO_EMBARGO_ALIMENTOS': 0,
-    'L10N_CO_EMBARGO_COOPERATIVA': 1,
-    'L10N_CO_EMBARGO_CIVIL': 2,
-}
-_embargos_activos = employee.salary_attachment_ids.filtered(
-    lambda a: a.state == 'open' and a.other_input_type_id.code in _PRIORIDAD_EMBARGO)
-_embargos_ordenados = _embargos_activos.sorted(key=lambda a: _PRIORIDAD_EMBARGO.get(a.other_input_type_id.code, 99))
-_total_embargo = 0.0
-for embargo in _embargos_ordenados:
-    _monto_individual = embargo._l10n_co_compute_embargo_amount(
-        _salario_neto, _smmlv, payslip.date_from,
-        factor_embargo_civil=payslip._rule_parameter('l10n_co_factor_embargo_civil', payslip.date_from),
-        pct_tope_embargo_alimentos=payslip._rule_parameter('l10n_co_pct_tope_embargo_alimentos', payslip.date_from),
-    )
-    _espacio_antes_del_piso = max(0.0, (_salario_neto - _total_embargo) - _smmlv)
-    _total_embargo += min(_monto_individual, _espacio_antes_del_piso)
-if inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount &gt; 0:
-    _tope_minimo_vital = max(0.0, _salario_neto - _smmlv)
-    _monto_manual = min(inputs['CO_EMBARGO'].amount, _tope_minimo_vital)
-    _total_embargo = max(_total_embargo, _monto_manual)
-result = -abs(_total_embargo) if _total_embargo &gt; 0 else 0
+_manual = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount) or 0
+result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">EmbargoFiscal</field>
@@ -1325,16 +1404,16 @@ result = -abs(_total_embargo) if _total_embargo &gt; 0 else 0
 # Criterio centralizado en res.company._is_exonerado_parafiscales --
 # unica fuente de verdad, compartida con CO_SENA_CIA/CO_ICBF_CIA y con
 # el wizard de PILA.
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
+# Exoneracion evaluada sin la base SLN (no es remuneracion devengada). Guia del Min. Salud a los
+# operadores de informacion, "Cotizante exonerado aporte patronal en salud y reporte de la novedad
+# SLN": exonerado + SLN => la tarifa de salud a reportar es cero, tanto en dias laborados como SLN.
+ibc_sp = result_rules['CO_IBC_SP']['total']
+ibc_sln = result_rules['CO_IBC_SLN']['total']
+result = not employee.company_id._is_exonerado_parafiscales(max(0.0, ibc_sp - ibc_sln), payslip.date_from)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_SP']['total']
 result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.date_from) / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1351,9 +1430,11 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.da
             <field name="condition_python">result = not employee.l10n_co_ne_foreigner_no_pension</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+# La pension patronal sobre la base SLN es opcional en el sector privado (Concepto MinProteccion
+# 134658, CST art. 53): la decide la compania (l10n_co_ne_pension_patronal_sln).
+ibc = result_rules['CO_IBC_SP']['total']
+if not employee.company_id.l10n_co_ne_pension_patronal_sln:
+    ibc = max(0.0, ibc - result_rules['CO_IBC_SLN']['total'])
 result = ibc * payslip._rule_parameter('l10n_co_pct_pension_empleador', payslip.date_from) / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1369,12 +1450,12 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_pension_empleador', payslip.
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# El % de ARL depende del nivel de riesgo (I: 0.522%, II: 1.044%, III: 2.436%, IV: 4.350%, V: 6.960%)
-# Se usa Nivel I (pct_arl_default) como default, el usuario puede ajustar
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-result = ibc * payslip._rule_parameter('l10n_co_pct_arl_default', payslip.date_from) / 100
+# H-005 (2026-11-09): el % de ARL sale de la Clase de Riesgo ARL del contrato
+# (l10n_co_pila_clase_riesgo) via payslip._ne_pct_arl(), que lee el hr.rule.parameter de esa
+# clase (Clase I: l10n_co_pct_arl_default; II a V: l10n_co_pct_arl_clase_N). Antes se usaba
+# siempre la Clase I. Decreto 768/2022 (clasificacion), Art. 2.2.4.3.5 Decreto 1072/2015 (tarifas).
+ibc = result_rules['CO_IBC_ARL']['total']  # IBC unico del recibo (H-017b)
+result = ibc * payslip._ne_pct_arl() / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
@@ -1389,9 +1470,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_arl_default', payslip.date_f
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_PARAF']['total']  # IBC unico del recibo (H-017b)
 result = ibc * payslip._rule_parameter('l10n_co_pct_ccf', payslip.date_from) / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1411,16 +1490,12 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_ccf', payslip.date_from) / 1
 # Criterio centralizado en res.company._is_exonerado_parafiscales --
 # unica fuente de verdad, compartida con CO_SALUD_CIA/CO_ICBF_CIA y con
 # el wizard de PILA.
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_PARAF']['total']  # IBC unico del recibo (H-017b)
 result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_PARAF']['total']  # IBC unico del recibo (H-017b)
 result = ibc * payslip._rule_parameter('l10n_co_pct_sena', payslip.date_from) / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1440,16 +1515,12 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_sena', payslip.date_from) / 
 # Criterio centralizado en res.company._is_exonerado_parafiscales --
 # unica fuente de verdad, compartida con CO_SALUD_CIA/CO_SENA_CIA y con
 # el wizard de PILA.
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_PARAF']['total']  # IBC unico del recibo (H-017b)
 result = not employee.company_id._is_exonerado_parafiscales(ibc, payslip.date_from)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-ibc = categories['DEV_SAL']
-if contract.l10n_co_ne_integral_salary:
-    ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
+ibc = result_rules['CO_IBC_PARAF']['total']  # IBC unico del recibo (H-017b)
 result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1552,7 +1623,10 @@ result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
 # dias habiles/ano, NO incluye auxilio de transporte. Distinto del disfrute
 # real de vacaciones (integracion con hr.leave, tipo VACACIONES) -- esta
 # regla es la acumulacion del pasivo, no el pago cuando se toman.
-result = contract.wage / 24.0
+# 1/24 = 15 dias habiles por cada 360 de servicio: salario x dias_mes / divisor_vacaciones
+# (30 / 720), de los mismos parametros que usa la liquidacion de vacaciones.
+_fecha = payslip._ne_fecha_parametros()
+result = contract.wage * payslip._rule_parameter('l10n_co_dias_mes_comercial', _fecha) / payslip._rule_parameter('l10n_co_divisor_vacaciones', _fecha)
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>

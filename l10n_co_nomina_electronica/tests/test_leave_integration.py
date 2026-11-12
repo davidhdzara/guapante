@@ -1,23 +1,28 @@
 # -*- coding: utf-8 -*-
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 from odoo import fields
 from datetime import datetime, date
 
 
+@tagged('post_install', '-at_install')
 class TestHrPayslipLeaveIntegration(TransactionCase):
     """Test unitario para la integración de ausencias y novedades de nómina electrónica."""
 
     def setUp(self):
         super(TestHrPayslipLeaveIntegration, self).setUp()
         self.company = self.env.company
+        # La compania activa debe ser colombiana: la logica del modulo solo corre para Colombia.
+        self.company.partner_id.country_id = self.env.ref('base.co')
         
         # En Odoo 18, busquemos el país Colombia de forma robusta
         co_country = self.env['res.country'].search([('code', '=', 'CO')], limit=1)
         if not co_country:
             co_country = self.env.ref('base.co')
 
-        self.employee = self.env['hr.employee'].create({
+        self.employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': 'Juan Pérez Gómez',
+            'l10n_co_primer_nombre': 'Prueba',
+            'l10n_co_primer_apellido': 'Fixture',
             'identification_id': '10203040',
             'l10n_co_ne_worker_type': '01',
             'l10n_co_ne_worker_subtype': '00',
@@ -57,7 +62,7 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
             'name': 'Nómina Regular',
             'type_id': self.structure_type.id,
         })
-        self.contract = self.env['hr.contract'].create({
+        self.contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato Juan Pérez',
             'employee_id': self.employee.id,
             'structure_type_id': self.structure_type.id,

@@ -55,6 +55,13 @@
             es un ajuste puntual de UN payslip, no una asignación salarial
             recurrente (no debe poder elegirse en hr.salary.attachment).
         -->
+        <record id="input_l10n_co_libranza" model="hr.payslip.input.type">
+            <field name="name">Libranza</field>
+            <field name="code">L10N_CO_LIBRANZA</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="available_in_attachments" eval="True"/>
+        </record>
+
         <record id="input_co_embargo_manual" model="hr.payslip.input.type">
             <field name="name">Embargo - Ajuste Manual (Override RRHH)</field>
             <field name="code">CO_EMBARGO</field>
@@ -98,6 +105,7 @@
         <field name="input_line_type_ids" eval="[(4, ref('input_l10n_co_embargo_alimentos')),
                                                   (4, ref('input_l10n_co_embargo_civil')),
                                                   (4, ref('input_l10n_co_embargo_cooperativa')),
-                                                  (4, ref('input_co_embargo_manual'))]"/>
+                                                  (4, ref('input_co_embargo_manual')),
+                                                  (4, ref('input_l10n_co_libranza'))]"/>
     </record>
 </odoo>
