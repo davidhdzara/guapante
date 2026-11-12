@@ -1,6 +1,6 @@
 {
     'name': 'Preparación (Guapante)',
-    'version': '18.0.1.1.0',
+    'version': '18.0.1.2.0',
     'category': 'Inventory/Inventory',
     'summary': 'Alistamiento de pedidos por producto, pesaje con identificación por PIN',
     'description': """

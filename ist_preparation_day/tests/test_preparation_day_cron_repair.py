@@ -10,6 +10,9 @@ from odoo.addons.ist_preparation_day.tests.box_helpers import set_box
 from odoo import fields
 from odoo.tests.common import tagged
 
+from odoo.addons.ist_preparation_day.models.preparation_day import (
+    _date_to_utc_range,
+)
 from odoo.addons.ist_preparation_day.tests.test_sale_order_auto_load import (
     TestSaleOrderAutoLoad,
 )
@@ -171,22 +174,24 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
         self.assertEqual(Session.state, 'loaded')
         self.assertEqual(len(Session.line_ids), 1)
 
-    def test_cron_skips_draft_session_with_partial_lines(self):
+    def test_cron_loads_draft_session_with_partial_lines_without_duplicating(self):
+        """Antes (test_cron_skips_draft_session_with_partial_lines) el cron
+        NO tocaba una sesión draft con líneas. Incidente 2026-11-11: esa
+        misma situación la deja una reubicación y descartaba pedidos en
+        silencio, así que ahora el cron la carga (action_load es
+        idempotente: no duplica la línea ya puesta)."""
         order, date_val = self._confirm_order(qty=5.0)
         Session = self.env['guapante.preparation.day'].search(
             [('date', '=', date_val)], limit=1,
         )
-        # Queda 'draft' con una línea ya puesta — simula una carga a
-        # medias manual, no la rama de sesión vacía.
         Session.sudo().write({'state': 'draft'})
-        messages_before = len(Session.message_ids)
 
         self._run_cron()
 
         Session.invalidate_recordset()
-        self.assertEqual(Session.state, 'draft')
+        self.assertEqual(Session.state, 'loaded')
         self.assertEqual(len(Session.line_ids), 1)
-        self.assertEqual(len(Session.message_ids), messages_before)
+        self.assertEqual(Session.line_ids.sale_order_id, order)
 
     def test_cron_concurrency_error_in_one_session_does_not_abort_others(self):
         """Corrección de Tech Lead (2026-10-30): a diferencia de e2/
@@ -849,4 +854,91 @@ class TestPreparationDayCronRepair(TestSaleOrderAutoLoad):
             ).exists(),
             'la sesión vacía debe borrarse aunque existan más '
             'sesiones viejas CON líneas que el tope de la corrida',
+        )
+
+
+    # ── Incidente 2026-11-11: sesión draft CON líneas de una reubicación ──
+
+    def _draft_session_with_relocated_order(self):
+        """Pedido R1 confirmado en la fecha natural y reubicado a day_b:
+        deja la sesión de day_b en 'draft' CON su línea (reubicación),
+        exactamente el estado que descartaba pedidos en silencio."""
+        order1, _date = self._confirm_order(qty=2.0)
+        day_b = fields.Date.add(self.delivery_date, days=2)
+        pick = order1.picking_ids.filtered(
+            lambda p: p.picking_type_code == 'internal'
+            and p.state not in ('done', 'cancel')
+        )
+        pick.scheduled_date = _date_to_utc_range(self.env, day_b)[0]
+        session_b = self.env['guapante.preparation.day'].search(
+            [('date', '=', day_b)], limit=1,
+        )
+        self.assertEqual(session_b.state, 'draft')
+        self.assertEqual(session_b.line_ids.sale_order_id, order1)
+        return order1, day_b, session_b
+
+    def test_new_order_is_added_to_draft_session_with_relocated_lines(self):
+        order1, day_b, session_b = self._draft_session_with_relocated_order()
+        box1 = order1.daily_sequence
+        self.assertTrue(box1 > 0)
+
+        order2 = self._confirm_order_on_day(day_b, qty=3.0)
+
+        session_b.invalidate_recordset()
+        self.assertEqual(session_b.state, 'loaded')
+        self.assertEqual(
+            sorted(session_b.line_ids.mapped('sale_order_id').ids),
+            sorted((order1 | order2).ids),
+            'el pedido nuevo debe entrar de inmediato, junto al reubicado',
+        )
+        # las cajas del reubicado no cambian; el nuevo toma la siguiente
+        order1.invalidate_recordset()
+        order2.invalidate_recordset()
+        self.assertEqual(order1.daily_sequence, box1)
+        self.assertTrue(order2.daily_sequence > box1)
+        # sin duplicados de línea ni de resumen
+        sale_lines = session_b.line_ids.mapped('sale_line_id')
+        self.assertEqual(len(sale_lines), len(session_b.line_ids))
+        self.assertEqual(
+            len(session_b.summary_ids),
+            len(session_b.line_ids.mapped('product_id')),
+        )
+
+    def test_cron_loads_draft_session_with_relocated_lines(self):
+        order1, day_b, session_b = self._draft_session_with_relocated_order()
+        box1 = order1.daily_sequence
+        # El alta automática falla/no corre: solo el cron puede rescatar.
+        with patch.object(
+            type(self.env['guapante.preparation.day']),
+            '_guapante_add_confirmed_order', lambda *a, **k: None,
+        ):
+            order2 = self._confirm_order_on_day(day_b, qty=3.0)
+        session_b.invalidate_recordset()
+        self.assertEqual(session_b.state, 'draft')
+        self.assertNotIn(order2, session_b.line_ids.sale_order_id)
+
+        self._run_cron_as_of(self.delivery_date)
+
+        session_b.invalidate_recordset()
+        self.assertEqual(session_b.state, 'loaded')
+        self.assertEqual(
+            sorted(session_b.line_ids.mapped('sale_order_id').ids),
+            sorted((order1 | order2).ids),
+        )
+        order1.invalidate_recordset()
+        self.assertEqual(order1.daily_sequence, box1)
+        self.assertEqual(
+            len(session_b.line_ids.mapped('sale_line_id')),
+            len(session_b.line_ids),
+        )
+
+    def test_cron_second_run_does_not_duplicate_after_loading_draft(self):
+        order1, day_b, session_b = self._draft_session_with_relocated_order()
+        order2 = self._confirm_order_on_day(day_b, qty=3.0)
+        self._run_cron_as_of(self.delivery_date)
+        self._run_cron_as_of(self.delivery_date)
+        session_b.invalidate_recordset()
+        self.assertEqual(len(session_b.line_ids), 2)
+        self.assertEqual(
+            session_b.line_ids.mapped('sale_order_id'), order1 | order2,
         )
