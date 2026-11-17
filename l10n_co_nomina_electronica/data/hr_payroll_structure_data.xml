@@ -1537,7 +1537,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Provision mensual de prima de servicios (Art. 306 CST) = base_prestacional / 12.
+# Provision de prima de servicios (Art. 306 CST) = base_prestacional / 12 (valor de un MES) x la fraccion del mes que cubre
+# el recibo (.279: HrPayslip._ne_factor_provision_periodo(): mes completo = 1, quincena = 15/30, semana = 7/30).
 # No es un pago -- acumulacion contable. Ver CO_PRIMA para el pago real (input-driven).
 smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
@@ -1547,7 +1548,7 @@ if contract.l10n_co_ne_integral_salary:
 else:
     aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
     base = contract.wage + aux
-result = base / 12.0
+result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>
@@ -1561,7 +1562,8 @@ result = base / 12.0
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Provision mensual de cesantias (Art. 249 CST) = base_prestacional / 12.
+# Provision de cesantias (Art. 249 CST) = base_prestacional / 12 (valor de un MES) x la fraccion del mes que cubre el
+# recibo (.279: HrPayslip._ne_factor_provision_periodo()). CO_PROV_INT_CES la hereda: es un porcentaje de esta linea.
 smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
 if contract.l10n_co_ne_integral_salary:
@@ -1570,7 +1572,7 @@ if contract.l10n_co_ne_integral_salary:
 else:
     aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
     base = contract.wage + aux
-result = base / 12.0
+result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>
@@ -1617,9 +1619,10 @@ result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
 # real de vacaciones (integracion con hr.leave, tipo VACACIONES) -- esta
 # regla es la acumulacion del pasivo, no el pago cuando se toman.
 # 1/24 = 15 dias habiles por cada 360 de servicio: salario x dias_mes / divisor_vacaciones
-# (30 / 720), de los mismos parametros que usa la liquidacion de vacaciones.
+# (30 / 720), de los mismos parametros que usa la liquidacion de vacaciones. Es el valor de un MES y se multiplica por la
+# fraccion del mes que cubre el recibo (.279: HrPayslip._ne_factor_provision_periodo(); equivale a salario x dias / divisor).
 _fecha = payslip._ne_fecha_parametros()
-result = contract.wage * payslip._rule_parameter('l10n_co_dias_mes_comercial', _fecha) / payslip._rule_parameter('l10n_co_divisor_vacaciones', _fecha)
+result = contract.wage * payslip._rule_parameter('l10n_co_dias_mes_comercial', _fecha) / payslip._rule_parameter('l10n_co_divisor_vacaciones', _fecha) * payslip._ne_factor_provision_periodo()
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>

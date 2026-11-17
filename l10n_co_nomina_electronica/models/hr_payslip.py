@@ -1854,6 +1854,25 @@ class HrPayslip(models.Model):
             dias_excluidos += self._ne_ausencia_calendario(codigo)[0]
         return dias_bajo_contrato - dias_excluidos
 
+    def _ne_factor_provision_periodo(self):
+        """Fraccion del mes que cubre este recibo, para las provisiones de prestaciones (CO_PROV_PRIMA, CO_PROV_CESANTIAS y
+        CO_PROV_VACACIONES; CO_PROV_INT_CES la hereda porque es un porcentaje de CO_PROV_CESANTIAS).
+
+        Defecto (QA, prenomina de abril de 2026 de Guapante, quincenal): las 4 reglas daban el valor MENSUAL completo en cada
+        recibo, asi que dos quincenas acumulaban el doble en el mes (y en el asiento). Ahora cada regla multiplica su valor mensual
+        por este factor = ``_ne_dias_bajo_contrato()`` / ``l10n_co_dias_mes_comercial``: mes completo = 30/30 = 1.0 EXACTO (el mismo
+        valor de antes, sin diferencia de flotantes), quincena = 15/30 (1 al 15 y 16 al 30 o 31), semana = 7/30 (``_ne_contar_dias``),
+        y un ingreso o retiro a mitad de periodo recorta los dias (``_ne_dias_bajo_contrato``).
+
+        Fuente de dias (opcion A del diseno, aprobada por Tech Lead el 17-nov-2026; la formula contable la confirma David/contador):
+        NO ``_ne_dias_pagables()``. Esa resta TODA ausencia, incluidas las remuneradas (vacaciones, incapacidades, licencias) que se
+        pagan por otro concepto, y dejaria la provision en 0 en una quincena de vacaciones aunque la prestacion sigue causandose.
+        Consecuencia conocida: las ausencias NO descuentan la provision (una licencia no remunerada sobreprovisiona); si debe
+        descontarse es una decision normativa pendiente (variante C del diseno: restar solo las no remuneradas)."""
+        self.ensure_one()
+        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        return self._ne_dias_bajo_contrato() / dias_mes
+
     def _ne_pago_ausencia_calendario(self, codigo, dias, previos=None):
         """Valor a pagar por `dias` calendario corridos de una ausencia de pago por el empleador
         o por terceros: CO_INC_COMUN, CO_INC_LABORAL, CO_LIC_MAT, CO_LIC_PAT. Unico lugar del
