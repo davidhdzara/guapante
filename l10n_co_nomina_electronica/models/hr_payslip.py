@@ -1816,11 +1816,22 @@ class HrPayslip(models.Model):
             return 0
         return self._ne_contar_dias(activo_ini, activo_fin)
 
-    def _ne_dias_pagables(self):
+    def _ne_codigos_tipos_no_remunerados(self):
+        """Códigos de tipo de entrada de trabajo de los tipos de ausencia marcados ``unpaid`` (sin continuidad de pago del empleador):
+        ``_ne_dias_pagables`` los excluye siempre del básico, leyendo sus líneas de días. Fuente única de ese conjunto (.281)."""
+        unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
+        return set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+
+    def _ne_dias_pagables(self, valores=None):
         """Días pagables del período -- misma convención de "mes comercial" colombiano que ya
         usa la regla salarial CO_BASICO (hr_salary_rule_co_basico, data/hr_payroll_structure_
         data.xml) y CO_AUX_TRANS para calcular el sueldo/auxilio. Única fuente para el sueldo
         Y para DiasTrabajados, sin importar si la estructura es mensual o de liquidación.
+
+        ``valores`` (.280, solo lo pasa ``_ne_ajustar_dias_por_asistencia``): los diccionarios de las líneas de días que el nativo
+        ACABA de calcular, antes de guardarlas. Sin él las ausencias se leen de ``worked_days_line_ids`` (lo de siempre); al generar
+        las líneas ese campo está recién vaciado, así que la línea «Asistencia» necesita contar las ausencias desde la lista en
+        construcción. Mismo cálculo, otra fuente de las ausencias: con las líneas guardadas el resultado es idéntico.
 
         AUD-DIAN-34 (2026-10-05, Ronda 1 DIAN): hallazgo real -- un básico de mes completo
         generaba DiasTrabajados="19" (conteo de líneas WORK100, calendario lun-vie) junto a
@@ -1833,8 +1844,7 @@ class HrPayslip(models.Model):
         self.ensure_one()
         dias_bajo_contrato = self._ne_dias_bajo_contrato()
 
-        unpaid_types = self.env['hr.leave.type'].search([('unpaid', '=', True)])
-        unpaid_codes = set(unpaid_types.mapped('work_entry_type_id.code')) - {False}
+        unpaid_codes = self._ne_codigos_tipos_no_remunerados()
         # H-013 (2026-10-08, QA Bloque 4): vacaciones/licencias/incapacidades entraban como
         # novedades manuales (inputs CO_VAC/CO_LIC_REM/CO_LIC_NR/CO_INC_COMUN/CO_INC_LABORAL)
         # y el básico no descontaba esos días -- doble pago real (vacaciones 15 días: básico
@@ -1844,7 +1854,7 @@ class HrPayslip(models.Model):
         # distinto al básico (Art. 186 CST, Ley 100/1993, etc.). Por eso se excluyen SIEMPRE
         # estos códigos (data/l10n_co_ausencias_data.xml), sin importar su unpaid real.
         dias_excluidos_codes = unpaid_codes | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
-        dias_excluidos = self._ne_dias_habiles_excluidos(dias_excluidos_codes)
+        dias_excluidos = self._ne_dias_habiles_excluidos(dias_excluidos_codes, valores=valores)
         # H-014 (2026-10-08, QA Bloque 5): CO_LIC_MAT/CO_LIC_PAT/CO_INC_COMUN/CO_INC_LABORAL
         # se pagan en días CALENDARIO corridos (ver _ne_ausencia_calendario) -- se excluyen
         # del básico por la misma cuenta, nunca por worked_days (ahí solo existirían los
@@ -1853,6 +1863,107 @@ class HrPayslip(models.Model):
         for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
             dias_excluidos += self._ne_ausencia_calendario(codigo)[0]
         return dias_bajo_contrato - dias_excluidos
+
+    # ──────────────────────────────────────────────────────────────────────
+    # .280 (doc 68, Fase 1): pestaña «Días trabajados» desde los días PAGADOS, no desde las horas de las entradas de trabajo
+    # ──────────────────────────────────────────────────────────────────────
+    # Defecto (QA, prenomina de abril de 2026 de Guapante, quincenal): el nativo reparte las horas de TODAS las entradas de trabajo del
+    # periodo por tipo (``contract.get_work_hours``) y la pestaña mostraba «Festivo 2,05 + Descanso 2,05 + Asistencia 10,98 = 15,07
+    # días» mientras el recibo pagaba 15 (``_ne_dias_pagables``). David pidió que «Asistencia» sea los días pagados y que el festivo y
+    # el descanso NO trabajados no aparezcan. Las demás líneas (vacaciones, licencias, incapacidades, OUT) quedan como las calcula el
+    # nativo: ``_ne_dias_habiles_excluidos`` y la UGPP las leen por código.
+    def _ne_aplica_dias_por_asistencia(self):
+        """True si las líneas de días de este recibo se rearman desde los días pagados: compañía colombiana, estructura general y sin
+        crédito de tiempo (el crédito de tiempo del nativo mezcla dos calendarios y no aplica a Colombia). Las demás estructuras
+        (liquidación, prima, bonificación) no usan líneas de días o no se tocan."""
+        self.ensure_one()
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina', raise_if_not_found=False)
+        return bool(general and self.struct_id == general and self.company_id and self.company_id._ne_es_colombia()
+                    and not self.contract_id.time_credit)
+
+    def _ne_codigos_dias_ocultos(self):
+        """Códigos de tipo de entrada de trabajo cuyas líneas NO se muestran en «Días trabajados» (parámetro
+        ``l10n_co_dias_trabajados_ocultar``: «FEST» festivo y «DESCANSO» descanso). El código lo pone quien crea el tipo en cada base
+        (el tipo «Festivo» no trae identificador de datos), así que no puede ir fijo en el código."""
+        self.ensure_one()
+        return set(self._rule_parameter('l10n_co_dias_trabajados_ocultar', self._ne_fecha_parametros()))
+
+    def _ne_tipo_asistencia(self):
+        """El tipo de entrada de trabajo «Asistencia» del nativo (código WORK100). Primero su identificador de datos (NO VERIFICADO en
+        el servidor: no está en la copia de lectura) y, si no existe, el código WORK100, que es el que el nativo documenta para
+        ``worked_days['WORK100']``. Sin ninguno hay un error claro: no se inventa una línea."""
+        tipo = self.env.ref('hr_work_entry.work_entry_type_attendance', raise_if_not_found=False)
+        if not tipo:
+            tipo = self.env['hr.work.entry.type'].search([('code', '=', 'WORK100')], limit=1)
+        if not tipo:
+            raise UserError(_(
+                'No existe el tipo de entrada de trabajo «Asistencia» (código WORK100), con el que se muestran los días pagados del '
+                'recibo de %(empleado)s. Créelo en los tipos de entrada de trabajo (Configuración de Nómina).',
+                empleado=self.employee_id.name))
+        return tipo
+
+    def _ne_ajustar_dias_por_asistencia(self, valores):
+        """Rearma la lista de líneas de días que calculó el nativo (``valores``: diccionarios con ``work_entry_type_id``, ``sequence``,
+        ``number_of_days`` y ``number_of_hours``):
+
+        1. «Asistencia» (WORK100) pasa a ser UNA sola línea, la primera, con los días PAGADOS (``_ne_dias_pagables``: lo mismo que paga
+           CO_BASICO y que va al XML como DiasTrabajados) y como HORAS las que el nativo ya tenía en «Asistencia» MÁS las de los tipos
+           ocultos (festivo, descanso). Así el total de horas del recibo (``sum_worked_hours``, el denominador de ``amount``) y la suma de
+           los importes de las líneas (= ``BASIC``, que alimenta ``GROSS`` y la base de retención) quedan IDÉNTICOS a los del nativo, con y
+           sin línea OUT: lo que se corrige es lo que se MUESTRA (días y nombres de líneas), no la plata. La línea lleva ``name`` explícito:
+           el nombre nativo agrega « (Half-Day)» cuando horas/días < horas por día (``hr_payslip_worked_days.py:49-53``) y aquí lo hace
+           casi siempre. Sin días pagados pero con horas (festivo o descanso en un periodo de ausencias) la línea se conserva con 0 días
+           para no cambiar el total de horas; sin ninguno de los dos no hay línea.
+        2. Los tipos del parámetro ``l10n_co_dias_trabajados_ocultar`` (festivo, descanso) se quitan.
+        3. Las líneas de las 4 ausencias de días CALENDARIO (incapacidad común y laboral, maternidad, paternidad: ``_NOVEDAD_AUSENCIA_
+           CALENDARIO_CODES``) muestran los días que realmente se pagan (``_ne_ausencia_calendario``, recortados al periodo), no horas ÷
+           horas por día del nativo (3,07 en vez de 3; 1,98 si la ausencia cruza el día de descanso); solo se muestra: el pago sale de las
+           fechas de la ausencia y estas líneas no se leen (.281). Las horas no se tocan, así que ``amount`` y ``BASIC`` no cambian. No se
+           reemplaza la línea si no hay ausencia validada (entradas de trabajo sueltas) ni si el tipo es ``unpaid`` (su código SÍ entra a
+           ``_ne_dias_habiles_excluidos`` y el cambio movería el pago).
+        4. Todo lo demás (vacaciones, licencias remuneradas y sin sueldo) se conserva igual y en su orden (días = horas ÷ horas por día del
+           nativo; contarlos por fecha cambia plata y es otra pieza).
+
+        La línea «OUT» (ingreso o retiro a mitad del periodo) la agrega el nativo DESPUÉS de este método y no se toca."""
+        self.ensure_one()
+        tipos = self.env['hr.work.entry.type'].browse([valor['work_entry_type_id'] for valor in valores])
+        codigo_por_tipo = {tipo.id: tipo.code for tipo in tipos}
+        nombre_por_tipo = {tipo.id: tipo.name for tipo in tipos}
+        asistencia = self._ne_tipo_asistencia()
+        ocultos = self._ne_codigos_dias_ocultos()
+        no_remunerados = self._ne_codigos_tipos_no_remunerados()
+        pagables = max(self._ne_dias_pagables(valores=valores), 0)
+        horas = sum(valor['number_of_hours'] for valor in valores
+                    if valor['work_entry_type_id'] == asistencia.id or codigo_por_tipo[valor['work_entry_type_id']] in ocultos)
+        resto = []
+        for valor in valores:
+            tipo_id = valor['work_entry_type_id']
+            codigo = codigo_por_tipo[tipo_id]
+            if tipo_id == asistencia.id or codigo in ocultos:
+                continue
+            if codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES and codigo not in no_remunerados:
+                dias_calendario = self._ne_ausencia_calendario(codigo)[0]
+                if dias_calendario > 0:
+                    valor = dict(valor, number_of_days=dias_calendario, name=nombre_por_tipo[tipo_id])
+            resto.append(valor)
+        if not pagables and not horas:
+            return resto
+        linea = {
+            'name': asistencia.name,
+            'sequence': asistencia.sequence,
+            'work_entry_type_id': asistencia.id,
+            'number_of_days': pagables,
+            'number_of_hours': horas,
+        }
+        return [linea] + resto
+
+    def _get_worked_day_lines_values(self, domain=None):
+        """Punto de extensión nativo de las líneas de días (``hr.payslip._get_worked_day_lines_values``): ver
+        ``_ne_ajustar_dias_por_asistencia``. Con ``domain`` (solo lo usa el crédito de tiempo del nativo) no se toca."""
+        valores = super()._get_worked_day_lines_values(domain=domain)
+        if domain or not self._ne_aplica_dias_por_asistencia():
+            return valores
+        return self._ne_ajustar_dias_por_asistencia(valores)
 
     def _ne_factor_provision_periodo(self):
         """Fraccion del mes que cubre este recibo, para las provisiones de prestaciones (CO_PROV_PRIMA, CO_PROV_CESANTIAS y
@@ -2035,9 +2146,13 @@ class HrPayslip(models.Model):
                 dias_totales += dias
         return dias_totales, detalle
 
-    def _ne_dias_habiles_excluidos(self, codigos):
+    def _ne_dias_habiles_excluidos(self, codigos, valores=None):
         """Dias HABILES de las ausencias de worked_days (CO_VAC, CO_LIC_REM, CO_LIC_NR y tipos
         'unpaid') que se excluyen del sueldo, acotados al tramo pagable.
+
+        ``valores`` (.280): lista de diccionarios de líneas de días aún sin guardar (ver ``_ne_dias_pagables``); si se da, se suman
+        esos en vez de ``worked_days_line_ids``. Solo cambia la fuente de la suma del recibo de un solo mes: el tramo de la
+        liquidación sigue saliendo de ``_ne_ausencia_habil`` (hr.leave + hr.work.entry), que no lee las líneas.
 
         Un recibo de un solo mes: suma de worked_days, como siempre. Un recibo que cruza meses
         (Liquidacion: date_from = inicio de contrato, el sueldo es solo del ultimo mes):
@@ -2046,6 +2161,11 @@ class HrPayslip(models.Model):
         self.ensure_one()
         tramo_ini, tramo_fin = self._ne_tramo_pagable_periodo()
         if tramo_ini == self.date_from:
+            if valores is not None:
+                codigo_por_tipo = {tipo.id: tipo.code for tipo in self.env['hr.work.entry.type'].browse(
+                    [valor['work_entry_type_id'] for valor in valores])}
+                return sum(valor['number_of_days'] for valor in valores
+                           if codigo_por_tipo.get(valor['work_entry_type_id']) in codigos)
             return sum(wd.number_of_days for wd in self.worked_days_line_ids
                        if wd.work_entry_type_id.code in codigos)
         return sum(self._ne_ausencia_habil(codigo, tramo_ini, tramo_fin)[0]

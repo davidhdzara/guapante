@@ -156,7 +156,7 @@ class TestProvisionesPeriodo(TransactionCase):
         recibo = self._recibo(date(2026, 4, 1), date(2026, 4, 15))
         llamadas = []
 
-        def sin_dias_pagables(slip):
+        def sin_dias_pagables(slip, valores=None):
             llamadas.append(slip.id)
             return 0.0
 

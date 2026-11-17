@@ -211,6 +211,38 @@
     </record>
 
     <!-- ============================================================ -->
+    <!-- .281 (doc 68 §11): pestaña «Días trabajados y entradas» del recibo                                  -->
+    <!-- Solo presentación, con atributos nativos: nada de lo que se paga ni de lo que va al XML depende de esto. -->
+    <!-- - La etiqueta «Other Inputs» (nativa, traducida «Otras entradas») pasa a «Novedades de nómina»: se oculta   -->
+    <!--   el separador original (el primer `separator` hermano que sigue a la lista de días, nat                    -->
+    <!--   hr_payslip_views.xml:131 y :160) y se agrega uno nuevo con texto del módulo. Selector POSICIONAL anclado  -->
+    <!--   en un @name: Odoo prohíbe los atributos traducibles                                                      -->
+    <!--   (string, help, sum, avg, confirm, placeholder, alt, title) como selector de una herencia (base            -->
+    <!--   ir_ui_view.py _valid_inheritance); la regresión de .281 cayó por usar @string.                             -->
+    <!-- - Importe y horas de la lista de días: columnas opcionales ocultas (el usuario puede mostrarlas). Desde .280 -->
+    <!--   «Asistencia» muestra los días pagados y conserva las horas del nativo: importe y horas no se leen como días. -->
+    <!-- ============================================================ -->
+    <record id="view_payslip_form_ne_dias" model="ir.ui.view">
+        <field name="name">hr.payslip.form.ne.dias</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='worked_days_input']/field[@name='worked_days_line_ids']/following-sibling::separator[1]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']/field[@name='worked_days_line_ids']/following-sibling::separator[1]" position="after">
+                <separator string="Novedades de nómina"/>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']//field[@name='worked_days_line_ids']/list/field[@name='number_of_hours']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']//field[@name='worked_days_line_ids']/list/field[@name='amount']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
     <!-- Payslip Tree View                                             -->
     <!-- ============================================================ -->
     <record id="view_payslip_tree_ne" model="ir.ui.view">

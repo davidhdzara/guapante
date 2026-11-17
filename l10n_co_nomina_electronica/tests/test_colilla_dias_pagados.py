@@ -75,15 +75,17 @@ class TestColillaDiasPagados(TransactionCase):
             return None
         return float(encontrado.group(1).strip().replace('\xa0', '').replace(' ', '').replace(',', '.'))
 
-    def test_general_imprime_la_cantidad_guardada_de_co_basico_y_no_work100(self):
-        """Septiembre completo: CO_BASICO se paga por 30 días del mes comercial; WORK100 (lun-vie) sería 22. La colilla imprime 30."""
+    def test_general_imprime_la_cantidad_guardada_de_co_basico(self):
+        """Septiembre completo: CO_BASICO se paga por 30 días del mes comercial y la colilla imprime 30. Desde .280 (doc 68, Fase 1) la línea
+        de días «Asistencia» (WORK100) ya es esa misma cantidad (antes eran los 22 días lun-vie del calendario): la colilla sigue leyendo la
+        línea de sueldo guardada, no WORK100 (``test_sin_linea_de_sueldo_no_cae_a_work100``), y las dos fuentes ahora coinciden."""
         slip = self._recibo(self.est_general, 'General')
         slip.compute_sheet()
         basico = slip.line_ids.filtered(lambda l: l.code == 'CO_BASICO')
         self.assertEqual(len(basico), 1)
         self.assertEqual(basico.quantity, 30.0)
         work100 = sum(slip.worked_days_line_ids.filtered(lambda w: w.code == 'WORK100').mapped('number_of_days'))
-        self.assertNotEqual(work100, 30.0, 'La fuente vieja (WORK100, lun-vie) NO debe coincidir con los días pagados en este caso')
+        self.assertEqual(work100, 30.0, 'La línea Asistencia muestra los días pagados (.280)')
         self.assertEqual(self._dias_impresos(self._html(slip)), 30.0)
 
     def test_liquidacion_imprime_la_cantidad_guardada_de_co_liq_salarios(self):

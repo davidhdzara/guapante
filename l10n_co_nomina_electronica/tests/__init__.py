@@ -146,3 +146,4 @@ from . import test_result_rules_lectura
 from . import test_neto_entradas_multiples
 from . import test_colilla_dias_pagados
 from . import test_provisiones_periodo
+from . import test_dias_por_asistencia
