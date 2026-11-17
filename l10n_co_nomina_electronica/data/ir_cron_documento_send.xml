@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cola de envío del documento mensual (doc 53 §23.17, 7b). Se dispara con ``_trigger`` al encolar y, además,
+             corre cada 5 minutos para los reintentos. El intervalo es un dato editable en Ajustes > Técnico > Acciones
+             planificadas. El cron de reconsulta del RECIBO (ir_cron_ne_dian_status_recheck) no se toca. -->
+        <record id="ir_cron_ne_documento_send" model="ir.cron">
+            <field name="name">Nómina Electrónica: envío de documentos mensuales en cola</field>
+            <field name="model_id" ref="model_l10n_co_ne_documento"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_enviar_cola()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Reconsulta del estado de los documentos mensuales pendientes (doc 53 §23.17, 7c): cada 30 minutos (el del
+             recibo, ir_cron_ne_dian_status_recheck, es de 10 y no se toca). Editable como dato. -->
+        <record id="ir_cron_ne_documento_recheck" model="ir.cron">
+            <field name="name">Nómina Electrónica: reconsulta de documentos mensuales pendientes</field>
+            <field name="model_id" ref="model_l10n_co_ne_documento"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_reconsultar_pendientes()</field>
+            <field name="interval_number">30</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

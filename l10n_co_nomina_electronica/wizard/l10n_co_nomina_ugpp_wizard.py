@@ -8,6 +8,12 @@ class L10nCoNominaUGPPWizard(models.TransientModel):
     _name = 'l10n_co_nomina.ugpp.wizard'
     _description = 'Asistente para generar Reporte UGPP'
 
+    company_id = fields.Many2one(
+        comodel_name='res.company',
+        string='Compañía',
+        required=True,
+        default=lambda self: self.env.company,
+    )
     year = fields.Integer(
         string='Año',
         required=True,
@@ -36,6 +42,7 @@ class L10nCoNominaUGPPWizard(models.TransientModel):
     def action_generate(self):
         """Create a UGPP report record and trigger report generation."""
         self.ensure_one()
+        self.company_id._ne_exigir_colombia()
 
         if not self.year or not self.month:
             raise UserError(_('Debe seleccionar el año y el mes para generar el reporte.'))
@@ -53,7 +60,7 @@ class L10nCoNominaUGPPWizard(models.TransientModel):
             'month': self.month,
             'date_from': date_from,
             'date_to': date_to,
-            'company_id': self.env.company.id,
+            'company_id': self.company_id.id,
         })
 
         ugpp_report.action_generate_report()

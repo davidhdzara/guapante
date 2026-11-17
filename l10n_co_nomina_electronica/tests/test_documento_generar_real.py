@@ -1,0 +1,145 @@
+# -*- coding: utf-8 -*-
+"""Etapa 3b, prueba "de verdad" (pedida por Tech Lead): documento mensual con recibos REALES de una quincena,
+calculados por el motor (compute_sheet), preparados con _ne_preparar y generados con action_generar_xml SIN parchear
+la recoleccion, la fusion, el constructor del XML ni el CUNE. Solo se simula lo que no se puede tener en una prueba:
+el certificado y la firma (no hay certificado de prueba). Ademas el XML se valida contra el XSD v1.0.6 que viaja en
+el modulo (DIAN/Caja-de-Herramientas-Nomina-Electronica-V1-0). NO envia nada a la DIAN."""
+
+import base64
+import logging
+import shutil
+import tempfile
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from lxml import etree
+
+from odoo.tests.common import TransactionCase, tagged
+
+from odoo.addons.l10n_co_nomina_electronica.services import xml_signer
+
+_logger = logging.getLogger(__name__)
+CAJA = Path(__file__).resolve().parent.parent / 'DIAN' / 'Caja-de-Herramientas-Nomina-Electronica-V1-0'
+NS_EXT = 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2'
+
+
+@tagged('post_install', '-at_install')
+class TestDocumentoGenerarReal(TransactionCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        env = cls.env
+        pais = env.ref('base.co')
+        estado = env['res.country.state'].search([('country_id', '=', pais.id)], limit=1)
+        ciudad = env['res.city'].search([('country_id', '=', pais.id), ('state_id', '=', estado.id)], limit=1)
+        if not ciudad:
+            ciudad = env['res.city'].create({
+                'name': 'Ciudad Prueba', 'country_id': pais.id, 'state_id': estado.id, 'zipcode': '11001'})
+        cls.company = env['res.company'].create({
+            'name': 'Empresa Generar Real', 'country_id': pais.id, 'vat': '900123456-8',
+            'street': 'Calle 1 # 2-3', 'state_id': estado.id,
+            'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN',
+            'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U',
+            'l10n_co_ne_fuente_fecha_pago': 'recibo', 'l10n_co_ne_payroll_prefix': 'NE'})
+        # El municipio de la compañía NO es un campo de res.company: el XML lo lee de su partner
+        # (``company.partner_id.city_id``, hr_payslip._collect_payslip_data).
+        cls.company.partner_id.write({
+            'country_id': pais.id, 'state_id': estado.id, 'city_id': ciudad.id, 'street': 'Calle 1 # 2-3'})
+        env['l10n.co.ne.operation_mode'].create({
+            'company_id': cls.company.id, 'software_id': 'SOFT-REAL', 'software_pin': 'PIN-REAL', 'test_set_id': 'TS'})
+        cls.company.l10n_co_ne_environment = '2'
+        cls.company.l10n_co_ne_sequence_id = env['ir.sequence'].create({
+            'name': 'Secuencia NE real', 'prefix': 'NE', 'padding': 8, 'number_next': 1,
+            'implementation': 'no_gap', 'company_id': cls.company.id})
+        tipo_id = env.ref('l10n_co.national_citizen_id')   # Cedula: un trabajador no se identifica con NIT (alerta tipo_documento_trabajador)
+        tipo = env['hr.payroll.structure.type'].create({'name': 'Tipo Generar Real', 'country_id': pais.id})
+        cls.empleado = env['hr.employee'].create({
+            'name': 'Juan Perez', 'company_id': cls.company.id, 'identification_id': '1020304050',
+            'l10n_co_ne_payment_method': '10', 'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00',
+            'address_id': cls.company.partner_id.id})
+        if tipo_id:
+            cls.empleado.work_contact_id.l10n_latam_identification_type_id = tipo_id
+        cls.contrato = env['hr.contract'].create({
+            'name': 'Contrato Generar Real', 'employee_id': cls.empleado.id, 'company_id': cls.company.id,
+            'structure_type_id': tipo.id, 'wage': 3000000.0, 'date_start': date(2024, 3, 1), 'state': 'open',
+            'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01',
+            'l10n_co_pila_subtipo_cotizante': '00'})
+        estructura = env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        cls.recibos = env['hr.payslip']
+        for ini, fin in ((1, 15), (16, 31)):
+            recibo = env['hr.payslip'].create({
+                'name': 'Q %s-%s' % (ini, fin), 'employee_id': cls.empleado.id, 'contract_id': cls.contrato.id,
+                'company_id': cls.company.id, 'struct_id': estructura.id,
+                'date_from': date(2026, 3, ini), 'date_to': date(2026, 3, fin)})
+            recibo.compute_sheet()
+            recibo.write({'state': 'paid', 'paid_date': date(2026, 3, fin)})
+            cls.recibos |= recibo
+
+    def setUp(self):
+        super().setUp()
+        for objetivo, atributo, valor in (
+                (type(self.company), '_get_ne_certificate', lambda s: SimpleNamespace(date_end=False)),
+                (xml_signer, 'load_from_certificate', lambda cert: (None, b'', b'', None, None)),
+                (xml_signer, 'sign_xml', lambda xml_bytes, **k: xml_bytes)):
+            parche = patch.object(objetivo, atributo, valor)
+            parche.start()
+            self.addCleanup(parche.stop)
+
+    def _validar_xsd(self, xml_bytes):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (Path(tmp) / 'xsd').mkdir()
+        xsd = CAJA / 'XSD' / 'NominaIndividualElectronicaXSDV1.0.6.xsd'
+        shutil.copy(xsd, Path(tmp) / 'xsd' / xsd.name)
+        shutil.copytree(CAJA / 'Schemes', Path(tmp) / 'common')
+        esquema = etree.XMLSchema(etree.parse(str(Path(tmp) / 'xsd' / xsd.name)))
+        raiz = etree.fromstring(xml_bytes)
+        extensiones = raiz.find('{%s}UBLExtensions' % NS_EXT)
+        if extensiones is not None and len(extensiones) == 0:   # la firma real lo llena; aqui, relleno
+            for _i in range(2):
+                ext = etree.SubElement(extensiones, '{%s}UBLExtension' % NS_EXT)
+                etree.SubElement(etree.SubElement(ext, '{%s}ExtensionContent' % NS_EXT), '{urn:relleno}Firma')
+        valido = esquema.validate(etree.ElementTree(raiz))
+        return valido, [e.message[:200] for e in esquema.error_log]
+
+    def test_dos_quincenas_reales_generan_un_documento_valido(self):
+        resultado = self.env['l10n.co.ne.documento']._ne_preparar(self.recibos)
+        self.assertFalse(resultado['sin_fecha'], resultado['sin_fecha'])
+        doc = resultado['documentos']
+        self.assertEqual(len(doc), 1)
+        bloqueos = [a['message'] for a in (doc.alertas or []) if a['level'] == 'danger']
+        self.assertFalse(bloqueos, 'bloqueos del documento real: %s' % bloqueos)
+        self.assertEqual(doc.etapa, 'ready')
+        self.assertFalse(doc.state)
+        self.assertEqual(doc.payslip_ids, self.recibos)
+
+        doc.action_generar_xml()
+        self.assertTrue(doc.consecutive.startswith('NE'))
+        self.assertRegex(doc.cune, r'^[0-9a-f]{96}$')
+        xml_bytes = base64.b64decode(doc.xml_attachment_id.datas)
+        valido, errores = self._validar_xsd(xml_bytes)
+        self.assertTrue(valido, 'XML mensual real invalido contra el XSD v1.0.6: %s' % errores)
+
+        # Totales del XML = suma de las lineas reales de los dos recibos
+        raiz = etree.fromstring(xml_bytes)
+        dev = Decimal(raiz.find('{*}DevengadosTotal').text)
+        ded = Decimal(raiz.find('{*}DeduccionesTotal').text)
+        esperado_dev = sum((Decimal(str(l.total)) for r in self.recibos for l in r.line_ids
+                            if l.salary_rule_id.l10n_co_ne_dian_concept
+                            and not l.salary_rule_id.l10n_co_ne_is_deduction), Decimal('0'))
+        esperado_ded = sum((abs(Decimal(str(l.total))) for r in self.recibos for l in r.line_ids
+                            if l.salary_rule_id.l10n_co_ne_dian_concept
+                            and l.salary_rule_id.l10n_co_ne_is_deduction), Decimal('0'))
+        self.assertEqual(dev, esperado_dev.quantize(Decimal('0.01')))
+        self.assertEqual(ded, esperado_ded.quantize(Decimal('0.01')))
+        periodo = raiz.find('{*}Periodo')
+        self.assertEqual(periodo.get('TiempoLaborado'), '750')     # 2024-03-01 a 2026-03-31, D19
+        self.assertEqual(periodo.get('FechaLiquidacionInicio'), '2026-03-01')
+        self.assertEqual(periodo.get('FechaLiquidacionFin'), '2026-03-31')
+        self.assertEqual([f.text for f in raiz.findall('.//{*}FechaPago')], ['2026-03-15', '2026-03-31'])
+        self.assertEqual(raiz.find('{*}InformacionGeneral').get('PeriodoNomina'), '5')
+        _logger.warning('GENERAR REAL: consecutivo=%s dev=%s ded=%s', doc.consecutive, dev, ded)

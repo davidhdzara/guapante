@@ -11,19 +11,22 @@ from datetime import date
 from unittest.mock import patch
 
 from odoo.exceptions import UserError
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
-_PAYSLIP = 'odoo.addons.l10n_co_nomina_electronica.models.hr_payslip.HrPayslip'
+# Los metodos del ciclo DIAN viven en el mixin (etapa 1a), no en la clase HrPayslip del modulo.
+_PAYSLIP = (
+    'odoo.addons.l10n_co_nomina_electronica.models.l10n_co_ne_documento_mixin.L10nCoNeDocumentoMixin')
 _ENGINE = 'odoo.addons.l10n_co_nomina_electronica.models.l10n_co_ne_habilitacion.L10nCoNeHabilitacion'
 
 
+@tagged('post_install', '-at_install')
 class TestHabilitacionEngine(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Compañía dedicada y descartable (nunca modificar self.env.company: la build de
         # Odoo.sh corre sobre una copia de la BD real).
-        cls.company = cls.env['res.company'].create({'name': 'Compañía de Prueba Habilitación NE'})
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 'name': 'Compañía de Prueba Habilitación NE'})
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1) or cls.env.ref('base.co')
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura Habilitación', 'country_id': co_country.id})
@@ -52,13 +55,13 @@ class TestHabilitacionEngine(TransactionCase):
         self.engine = self.env['l10n.co.ne.habilitacion'].with_company(self.company)
 
     def _slip(self, name, state, adjustment=False, set_id='SET-ACTUAL'):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
             'identification_id': '30' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name, 'employee_id': employee.id,
             'company_id': self.company.id, 'structure_type_id': self.structure_type.id,
             'wage': 1800000.0, 'date_start': date(2024, 1, 1), 'state': 'open',
@@ -204,6 +207,25 @@ class TestHabilitacionEngine(TransactionCase):
             finished = self.engine._step(self.company)
         self.assertFalse(finished, 'el rechazo de un set anterior no debe detener el set actual')
         prepare.assert_called_once_with(self.company, individual=True)
+
+    # ── resultado previo ────────────────────────────────────────────────────
+
+    def test_cambiar_el_set_borra_el_resultado_de_la_habilitacion_anterior(self):
+        self.company.write({'l10n_co_ne_hab_state': 'done',
+                            'l10n_co_ne_hab_message': 'Habilitación completa: ...'})
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-NUEVO'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'idle')
+        self.assertFalse(self.company.l10n_co_ne_hab_message)
+
+    def test_guardar_el_mismo_set_no_borra_el_resultado(self):
+        self.company.write({'l10n_co_ne_hab_state': 'done', 'l10n_co_ne_hab_message': 'Completa'})
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-ACTUAL'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'done')
+
+    def test_cambiar_el_set_no_interrumpe_una_habilitacion_en_curso(self):
+        self.company.l10n_co_ne_hab_state = 'running'
+        self.company.l10n_co_ne_operation_mode_ids.write({'test_set_id': 'SET-NUEVO'})
+        self.assertEqual(self.company.l10n_co_ne_hab_state, 'running')
 
     # ── configuración ───────────────────────────────────────────────────────
 

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Aislamiento multiempresa de los modelos propios con company_id (doc 51, M4 paso 2).
+         Mismo patron que hr_payroll para recibo/linea/lote: reglas globales
+         company_id in company_ids. La configuracion de retencion admite ademas filas
+         compartidas (company_id vacio, M2). -->
+    <record id="rule_l10n_co_retefuente_uvt_company" model="ir.rule">
+        <field name="name">Configuración de retención: compañías autorizadas y compartidas</field>
+        <field name="model_id" ref="model_l10n_co_retefuente_uvt"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_retefuente_procedure2_company" model="ir.rule">
+        <field name="name">Retención Procedimiento 2: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_retefuente_procedure2"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_ibc_mensual_company" model="ir.rule">
+        <field name="name">IBC mensual: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_ibc_mensual"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_nomina_ugpp_company" model="ir.rule">
+        <field name="name">UGPP: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_nomina_ugpp"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_pila_planilla_company" model="ir.rule">
+        <field name="name">Planillas PILA: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_pila_planilla"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_payslip_tercero_company" model="ir.rule">
+        <field name="name">Distribución por tercero: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_payslip_tercero"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_ne_operation_mode_company" model="ir.rule">
+        <field name="name">Modo de operación de nómina electrónica: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_ne_operation_mode"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <!-- PRINCIPIO (TL/consultor v19, 2026-11-14): la visibilidad de estos modelos es la del recibo nativo de CADA version
+         de Odoo, no una copia fija. En v18 el recibo del oficial se limita por usuario/departamento/gerente; en v19
+         `hr_payroll_rule_officer` es [(1,'=',1)]. Al portar a v19, las reglas del Oficial de este archivo se reescriben
+         a su dominio. -->
+    <!-- Frente 6, P6-3 (doc 59 4.4): la visibilidad de estos modelos no puede exceder la del recibo. Mismo dominio que la
+         regla nativa hr_payroll_rule_officer del recibo para el oficial; el administrador ve todo, como en el recibo.
+         Las reglas de grupo se combinan con O entre si y con Y con la regla global por compania. -->
+    <record id="rule_l10n_co_ibc_mensual_oficial" model="ir.rule">
+        <field name="name">IBC mensual: el oficial de nómina solo ve lo de los empleados que ve en el recibo</field>
+        <field name="model_id" ref="model_l10n_co_ibc_mensual"/>
+        <field name="domain_force">['|', '|', ('employee_id.user_id', '=', user.id), ('employee_id.department_id', '=', False), ('employee_id.department_id.manager_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_user'))]"/>
+    </record>
+    <record id="rule_l10n_co_ibc_mensual_administrador" model="ir.rule">
+        <field name="name">IBC mensual: el administrador de nómina ve todo</field>
+        <field name="model_id" ref="model_l10n_co_ibc_mensual"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+    </record>
+    <record id="rule_l10n_co_payslip_tercero_oficial" model="ir.rule">
+        <field name="name">Distribución por tercero: el oficial de nómina solo ve lo de los empleados que ve en el recibo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_tercero"/>
+        <field name="domain_force">['|', '|', ('slip_id.employee_id.user_id', '=', user.id), ('slip_id.employee_id.department_id', '=', False), ('slip_id.employee_id.department_id.manager_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_user'))]"/>
+    </record>
+    <record id="rule_l10n_co_payslip_tercero_administrador" model="ir.rule">
+        <field name="name">Distribución por tercero: el administrador de nómina ve todo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_tercero"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+    </record>
+</odoo>

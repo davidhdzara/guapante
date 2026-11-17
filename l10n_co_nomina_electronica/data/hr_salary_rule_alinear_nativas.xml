@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E-3a (doc 59 §20.2): alinea la regla nativa NET de cada estructura propia con la regla de neto del módulo. noupdate="0" +
+         función idempotente: corre en cada instalación y actualización y solo toca la fórmula nativa o la propia. -->
+    <data noupdate="0">
+        <function model="hr.salary.rule" name="_ne_alinear_reglas_nativas"/>
+        <!-- E-7: las 4 estructuras propias imprimen y envian la colilla propia (report_id) -->
+        <function model="hr.payroll.structure" name="_ne_alinear_informe_recibo"/>
+    </data>
+</odoo>

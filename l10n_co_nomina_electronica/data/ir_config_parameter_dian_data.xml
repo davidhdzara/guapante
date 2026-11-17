@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- AUD-DIAN-34 (2026-10-05): un solo punto para las URL/tiempos de la DIAN,
+             editable en Ajustes, Técnico, Parámetros del Sistema, sin tocar código ni
+             re-desplegar si la DIAN cambia de host. Valores por defecto = los que ya
+             estaban hardcodeados en services/dian_utils.py, services/soap_client.py y
+             models/l10n_co_ne_habilitacion.py, así que ningún comportamiento cambia con
+             esta instalación. noupdate=1: un upgrade del módulo nunca sobrescribe lo que
+             el administrador haya configurado aquí. Leídos por ResCompany.
+             _ne_dian_endpoint()/_ne_dian_qr_host()/_ne_config_int_param()
+             (models/res_company.py). -->
+
+        <!-- H-024: palabras que vuelven ambiguo un nombre para el prellenado de nombres y
+             apellidos del empleado (separadas por coma, minúsculas). Editable sin tocar código. -->
+        <record id="config_parameter_particulas_nombre" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.particulas_nombre</field>
+            <field name="value">de,del,la,las,los,y,san,santa,da,di,van,von</field>
+        </record>
+
+        <record id="config_parameter_dian_soap_endpoint_1" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.dian_soap_endpoint_1</field>
+            <field name="value">https://vpfe.dian.gov.co/WcfDianCustomerServices.svc</field>
+        </record>
+        <record id="config_parameter_dian_soap_endpoint_2" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.dian_soap_endpoint_2</field>
+            <field name="value">https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc</field>
+        </record>
+        <record id="config_parameter_dian_qr_host_1" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.dian_qr_host_1</field>
+            <field name="value">catalogo-vpfe.dian.gov.co</field>
+        </record>
+        <record id="config_parameter_dian_qr_host_2" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.dian_qr_host_2</field>
+            <field name="value">catalogo-vpfe-hab.dian.gov.co</field>
+        </record>
+
+        <record id="config_parameter_soap_timeout_seconds" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.soap_timeout_seconds</field>
+            <field name="value">45</field>
+        </record>
+        <record id="config_parameter_habilitacion_tick_seconds" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.habilitacion_tick_seconds</field>
+            <field name="value">20</field>
+        </record>
+        <record id="config_parameter_habilitacion_timeout_minutes" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.habilitacion_timeout_minutes</field>
+            <field name="value">45</field>
+        </record>
+        <!-- H-012 (2026-10-06): horas máximas que _cron_recheck_sent_status() reconsulta
+             automáticamente un documento 'sent' antes de marcarlo 'uncertain' y sacarlo del
+             cron (evidencia real: NA0000000049 quedó 'sent' sin que la DIAN diera nunca un
+             veredicto del documento). Leído por HrPayslip._cron_recheck_sent_status() vía
+             ResCompany._ne_config_int_param(). -->
+        <record id="config_parameter_recheck_max_hours" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.recheck_max_hours</field>
+            <field name="value">72</field>
+        </record>
+
+        <!-- Fila 9 del doc 50 (.184): cuantos documentos 'sent' reconsulta como maximo cada corrida del
+             cron por compañia (antes constante de codigo, 200). Decision de funcionamiento, segun el
+             volumen. Leido por _cron_recheck_sent_status() via ResCompany._ne_config_int_param(). -->
+        <record id="config_parameter_recheck_batch_limit" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.recheck_batch_limit</field>
+            <field name="value">200</field>
+        </record>
+
+        <!-- Cola de envío del documento mensual (doc 53 §23.17, 7b / D-C): decisiones de funcionamiento editables sin
+             tocar código. send_batch_size = documentos por corrida del cron (el job_count del nativo);
+             send_max_retries = reintentos tras un fallo de transporte; send_retry_minutes y send_retry_max_minutes =
+             espera base y tope (5, 10, 20, 40, 60); send_stale_minutes = cuánto puede llevar "en curso" un envío antes
+             de darlo por interrumpido (debe ser MAYOR que soap_timeout_seconds + margen). Leídos con
+             ResCompany._ne_config_int_param(). -->
+        <record id="config_parameter_send_batch_size" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.send_batch_size</field>
+            <field name="value">10</field>
+        </record>
+        <record id="config_parameter_send_max_retries" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.send_max_retries</field>
+            <field name="value">5</field>
+        </record>
+        <record id="config_parameter_send_retry_minutes" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.send_retry_minutes</field>
+            <field name="value">5</field>
+        </record>
+        <record id="config_parameter_send_retry_max_minutes" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.send_retry_max_minutes</field>
+            <field name="value">60</field>
+        </record>
+        <record id="config_parameter_send_stale_minutes" model="ir.config_parameter">
+            <field name="key">l10n_co_nomina_electronica.send_stale_minutes</field>
+            <field name="value">15</field>
+        </record>
+    </data>
+</odoo>

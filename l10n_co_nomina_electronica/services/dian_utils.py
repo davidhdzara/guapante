@@ -8,12 +8,15 @@ Adaptado de insotech_core/utils/dian.py eliminando funciones que
 dependen de modelos Odoo (partner_to_dian_dict, get_partner_doc_type).
 """
 
+import logging
 import math
 import re
 from datetime import date as _date_type
-from typing import Union
+from typing import Optional, Union
 
 from . import cune as _cune_module
+
+_logger = logging.getLogger(__name__)
 
 
 # =====================================================================
@@ -134,31 +137,114 @@ def format_amount(value: Union[int, float, str]) -> str:
 
 
 # =====================================================================
-# URL WSDL de Nómina Electrónica
+# URLs de la DIAN por ambiente — único punto (AUD-DIAN-34, 2026-10-05)
 # =====================================================================
+# Antes repetidas en 3 sitios (aquí mismo, sin usar -- get_nomina_wsdl_url()
+# nunca tuvo caller; services/soap_client.py con sus propias constantes
+# DIAN_ENDPOINT_HAB/PROD; models/hr_payslip.py con el host del QR escrito
+# aparte). Los valores son los que ya estaban hardcodeados -- esta
+# consolidación no cambia ninguno. soap_client.py y hr_payslip.py ahora
+# llaman a get_soap_endpoint()/get_qr_catalog_host() en vez de mantener su
+# propia copia. El parámetro ``override`` (opcional) es para quien sí tiene
+# acceso a Odoo (dian_utils es puro, sin ORM): lee el ir.config_parameter
+# correspondiente y lo pasa aquí -- ver ResCompany._ne_dian_endpoint()/
+# _ne_dian_qr_host() en models/res_company.py.
 
-def get_nomina_wsdl_url(environment: str) -> str:
-    """Retorna la URL del servicio WSDL de la DIAN según el ambiente.
+DIAN_URLS = {
+    '1': {  # Producción
+        'soap': 'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc',
+        'qr_host': 'catalogo-vpfe.dian.gov.co',
+    },
+    '2': {  # Habilitación / Pruebas
+        'soap': 'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc',
+        'qr_host': 'catalogo-vpfe-hab.dian.gov.co',
+    },
+}
+
+
+def get_soap_endpoint(environment: str, override: Optional[str] = None) -> str:
+    """Retorna la URL del servicio SOAP de la DIAN según el ambiente.
 
     Args:
-        environment: Código de ambiente DIAN:
-                     '1' → Producción,
-                     '2' → Habilitación / Pruebas.
+        environment: Código de ambiente DIAN: '1' → Producción, '2' → Habilitación/Pruebas.
+        override: Valor ya leído de ir.config_parameter, si lo hay (gana sobre el default).
 
     Returns:
-        URL completa del WSDL.
+        URL completa del servicio SOAP.
 
     Examples:
-        >>> get_nomina_wsdl_url('1')
+        >>> get_soap_endpoint('1')
         'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc'
-        >>> get_nomina_wsdl_url('2')
+        >>> get_soap_endpoint('2')
         'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc'
     """
-    urls = {
-        '1': 'https://vpfe.dian.gov.co/WcfDianCustomerServices.svc',
-        '2': 'https://vpfe-hab.dian.gov.co/WcfDianCustomerServices.svc',
-    }
-    return urls.get(str(environment), urls['2'])
+    if override:
+        return override
+    return DIAN_URLS.get(str(environment), DIAN_URLS['2'])['soap']
+
+
+def get_qr_catalog_host(environment: str, override: Optional[str] = None) -> str:
+    """Retorna el host del catálogo DIAN usado para construir la URL del CodigoQR.
+
+    Args:
+        environment: Código de ambiente DIAN: '1' → Producción, '2' → Habilitación/Pruebas.
+        override: Valor ya leído de ir.config_parameter, si lo hay (gana sobre el default).
+
+    Returns:
+        Host (sin esquema) del catálogo DIAN.
+
+    Examples:
+        >>> get_qr_catalog_host('1')
+        'catalogo-vpfe.dian.gov.co'
+        >>> get_qr_catalog_host('2')
+        'catalogo-vpfe-hab.dian.gov.co'
+    """
+    if override:
+        return override
+    return DIAN_URLS.get(str(environment), DIAN_URLS['2'])['qr_host']
+
+
+# =====================================================================
+# Validación de parámetros enteros configurables (timeouts)
+# =====================================================================
+
+def parse_positive_int(raw_value, default: int, param_name: str = '') -> int:
+    """Valida un valor leído de ir.config_parameter como entero positivo.
+
+    Usado para los timeouts configurables del módulo (SOAP_TIMEOUT, tick/timeout del
+    motor de habilitación): una configuración mal escrita nunca debe reventar un envío
+    a la DIAN -- se usa el valor por defecto y se deja un ``_logger.warning``.
+
+    Args:
+        raw_value: Valor crudo (string, o lo que devuelva ir.config_parameter.get_param()).
+        default: Valor a usar si raw_value es None/vacío/no es un entero positivo.
+        param_name: Nombre del parámetro, solo para el mensaje de warning.
+
+    Returns:
+        El entero validado, o ``default``.
+
+    Examples:
+        >>> parse_positive_int('30', 45, 'x')
+        30
+        >>> parse_positive_int('abc', 45, 'x')
+        45
+        >>> parse_positive_int(None, 45, 'x')
+        45
+        >>> parse_positive_int('-5', 45, 'x')
+        45
+    """
+    if raw_value is not None and str(raw_value).strip():
+        try:
+            value = int(str(raw_value).strip())
+        except ValueError:
+            value = None
+        if value is not None and value > 0:
+            return value
+        _logger.warning(
+            "Parámetro '%s'='%s' inválido (se esperaba un entero positivo); "
+            "usando el valor por defecto %s.", param_name, raw_value, default,
+        )
+    return default
 
 
 # =====================================================================
@@ -269,29 +355,29 @@ def get_city_code(city_record) -> str:
 # Separación de nombre en formato colombiano
 # =====================================================================
 
-def split_name(full_name: str) -> dict:
-    """Separa un nombre completo en componentes colombianos.
+def split_name(full_name: str, particulas=()) -> dict:
+    """Prellena nombres y apellidos colombianos SOLO cuando no hay ambigüedad.
 
-    La convención colombiana ordena los nombres como:
-        PrimerNombre [SegundoNombre] PrimerApellido [SegundoApellido]
+    La convención es ``PrimerNombre [OtrosNombres] PrimerApellido [SegundoApellido]``,
+    pero a partir de un único texto no se puede saber dónde termina el nombre
+    (``Juan Carlos Pérez`` vs. ``Juan Pérez Gómez``) ni dónde empiezan los apellidos
+    compuestos (``de la Cruz``). Por eso se prellena únicamente:
+
+    - 1 palabra: primer nombre;
+    - 2 palabras: primer nombre + primer apellido;
+    - 4 palabras sin partículas: nombre, otro nombre, primer y segundo apellido.
+
+    Cualquier otro caso (3 palabras, 5 o más, o con alguna de ``particulas``: de, del,
+    la...) devuelve todo vacío: lo completa una persona, nunca se adivina.
 
     Args:
-        full_name: Nombre completo (ej: 'Juan Carlos García López').
+        full_name: Nombre completo.
+        particulas: palabras (minúsculas) que vuelven ambiguo un nombre; salen de un
+            parámetro del sistema, no del código.
 
     Returns:
-        Diccionario con las claves:
-        - ``primer_nombre``
-        - ``otros_nombres``
-        - ``primer_apellido``
-        - ``segundo_apellido``
-
-    Examples:
-        >>> split_name('Juan Carlos García López')
-        {'primer_nombre': 'Juan', 'otros_nombres': 'Carlos', \
-'primer_apellido': 'García', 'segundo_apellido': 'López'}
-        >>> split_name('María Rodríguez')
-        {'primer_nombre': 'María', 'otros_nombres': '', \
-'primer_apellido': 'Rodríguez', 'segundo_apellido': ''}
+        dict con ``primer_nombre``, ``otros_nombres``, ``primer_apellido``,
+        ``segundo_apellido``.
     """
     result = {
         'primer_nombre': '',
@@ -299,27 +385,18 @@ def split_name(full_name: str) -> dict:
         'primer_apellido': '',
         'segundo_apellido': '',
     }
-    if not full_name or not full_name.strip():
+    parts = (full_name or '').split()
+    if not parts:
         return result
-
-    parts = full_name.strip().split()
-    length = len(parts)
-
-    if length == 1:
+    if any(part.lower() in particulas for part in parts):
+        return result
+    if len(parts) == 1:
         result['primer_nombre'] = parts[0]
-    elif length == 2:
-        result['primer_nombre'] = parts[0]
-        result['primer_apellido'] = parts[1]
-    elif length == 3:
-        result['primer_nombre'] = parts[0]
-        result['primer_apellido'] = parts[1]
-        result['segundo_apellido'] = parts[2]
-    else:  # 4 o más palabras
-        result['primer_nombre'] = parts[0]
-        result['otros_nombres'] = ' '.join(parts[1:-2])
-        result['primer_apellido'] = parts[-2]
-        result['segundo_apellido'] = parts[-1]
-
+    elif len(parts) == 2:
+        result['primer_nombre'], result['primer_apellido'] = parts
+    elif len(parts) == 4:
+        (result['primer_nombre'], result['otros_nombres'],
+         result['primer_apellido'], result['segundo_apellido']) = parts
     return result
 
 
@@ -351,6 +428,56 @@ def compute_worked_time(date_start, date_end) -> int:
     if isinstance(date_end, str):
         date_end = _date_type.fromisoformat(date_end)
     return (date_end - date_start).days
+
+
+def compute_worked_time_360(date_start, date_end, *, inclusive) -> int:
+    """TiempoLaborado según el Anexo Técnico de Nómina Electrónica §8.3.1 (p. 249).
+
+    Convención 1 año = 360 días y 1 mes = 30 días, MISMA del mes comercial que usa la
+    nómina (HrPayslip._ne_dia_comercial): el último día real de cada mes (28/29-feb, 30 o
+    31) vale 30 y ningún día pasa de 30. Cuenta = años*360 + meses*30 + días comerciales.
+    Mínimo 1 (regla NIE006: valor >= 1).
+
+    USO PREVISTO: ``inclusive=True``. Decisión de David (D19, 2026-11-11): el día de
+    ingreso SÍ cuenta (el empleado no pierde ni un día), igual que ``_ne_dias_bajo_contrato``
+    (ingreso el 10 de un mes de 31 días: 10..30 = 21 días). ``inclusive`` sigue siendo
+    obligatorio, sin valor por defecto.
+
+    NO está conectada al XML todavía: ``compute_worked_time`` (días calendario) sigue en
+    uso hasta cerrar D3/D6/D10/D14 (doc 53 §21.1).
+
+    Args:
+        date_start: Fecha de ingreso (date o 'YYYY-MM-DD').
+        date_end:   Fecha final del periodo (date o 'YYYY-MM-DD').
+        inclusive:  True cuenta ambos extremos; False no cuenta el día de ingreso.
+
+    Returns:
+        Entero >= 1. Retorna 0 si alguna fecha es None.
+
+    Examples:
+        >>> from datetime import date
+        >>> compute_worked_time_360(date(2018, 1, 1), date(2023, 4, 18), inclusive=True)
+        1908
+    """
+    import calendar
+
+    if not date_start or not date_end:
+        return 0
+    if isinstance(date_start, str):
+        date_start = _date_type.fromisoformat(date_start)
+    if isinstance(date_end, str):
+        date_end = _date_type.fromisoformat(date_end)
+
+    def comercial(d):
+        ultimo = calendar.monthrange(d.year, d.month)[1]
+        return 30 if d.day == ultimo else min(d.day, 30)
+
+    dias = ((date_end.year - date_start.year) * 360
+            + (date_end.month - date_start.month) * 30
+            + comercial(date_end) - comercial(date_start))
+    if inclusive:
+        dias += 1
+    return max(1, dias)
 
 
 # =====================================================================

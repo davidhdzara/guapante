@@ -89,21 +89,35 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # UGPP
+    l10n_co_ne_representante_legal_id = fields.Many2one(
+        related='company_id.l10n_co_ne_representante_legal_id', readonly=False)
     l10n_co_ugpp_legal_nature = fields.Selection(related='company_id.l10n_co_ugpp_legal_nature', readonly=False)
     l10n_co_ugpp_contributor_type = fields.Selection(related='company_id.l10n_co_ugpp_contributor_type', readonly=False)
-    l10n_co_ugpp_special_autoretention = fields.Boolean(related='company_id.l10n_co_ugpp_special_autoretention', readonly=False)
 
     # Parámetros Nómina Colombia
     l10n_co_ne_exoneration_1607 = fields.Boolean(related='company_id.l10n_co_ne_exoneration_1607', readonly=False)
+    l10n_co_ne_pension_patronal_sln = fields.Boolean(related='company_id.l10n_co_ne_pension_patronal_sln', readonly=False)
+    l10n_co_ne_febrero_modo = fields.Selection(related='company_id.l10n_co_ne_febrero_modo', readonly=False)
+    l10n_co_ne_fuente_fecha_pago = fields.Selection(related='company_id.l10n_co_ne_fuente_fecha_pago', readonly=False)
+    l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
+        related='company_id.l10n_co_ne_bloquear_extemporaneo', readonly=False)
+    l10n_co_ne_redondeo_dias = fields.Selection(related='company_id.l10n_co_ne_redondeo_dias', readonly=False)
 
     # PILA
     l10n_co_pila_tipo_aportante = fields.Selection(related='company_id.l10n_co_pila_tipo_aportante', readonly=False)
-    l10n_co_pila_arl_code = fields.Char(related='company_id.l10n_co_pila_arl_code', readonly=False)
-    l10n_co_pila_arl_name = fields.Char(related='company_id.l10n_co_pila_arl_name', readonly=False)
+    l10n_co_pila_arl_id = fields.Many2one(related='company_id.l10n_co_pila_arl_id', readonly=False)
+    l10n_co_sena_partner_id = fields.Many2one(related='company_id.l10n_co_sena_partner_id', readonly=False)
+    l10n_co_icbf_partner_id = fields.Many2one(related='company_id.l10n_co_icbf_partner_id', readonly=False)
+    l10n_co_dian_partner_id = fields.Many2one(related='company_id.l10n_co_dian_partner_id', readonly=False)
     l10n_co_pila_forma_presentacion = fields.Selection(related='company_id.l10n_co_pila_forma_presentacion', readonly=False)
     l10n_co_pila_codigo_sucursal = fields.Char(related='company_id.l10n_co_pila_codigo_sucursal', readonly=False)
     l10n_co_pila_nombre_sucursal = fields.Char(related='company_id.l10n_co_pila_nombre_sucursal', readonly=False)
     l10n_co_pila_operador_code = fields.Char(related='company_id.l10n_co_pila_operador_code', readonly=False)
+    l10n_co_pila_ccf_por_empleado = fields.Boolean(related='company_id.l10n_co_pila_ccf_por_empleado', readonly=False)
+    l10n_co_pila_ccf_id = fields.Many2one(related='company_id.l10n_co_pila_ccf_id', readonly=False)
+    l10n_co_pila_clase_riesgo = fields.Selection(related='company_id.l10n_co_pila_clase_riesgo', readonly=False)
+    l10n_co_pila_centro_trabajo = fields.Char(related='company_id.l10n_co_pila_centro_trabajo', readonly=False)
+    l10n_co_ne_payment_method = fields.Selection(related='company_id.l10n_co_ne_payment_method', readonly=False)
 
     # Cuentas Predeterminadas -- Diarios por Estructura Salarial (doc 36 v2)
     l10n_co_ne_journal_nomina_id = fields.Many2one('account.journal', string='Diario — Nómina General')
@@ -113,13 +127,19 @@ class ResConfigSettings(models.TransientModel):
 
     def get_values(self):
         res = super().get_values()
-        for fname, xmlid in _NE_STRUCTURE_JOURNAL_FIELDS.items():
-            structure = self.env.ref(xmlid, raise_if_not_found=False)
-            res[fname] = structure.journal_id.id if structure else False
+        # Los diarios de las estructuras colombianas solo se leen/escriben para una compania
+        # colombiana: la regla nativa por pais oculta esas estructuras a quien solo tiene
+        # companias de otro pais (y leerlas daria "Error de acceso").
+        if self.env.company._ne_es_colombia():
+            for fname, xmlid in _NE_STRUCTURE_JOURNAL_FIELDS.items():
+                structure = self.env.ref(xmlid, raise_if_not_found=False)
+                res[fname] = structure.journal_id.id if structure else False
         return res
 
     def set_values(self):
         super().set_values()
+        if not self.env.company._ne_es_colombia():
+            return
         for fname, xmlid in _NE_STRUCTURE_JOURNAL_FIELDS.items():
             structure = self.env.ref(xmlid, raise_if_not_found=False)
             if structure:
@@ -154,4 +174,32 @@ class ResConfigSettings(models.TransientModel):
         return self.env['l10n.co.ne.habilitacion'].start(self.company_id)
 
     def action_refresh_habilitacion(self):
+        return {'type': 'ir.actions.client', 'tag': 'reload'}
+
+    # ──────────────────────────────────────────────────────────────────
+    # Localización nómina (.99, pedido de David): paquete de nómina
+    # electrónica + botón "Recargar". A diferencia de chart_template de
+    # Accounting (que dispara la carga completa en el mismo set_values()
+    # al cambiar de valor), aquí con una sola opción real no hay "carga
+    # por primera vez" que disparar desde este campo -- el dato ya
+    # existe desde la instalación del módulo. "Recargar" es una acción
+    # explícita separada (action_reload_payroll_package), nunca
+    # automática al guardar.
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_payroll_package = fields.Selection(
+        related='company_id.l10n_co_ne_payroll_package', readonly=False,
+    )
+    l10n_co_ne_has_payroll_entries = fields.Boolean(compute='_compute_l10n_co_ne_has_payroll_entries')
+
+    @api.depends('company_id')
+    def _compute_l10n_co_ne_has_payroll_entries(self):
+        for settings in self:
+            settings.l10n_co_ne_has_payroll_entries = bool(self.env['hr.payslip'].search_count([
+                ('company_id', '=', settings.company_id.id),
+                ('state', 'in', ('done', 'paid')),
+            ]))
+
+    def action_reload_payroll_package(self):
+        self.ensure_one()
+        self.company_id._l10n_co_ne_reload_payroll_package()
         return {'type': 'ir.actions.client', 'tag': 'reload'}

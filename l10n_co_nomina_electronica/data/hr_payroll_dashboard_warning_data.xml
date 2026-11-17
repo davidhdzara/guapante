@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="1">
+    <data noupdate="0">
+        <!-- noupdate="0": el codigo de evaluacion de los avisos es del modulo y se actualiza con cada -u.
+             (Con noupdate="1" el cambio del .180 no llego a las BD existentes: el flag del registro en BD no
+             basta, manda el de este bloque.) -->
 
         <!--
             Advertencia en el Dashboard de Nómina cuando el año en curso no
@@ -28,29 +31,74 @@
             un modelo sin vista propia funcione bien.
         -->
         <record id="hr_payroll_dashboard_warning_co_params_ano_actual" model="hr.payroll.dashboard.warning">
-            <field name="name">Colombia: Parámetros del año en curso sin configurar</field>
+            <field name="name">Colombia: Parámetros del año en curso o siguiente sin configurar</field>
             <field name="country_id" ref="base.co"/>
             <field name="evaluation_code">
+# Año en curso y, desde el mes de l10n_co_aviso_anio_siguiente_desde_mes (noviembre), el siguiente.
+# Un valor "del año Y" es el que empieza entre el 1-dic de Y-1 y el 31-dic de Y (el decreto del
+# auxilio de transporte suele fijarse a finales de diciembre).
 codes_criticos = ['l10n_co_smmlv', 'l10n_co_uvt', 'l10n_co_aux_transporte']
-anio_actual = date.today().year
+hoy = date.today()
+desde_mes = int(self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_aviso_anio_siguiente_desde_mes'))
+anios = [hoy.year] + ([hoy.year + 1] if hoy.month >= desde_mes else [])
 RuleParameterValue = self.env['hr.rule.parameter.value']
-faltantes = [
-    code for code in codes_criticos
-    if not RuleParameterValue.search_count([
-        ('code', '=', code),
-        ('date_from', '>=', date(anio_actual, 1, 1)),
-    ])
-]
-if faltantes:
-    warning_count = len(faltantes)
-    warning_records = self.env['hr.rule.parameter'].search([('code', 'in', faltantes)])
+faltantes = set()
+anios_faltantes = []
+sin_valor = 0
+for anio in anios:
+    for code in codes_criticos:
+        if not RuleParameterValue.search_count([
+            ('code', '=', code),
+            ('date_from', '>=', date(anio - 1, 12, 1)),
+            ('date_from', '&lt;=', date(anio, 12, 31)),
+        ]):
+            faltantes.add(code)
+            sin_valor += 1
+            if anio not in anios_faltantes:
+                anios_faltantes.append(anio)
+if sin_valor:
+    warning_count = sin_valor
+    warning_records = self.env['hr.rule.parameter'].search([('code', 'in', list(faltantes))])
     warning_action = {
         'type': 'ir.actions.act_window',
-        'name': 'Colombia: Parámetros del año en curso sin configurar',
+        'name': 'Colombia: parámetros sin configurar para ' + ', '.join(str(a) for a in anios_faltantes),
         'res_model': 'hr.rule.parameter',
-        'domain': [('code', 'in', faltantes)],
+        'domain': [('code', 'in', list(faltantes))],
         'views': [[False, 'list'], [False, 'form']],
         'view_mode': 'list,form',
+    }
+            </field>
+        </record>
+
+        <!-- Configuración de retención en la fuente por compañía colombiana y año (año en curso y,
+             desde noviembre, el siguiente): la propia de la compañía o la compartida. Sin ella el
+             cálculo de nómina se detiene con error (ver HrPayslip._ne_retefuente_config). -->
+        <record id="hr_payroll_dashboard_warning_co_retefuente_config" model="hr.payroll.dashboard.warning">
+            <field name="name">Colombia: Configuración de retención del año en curso o siguiente sin cargar</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="evaluation_code">
+hoy = date.today()
+desde_mes = int(self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_aviso_anio_siguiente_desde_mes'))
+anios = [hoy.year] + ([hoy.year + 1] if hoy.month >= desde_mes else [])
+Config = self.env['l10n.co.retefuente.uvt']
+faltan = []
+for compania in self.env.companies.filtered(lambda c: c.partner_id.country_id.code == 'CO'):
+    for anio in anios:
+        if not Config._ne_config_del_anio(anio, compania):
+            faltan.append((compania, anio))
+if faltan:
+    warning_count = len(faltan)
+    detalle = ', '.join('%s (%s)' % (c.name, a) for c, a in faltan)
+    primera_compania, primer_anio = faltan[0]
+    warning_action = {
+        'type': 'ir.actions.act_window',
+        'name': 'Colombia: configuración de retención sin cargar: ' + detalle,
+        'res_model': 'l10n.co.retefuente.uvt',
+        # Un solo faltante: abre el formulario de creación con el año y la compañía precargados;
+        # varios: la lista (el botón Nuevo precarga el primero).
+        'views': [[False, 'form']] if len(faltan) == 1 else [[False, 'list'], [False, 'form']],
+        'view_mode': 'form' if len(faltan) == 1 else 'list,form',
+        'context': {'default_year': str(primer_anio), 'default_company_id': primera_compania.id},
     }
             </field>
         </record>

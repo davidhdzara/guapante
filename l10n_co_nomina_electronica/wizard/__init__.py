@@ -4,3 +4,5 @@ from . import hr_pila_wizard_v2
 from . import hr_payslip_send
 from . import l10n_co_ne_certification_wizard
 
+from . import l10n_co_ne_status_cune_wizard
+from . import hr_payslip_registrar_pago

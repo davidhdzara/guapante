@@ -17,7 +17,8 @@ Referencia: Anexo Técnico V1.0, secciones 6.2.12 (Devengados) y 6.2.13
 (Deducciones).
 """
 
-from odoo import api, fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 # ──────────────────────────────────────────────────────────────────────────
 # Constantes: conceptos de deducción según el XML DIAN
@@ -35,6 +36,10 @@ class HrSalaryRule(models.Model):
     """Mapeo de reglas salariales a conceptos DIAN y clasificación UGPP."""
 
     _inherit = 'hr.salary.rule'
+
+    l10n_co_struct_country_code = fields.Char(
+        related='struct_id.country_id.code', string='País de la estructura',
+        help='Solo para ocultar en la vista lo colombiano fuera de Colombia.')
 
     # ──────────────────────────────────────────────────────────────────
     # Concepto DIAN para el XML de nómina electrónica
@@ -154,8 +159,8 @@ class HrSalaryRule(models.Model):
             ('tp_prestaciones', 'TP Prestaciones'),
         ],
         string='Tipo Pago UGPP',
-        help='Clasificación del tipo de pago según la guía UGPP Storm User V-20.1. '
-             'Los 13 tipos oficiales de la UGPP.',
+        help='Tipo de pago del concepto en el formato de pagos UGPP (Guía Storm User V-20.1, campo 19). El código '
+             'de cada tipo sale de la lista de la plantilla; los tipos 12 a 15 son de independientes y no se cargan.',
     )
     l10n_co_ugpp_non_salary_class = fields.Selection(
         selection=[
@@ -166,11 +171,170 @@ class HrSalaryRule(models.Model):
         ],
         string='Clasificación TP NO SALARIAL',
         help='Subclasificación obligatoria cuando Tipo Pago = TP NO Salarial. '
-             'Según guía UGPP Storm User V-20.1.',
+             'Según guía UGPP Storm User V-20.1. La cuenta contable del concepto sale de las cuentas de la regla '
+             '(pestaña Asiento Contable): no se digita aparte.',
     )
-    l10n_co_ugpp_accounts = fields.Char(
-        string='Cuentas UGPP (separadas por ;)',
-        help='Cuentas contables asociadas al concepto para el reporte '
-             'UGPP, separadas por punto y coma (;). Ejemplo: '
-             '"510506;510527;520506".',
+
+    @api.constrains('l10n_co_ugpp_payment_type', 'l10n_co_ugpp_non_salary_class')
+    def _check_ugpp_clasificacion_no_salarial(self):
+        for rule in self:
+            if rule.l10n_co_ugpp_payment_type == 'tp_no_salarial' and not rule.l10n_co_ugpp_non_salary_class:
+                raise ValidationError(_(
+                    'La regla "%(regla)s" es TP NO Salarial para la UGPP: indique su clasificación (mera liberalidad, '
+                    'pacto colectivo, contrato u otrosí).', regla=rule.display_name))
+
+    # ──────────────────────────────────────────────────────────────────
+    # Tercero del asiento contable (contacto al que se paga lo causado)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_tercero_origen = fields.Selection(
+        selection=[
+            ('employee_eps', 'EPS del empleado'),
+            ('employee_afp', 'AFP del empleado'),
+            ('employee_ccf', 'Caja de compensación del empleado'),
+            ('company_arl', 'ARL de la compañía'),
+            ('company_sena', 'SENA de la compañía'),
+            ('company_icbf', 'ICBF de la compañía'),
+            ('company_dian', 'DIAN (compañía)'),
+            ('contract_sindicato', 'Sindicato del contrato'),
+            ('contract_afc', 'Entidad AFC del contrato'),
+            ('contract_pension_voluntaria', 'Fondo de pensión voluntaria del contrato'),
+            ('contract_plan_complementario', 'Plan complementario del contrato'),
+            ('contract_cooperativa', 'Cooperativa del contrato'),
+            ('contract_educacion', 'Entidad de educación del contrato'),
+            ('distribution', 'Reparto por asignación salarial (embargos, libranzas)'),
+        ],
+        string='Tercero del Asiento',
+        help='De dónde sale el contacto (partner) de la línea del asiento '
+             'contable en la cuenta por pagar de esta regla. Vacío: la línea '
+             'se genera sin tercero.',
     )
+
+    l10n_co_pila_origen_no_salarial = fields.Selection(
+        selection=[
+            ('naturaleza', 'Por naturaleza (nunca entra al IBC ni al 40%)'),
+            ('pacto', 'Por pacto de desalarización (cuenta para el 40%)'),
+        ],
+        string='Origen del Pago No Salarial (IBC)',
+        help='Solo para conceptos no salariales. Por naturaleza: auxilio de '
+             'transporte, viáticos ocasionales, prestaciones, etc. -- nunca '
+             'entran al IBC (Consejo de Estado, SU 25185 de 2021). Por pacto: '
+             'alimentación, vivienda, bonificaciones habituales pactadas como '
+             'no salariales -- cuentan para la regla del 40% (Ley 1393/2010 '
+             'Art. 30) y su excedente suma al IBC. Los pagos por pacto exigen '
+             'prueba del acuerdo (contrato u otrosí). La UGPP mira la realidad '
+             'económica: un pago habitual que retribuye el servicio puede ser '
+             'reincorporado al IBC aunque esté marcado como no salarial.',
+    )
+
+    _L10N_CO_ORIGEN_NO_SALARIAL_POR_CODIGO = {
+        'CO_AUX_TRANS': 'naturaleza', 'CO_VIATICOS_NOSAL': 'naturaleza',
+        'CO_DOTACION': 'naturaleza', 'CO_TELETRABAJO': 'naturaleza',
+        'CO_INDEMNIZ': 'naturaleza', 'CO_LIQ_INDEMNIZACION': 'naturaleza',
+        'CO_BONIF_RET': 'naturaleza',
+        'CO_AUX_ALIM': 'pacto', 'CO_BONIF_NOSAL': 'pacto',
+    }
+
+    l10n_co_liq_tratamiento = fields.Selection(
+        selection=[
+            ('salario', 'Salario'),
+            ('vacaciones', 'Vacaciones compensadas'),
+            ('prestacion', 'Prestación social (prima, cesantías, intereses)'),
+            ('indemnizacion', 'Indemnización'),
+        ],
+        string='Tratamiento en Liquidación',
+        help='Clasifica el concepto de la liquidación para aplicar embargos y '
+             'libranzas (CST arts. 154-156 y 344; Ley 1527/2012; SL3208-2022).',
+    )
+
+    _L10N_CO_LIQ_TRATAMIENTO_POR_CODIGO = {
+        'CO_LIQ_SALARIOS': 'salario', 'CO_LIQ_VACACIONES': 'vacaciones',
+        'CO_LIQ_PRIMA': 'prestacion', 'CO_LIQ_CESANTIAS': 'prestacion',
+        'CO_LIQ_INT_CES': 'prestacion', 'CO_LIQ_INDEMNIZACION': 'indemnizacion',
+        'CO_LIQ_VAC_DISFRUTADAS': 'salario', 'CO_LIQ_LIC_REM': 'salario',
+    }
+
+    # Codigo de regla (identificador interno del modulo, no un valor
+    # normativo) -> origen del tercero. Solo se escribe donde el campo
+    # esta vacio (no pisa lo que configure el usuario).
+    _L10N_CO_TERCERO_ORIGEN_POR_CODIGO = {
+        'CO_SALUD_EMP': 'employee_eps', 'CO_SALUD_CIA': 'employee_eps',
+        'CO_PENSION_EMP': 'employee_afp', 'CO_PENSION_CIA': 'employee_afp',
+        'CO_FSP': 'employee_afp',
+        'CO_CCF_CIA': 'employee_ccf',
+        'CO_ARL_CIA': 'company_arl',
+        'CO_SENA_CIA': 'company_sena', 'CO_ICBF_CIA': 'company_icbf',
+        'CO_RETEFUENTE': 'company_dian', 'CO_PRIMA_RETE': 'company_dian',
+        'CO_LIQ_RETE': 'company_dian', 'CO_BON_RETE': 'company_dian',
+        'CO_SINDICATO': 'contract_sindicato', 'CO_AFC': 'contract_afc',
+        'CO_PENSION_VOL': 'contract_pension_voluntaria',
+        'CO_PLAN_COMP': 'contract_plan_complementario',
+        'CO_COOPERATIVA': 'contract_cooperativa',
+        'CO_EDUCACION': 'contract_educacion',
+        'CO_EMBARGO': 'distribution', 'CO_LIBRANZAS': 'distribution',
+        'CO_LIQ_EMBARGO': 'distribution', 'CO_LIQ_LIBRANZAS': 'distribution',
+        'CO_LIQ_SALUD': 'employee_eps', 'CO_LIQ_PENSION': 'employee_afp',
+        'CO_LIQ_RETE': 'company_dian',
+    }
+
+    @api.model
+    def _l10n_co_cargar_origen_tercero(self):
+        """Asigna el origen del tercero a las reglas del modulo (todas las
+        estructuras comparten codigo) que aun no lo tienen."""
+        for code, origen in self._L10N_CO_TERCERO_ORIGEN_POR_CODIGO.items():
+            self.search([
+                ('code', '=', code), ('l10n_co_tercero_origen', '=', False),
+            ]).write({'l10n_co_tercero_origen': origen})
+        for code, origen in self._L10N_CO_ORIGEN_NO_SALARIAL_POR_CODIGO.items():
+            self.search([
+                ('code', '=', code), ('l10n_co_pila_origen_no_salarial', '=', False),
+            ]).write({'l10n_co_pila_origen_no_salarial': origen})
+        for code, trat in self._L10N_CO_LIQ_TRATAMIENTO_POR_CODIGO.items():
+            self.search([
+                ('code', '=', code), ('l10n_co_liq_tratamiento', '=', False),
+            ]).write({'l10n_co_liq_tratamiento': trat})
+        return True
+
+    def _l10n_co_cuenta_pasivo(self):
+        """Cuenta por pagar de la regla: account_credit si existe (aportes
+        de empresa: gasto en debito, pasivo en credito); si no, account_debit
+        (deducciones: el monto negativo hace caer el pasivo en credito)."""
+        self.ensure_one()
+        return self.account_credit or self.account_debit
+
+    # ──────────────────────────────────────────────────────────────────────
+    # E-3a (doc 59 §20.2): la regla nativa NET de nuestras estructuras da el neto real del modulo
+    # ──────────────────────────────────────────────────────────────────────
+    # Odoo crea solo, en cada estructura, las reglas BASIC/GROSS/NET (hr.payroll.structure._get_default_rule_ids): sin xmlid. NET =
+    # BASIC + ALW + DED sale del salario por horas del nativo (paid_amount), no del neto real, y el informe nativo «Analisis de
+    # nomina» lee esa linea. Se alinea con la regla de neto del modulo de cada estructura. BASIC y GROSS NO se tocan aqui: la
+    # categoria GROSS alimenta la base de la retencion en la fuente (CO_RETEFUENTE*, categories['GROSS']): cambiarlas modifica el
+    # calculo de la retencion y requiere decision (doc 59 §20.3).
+    _NE_NETO_POR_ESTRUCTURA = {
+        'hr_payroll_structure_co_nomina': 'CO_NETO',
+        'hr_payroll_structure_co_liquidacion': 'CO_LIQ_NETO',
+        'hr_payroll_structure_co_prima': 'CO_PRIMA_NETO',
+        'hr_payroll_structure_co_bonificacion': 'CO_BON_NETO',
+    }
+    _NE_FORMULA_NETO = "result = result_rules['%(codigo)s']['total'] if '%(codigo)s' in result_rules else 0.0"
+
+    @api.model
+    def _ne_alinear_reglas_nativas(self):
+        """Idempotente (corre en cada instalacion y actualizacion): fija la regla NET de cada estructura propia al neto del
+        modulo y la ordena DESPUES de esa regla. Solo toca la formula nativa de Odoo o la que puso este metodo: una formula que un
+        usuario edito a mano no se pisa."""
+        for xmlid, codigo in self._NE_NETO_POR_ESTRUCTURA.items():
+            estructura = self.env.ref('l10n_co_nomina_electronica.%s' % xmlid, raise_if_not_found=False)
+            if not estructura:
+                continue
+            reglas = estructura.with_context(active_test=False).rule_ids
+            neto, regla_modulo = reglas.filtered(lambda r: r.code == 'NET'), reglas.filtered(lambda r: r.code == codigo)
+            if not neto or not regla_modulo:
+                continue
+            formula = self._NE_FORMULA_NETO % {'codigo': codigo}
+            for regla in neto:
+                actual = (regla.amount_python_compute or '').strip()
+                if actual not in (formula, "result = categories['BASIC'] + categories['ALW'] + categories['DED']"):
+                    continue          # editada a mano: se respeta
+                regla.write({
+                    'amount_select': 'code', 'amount_python_compute': formula,
+                    'sequence': max(regla.sequence, max(regla_modulo.mapped('sequence')) + 1)})

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Correo al empleado con la representación gráfica y el XML validado del documento soporte de pago de nómina
+         electrónica (Frente 5, C6c). Genérico y traducible; sin datos de un cliente. noupdate: cada compañía puede
+         ajustar el texto sin que una actualización del módulo lo pise. -->
+    <data noupdate="1">
+        <record id="mail_template_representacion_grafica" model="mail.template">
+            <field name="name">Documento soporte de pago de nómina electrónica: representación gráfica y XML</field>
+            <field name="model_id" ref="model_l10n_co_ne_documento"/>
+            <field name="subject">Documento soporte de pago de nómina electrónica {{ object.consecutive }} - {{ object.company_id.name }}</field>
+            <field name="body_html" type="html">
+<div>
+    <p>Estimado(a) <t t-out="object.employee_id.name or ''">empleado</t>:</p>
+    <p>Adjuntamos la representación gráfica y el archivo XML del documento soporte de pago de nómina electrónica del
+        periodo <t t-out="object.period.strftime('%m/%Y') if object.period else ''">01/2026</t>.</p>
+    <p>El archivo XML es el documento con validez legal; el PDF es su representación.</p>
+    <p>Este mensaje se genera automáticamente.</p>
+</div>
+            </field>
+            <field name="lang">{{ object.employee_id.lang }}</field>
+            <field name="auto_delete" eval="True"/>
+        </record>
+    </data>
+</odoo>

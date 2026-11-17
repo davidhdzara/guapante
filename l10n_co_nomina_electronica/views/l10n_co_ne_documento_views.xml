@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Documento mensual de nómina electrónica (doc 53 §16.2). Solo widgets y estilos nativos: la insignia
+         (badge) y las decoraciones de lista son las de Odoo; el motivo de la DIAN se muestra como texto. -->
+
+    <record id="view_l10n_co_ne_documento_form" model="ir.ui.view">
+        <field name="name">l10n.co.ne.documento.form</field>
+        <field name="model">l10n.co.ne.documento</field>
+        <field name="arch" type="xml">
+            <form string="Documento DIAN mensual" duplicate="0">
+                <header>
+                    <button name="action_crear_nota_reemplazar" type="object" string="Nota de Ajuste"
+                            invisible="state != 'invoice_accepted' or eliminado or legacy or is_adjustment"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_crear_nota_eliminar" type="object" string="Eliminar Documento"
+                            invisible="state != 'invoice_accepted' or eliminado or legacy or is_adjustment"
+                            confirm="Se creará una nota de ajuste de tipo Eliminar en borrador. ¿Continuar?"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <field name="etapa" widget="statusbar" statusbar_visible="draft,ready"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Eliminado por nota de ajuste" bg_color="text-bg-danger"
+                            invisible="not eliminado"/>
+                    <widget name="web_ribbon" title="Envío incierto" bg_color="text-bg-warning"
+                            invisible="not incierto or eliminado"/>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company" readonly="legacy or state"/>
+                            <field name="employee_id" readonly="legacy or state"/>
+                            <field name="contract_id" readonly="legacy or state"/>
+                            <field name="period" readonly="legacy or state"/>
+                            <field name="fecha_limite"/>
+                            <field name="state" widget="account_document_state" invisible="not state"/>
+                        </group>
+                        <group>
+                            <field name="legacy" invisible="not legacy"/>
+                            <field name="is_being_sent" invisible="not is_being_sent"/>
+                            <field name="is_adjustment" string="Es Nota de Ajuste" invisible="not is_adjustment"/>
+                            <field name="adjustment_type" string="Tipo de Nota de Ajuste" invisible="not is_adjustment"/>
+                            <field name="adjustment_ref_cune" string="CUNE Nómina Original" invisible="not is_adjustment"/>
+                            <field name="parent_id" invisible="not parent_id"/>
+                            <field name="error_conocido_el" invisible="not is_adjustment" readonly="state"/>
+                        </group>
+                    </group>
+                    <field name="alertas_texto" invisible="not alertas"/>
+                    <field name="alertas" invisible="1"/>
+                    <notebook>
+                        <page string="Recibos" name="recibos">
+                            <field name="recibo_xml_ids" readonly="1">
+                                <list string="Recibos incluidos">
+                                    <field name="number"/>
+                                    <field name="employee_id"/>
+                                    <field name="date_from"/>
+                                    <field name="date_to"/>
+                                    <field name="paid_date"/>
+                                    <field name="state"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="DIAN" name="edi_documents" invisible="not intento_ids and not cune">
+                            <group>
+                                <group>
+                                    <field name="cune"/>
+                                    <field name="consecutive"/>
+                                </group>
+                                <group>
+                                    <field name="zip_key"/>
+                                    <field name="xml_attachment_id"/>
+                                    <field name="hab_set_id" invisible="not hab_set_id"/>
+                                </group>
+                            </group>
+                            <field name="message" invisible="not message"/>
+                            <field name="intento_ids" readonly="1">
+                                <list string="Intentos de envío" create="0" delete="0" no_open="1">
+                                    <field name="datetime"/>
+                                    <field name="numero"/>
+                                    <field name="state" widget="account_document_state"/>
+                                    <field name="message" column_invisible="True"/>
+                                    <field name="test_environment" optional="show"/>
+                                    <field name="certification_process" optional="show"/>
+                                    <field name="identifier" optional="hide"/>
+                                    <field name="zip_key" optional="hide"/>
+                                    <field name="attachment_id" optional="hide"/>
+                                    <field name="respuesta_attachment_id" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Intercambios DIAN" name="exchanges" invisible="not exchange_ids"
+                              groups="hr_payroll.group_hr_payroll_manager">
+                            <field name="exchange_ids" readonly="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_ne_documento_list" model="ir.ui.view">
+        <field name="name">l10n.co.ne.documento.list</field>
+        <field name="model">l10n.co.ne.documento</field>
+        <field name="arch" type="xml">
+            <list string="Documentos DIAN mensuales" decoration-info="is_being_sent"
+                  decoration-muted="eliminado">
+                <field name="name"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="employee_id"/>
+                <field name="period"/>
+                <field name="etapa"/>
+                <field name="state" widget="account_document_state"/>
+                <field name="incierto" optional="show"/>
+                <field name="eliminado" optional="hide"/>
+                <field name="is_being_sent" string="En cola" optional="show"/>
+                <field name="fecha_limite" optional="show"/>
+                <field name="cune" optional="hide"/>
+                <field name="consecutive" optional="show"/>
+                <field name="alertas_texto" string="Alertas" optional="hide"/>
+                <field name="message" column_invisible="True"/>
+                <field name="legacy" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_ne_documento_search" model="ir.ui.view">
+        <field name="name">l10n.co.ne.documento.search</field>
+        <field name="model">l10n.co.ne.documento</field>
+        <field name="arch" type="xml">
+            <search string="Documentos DIAN mensuales">
+                <field name="name"/>
+                <field name="employee_id"/>
+                <field name="cune"/>
+                <field name="consecutive"/>
+                <field name="period"/>
+                <separator/>
+                <filter string="Por transmitir" name="por_transmitir"
+                        domain="[('state', 'in', (False, 'invoice_sending_failed')), ('eliminado', '=', False)]"/>
+                <filter string="Pendientes" name="pendientes" domain="[('state', '=', 'invoice_pending')]"/>
+                <filter string="Aceptados" name="aceptados" domain="[('state', '=', 'invoice_accepted')]"/>
+                <filter string="Rechazados" name="rechazados" domain="[('state', '=', 'invoice_rejected')]"/>
+                <filter string="Inciertos" name="inciertos" domain="[('incierto', '=', True)]"/>
+                <filter string="Eliminados" name="eliminados" domain="[('eliminado', '=', True)]"/>
+                <separator/>
+                <filter string="En cola" name="en_cola" domain="[('sending_data', '!=', False)]"/>
+                <filter string="Notas de ajuste" name="ajustes" domain="[('is_adjustment', '=', True)]"/>
+                <filter string="Migrados del ciclo por recibo" name="legacy" domain="[('legacy', '=', True)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Estado DIAN" name="estado_dian" context="{'group_by': 'state'}"/>
+                    <filter string="Mes" name="group_period" context="{'group_by': 'period'}"/>
+                    <filter string="Empleado" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_l10n_co_ne_documento" model="ir.actions.act_window">
+        <field name="name">Documentos DIAN mensuales</field>
+        <field name="res_model">l10n.co.ne.documento</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_por_transmitir': 1}</field>
+    </record>
+
+    <menuitem id="menu_l10n_co_ne_documento"
+              name="Documentos DIAN mensuales"
+              parent="hr_payroll.menu_hr_payroll_payslips"
+              action="action_l10n_co_ne_documento"
+              sequence="65"
+              groups="hr_payroll.group_hr_payroll_manager"/>
+
+    <!-- Recibo: la pestaña única "Nómina Electrónica" (hr_payslip_views.xml) lleva el grupo del documento mensual (doc 53 §26);
+         aquí solo la columna, el filtro y la agrupación del estado DIAN del documento. -->
+
+    <record id="view_payslip_tree_ne_documento" model="ir.ui.view">
+        <field name="name">hr.payslip.tree.ne.documento</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='state']" position="after">
+                <field name="l10n_co_ne_documento_state" string="Estado DIAN" optional="show" widget="account_document_state"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hr_payslip_filter_ne_documento" model="ir.ui.view">
+        <field name="name">hr.payslip.select.ne.documento</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_filter"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <filter string="Sin documento DIAN" name="sin_documento_dian" domain="[('l10n_co_ne_documento_id', '=', False)]"/>
+            </xpath>
+            <xpath expr="//group" position="inside">
+                <filter string="Estado DIAN" name="group_by_documento_state"
+                        context="{'group_by': 'l10n_co_ne_documento_state'}"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

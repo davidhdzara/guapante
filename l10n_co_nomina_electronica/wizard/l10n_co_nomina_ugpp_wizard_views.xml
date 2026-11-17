@@ -8,6 +8,7 @@
             <form string="Generar Reporte UGPP">
                 <group>
                     <group>
+                        <field name="company_id" groups="base.group_multi_company"/>
                         <field name="year" string="Año"/>
                     </group>
                     <group>

@@ -11,21 +11,22 @@
         <field name="priority">100</field>
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
-                <page string="Retención en la Fuente" name="retefuente_procedimiento">
+                <page string="Retención en la Fuente" name="retefuente_procedimiento"
+                      invisible="country_code != 'CO'">
                     <group string="Procedimiento" name="retefuente_procedure">
                         <field name="l10n_co_ne_retention_procedure"/>
                     </group>
                     <div class="alert alert-info" role="alert">
                         Por ley (Art. 384 ET), el procedimiento solo puede cambiarse en junio o
                         diciembre -- el cambio aplica de inmediato al guardar dentro de esa
-                        ventana, vigente para los payslips que se calculen desde ese momento.
+                        ventana, vigente para las nóminas que se calculen desde ese momento.
                     </div>
 
                     <div class="mt8" invisible="l10n_co_ne_retention_procedure != '2'">
                         <button name="action_calculate_retention_procedure2"
                                 string="Calcular Procedimiento 2 (Semestre Siguiente)"
                                 type="object" class="btn-primary"
-                                confirm="Esto calcula y guarda el porcentaje fijo del próximo semestre a partir del promedio de los últimos 12 payslips confirmados. Solo puede hacerse en junio o diciembre. ¿Continuar?"/>
+                                confirm="Esto calcula y guarda el porcentaje fijo del próximo semestre a partir del promedio de las últimas 12 nóminas confirmadas. Solo puede hacerse en junio o diciembre. ¿Continuar?"/>
                     </div>
 
                     <group string="Histórico Procedimiento 2" name="retefuente_history"

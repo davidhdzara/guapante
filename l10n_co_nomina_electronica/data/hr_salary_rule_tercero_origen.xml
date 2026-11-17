@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Carga el origen del tercero del asiento en las reglas por codigo
+         (solo donde esta vacio). Fuera de noupdate para re-aplicarse en -u. -->
+    <function model="hr.salary.rule" name="_l10n_co_cargar_origen_tercero"/>
+</odoo>

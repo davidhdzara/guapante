@@ -8,26 +8,38 @@
         <field name="priority">100</field>
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
-                <page string="Deducciones Fijas" name="deducciones_fijas">
+                <page string="Deducciones Fijas" name="deducciones_fijas"
+                      invisible="country_code != 'CO'">
                     <group string="Deducciones configuradas en el contrato"
                            name="deductions_main">
                         <group string="Deducciones Legales"
                                name="deductions_legal">
-                            <field name="l10n_co_ne_libranza"/>
                             <field name="l10n_co_ne_sindicato"/>
+                            <field name="l10n_co_ne_sindicato_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_sindicato &gt; 0"/>
                         </group>
                         <group string="Ahorro y Prevision"
                                name="deductions_savings">
                             <field name="l10n_co_ne_afc"/>
+                            <field name="l10n_co_ne_afc_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_afc &gt; 0"/>
                             <field name="l10n_co_ne_pension_voluntaria"/>
+                            <field name="l10n_co_ne_pension_voluntaria_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_pension_voluntaria &gt; 0"/>
                             <field name="l10n_co_ne_plan_complementario"/>
+                            <field name="l10n_co_ne_plan_complementario_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_plan_complementario &gt; 0"/>
                         </group>
                     </group>
                     <group>
                         <group string="Otros Descuentos"
                                name="deductions_other">
                             <field name="l10n_co_ne_cooperativa"/>
+                            <field name="l10n_co_ne_cooperativa_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_cooperativa &gt; 0"/>
                             <field name="l10n_co_ne_educacion"/>
+                            <field name="l10n_co_ne_educacion_partner_id" options="{'no_create': True}"
+                                   required="l10n_co_ne_educacion &gt; 0"/>
                         </group>
                         <group>
                             <!-- Espacio reservado para futuras deducciones -->

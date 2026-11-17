@@ -9,7 +9,8 @@
             <form string="Enviar y Procesar Nómina Electrónica">
                 <sheet>
                     <field name="mode" invisible="1"/>
-                    <field name="enable_send_mail" invisible="1"/>
+                    <field name="hay_confirmable" invisible="1"/>
+                    <field name="hay_extemporaneo" invisible="1"/>
 
                     <!-- Alerta informativa para procesamiento masivo -->
                     <div invisible="mode != 'multi'">
@@ -20,13 +21,14 @@
                         </div>
                     </div>
 
+                    <field name="resumen" invisible="not resumen"/>
                     <group>
                         <group string="Canales de Transmisión">
-                            <field name="checkbox_send_dian"
-                                   string="Transmitir a la DIAN (CUNE + XML)"/>
-                            <field name="checkbox_send_mail"
-                                   string="Enviar por Correo al Trabajador"
-                                   invisible="not enable_send_mail"/>
+                            <field name="checkbox_send_dian" string="DIAN"/>
+                            <field name="confirmo_mes_incompleto" invisible="not hay_confirmable or not checkbox_send_dian"/>
+                            <field name="confirmo_envio_extemporaneo" invisible="not hay_extemporaneo or not checkbox_send_dian"/>
+                            <field name="checkbox_send_representacion"/>
+                            <field name="checkbox_send_mail"/>
                         </group>
                         <group string="Configuración de Correo" invisible="not checkbox_send_mail">
                             <field name="mail_template_id"
@@ -36,7 +38,8 @@
                     </group>
 
                     <!-- Detalle de nóminas en modo individual -->
-                    <notebook invisible="mode != 'single'">
+                    <field name="documento_ids" invisible="1"/>
+                    <notebook invisible="mode != 'single' or not payslip_ids">
                         <page string="Detalle del Recibo" name="payslip_detail">
                             <field name="payslip_ids" readonly="1" create="0" delete="0">
                                 <list string="Nóminas Seleccionadas" create="0" delete="0">
@@ -73,6 +76,17 @@
         <field name="target">new</field>
         <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
         <field name="binding_view_types">form,list</field>
+    </record>
+
+    <!-- La misma acción, en el menú Acción del documento mensual (formulario y lista) -->
+    <record id="action_hr_payslip_send_documento" model="ir.actions.act_window">
+        <field name="name">Enviar y Procesar</field>
+        <field name="res_model">hr.payslip.send</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="l10n_co_nomina_electronica.model_l10n_co_ne_documento"/>
+        <field name="binding_view_types">form,list</field>
+        <field name="groups_id" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
     </record>
 
 </odoo>

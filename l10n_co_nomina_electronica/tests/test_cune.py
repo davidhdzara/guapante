@@ -1,8 +1,9 @@
 import hashlib
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 from odoo.addons.l10n_co_nomina_electronica.services import cune as cune_service
 
 
+@tagged('post_install', '-at_install')
 class TestCuneComputation(TransactionCase):
     """Tests for CUNE, software security code, and DV computation."""
 

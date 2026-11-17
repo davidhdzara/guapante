@@ -57,7 +57,7 @@ class HrContractRetefuenteProcedure(models.Model):
         help='Procedimiento de retención en la fuente que aplica a este '
              'contrato. Por ley, solo puede cambiarse en junio o diciembre '
              '(Art. 384 ET) -- el cambio aplica de inmediato al guardar '
-             'dentro de esa ventana, vigente para los payslips que se '
+             'dentro de esa ventana, vigente para las nóminas que se '
              'calculen desde ese momento.',
     )
     l10n_co_ne_retention_procedure2_ids = fields.One2many(
@@ -197,6 +197,7 @@ class L10nCoRetefuenteProcedure2(models.Model):
     """
 
     _name = 'l10n.co.retefuente.procedure2'
+    _check_company_auto = True
     _description = 'Retención en la Fuente - Procedimiento 2 - Histórico Semestral'
     _order = 'semester_start desc'
 
@@ -228,7 +229,7 @@ class L10nCoRetefuenteProcedure2(models.Model):
     )
     months_considered = fields.Integer(
         string='Meses Considerados',
-        help='Cantidad de payslips confirmados usados para el promedio '
+        help='Cantidad de nóminas confirmadas usadas para el promedio '
              '(hasta 12, o menos si el empleado lleva menos tiempo).',
     )
     average_gross = fields.Monetary(

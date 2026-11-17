@@ -12,8 +12,11 @@
                 <field name="requires_dias_restantes" invisible="1"/>
                 <group>
                     <group>
+                        <!-- E-6 (H-QA-023): el flujo real es «primero se registra el retiro (hr.departure.wizard, que por defecto
+                             archiva al empleado), despues se liquida»: la lista debe incluir empleados ARCHIVADOS. -->
                         <field name="employee_id"
                                string="Empleado"
+                               context="{'active_test': False}"
                                options="{'no_create': True}"/>
                         <field name="contract_id"
                                string="Contrato"

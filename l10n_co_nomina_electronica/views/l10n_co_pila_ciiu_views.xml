@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_l10n_co_pila_ciiu_list" model="ir.ui.view">
+        <field name="name">l10n.co.pila.ciiu.list</field>
+        <field name="model">l10n.co.pila.ciiu</field>
+        <field name="arch" type="xml">
+            <list string="Actividades económicas ARL">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="risk_class"/>
+                <field name="date_start" optional="show"/>
+                <field name="date_end" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_pila_ciiu_form" model="ir.ui.view">
+        <field name="name">l10n.co.pila.ciiu.form</field>
+        <field name="model">l10n.co.pila.ciiu</field>
+        <field name="arch" type="xml">
+            <form string="Actividad económica ARL">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="name"/>
+                            <field name="risk_class"/>
+                        </group>
+                        <group>
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_l10n_co_pila_ciiu_search" model="ir.ui.view">
+        <field name="name">l10n.co.pila.ciiu.search</field>
+        <field name="model">l10n.co.pila.ciiu</field>
+        <field name="arch" type="xml">
+            <search string="Actividades económicas ARL">
+                <field name="code" string="Código o descripción"
+                       filter_domain="['|', ('code', 'ilike', self), ('name', 'ilike', self)]"/>
+                <field name="risk_class"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Clase de Riesgo" name="group_risk_class"
+                            context="{'group_by': 'risk_class'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_l10n_co_pila_ciiu" model="ir.actions.act_window">
+        <field name="name">Actividades económicas ARL</field>
+        <field name="res_model">l10n.co.pila.ciiu</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Catálogo de actividades económicas de riesgos laborales
+            </p>
+            <p>
+                Tabla de clasificación de actividades económicas del Decreto 768 de 2022. Cada
+                actividad indica su clase de riesgo ARL, que se propone en el contrato al
+                elegirla. Si un decreto futuro cambia la tabla, agregue filas nuevas con su
+                vigencia; no reemplace las anteriores.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_l10n_co_pila_ciiu"
+              name="Actividades económicas ARL"
+              parent="menu_l10n_co_nomina_colombia_config"
+              action="action_l10n_co_pila_ciiu"
+              sequence="50"
+              groups="hr_payroll.group_hr_payroll_manager"/>
+
+</odoo>

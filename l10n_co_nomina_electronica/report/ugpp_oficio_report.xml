@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Oficio de respuesta a la UGPP (código 9006, Guía Storm User V-20.1 §2.2): BORRADOR para firma del representante
+         legal o apoderado (art. 555 ET). Hereda logo, colores y fuente del diseño de documentos de la compañía. -->
+    <record id="action_report_ugpp_oficio" model="ir.actions.report">
+        <field name="name">Oficio de respuesta UGPP</field>
+        <field name="model">l10n_co_nomina.ugpp</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">l10n_co_nomina_electronica.report_ugpp_oficio</field>
+        <field name="report_file">l10n_co_nomina_electronica.report_ugpp_oficio</field>
+        <field name="print_report_name">'Oficio de respuesta'</field>
+    </record>
+
+    <template id="report_ugpp_oficio">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="d" t-value="datos[o.id]"/>
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <p t-out="context_timestamp(datetime.datetime.now()).strftime('%d/%m/%Y')"/>
+                        <p>Señores<br/>
+                            <strong>UNIDAD ADMINISTRATIVA ESPECIAL DE GESTIÓN PENSIONAL Y CONTRIBUCIONES PARAFISCALES DE LA PROTECCIÓN SOCIAL - UGPP</strong><br/>
+                            Dirección de Parafiscales</p>
+                        <p><strong>Asunto:</strong> Respuesta al requerimiento de información radicado
+                            <span t-field="o.requerimiento_radicado"/> del
+                            <span t-field="o.requerimiento_fecha"/>.</p>
+                        <p>Yo, <strong t-out="d['representante'].name"/>, identificado con
+                            <span t-out="d['representante_documento']"/>, en mi calidad de representante legal de
+                            <strong t-out="o.company_id.name"/>, NIT <span t-out="d['nit']"/>, de conformidad con el artículo 555
+                            del Estatuto Tributario, doy respuesta al requerimiento del asunto y remito el formato de pagos a
+                            trabajadores correspondiente al periodo <strong t-out="d['periodo']"/>.</p>
+                        <p t-if="d['calendarios']">La nómina de la compañía se paga con la siguiente periodicidad:
+                            <span t-out="', '.join(d['calendarios'])"/>. El formato informa el valor mensual por concepto y
+                            trabajador.</p>
+                        <p t-if="d['fechas_pago']">Fechas de pago de los recibos del periodo:
+                            <span t-out="', '.join(d['fechas_pago'])"/>.</p>
+                        <p><strong>Ajustes de nómina (borrador a validar por el representante legal):</strong>
+                            <span t-out="d['texto_ajustes']"/></p>
+                        <p><strong>Base de liquidación:</strong> <span t-out="d['nota_360']"/></p>
+                        <p><strong>Notificaciones:</strong>
+                            <span t-out="d['direccion']"/><t t-if="d['direccion'] and d['correo']"> / </t><span t-out="d['correo']"/></p>
+                        <p>Cordialmente,</p>
+                        <p class="mt-5">____________________________<br/>
+                            <strong t-out="d['representante'].name"/><br/>
+                            <span t-out="d['representante_documento']"/><br/>
+                            Representante legal<br/>
+                            <span t-out="o.company_id.name"/></p>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -16,6 +16,18 @@
                             class="btn-primary"
                             invisible="state == 'generated'"
                             groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_generar_info_nomina"
+                            string="Información del Módulo de Nómina (2.3.7)"
+                            type="object"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_generar_soportes"
+                            string="Soportes por Trabajador (PDF)"
+                            type="object"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_imprimir_oficio"
+                            string="Oficio de Respuesta (Borrador)"
+                            type="object"
+                            groups="hr_payroll.group_hr_payroll_manager"/>
                     <field name="state"
                            widget="statusbar"
                            statusbar_visible="draft,generated"/>
@@ -37,6 +49,24 @@
                             <field name="company_id" string="Compañía"
                                    groups="base.group_multi_company"/>
                         </group>
+                    </group>
+                    <group string="Requerimiento de la UGPP (oficio de respuesta)">
+                        <field name="requerimiento_radicado"/>
+                        <field name="requerimiento_fecha"/>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        El módulo genera el borrador del oficio de respuesta (código 9006); lo firma el representante
+                        legal o su apoderado (si hay apoderado, el poder se anexa al mismo archivo). La certificación de
+                        la información (código 9007) se adjunta con el modelo oficial que publica la UGPP; el módulo no la
+                        redacta. "Información del Módulo de Nómina (2.3.7)" solo aplica si la contabilidad de la compañía no lleva el
+                        detalle de los pagos por trabajador (Resolución 858 de 2021, art. 2.3.7). "Soportes por Trabajador
+                        (PDF)" arma un ZIP con los PDF adjuntos de contratos, empleados y planillas PILA, nombrados con la
+                        identificación, y lista lo que falta.
+                    </div>
+                    <group string="Soportes por trabajador (art. 3, Res. 858)" invisible="not soportes_resumen">
+                        <field name="soportes_file" filename="soportes_filename"/>
+                        <field name="soportes_filename" invisible="1"/>
+                        <field name="soportes_resumen" nolabel="1" colspan="2"/>
                     </group>
                     <group string="Resultado" invisible="state != 'generated'">
                         <field name="excel_file"

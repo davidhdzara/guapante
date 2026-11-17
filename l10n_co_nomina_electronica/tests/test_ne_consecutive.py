@@ -16,9 +16,10 @@ from datetime import date
 
 from lxml import etree
 
-from odoo.tests.common import TransactionCase
+from odoo.tests.common import TransactionCase, tagged
 
 
+@tagged('post_install', '-at_install')
 class TestNeConsecutivePrefixGuard(TransactionCase):
     @classmethod
     def setUpClass(cls):
@@ -30,12 +31,35 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
         # compañía real (aunque TransactionCase lo revierta) es justo el
         # patrón que causó el UniqueViolation real en test_dian_matching.py.
         # Compañía dedicada y descartable, igual que ahí.
-        cls.company = cls.env['res.company'].create({
+        cls.company = cls.env['res.company'].create({'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 
             'name': 'Compañía de Prueba Consecutivo NE',
         })
         co_country = cls.env['res.country'].search([('code', '=', 'CO')], limit=1)
         if not co_country:
             co_country = cls.env.ref('base.co')
+        # H-018 (2026-10-11): _ne_lugar_trabajo_partner() exige país/departamento/
+        # municipio en la Dirección de Trabajo del empleado (por defecto, la de la
+        # compañía) para cualquier nómina que llegue a _collect_payslip_data() --
+        # necesario para test_version_de_nota_de_ajuste_usa_el_literal_niae022.
+        co_state = cls.env['res.country.state'].search(
+            [('country_id', '=', co_country.id)], limit=1)
+        if not co_state:
+            co_state = cls.env['res.country.state'].create({
+                'name': 'Departamento Prueba Consecutivo',
+                'code': 'PC',
+                'country_id': co_country.id,
+            })
+        co_city = cls.env['res.city'].create({
+            'name': 'Ciudad Prueba Consecutivo',
+            'state_id': co_state.id,
+            'country_id': co_country.id,
+        })
+        cls.company.partner_id.write({
+            'country_id': co_country.id,
+            'state_id': co_state.id,
+            'city_id': co_city.id,
+            'street': 'Calle Prueba Consecutivo # 1-1',
+        })
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura Consecutivo',
             'country_id': co_country.id,
@@ -52,8 +76,10 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
         )
 
     def _make_payslip(self, name, is_adjustment=False):
-        employee = self.env['hr.employee'].create({
+        employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': name,
+            'l10n_co_primer_nombre': 'Prueba',
+            'l10n_co_primer_apellido': 'Fixture',
             'identification_id': '20' + str(self.env['hr.employee'].search_count([])),
             'company_id': self.company.id,
             # AUD-DIAN-34 (2026-10-05): ver nota en test_dian_matching.py --
@@ -61,7 +87,12 @@ class TestNeConsecutivePrefixGuard(TransactionCase):
             # bancarios.
             'l10n_co_ne_payment_method': '10',
         })
-        contract = self.env['hr.contract'].create({
+        # UX-02 (2026-10-11): _ne_tipo_documento() exige un tipo de documento con
+        # equivalente DIAN en work_contact_id -- necesario para
+        # test_version_de_nota_de_ajuste_usa_el_literal_niae022.
+        employee.l10n_co_ne_identification_type_id = self.env.ref(
+            'l10n_co.national_citizen_id').id
+        contract = self.env['hr.contract'].create({'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 
             'name': 'Contrato %s' % name,
             'employee_id': employee.id,
             'company_id': self.company.id,

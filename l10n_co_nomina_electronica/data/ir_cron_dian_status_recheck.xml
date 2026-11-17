@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Ronda 1 DIAN (2026-10-05): un envío 'sent' queda así indefinidamente si nadie
+             presiona "Consultar Estado" a mano, aunque la DIAN resuelva en segundos; Odoo no
+             se entera solo. Este cron reutiliza action_check_dian_status() tal cual (ver
+             hr_payslip._cron_recheck_sent_status()), nunca duplica la lógica SOAP.
+             El intervalo es un dato editable en Ajustes > Técnico > Acciones Planificadas, no
+             una constante de código (mismo criterio que ir_cron_ne_habilitacion). -->
+        <record id="ir_cron_ne_dian_status_recheck" model="ir.cron">
+            <field name="name">Nómina Electrónica: reconsulta de estado DIAN pendiente</field>
+            <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_recheck_sent_status()</field>
+            <field name="interval_number">10</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

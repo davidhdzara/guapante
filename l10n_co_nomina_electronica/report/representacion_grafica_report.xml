@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ===================================================================
+         Representación gráfica del documento soporte de pago de nómina electrónica (Frente 5, C6b).
+
+         Res. 13 de 2021 art. 24: contenido mínimo de los arts. 5 y 17 y código QR. Anexo §13.1: el QR es la URL de
+         consulta de la DIAN con el CUNE (el mismo que trae el XML), de al menos 2 cm y en TODAS las páginas. Es "una
+         imagen" del XML validado: el XML es el documento con validez legal. Solo para documentos aceptados.
+
+         Genérico y multicliente: logo, colores y fuente del diseño de documentos de la compañía (mismas clases
+         ``o_company_<id>_layout`` del diseño nativo); sin estilos en línea; sin textos de un cliente.
+         =================================================================== -->
+    <record id="paperformat_representacion_grafica" model="report.paperformat">
+        <field name="name">Representación gráfica del documento soporte (A4, pie para el QR)</field>
+        <field name="default" eval="False"/>
+        <field name="format">A4</field>
+        <field name="orientation">Portrait</field>
+        <field name="margin_top">32</field>
+        <field name="margin_bottom">42</field>
+        <field name="margin_left">10</field>
+        <field name="margin_right">10</field>
+        <field name="header_spacing">28</field>
+        <field name="dpi">90</field>
+    </record>
+
+    <record id="action_report_representacion_grafica" model="ir.actions.report">
+        <field name="name">Representación gráfica del documento soporte</field>
+        <field name="model">l10n.co.ne.documento</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">l10n_co_nomina_electronica.report_representacion_grafica</field>
+        <field name="report_file">l10n_co_nomina_electronica.report_representacion_grafica</field>
+        <field name="print_report_name">'Representacion_grafica_%s' % (object.consecutive or 'documento')</field>
+        <field name="paperformat_id" ref="paperformat_representacion_grafica"/>
+        <field name="binding_model_id" ref="model_l10n_co_ne_documento"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Diseño propio de ESTE informe: encabezado con el logo de la compañía, cuerpo y PIE con el QR (el pie se repite en
+         cada página del PDF, que es lo que exige el Anexo). Usa las clases del diseño de documentos de la compañía.
+         Parámetros: ``o`` (documento), ``datos`` (de ``_ne_datos_representacion``). -->
+    <template id="layout_representacion_grafica">
+        <t t-set="company" t-value="o.company_id"/>
+        <div t-attf-class="header o_company_#{company.id}_layout">
+            <div class="row">
+                <div class="col-6">
+                    <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" alt="Logo"/>
+                </div>
+                <div class="col-6 text-end">
+                    <strong t-field="company.name"/>
+                </div>
+            </div>
+        </div>
+        <div t-attf-class="article o_company_#{company.id}_layout" t-att-data-oe-model="o and o._name"
+             t-att-data-oe-id="o and o.id">
+            <t t-out="0"/>
+        </div>
+        <div t-attf-class="footer o_company_#{company.id}_layout">
+            <div class="row">
+                <div class="col-2">
+                    <img t-att-src="'/report/barcode/?barcode_type=QR&amp;value=%s&amp;width=300&amp;height=300' % datos['qr_url']"
+                         width="100" height="100" alt="Código QR"/>
+                </div>
+                <div class="col-10">
+                    <p class="mb-0">
+                        <strong>CUNE:</strong> <span t-out="datos['cune']"/>
+                    </p>
+                    <p class="mb-0">Consulte el documento validado con el código QR.</p>
+                    <p class="mb-0">Página <span class="page"/> de <span class="topage"/></p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="report_representacion_grafica">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="datos" t-value="datos_documentos[o.id]"/>
+                <t t-set="moneda" t-value="o.company_id.currency_id"/>
+                <t t-call="l10n_co_nomina_electronica.layout_representacion_grafica">
+                    <div class="page">
+                        <h3 t-if="datos['tipo'] == 'documento'">Documento soporte de pago de nómina electrónica</h3>
+                        <h3 t-else="">Nota de ajuste del documento soporte de pago de nómina electrónica
+                            (<span t-out="'Reemplazar' if datos['tipo'] == 'nota_reemplazar' else 'Eliminar'"/>)</h3>
+                        <div class="row border rounded p-2 mb-2">
+                            <div class="col-6">
+                                <p class="mb-1"><strong>Número:</strong> <span t-out="datos['numero']"/></p>
+                                <p class="mb-1"><strong>Fecha y hora de generación:</strong>
+                                    <span t-out="datos['fecha_generacion']"/> <span t-out="datos['hora_generacion']"/></p>
+                                <p class="mb-1" t-if="datos['predecesor']['CUNEPred']"><strong>Documento que modifica:</strong>
+                                    <span t-out="datos['predecesor']['NumeroPred']"/>
+                                    (<span t-out="datos['predecesor']['FechaGenPred']"/>)</p>
+                            </div>
+                            <div class="col-6">
+                                <p class="mb-1"><strong>CUNE:</strong> <span t-out="datos['cune']"/></p>
+                                <p class="mb-1" t-if="datos['predecesor']['CUNEPred']"><strong>CUNE del documento que modifica:</strong>
+                                    <span t-out="datos['predecesor']['CUNEPred']"/></p>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6">
+                                <p class="mb-1"><strong>Empleador:</strong>
+                                    <span t-out="datos['empleador']['RazonSocial'] or ' '.join(x for x in (datos['empleador']['PrimerApellido'], datos['empleador']['SegundoApellido'], datos['empleador']['PrimerNombre'], datos['empleador']['OtrosNombres']) if x)"/></p>
+                                <p class="mb-1"><strong>NIT:</strong> <span t-out="datos['empleador']['NIT']"/>
+                                    <t t-if="datos['empleador']['DV']">-<span t-out="datos['empleador']['DV']"/></t></p>
+                            </div>
+                            <div class="col-6">
+                                <p class="mb-1"><strong>Trabajador:</strong>
+                                    <span t-out="' '.join(x for x in (datos['trabajador']['PrimerApellido'], datos['trabajador']['SegundoApellido'], datos['trabajador']['PrimerNombre'], datos['trabajador']['OtrosNombres']) if x)"/></p>
+                                <p class="mb-1"><strong>Documento:</strong> <span t-out="datos['trabajador']['NumeroDocumento']"/></p>
+                            </div>
+                        </div>
+                        <p class="mb-2" t-if="datos['medio_pago']['Forma'] or datos['medio_pago']['Metodo']">
+                            <strong>Medio de pago:</strong> forma <span t-out="datos['medio_pago']['Forma']"/>, método
+                            <span t-out="datos['medio_pago']['Metodo']"/>
+                        </p>
+                        <t t-if="datos['tipo'] != 'nota_eliminar'">
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr class="table-light">
+                                        <th>Devengados</th>
+                                        <th class="text-end">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="datos['devengados']" t-as="c">
+                                        <td><span t-out="c[0]"/> - <span t-out="c[1]"/></td>
+                                        <td class="text-end"><span t-out="float(c[2])" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                    </tr>
+                                    <tr class="fw-bold">
+                                        <td>Total devengado</td>
+                                        <td class="text-end"><span t-out="float(datos['devengados_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr class="table-light">
+                                        <th>Deducciones</th>
+                                        <th class="text-end">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="datos['deducciones']" t-as="c">
+                                        <td><span t-out="c[0]"/> - <span t-out="c[1]"/></td>
+                                        <td class="text-end"><span t-out="float(c[2])" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                    </tr>
+                                    <tr class="fw-bold">
+                                        <td>Total deducido</td>
+                                        <td class="text-end"><span t-out="float(datos['deducciones_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <table class="table table-sm table-bordered">
+                                <tr class="table-light fw-bold">
+                                    <td>Valor total (devengado menos deducido)</td>
+                                    <td class="text-end"><span t-out="float(datos['comprobante_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                </tr>
+                            </table>
+                        </t>
+                        <p class="mb-1"><strong>Proveedor de soluciones tecnológicas:</strong>
+                            <span t-out="datos['proveedor']['RazonSocial']"/>, NIT <span t-out="datos['proveedor']['NIT']"/>
+                            <t t-if="datos['proveedor']['DV']">-<span t-out="datos['proveedor']['DV']"/></t>,
+                            software <span t-out="datos['proveedor']['SoftwareID']"/></p>
+                        <p>Esta es una representación gráfica del documento electrónico validado por la DIAN. El archivo
+                            XML es el documento con validez legal.</p>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Datos de nómina del contacto (entidades de seguridad social y parafiscales). Se agregan en el formulario nativo de
+         Contactos SIN pestaña nueva, en un grupo propio con etiquetas visibles (H-QA-011): junto al NIT el campo `vat` de
+         l10n_latam_base vive dentro de una fila en línea (div.o_row) donde los campos no muestran etiqueta, así que se
+         ubican en un grupo debajo del bloque de datos principales. Solo clases y estructura nativas. -->
+    <record id="view_partner_form_l10n_co_nomina" model="ir.ui.view">
+        <field name="name">res.partner.form.l10n.co.nomina</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='vat']/ancestor::group[2]" position="after">
+                <group name="l10n_co_nomina_entidad" string="Entidad de nómina (PILA)">
+                    <field name="l10n_co_entity_type"/>
+                    <field name="l10n_co_pila_entity_code" invisible="not l10n_co_entity_type"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -14,26 +14,24 @@
         <record id="hr_salary_rule_co_libranzas" model="hr.salary.rule">
             <field name="name">Libranzas</field>
             <field name="code">CO_LIBRANZAS</field>
-            <field name="sequence">120</field>
+            <field name="sequence">119</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
-            <field name="condition_python">
-# Automatico desde contrato, o manual desde input
-_from_contract = contract.l10n_co_ne_libranza or 0
-_from_input = inputs.get('CO_LIBRANZAS') and inputs['CO_LIBRANZAS'].amount or 0
-result = _from_contract > 0 or _from_input > 0
-            </field>
+            <field name="condition_python">result = payslip._ne_libranzas_aplican()</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Input manual tiene prioridad sobre contrato (permite ajuste puntual)
-_from_contract = contract.l10n_co_ne_libranza or 0
-_from_input = inputs.get('CO_LIBRANZAS') and inputs['CO_LIBRANZAS'].amount or 0
-result = -abs(_from_input if _from_input > 0 else _from_contract)
+# Ley 1527/2012: tope SOBRE LA SUMA de las libranzas. Orden (Corte Const.
+# T-168/2016 y T-629/2016): descuentos de ley, embargos, libranzas. Esta regla
+# corre despues de CO_EMBARGO (secuencia 118): categories ya incluye el embargo,
+# que se suma de nuevo para obtener el neto de ley.
+_embargo = abs(result_rules['CO_EMBARGO']['total'])
+_neto_ley = categories['DEV'] + categories['DEDU'] + _embargo
+result = -payslip._ne_libranzas_calcular(_neto_ley, _embargo)
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Libranza</field>
-            <field name="note">Descuento por libranza. Se calcula automaticamente desde el contrato del empleado. Si se requiere un ajuste puntual, ingrese el valor como input manual CO_LIBRANZAS en la nomina.</field>
+            <field name="note">Descuento por libranzas desde Asignaciones Salariales (tipo Libranza), con tope del 50% del neto de ley (Ley 1527/2012) y saldo pendiente por libranza.</field>
         </record>
 
         <!-- ==================== CUOTA SINDICAL ==================== -->
@@ -90,7 +88,7 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
 
         <!-- ==================== PENSION VOLUNTARIA ==================== -->
         <record id="hr_salary_rule_co_pension_vol" model="hr.salary.rule">
-            <field name="name">Pension Voluntaria</field>
+            <field name="name">Pensión Voluntaria</field>
             <field name="code">CO_PENSION_VOL</field>
             <field name="sequence">123</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>

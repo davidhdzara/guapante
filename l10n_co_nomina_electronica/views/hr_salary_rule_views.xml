@@ -8,7 +8,9 @@
         <field name="priority">99</field>
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
-                <page string="Clasificación Colombia" name="clasificacion_colombia">
+                <page string="Clasificación Colombia" name="clasificacion_colombia"
+                      invisible="l10n_co_struct_country_code != 'CO'">
+                    <field name="l10n_co_struct_country_code" invisible="1"/>
 
                     <group string="Concepto DIAN - Nómina Electrónica" name="dian_concept">
                         <group>
@@ -17,16 +19,19 @@
                         </group>
                     </group>
 
+                    <group string="Asiento Contable" name="tercero_asiento">
+                        <group>
+                            <field name="l10n_co_tercero_origen"/>
+                        </group>
+                    </group>
+
                     <group string="Clasificación UGPP" name="ugpp_classification">
                         <group>
                             <field name="l10n_co_ugpp_payment_type"
                                    string="Tipo de Pago UGPP"/>
                             <field name="l10n_co_ugpp_non_salary_class"
-                                   string="Clase Pago No Salarial"/>
-                        </group>
-                        <group>
-                            <field name="l10n_co_ugpp_accounts"
-                                   string="Cuentas UGPP"/>
+                                   string="Clase Pago No Salarial"
+                                   required="l10n_co_ugpp_payment_type == 'tp_no_salarial'"/>
                         </group>
                     </group>
 

@@ -15,8 +15,25 @@ electrónica.
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools import convert
 from odoo.tools.misc import str2bool
+
+from ..services import dian_utils, nomina_xml_builder
+
+# Selecciones compartidas entre la empresa (valor general) y el contrato/empleado (excepción).
+NE_CLASES_RIESGO = [
+    ('1', 'I - Riesgo Mínimo'),
+    ('2', 'II - Riesgo Bajo'),
+    ('3', 'III - Riesgo Medio'),
+    ('4', 'IV - Riesgo Alto'),
+    ('5', 'V - Riesgo Máximo'),
+]
+NE_MEDIOS_PAGO = [
+    ('1', 'Transferencia Bancaria'),
+    ('2', 'Cheque'),
+    ('10', 'Efectivo'),
+]
 
 
 class ResCompany(models.Model):
@@ -55,6 +72,87 @@ class ResCompany(models.Model):
         string='Certificados',
     )
 
+    # Plantillas de las secuencias de nomina electronica (datos del modulo, company_id vacio): solo
+    # se copian para crear la de cada compania; ninguna compania las usa directamente. El consecutivo
+    # DIAN se autoriza por NIT, asi que cada compania colombiana lleva el suyo (M1, doc 51).
+    _NE_SECUENCIAS = (
+        ('l10n_co_ne_sequence_id', 'l10n_co_nomina_electronica.seq_l10n_co_nomina_electronica'),
+        ('l10n_co_ne_pre_sequence_id', 'l10n_co_nomina_electronica.seq_l10n_co_nomina_temporal'),
+        (None, 'l10n_co_nomina_electronica.seq_l10n_co_nomina_ajuste'),
+    )
+
+    def _ne_crear_secuencia_propia(self, plantilla, siguiente=1):
+        """Copia propia de la plantilla para esta compania, con el siguiente numero indicado."""
+        self.ensure_one()
+        return self.env['ir.sequence'].sudo().create({
+            'name': '%s (%s)' % (plantilla.name, self.name),
+            'code': plantilla.code, 'implementation': plantilla.implementation,
+            'prefix': plantilla.prefix, 'suffix': plantilla.suffix,
+            'padding': plantilla.padding, 'number_increment': plantilla.number_increment,
+            'number_next': siguiente, 'company_id': self.id})
+
+    def _ne_asegurar_secuencias(self):
+        """A cada compania colombiana sin secuencia de nomina electronica (consecutivo, temporal,
+        ajuste) le crea la suya, empezando en 1. No toca las que ya tienen (ni crea nada para una
+        compania de otro pais)."""
+        for company in self:
+            if not company._ne_es_colombia():
+                continue
+            for campo, xmlid in self._NE_SECUENCIAS:
+                plantilla = self.env.ref(xmlid, raise_if_not_found=False)
+                if not plantilla:
+                    continue
+                if campo:
+                    if not company[campo]:
+                        company.sudo()[campo] = company._ne_crear_secuencia_propia(plantilla)
+                elif not self.env['ir.sequence'].sudo().search_count([
+                        ('code', '=', plantilla.code), ('company_id', '=', company.id)]):
+                    company._ne_crear_secuencia_propia(plantilla)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        companies = super().create(vals_list)
+        companies._ne_asegurar_secuencias()
+        return companies
+
+    def _ne_valor_obligatorio(self, campo):
+        """Valor de configuracion de la compania que se necesita para generar un archivo (PILA):
+        sin el, error claro nombrando compania y campo (nunca un valor por defecto)."""
+        self.ensure_one()
+        valor = self[campo]
+        if not valor:
+            raise UserError(_(
+                'La compañía "%(company)s" no tiene "%(campo)s" configurado (Nómina > '
+                'Configuración > Ajustes, bloque PILA). Elíjalo antes de generar la planilla.',
+                company=self.name, campo=self._fields[campo].string))
+        return valor
+
+    def _ne_en_produccion(self):
+        """Producción real de nómina electrónica: ambiente 1 y sin proceso de certificación. Aquí se reporta por
+        DOCUMENTO mensual; el ciclo por recibo solo sigue vivo en habilitación (doc 53 §27.1, D-5h)."""
+        self.ensure_one()
+        return self.l10n_co_ne_environment == '1' and not self.l10n_co_ne_certification_process
+
+    def _ne_exigir_colombia(self):
+        """Error claro si la compania no es colombiana: los asistentes de nomina colombiana (PILA,
+        UGPP, habilitacion DIAN, consulta por CUNE) trabajan con la compania del registro y solo para
+        companias de Colombia."""
+        for company in self:
+            if not company._ne_es_colombia():
+                raise UserError(_(
+                    'La compañía "%(company)s" no es colombiana: esta opción solo aplica a '
+                    'compañías de Colombia. Cambie de compañía en el selector superior o '
+                    'verifique el país de la compañía (Ajustes > Compañías).',
+                    company=company.name))
+
+    def _ne_es_colombia(self):
+        """True si la compania es colombiana. Unica comprobacion de pais del modulo: lo propio de la
+        nomina colombiana (numeracion, validaciones, sincronizacion de identificacion, IBC, piso
+        integral) solo corre para companias de Colombia, de modo que una compania de otro pais
+        (p. ej. Mexico) que comparta la base no se ve afectada."""
+        self.ensure_one()
+        return self.partner_id.country_id.code == 'CO'
+
     def _get_ne_certificate(self):
         """Certificado usado para firmar nómina electrónica.
 
@@ -64,6 +162,97 @@ class ResCompany(models.Model):
         """
         self.ensure_one()
         return self.l10n_co_ne_certificate_ids[-1:]
+
+    def _l10n_co_ne_validar_config(self):
+        """Valida la configuración de nómina electrónica DIAN de la compañía.
+
+        Antes vivía en ``HrPayslip._validate_company_ne_config(company)`` (mixin del recibo) y solo
+        usaba los datos de la compañía; el documento mensual la necesita sin depender del recibo
+        (doc 53 §23.12-§23.13). El mixin conserva su nombre como envoltorio delgado que llama aquí:
+        mismos chequeos, mismo orden y mismos mensajes.
+
+        Raises:
+            UserError: faltan datos (software, PIN, certificado), el certificado está vencido o la
+                moneda no es COP.
+        """
+        self.ensure_one()
+        company = self
+        missing = []
+        mode = company.l10n_co_ne_operation_mode_ids
+        if not mode or not mode.software_id:
+            missing.append(_('ID Software Nómina'))
+        if not mode or not mode.software_pin:
+            missing.append(_('PIN Software Nómina'))
+        if not company._get_ne_certificate():
+            missing.append(_('Certificado Digital'))
+        if missing:
+            raise UserError(_(
+                'Faltan los siguientes datos de configuración de nómina '
+                'electrónica en la empresa %s:\n• %s',
+                company.name,
+                '\n• '.join(missing),
+            ))
+
+        certificate = company._get_ne_certificate()
+        if certificate and certificate.date_end and certificate.date_end < fields.Datetime.now():
+            raise UserError(_(
+                'El certificado digital de la empresa %s está vencido '
+                '(venció el %s). Cargue o seleccione un certificado '
+                'vigente antes de continuar.',
+                company.name,
+                certificate.date_end,
+            ))
+
+        # AUD-DIAN-34 (2026-10-05): el Anexo Técnico (NIE030) es explícito -- "Para Colombia
+        # se debe colocar 'COP'" en TipoMoneda, sin excepción. No se parametriza: es una
+        # constante del Anexo (nomina_xml_builder.NE_TIPO_MONEDA), así que una compañía en
+        # otra moneda debe fallar aquí, antes de generar un XML inválido, en vez de enviar
+        # "COP" por encima de montos que en realidad están en otra moneda.
+        if company.currency_id.name != nomina_xml_builder.NE_TIPO_MONEDA:
+            raise UserError(_(
+                'La compañía %(company)s tiene moneda "%(currency)s" configurada, pero la '
+                'Nómina Electrónica DIAN exige TipoMoneda="%(cop)s" (Anexo Técnico, NIE030: '
+                '"Para Colombia se debe colocar \'%(cop)s\'"). Configure la compañía en '
+                'pesos colombianos antes de generar nómina electrónica.',
+                company=company.name, currency=company.currency_id.name,
+                cop=nomina_xml_builder.NE_TIPO_MONEDA,
+            ))
+
+    # ──────────────────────────────────────────────────────────────────
+    # DIAN — URLs y tiempos configurables (AUD-DIAN-34, 2026-10-05)
+    # ──────────────────────────────────────────────────────────────────
+    # Único punto para que services/soap_client.py, services/dian_utils.py y este modelo
+    # no mantengan cada uno su propia copia de las URL de la DIAN (antes repetidas en 3
+    # sitios) ni de los tiempos fijos (SOAP_TIMEOUT, tick/timeout del motor de
+    # habilitación). Los valores por defecto son los que ya estaban hardcodeados -- ningún
+    # comportamiento cambia al instalar esto. Sobrescribibles vía ir.config_parameter
+    # (Ajustes > Técnico > Parámetros del Sistema, valor inicial en data/ir_config_
+    # parameter_dian_data.xml, noupdate=1) sin tocar código ni re-desplegar.
+
+    def _ne_dian_endpoint(self, environment=None):
+        """URL del servicio SOAP de la DIAN. ``environment`` por defecto es el de la
+        compañía; se puede forzar (ej. envíos de set de pruebas, siempre habilitación)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_soap_endpoint_%s' % env)
+        return dian_utils.get_soap_endpoint(env, override=override)
+
+    def _ne_dian_qr_host(self, environment=None):
+        """Host del catálogo DIAN para la URL del CodigoQR (Anexo Técnico, sección QRCode)."""
+        self.ensure_one()
+        env = environment or self.l10n_co_ne_environment
+        override = self.env['ir.config_parameter'].sudo().get_param(
+            'l10n_co_nomina_electronica.dian_qr_host_%s' % env)
+        return dian_utils.get_qr_catalog_host(env, override=override)
+
+    def _ne_config_int_param(self, key, default):
+        """Lee un parámetro entero positivo de ir.config_parameter bajo ``key`` -- usado
+        para los timeouts configurables (SOAP_TIMEOUT, tick/timeout de habilitación). Valor
+        ausente o inválido -> ``default`` con un _logger.warning (ver dian_utils.
+        parse_positive_int): una configuración mal escrita nunca debe reventar un envío."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(key)
+        return dian_utils.parse_positive_int(raw, default, key)
 
     # ──────────────────────────────────────────────────────────────────
     # Ambiente y configuración de habilitación
@@ -167,6 +356,25 @@ class ResCompany(models.Model):
     l10n_co_ne_hab_started = fields.Datetime(string='Inicio de la habilitación', copy=False)
 
     # ──────────────────────────────────────────────────────────────────
+    # Localización nómina (.99, pedido de David): paquete de nómina
+    # electrónica instalado, visible en Ajustes > Nómina como la
+    # "Localización fiscal" de Contabilidad (chart_template). hr_payroll
+    # no tiene un framework de plantillas equivalente al de account
+    # (confirmado con Tech Lead contra el servidor) -- este campo calca
+    # el PATRÓN VISUAL de Accounting, no reusa un mecanismo nativo de
+    # Nómina que no existe.
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_payroll_package = fields.Selection(
+        selection='_selection_l10n_co_ne_payroll_package',
+        string='Paquete de Nómina',
+        help='Localización de nómina electrónica instalada para este país.',
+    )
+
+    @api.model
+    def _selection_l10n_co_ne_payroll_package(self):
+        return [('l10n_co_nomina_electronica', _('Colombia'))]
+
+    # ──────────────────────────────────────────────────────────────────
     # Prefijos de consecutivo para Nómina y Notas de Ajuste
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_payroll_prefix = fields.Char(
@@ -184,7 +392,6 @@ class ResCompany(models.Model):
     l10n_co_ne_sequence_id = fields.Many2one(
         comodel_name='ir.sequence',
         string='Secuencia Nómina Electrónica',
-        default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_electronica', raise_if_not_found=False),
         # AUD-DIAN-34 (2026-10-04): dominio restringido al código EXACTO
         # tras un bug real en producción (Guapante) -- el dominio amplio
         # "like 'l10n_co_nomina.'" permitía elegir por error la secuencia
@@ -197,7 +404,6 @@ class ResCompany(models.Model):
     l10n_co_ne_pre_sequence_id = fields.Many2one(
         comodel_name='ir.sequence',
         string='Secuencia Nómina Temporal',
-        default=lambda self: self.env.ref('l10n_co_nomina_electronica.seq_l10n_co_nomina_temporal', raise_if_not_found=False),
         # AUD-DIAN-34 (2026-10-04): ver nota en l10n_co_ne_sequence_id --
         # mismo incidente real: esta quedó apuntando a la secuencia de
         # Notas de Ajuste (NA) en vez de la Temporal (PRE-NOM) en
@@ -209,30 +415,45 @@ class ResCompany(models.Model):
     # ──────────────────────────────────────────────────────────────────
     # Campos UGPP – Clasificación del aportante
     # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_representante_legal_id = fields.Many2one(
+        'res.partner', string='Representante legal',
+        help='Contacto que firma los oficios de la compañía ante entidades (hoy, el oficio de respuesta a la UGPP). Su '
+             'nombre y su identificación salen de Contactos: no se digitan aparte. Odoo no trae este dato en la '
+             'compañía ni en la localización colombiana.')
+
+    # Listas de la Guía UGPP V-20.1 (p. 15): el código de cada opción sale de ``_UGPP_NATURALEZA`` / ``_UGPP_TIPO_APORTANTE``
+    # en models/l10n_co_nomina_ugpp.py (formulario 7001, columnas 16 y 20).
     l10n_co_ugpp_legal_nature = fields.Selection(
         selection=[
             ('publica', 'Pública'),
             ('privada', 'Privada'),
             ('mixta', 'Mixta'),
-            ('otra', 'Otra'),
+            ('organismo_multilateral', 'Organismos multilaterales'),
+            ('publica_extranjera', 'Entidades de derecho público no sometidas a la legislación colombiana'),
         ],
         string='Naturaleza Jurídica',
-        help='Naturaleza jurídica de la empresa según clasificación UGPP.',
+        help='Naturaleza jurídica del aportante según la Guía UGPP V-20.1 (formulario nómina-aportante, campo 16). '
+             'Obligatoria para el reporte UGPP.',
     )
     l10n_co_ugpp_contributor_type = fields.Selection(
         selection=[
             ('empleador', 'Empleador'),
-            ('independiente', 'Independiente'),
-            ('cooperativa', 'Cooperativa de Trabajo Asociado'),
+            ('entidad_publica_especial', 'Entidades o universidades públicas de los regímenes especial y de excepción'),
+            ('agremiacion', 'Agremiaciones, asociaciones o congregaciones religiosas'),
+            ('cooperativa', 'Cooperativas y precooperativas de trabajo asociado'),
+            ('mision_diplomatica', 'Misiones diplomáticas, consulares o de organismos multilaterales no sometidos a '
+                                   'la legislación colombiana'),
+            ('hogares_bienestar', 'Organizaciones administradoras del programa de hogares de bienestar'),
+            ('pagador_concejales', 'Pagador de aportes de los concejales municipales o distritales o de los ediles '
+                                   'de las juntas administradoras locales'),
+            ('pagador_sindical', 'Pagador de aportes contrato sindical'),
+            ('pagador_reincorporacion', 'Pagador programa de reincorporación'),
+            ('pagador_magisterio', 'Pagador aportes parafiscales del Magisterio'),
+            ('pagador_humanitaria', 'Pagador prestación humanitaria'),
         ],
         string='Tipo de Aportante',
-        help='Tipo de aportante al Sistema de Seguridad Social según UGPP.',
-    )
-    l10n_co_ugpp_special_autoretention = fields.Boolean(
-        string='Autorretención Especial',
-        default=False,
-        help='Indica si la empresa tiene la calidad de autorretenedor '
-             'especial ante la UGPP.',
+        help='Tipo de aportante según la Guía UGPP V-20.1 (formulario nómina-aportante, campo 20). Obligatorio para '
+             'el reporte UGPP.',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -243,7 +464,19 @@ class ResCompany(models.Model):
         default=False,
         help='Si la empresa es persona jurídica del régimen contributivo, '
              'queda exonerada de aportes a SENA e ICBF para empleados '
-             'con salario inferior a 10 SMMLV (Art. 114-1 ET).',
+             'con salario inferior a 10 SMMLV (Art. 114-1 ET). También alimenta la '
+             'columna "Autorretención especial" del formato de pagos UGPP (Guía V-20.1: '
+             '"SI" si está exonerado del pago de aportes parafiscales según el art. 114-1 ET).',
+    )
+
+    l10n_co_ne_pension_patronal_sln = fields.Boolean(
+        string='Cotizar pensión patronal en licencia no remunerada',
+        default=True,
+        help='En los días de suspensión o licencia no remunerada (SLN) el empleador paga '
+             'salud sobre la base de continuidad; la pensión patronal sobre esos días es '
+             'opcional en el sector privado (Concepto Min. Protección Social 134658, CST '
+             'art. 53). Si se desmarca, nómina y PILA no cotizan pensión sobre los días SLN. '
+             'El trabajador no paga su cuota sobre esos días en ningún caso.',
     )
 
     def _is_exonerado_parafiscales(self, ibc, date):
@@ -297,23 +530,36 @@ class ResCompany(models.Model):
             ('8', '8 - Institución Auxiliar del Cooperativismo'),
         ],
         string='Tipo Aportante PILA',
-        default='1',
+    )
+    l10n_co_pila_arl_id = fields.Many2one(
+        'res.partner', string='ARL',
+        domain=[('l10n_co_entity_type', '=', 'arl')],
+        help='Contacto de la ARL a la que está afiliada la empresa. La '
+             'afiliación es de toda la compañía; el código PILA se toma del '
+             'contacto.',
     )
     l10n_co_pila_arl_code = fields.Char(
-        string='Código ARL',
-        help='Código de la ARL según tabla de administradoras PILA (ej: 14-11).',
+        string='Código ARL', related='l10n_co_pila_arl_id.l10n_co_pila_entity_code',
+        help='Código PILA derivado del contacto de la ARL (ej: 14-11).',
     )
-    # Doc 11 (ficha consolidada): nombre legible de la ARL, a nivel de
-    # compañía -- no por empleado. La afiliación a ARL en Colombia es de
-    # toda la empresa, no individual (todos los empleados comparten la
-    # misma ARL); duplicar un campo de nombre por cada ficha de empleado
-    # obligaría a actualizar N registros si la empresa cambia de ARL.
     l10n_co_pila_arl_name = fields.Char(
-        string='Nombre ARL',
-        help='Nombre comercial de la Administradora de Riesgos Laborales '
-             'de la empresa (ej: "Positiva ARL", "Sura ARL"). Complementa '
-             'el Código ARL (código PILA) -- este campo es solo para '
-             'mostrar un nombre legible en pantalla.',
+        string='Nombre ARL', related='l10n_co_pila_arl_id.display_name',
+        help='Nombre del contacto de la ARL.',
+    )
+    l10n_co_sena_partner_id = fields.Many2one(
+        'res.partner', string='SENA',
+        domain=[('l10n_co_entity_type', '=', 'sena')],
+        help='Contacto al que se causa el aporte parafiscal al SENA.',
+    )
+    l10n_co_icbf_partner_id = fields.Many2one(
+        'res.partner', string='ICBF',
+        domain=[('l10n_co_entity_type', '=', 'icbf')],
+        help='Contacto al que se causa el aporte parafiscal al ICBF.',
+    )
+    l10n_co_dian_partner_id = fields.Many2one(
+        'res.partner', string='DIAN',
+        domain=[('l10n_co_entity_type', '=', 'dian')],
+        help='Contacto de la DIAN, tercero de la retención en la fuente.',
     )
     l10n_co_pila_forma_presentacion = fields.Selection(
         selection=[
@@ -321,7 +567,6 @@ class ResCompany(models.Model):
             ('S', 'Sucursal'),
         ],
         string='Forma Presentación PILA',
-        default='U',
     )
     l10n_co_pila_codigo_sucursal = fields.Char(
         string='Código Sucursal PILA',
@@ -333,6 +578,104 @@ class ResCompany(models.Model):
         string='Código Operador PILA',
         help='Código del operador de información PILA (ej: 89 para Enlace).',
     )
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-161: valores GENERALES de la empresa, con excepción por empleado/contrato.
+    # El valor efectivo se resuelve siempre con los métodos _ne_* de hr.employee y
+    # hr.contract (empleado/contrato -> empresa); sin valor, error nombrado.
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_pila_ccf_por_empleado = fields.Boolean(
+        string='¿Maneja empleados en diferentes ciudades?',
+        default=False,
+        help='Si está activa, la Caja de Compensación se elige por empleado (y es obligatoria '
+             'en cada uno). Si no, toda la empresa usa la Caja de Compensación general.',
+    )
+    l10n_co_pila_ccf_id = fields.Many2one(
+        'res.partner', string='Caja de Compensación general',
+        domain=[('l10n_co_entity_type', '=', 'ccf')],
+        help='Contacto de la Caja de Compensación Familiar de toda la empresa.',
+    )
+    l10n_co_pila_clase_riesgo = fields.Selection(
+        selection=NE_CLASES_RIESGO, string='Clase de Riesgo ARL general',
+        help='Clase de riesgo ARL de la empresa. Un contrato puede tener otra clase propia '
+             '(pestaña PILA del contrato).',
+    )
+    l10n_co_pila_centro_trabajo = fields.Char(
+        string='Centro de Trabajo ARL general',
+        help='Código del centro de trabajo ARL de la empresa. Un contrato puede tener otro '
+             'propio (pestaña PILA del contrato).',
+    )
+    l10n_co_ne_payment_method = fields.Selection(
+        selection=NE_MEDIOS_PAGO, string='Medio de Pago general',
+        help='Medio de pago de la nómina de la empresa (atributo Metodo del nodo <Pago> del '
+             'XML). Un empleado puede tener otro propio.',
+    )
+
+    l10n_co_ne_febrero_modo = fields.Selection(
+        selection=[
+            ('real', 'Días reales'),
+            ('30', 'Mes de 30 días'),
+        ],
+        string='Febrero en prestaciones',
+        help='Cómo se cuentan los días en prima, cesantías, intereses, indemnización y vacaciones '
+             'causadas de la liquidación (el divisor sigue siendo 360). "Días reales": febrero '
+             'cuenta 28 (29 si es bisiesto) y el día 31 no cuenta. "Mes de 30 días": cada mes, '
+             'febrero incluido, cuenta 30. No afecta el sueldo mensual ni los días de PILA.',
+    )
+
+    l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
+        string='Bloquear envío fuera de plazo', default=False,
+        help='Si está marcado, un documento mensual (o nota de ajuste) cuyo plazo de transmisión ya venció no se encola '
+             'sin que un administrador de nómina confirme "envío extemporáneo" en Enviar y Procesar; queda constancia en '
+             'el documento. Apagado por defecto: no cambia nada hasta activarlo. Es una política de la compañía, no una '
+             'regla de la DIAN (el Anexo no valida el plazo).')
+
+    l10n_co_ne_fuente_fecha_pago = fields.Selection(
+        selection=[
+            ('contabilidad', 'Pagos de Contabilidad'),
+            ('recibo', 'Fecha de pago del recibo'),
+        ],
+        string='Fuente de la fecha de pago',
+        help='De dónde sale la fecha de pago que decide el mes del documento de nómina electrónica y se reporta '
+             'en FechasPagos. "Pagos de Contabilidad": las fechas de los pagos conciliados del asiento del recibo. '
+             '"Fecha de pago del recibo": el campo Fecha de pago del recibo, que se llena con la acción Registrar '
+             'pago. Sin valor por defecto: si falta, se pide elegirlo.',
+    )
+
+    l10n_co_ne_redondeo_dias = fields.Selection(
+        selection=[
+            ('HALF-UP', 'HALF-UP (al entero más cercano; 0,5 sube)'),
+            ('UP', 'UP (hacia arriba)'),
+            ('DOWN', 'DOWN (hacia abajo)'),
+        ],
+        string='Redondeo de días del XML',
+        help='Cómo se redondea un número de días fraccionario en los campos de días del XML de '
+             'nómina electrónica, que la DIAN exige enteros (vacaciones pendientes, primas, '
+             'incapacidades, licencias). Mismo vocabulario del método de redondeo nativo de Odoo.',
+    )
+
+    def write(self, vals):
+        if 'l10n_co_pila_ccf_por_empleado' in vals and not vals['l10n_co_pila_ccf_por_empleado']:
+            for company in self.filtered('l10n_co_pila_ccf_por_empleado'):
+                general = (
+                    vals['l10n_co_pila_ccf_id'] if 'l10n_co_pila_ccf_id' in vals
+                    else company.l10n_co_pila_ccf_id.id)
+                distintos = self.env['hr.employee'].sudo().with_context(active_test=False).search_count([
+                    ('company_id', '=', company.id),
+                    ('l10n_co_pila_ccf_id', '!=', False),
+                    ('l10n_co_pila_ccf_id', '!=', general or False),
+                ])
+                if distintos:
+                    raise ValidationError(_(
+                        'No se puede desactivar "¿Maneja empleados en diferentes ciudades?" en '
+                        '%(company)s: %(n)s empleado(s) tienen una Caja de Compensación distinta '
+                        'de la general. Deje a esos empleados con la caja general (o elija como '
+                        'general la que corresponde) y vuelva a intentarlo.',
+                        company=company.name, n=distintos))
+        res = super().write(vals)
+        if 'country_id' in vals:
+            self._ne_asegurar_secuencias()
+        return res
 
     # ──────────────────────────────────────────────────────────────────
     # Computes
@@ -387,3 +730,39 @@ class ResCompany(models.Model):
                     '(Pruebas). Este valor se obtiene del portal de la '
                     'DIAN.'
                 ))
+
+    # ──────────────────────────────────────────────────────────────────
+    # Recargar paquete de nómina (.99, "Opción A" aprobada por David/Tech
+    # Lead): recrea estructuras, reglas salariales y tipos de novedad que
+    # falten, SIN tocar hr.rule.parameter.
+    # ──────────────────────────────────────────────────────────────────
+    _L10N_CO_NE_RELOAD_DATA_FILES = [
+        'data/hr_payroll_structure_data.xml',
+        'data/hr_payroll_structure_special_data.xml',
+        'data/hr_salary_rule_auto_deductions.xml',
+        'data/l10n_co_embargo_input_types_data.xml',
+        'data/l10n_co_horas_extra_input_types_data.xml',
+        'data/l10n_co_novedades_input_types_data.xml',
+    ]
+
+    def _l10n_co_ne_reload_payroll_package(self):
+        """Vuelve a aplicar SOLO estos archivos de datos del módulo, en el
+        mismo orden que el manifest, con el mismo mecanismo que usa un
+        `-u` real (``odoo.tools.convert.convert_file``): cada archivo
+        respeta su propio ``noupdate`` ya declarado -- los de
+        estructuras/reglas llevan ``noupdate="0"`` y siempre se
+        reaplican, los de tipos de novedad llevan ``noupdate="1"`` y solo
+        se recrean si faltan (ver ``_tag_root`` en ``odoo/tools/
+        convert.py``: el atributo del propio bloque ``<data>`` siempre
+        gana sobre el ``noupdate`` que se pasa aquí).
+
+        Deliberadamente NO incluye ``data/l10n_co_rule_parameters_data.xml``
+        (parámetros legales versionados, nunca se pisan) ni
+        ``data/hr_retefuente_data.xml`` (mismo motivo) -- quedan fuera de
+        alcance por diseño, no por una comparación de valores.
+        """
+        self.ensure_one()
+        module = 'l10n_co_nomina_electronica'
+        idref = {}
+        for relpath in self._L10N_CO_NE_RELOAD_DATA_FILES:
+            convert.convert_file(self.env, module, relpath, idref, mode='update', noupdate=False)

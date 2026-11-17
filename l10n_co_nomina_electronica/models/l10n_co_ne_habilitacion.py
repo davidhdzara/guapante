@@ -25,13 +25,16 @@ import logging
 from datetime import timedelta
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 from ..services import habilitacion_test_data, soap_client
 
 _logger = logging.getLogger(__name__)
 
 _CRON_XMLID = 'l10n_co_nomina_electronica.ir_cron_ne_habilitacion'
+# AUD-DIAN-34 (2026-10-05): valores por defecto -- el valor real usado puede venir de
+# ir.config_parameter (ResCompany._ne_config_int_param(), ver models/res_company.py);
+# estas 2 constantes quedan solo como el default de ese parámetro, no se usan directo.
 _TICK_SECONDS = 20
 _TIMEOUT_MINUTES = 45
 
@@ -48,6 +51,7 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     def start(self, company):
         """Inicia (o retoma) la habilitación de ``company``. Devuelve una notificación."""
         company.ensure_one()
+        self._check_puede_habilitar(company)
         if company.l10n_co_ne_hab_state == 'running':
             return self._toast(
                 _('Habilitación en proceso'),
@@ -70,6 +74,24 @@ class L10nCoNeHabilitacion(models.AbstractModel):
             message = _('Se regeneraron %d documento(s) rechazado(s) con consecutivo nuevo. ',
                         replaced) + message
         return self._toast(_('Habilitación iniciada'), message, 'success')
+
+    @api.model
+    def _check_puede_habilitar(self, company):
+        """H-022: ``start`` es público (RPC) y escribe con sudo y gasta cupo real del set de
+        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Mismo criterio del
+        asistente de certificación que este motor reutiliza: administrador de nómina o de
+        sistema, y solo sobre una compañía a la que el usuario pertenece."""
+        user = self.env.user
+        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager')
+        if not (user.has_group('hr_payroll.group_hr_payroll_manager')
+                or user.has_group('base.group_system')):
+            raise AccessError(_(
+                'No tiene permiso para iniciar la habilitación DIAN. Solicite que le asignen '
+                'el rol "%(rol)s" o el de administrador del sistema.', rol=grupo.full_name))
+        if company not in user.company_ids:
+            raise AccessError(_(
+                'No puede iniciar la habilitación DIAN de la compañía "%(company)s": usted no '
+                'tiene acceso a ella.', company=company.sudo().name))
 
     @api.model
     def progress(self, company):
@@ -97,7 +119,10 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _cron_step(self):
-        companies = self.env['res.company'].sudo().search([('l10n_co_ne_hab_state', '=', 'running')])
+        companies = self.env['res.company'].sudo().search([
+            ('l10n_co_ne_hab_state', '=', 'running'),
+            ('partner_id.country_id.code', '=', 'CO'),
+        ])
         for company in companies:
             try:
                 finished = self.with_company(company)._step(company)
@@ -112,16 +137,20 @@ class L10nCoNeHabilitacion(models.AbstractModel):
                       str(exc)[:300]))
             self._commit()
             if not finished:
-                self._schedule(_TICK_SECONDS)
+                tick_seconds = company._ne_config_int_param(
+                    'l10n_co_nomina_electronica.habilitacion_tick_seconds', _TICK_SECONDS)
+                self._schedule(tick_seconds)
 
     def _step(self, company):
         """Ejecuta UNA etapa. Devuelve True cuando el proceso terminó (completo o detenido)."""
         mode = company.l10n_co_ne_operation_mode_ids
         started = company.l10n_co_ne_hab_started
-        if started and started < fields.Datetime.now() - timedelta(minutes=_TIMEOUT_MINUTES):
+        timeout_minutes = company._ne_config_int_param(
+            'l10n_co_nomina_electronica.habilitacion_timeout_minutes', _TIMEOUT_MINUTES)
+        if started and started < fields.Datetime.now() - timedelta(minutes=timeout_minutes):
             return self._finish(company, 'error', _(
                 'La DIAN no resolvió los documentos en %d minutos. '
-                'Presione "Iniciar Proceso de Habilitación" para continuar.', _TIMEOUT_MINUTES))
+                'Presione "Iniciar Proceso de Habilitación" para continuar.', timeout_minutes))
 
         slips = self._set_slips(company)
         ind = slips.filtered(lambda s: not s.l10n_co_ne_is_adjustment)

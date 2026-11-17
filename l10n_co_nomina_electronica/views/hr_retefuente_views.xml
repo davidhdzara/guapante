@@ -209,6 +209,7 @@
               name="Retención en la Fuente"
               action="l10n_co_retefuente_uvt_action"
               parent="menu_l10n_co_nomina_colombia_config"
-              sequence="10"/>
+              sequence="10"
+              groups="hr_payroll.group_hr_payroll_user"/>
 
 </odoo>

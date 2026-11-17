@@ -7,16 +7,20 @@
         <field name="inherit_id" ref="hr_payroll.hr_contract_form_inherit"/>
         <field name="priority">99</field>
         <field name="arch" type="xml">
+            <!-- H12 (2026-11-09, documentador + Tech Lead): contract_details es un grupo EXTERIOR
+                 (col="2"); Odoo solo genera la celda de etiqueta para campos dentro de un grupo
+                 INTERIOR, así que inyectados directo quedaban sin etiqueta. Se envuelven en su propio
+                 <group>, igual que hr_payroll_account en este mismo lugar. -->
             <xpath expr="//group[@name='contract_details']" position="inside">
-                <field name="l10n_co_ne_contract_type"
-                       string="Tipo Contrato DIAN"/>
-                <field name="l10n_co_ne_integral_salary"
-                       string="Salario Integral"/>
-                <field name="l10n_co_payroll_period"
-                       string="Periodo de Nómina"/>
+                <group name="l10n_co_ne_contract_fields" invisible="country_code != 'CO'">
+                    <field name="l10n_co_ne_contract_type"
+                           string="Tipo Contrato DIAN"/>
+                    <field name="l10n_co_ne_integral_salary"
+                           string="Salario Integral"/>
+                </group>
             </xpath>
             <xpath expr="//notebook" position="inside">
-                <page string="PILA" name="pila">
+                <page string="PILA" name="pila" invisible="country_code != 'CO'">
                     <group string="PILA - Cotización" name="pila_cotizacion">
                         <group>
                             <field name="l10n_co_pila_tipo_cotizante"/>
@@ -26,12 +30,59 @@
                         </group>
                         <group>
                             <field name="l10n_co_pila_centro_trabajo"/>
-                            <field name="l10n_co_pila_actividad_economica"/>
+                            <field name="l10n_co_pila_actividad_economica" options="{'no_create': True}"/>
                             <field name="l10n_co_pila_indicador_alto_riesgo"/>
                             <field name="l10n_co_pila_tarifa_especial_afp"/>
                         </group>
                     </group>
                 </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- E-9 (H-QA-026): el Salario del contrato es MENSUAL en Colombia (CO_BASICO = wage / 30), sin importar «Programar pago».
+         hr_payroll rotula el salario con 9 divs hermanos dentro de <div name="wage">: wage_period_label («/ month», visible solo con
+         schedule_pay = 'monthly') y 8 más («/ year», «/ half-month»...) visibles cada uno solo con su valor. En compañías colombianas
+         se ocultan los 9 y queda SIEMPRE visible «/ mes»; en cualquier otra compañía no cambia nada (todas las condiciones
+         agregan «or country_code == 'CO'»). country_code ya viene en la vista nativa del contrato. NO se toca schedule_pay: lo
+         leen el aviso de duración, el factor de costos y la periodicidad de la retención.
+         Los 8 divs nativos no tienen name: se identifican por su condición exacta, dentro de <div name="wage">. Si una versión de
+         Odoo cambia alguna, la instalación falla con un xpath que no se encuentra (preferible a rotular mal un salario). -->
+    <record id="view_contract_form_ne_salario_mes" model="ir.ui.view">
+        <field name="name">hr.contract.form.ne.salario.mes</field>
+        <field name="model">hr.contract</field>
+        <field name="inherit_id" ref="hr_payroll.hr_contract_form_inherit"/>
+        <field name="priority">98</field>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='wage_period_label']" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'annually'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'semi-annually'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'quarterly'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'bi-monthly'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'semi-monthly'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'bi-weekly'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'weekly'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage']/div[@invisible=&quot;schedule_pay != 'daily'&quot;]" position="attributes">
+                <attribute name="invisible" add="country_code == 'CO'" separator=" or "/>
+            </xpath>
+            <xpath expr="//div[@name='wage_period_label']" position="after">
+                <div class="mb-3" name="l10n_co_ne_wage_period_label" invisible="country_code != 'CO'">/ mes</div>
             </xpath>
         </field>
     </record>
