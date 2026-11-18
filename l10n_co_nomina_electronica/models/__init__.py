@@ -36,3 +36,4 @@ from . import hr_payslip_run
 from . import ir_actions_report
 from . import hr_payroll_structure
 from . import hr_payslip_neto
+from . import hr_payslip_input

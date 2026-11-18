@@ -239,6 +239,18 @@
             <xpath expr="//page[@name='worked_days_input']//field[@name='worked_days_line_ids']/list/field[@name='amount']" position="attributes">
                 <attribute name="optional">hide</attribute>
             </xpath>
+            <!-- .282: el importe de las novedades se ve con DOS decimales (300.000,00). Causa (nativo, leída por TL en el servidor):
+                 hr.payslip.input.amount usa la precisión «Payroll Rate» (4 decimales, hr_payslip_input.py:18-21) y el widget de la lista,
+                 float_without_trailing_zeros, solo recorta ceros tras un PUNTO decimal (hr/static/src/components/float_without_trailing_zeros/
+                 float_without_trailing_zeros.js:8-13): con coma decimal (es_CO) los ceros quedan. `widget="float"` sustituye el widget y
+                 `digits` solo formatea la vista; el valor guardado no cambia (el campo y su precisión no se tocan: el campo guarda pesos, días y horas). -->
+            <xpath expr="//page[@name='worked_days_input']//field[@name='input_line_ids']/list/field[@name='amount']" position="attributes">
+                <attribute name="widget">float</attribute>
+                <attribute name="digits">[16, 2]</attribute>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']//field[@name='input_line_ids']/form//field[@name='amount']" position="attributes">
+                <attribute name="digits">[16, 2]</attribute>
+            </xpath>
         </field>
     </record>
 

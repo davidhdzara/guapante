@@ -19,6 +19,7 @@ entradas de trabajo». Valores a mano: septiembre de 2026 empieza en martes (22 
 compañía de prueba = 40 h/semana, 8 h por día. NO EJECUTADAS en Odoo.
 """
 
+import json
 import logging
 from datetime import date
 from unittest.mock import patch
@@ -459,3 +460,41 @@ class TestDiasPorAsistencia(TransactionCase):
             self.assertTrue(columnas, campo)
             self.assertEqual(columnas[0].get('optional'), 'hide', campo)
         self.assertTrue(pagina.xpath(".//field[@name='worked_days_line_ids']//field[@name='number_of_days']"), 'Los días siguen a la vista')
+
+    # ── .282: importe de las novedades con 2 decimales y «Asistencia» primera ─
+    def test_la_lista_de_novedades_muestra_el_importe_con_dos_decimales(self):
+        """El nativo muestra 300.000,0000: la precisión «Payroll Rate» (4) y un widget que solo recorta ceros tras un punto decimal. La vista usa
+        el widget ``float`` con ``digits`` [16, 2] (solo formato)."""
+        pagina = self._pagina_de_dias()
+        campos = pagina.xpath(".//field[@name='input_line_ids']/*[self::list or self::tree]/field[@name='amount']")
+        self.assertEqual(len(campos), 1)
+        self.assertEqual(campos[0].get('widget'), 'float')
+        self.assertEqual(json.loads(campos[0].get('digits')), [16, 2])
+
+    def test_la_subvista_de_formulario_de_la_novedad_tambien_muestra_dos_decimales(self):
+        pagina = self._pagina_de_dias()
+        campos = pagina.xpath(".//field[@name='input_line_ids']/form//field[@name='amount']")
+        self.assertEqual(len(campos), 1)
+        self.assertEqual(json.loads(campos[0].get('digits')), [16, 2])
+
+    def test_el_valor_guardado_de_una_novedad_no_cambia(self):
+        """Solo presentación: una novedad de 7,333 (horas, días o pesos: el campo es mixto) se lee igual; el campo conserva su precisión."""
+        recibo = self._recibo(estructura=self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_bonificacion'), calcular=False)
+        entrada = self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_bon_valor').id,
+            'code': 'CO_BON_VALOR', 'amount': 7.333})
+        self.assertAlmostEqual(entrada.amount, 7.333, places=4)
+        self.assertEqual(self.env['hr.payslip.input']._fields['amount']._digits, 'Payroll Rate', 'El módulo no redefine la precisión del campo')
+
+    def test_asistencia_es_la_primera_fila_de_la_pestana_con_una_incapacidad(self):
+        """Incapacidad del 11 al 14 de septiembre: todas las líneas traen ``sequence`` 25 del tipo; «Asistencia» queda con una menor que la
+        de todas las demás y es la primera según el orden del modelo (``payslip_id, sequence``)."""
+        recibo = self._recibo_con_ausencia(self.leave_inc_comun, date(2026, 9, 11), date(2026, 9, 14))
+        lineas = recibo.worked_days_line_ids
+        asistencia = lineas.filtered(lambda w: w.work_entry_type_id.code == 'WORK100')
+        otras = lineas - asistencia
+        self.assertEqual(len(asistencia), 1)
+        self.assertTrue(otras, 'Premisa: hay una línea de incapacidad')
+        self.assertLess(asistencia.sequence, min(otras.mapped('sequence')))
+        recibo.invalidate_recordset(['worked_days_line_ids'])
+        self.assertEqual(recibo.worked_days_line_ids[0].work_entry_type_id.code, 'WORK100')
