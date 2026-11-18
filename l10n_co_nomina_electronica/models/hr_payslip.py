@@ -167,6 +167,31 @@ class HrPayslip(models.Model):
                 'días comerciales y una semana que cruza un mes de 31 días saldría de 6 días.',
                 empleado=recibo.employee_id.name, periodicidad=etiqueta)
 
+    l10n_co_ne_aviso_dias = fields.Char(
+        string='Aviso de días trabajados', compute='_compute_ne_aviso_dias',
+        help='Solo para las vistas: aviso (no bloquea) con las fechas del recibo que no tienen entrada de trabajo y se pagan con el horario del contrato.')
+
+    @api.depends('worked_days_line_ids', 'date_from', 'date_to', 'contract_id', 'state')
+    def _compute_ne_aviso_dias(self):
+        """.284 (E2a, doc 68 §12): regla de David «si falta la entrada manda el horario del contrato»: la fecha se paga como laborada y aquí se
+        avisa cuál es, para que se genere o corrija la entrada. Solo recibos en borrador o en espera que se desglosan por fecha."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_dias = False
+            if not (isinstance(recibo.id, int) and recibo.state in ('draft', 'verify') and recibo.worked_days_line_ids
+                    and recibo.contract_id and recibo._ne_desglosa_por_fecha()):
+                continue
+            try:
+                clasificacion = recibo._ne_clasificar_fechas()
+            except UserError:
+                continue    # sin el tipo «Asistencia» no hay desglose: el error ya sale al calcular los días, no al abrir el formulario
+            if not clasificacion or not clasificacion['sin_entrada']:
+                continue
+            fechas = ', '.join(dia.strftime('%d/%m/%Y') for dia in sorted(clasificacion['sin_entrada']))
+            recibo.l10n_co_ne_aviso_dias = _(
+                'No hay entrada de trabajo de %(empleado)s en: %(fechas)s. Esos días se pagan como laborados con el horario del contrato. '
+                'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y pulse «Actualizar desde entradas de trabajo».',
+                empleado=recibo.employee_id.name, fechas=fechas)
+
     @api.depends('company_id.l10n_co_ne_environment', 'company_id.l10n_co_ne_certification_process')
     def _compute_ne_en_produccion(self):
         for slip in self:
@@ -1835,16 +1860,20 @@ class HrPayslip(models.Model):
             return 0
         return self._ne_contar_dias(ini, fin)
 
+    def _ne_rango_activo(self):
+        """(ini, fin) del tramo pagable en que el contrato estuvo vigente (ini > fin si no hay ninguno). La fecha de ingreso y la de retiro
+        recortan el rango. Fuente única de ``_ne_dias_bajo_contrato`` y del desglose por fecha (.284)."""
+        self.ensure_one()
+        contract = self.contract_id
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_fin = contract.date_end or periodo_fin
+        return max(periodo_ini, contract.date_start), min(periodo_fin, contrato_fin)
+
     def _ne_dias_bajo_contrato(self):
         """Dias (mes comercial) del tramo pagable en que el contrato estuvo vigente.
         Delimita ING/RET: la fecha de ingreso y de retiro recortan el rango."""
         self.ensure_one()
-        contract = self.contract_id
-        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
-        contrato_ini = contract.date_start
-        contrato_fin = contract.date_end or periodo_fin
-        activo_ini = max(periodo_ini, contrato_ini)
-        activo_fin = min(periodo_fin, contrato_fin)
+        activo_ini, activo_fin = self._ne_rango_activo()
         if activo_ini > activo_fin:
             return 0
         return self._ne_contar_dias(activo_ini, activo_fin)
@@ -1957,6 +1986,10 @@ class HrPayslip(models.Model):
         4. Todo lo demás (vacaciones, licencias remuneradas y sin sueldo) se conserva igual y en su orden (días = horas ÷ horas por día del
            nativo; contarlos por fecha cambia plata y es otra pieza).
 
+        .284 (E2a): en un recibo que se desglosa por fecha (``_ne_desglosa_por_fecha``) el punto 1 se reparte en «Asistencia» (días laborados),
+        «Festivos trabajados», «Descansos remunerados» y «Ajuste mes comercial» (``_ne_desglose_por_fecha``); los días siguen sumando los
+        pagados y las horas, las mismas. Con otra fuente de entradas queda UNA línea como en .282.
+
         La línea «OUT» (ingreso o retiro a mitad del periodo) la agrega el nativo DESPUÉS de este método y no se toca."""
         self.ensure_one()
         tipos = self.env['hr.work.entry.type'].browse([valor['work_entry_type_id'] for valor in valores])
@@ -1966,8 +1999,10 @@ class HrPayslip(models.Model):
         ocultos = self._ne_codigos_dias_ocultos()
         no_remunerados = self._ne_codigos_tipos_no_remunerados()
         pagables = max(self._ne_dias_pagables(valores=valores), 0)
-        horas = sum(valor['number_of_hours'] for valor in valores
-                    if valor['work_entry_type_id'] == asistencia.id or codigo_por_tipo[valor['work_entry_type_id']] in ocultos)
+        horas_asistencia = sum(valor['number_of_hours'] for valor in valores if valor['work_entry_type_id'] == asistencia.id)
+        horas_ocultas = sum(valor['number_of_hours'] for valor in valores
+                            if valor['work_entry_type_id'] != asistencia.id and codigo_por_tipo[valor['work_entry_type_id']] in ocultos)
+        horas = horas_asistencia + horas_ocultas
         resto = []
         for valor in valores:
             tipo_id = valor['work_entry_type_id']
@@ -1984,15 +2019,186 @@ class HrPayslip(models.Model):
         # .282: la línea «Asistencia» va PRIMERA en la pestaña. El orden en pantalla es ``_order = 'payslip_id, sequence'`` del nativo
         # (``hr_payslip_worked_days.py:11``) y todos los tipos traen la misma ``sequence`` (25): con empate el orden depende del desempate. Una
         # ``sequence`` menor que la de todas las demás líneas lo fija; solo se usa para ordenar (``sequence`` es de la línea, no del tipo).
-        secuencia = min([valor.get('sequence', asistencia.sequence) for valor in resto] + [asistencia.sequence]) - 1
-        linea = {
-            'name': asistencia.name,
-            'sequence': secuencia,
-            'work_entry_type_id': asistencia.id,
-            'number_of_days': pagables,
-            'number_of_hours': horas,
-        }
-        return [linea] + resto
+        clasificacion = self._ne_clasificar_fechas() if self._ne_desglosa_por_fecha() else None
+        if clasificacion is None:
+            desglose = [(asistencia, pagables, horas)]
+        else:
+            desglose = self._ne_desglose_por_fecha(asistencia, pagables, horas_asistencia, horas_ocultas, clasificacion)
+        # .284: las líneas del desglose van juntas y primero, en su orden: cada una con una ``sequence`` consecutiva menor que la de las demás.
+        secuencia = min([valor.get('sequence', asistencia.sequence) for valor in resto] + [asistencia.sequence]) - len(desglose)
+        lineas = [{
+            'name': tipo.name,
+            'sequence': secuencia + orden,
+            'work_entry_type_id': tipo.id,
+            'number_of_days': dias,
+            'number_of_hours': horas_linea,
+        } for orden, (tipo, dias, horas_linea) in enumerate(desglose)]
+        return lineas + resto
+
+    # ──────────────────────────────────────────────────────────────────
+    # .284 (E2a, doc 68 §12): «Días trabajados» desglosado por FECHA
+    # ──────────────────────────────────────────────────────────────────
+    # La línea única «Asistencia» de .280 se reparte en: «Asistencia» (días laborados), «Festivos trabajados», «Descansos remunerados» y
+    # «Ajuste mes comercial». SOLO se reparte lo que ya se mostraba (los días pagados y las horas del nativo): los días siguen sumando
+    # ``_ne_dias_pagables`` y las horas, las mismas de .280, así que ni el pago, ni DiasTrabajados del XML, ni la suma de los importes de las
+    # líneas (= BASIC, GROSS, base de retención) cambian. «Asistencia» es el RESIDUO (pagables - ajuste - festivos - descansos): el desglose
+    # nunca puede dejar de sumar los días pagados, aunque una ausencia se cuente por horas ÷ horas por día (E2b la pasará a fechas).
+    def _ne_desglosa_por_fecha(self):
+        """True si este recibo se desglosa por fecha: el que ya rearma los días pagados (``_ne_aplica_dias_por_asistencia``), de un contrato cuyas
+        entradas salen del calendario (``work_entry_source == 'calendar'``, la única fuente que existe en la base de Guapante: con ``attendance``
+        o ``planning`` un día sin entrada puede ser una falta y no un descanso) y con un calendario laboral para consultar el horario."""
+        self.ensure_one()
+        contrato = self.contract_id
+        return bool(self._ne_aplica_dias_por_asistencia() and contrato.work_entry_source == 'calendar'
+                    and (contrato.resource_calendar_id or self.company_id.resource_calendar_id))
+
+    def _ne_zona_calendario(self):
+        """Zona horaria con la que se pasan las fechas de las entradas de trabajo (UTC en la base de datos) a fecha local: la del calendario
+        del contrato, como el nativo (``nat:1196``)."""
+        self.ensure_one()
+        return _pytz_timezone(self.contract_id.resource_calendar_id.tz or self.employee_id.tz
+                              or self.company_id.resource_calendar_id.tz or 'UTC')
+
+    def _ne_clasificar_fechas(self):
+        """Clasifica CADA fecha del tramo pagable (con el contrato vigente) del recibo. Devuelve ``None`` si no hay calendario ni tramo, o un
+        diccionario de conjuntos de fechas:
+
+        - ``ausentes``: fechas de una ausencia (vacación, licencias, incapacidades, tipos sin sueldo): salen de «Asistencia» porque sus días
+          ya se descuentan en ``_ne_dias_pagables``.
+        - ``festivos_trabajados``: fecha en un festivo global del calendario (``resource.calendar.leaves`` sin recurso) CON entrada de trabajo
+          (el usuario cambió el tipo de la entrada del festivo a «Asistencia»). Una entrada de tipo «ausencia» (``is_leave``) en un festivo global
+          es la que el calendario genera del festivo: cuenta como descanso aunque su tipo no esté en el parámetro de tipos ocultos.
+        - ``laborados``: fecha con entrada de asistencia que no es festivo.
+        - ``descansos``: entrada de un tipo oculto (``l10n_co_dias_trabajados_ocultar``: festivo, descanso), o fecha SIN entrada en la que el
+          calendario no tiene jornada (el lunes de Guapante) o que es festivo global (festivo no trabajado).
+        - ``sin_entrada``: fecha SIN entrada en la que el calendario SÍ tiene jornada (regla de David: si falta la entrada manda el horario del
+          contrato; se paga como laborada y se avisa). Generar las entradas no toca las existentes ni las que ya cubrió el contrato
+          (``generate_work_entries``, ``hr_contract.py:392-413``), por eso puede faltar una fecha suelta.
+
+        Además ``horas_festivos_trabajados`` (suma de ``duration`` de las entradas de ASISTENCIA de esas fechas), ``dias_reales`` (fechas del tramo) y ``dias_comerciales``
+        (los que paga el mes comercial: el 31 no cuenta, febrero se completa a 30).
+
+        Solo cuentan entradas ``draft`` y ``validated`` (los estados que cuenta el nativo, enterprise ``hr_contract.py:283-289``). La fecha de una
+        entrada es la de su INICIO en la zona del calendario del contrato."""
+        self.ensure_one()
+        contrato = self.contract_id
+        calendario = contrato.resource_calendar_id or self.company_id.resource_calendar_id
+        activo_ini, activo_fin = self._ne_rango_activo()
+        if not calendario or activo_ini > activo_fin:
+            return None
+        zona = self._ne_zona_calendario()
+        utc = _pytz_timezone('UTC')
+        inicio = zona.localize(datetime.combine(activo_ini, datetime.min.time()))
+        fin = zona.localize(datetime.combine(activo_fin, datetime.max.time()))
+        inicio_utc = inicio.astimezone(utc).replace(tzinfo=None)
+        fin_utc = fin.astimezone(utc).replace(tzinfo=None)
+
+        def fecha_local(momento):
+            return utc.localize(momento).astimezone(zona).date()
+
+        festivos = set()
+        for festivo in self.env['resource.calendar.leaves'].search([
+                ('resource_id', '=', False), ('time_type', '=', 'leave'), ('calendar_id', 'in', [calendario.id, False]),
+                ('company_id', 'in', [self.company_id.id, False]), ('date_from', '<=', fin_utc), ('date_to', '>=', inicio_utc)]):
+            dia = fecha_local(festivo.date_from)
+            ultimo = fecha_local(festivo.date_to - timedelta(microseconds=1))
+            while dia <= ultimo:
+                festivos.add(dia)
+                dia += timedelta(days=1)
+
+        asistencia = self._ne_tipo_asistencia()
+        ocultos = self._ne_codigos_dias_ocultos()
+        codigos_ausencia = (self._ne_codigos_tipos_no_remunerados() | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
+                            | _NOVEDAD_AUSENCIA_CALENDARIO_CODES)
+        por_fecha = {}
+        for entrada in self.env['hr.work.entry'].search([
+                ('contract_id', '=', contrato.id), ('state', 'in', ('draft', 'validated')),
+                ('date_start', '>=', inicio_utc), ('date_start', '<=', fin_utc)]):
+            tipo = entrada.work_entry_type_id
+            fecha = fecha_local(entrada.date_start)
+            datos = por_fecha.setdefault(fecha, {'ausencia': False, 'oculto': False, 'trabajo': False, 'horas': 0.0})
+            if tipo.code in codigos_ausencia:
+                datos['ausencia'] = True
+            elif tipo.code in ocultos or (tipo.is_leave and fecha in festivos):
+                # Tipo oculto por parámetro, o una entrada de tipo «ausencia» en un festivo global: es la entrada que el calendario genera
+                # del festivo (``hr_contract.py:49-53``, :66-77), no un día trabajado, aunque el tipo no esté en el parámetro.
+                datos['oculto'] = True
+            else:
+                datos['trabajo'] = True
+                if tipo == asistencia:
+                    datos['horas'] += entrada.duration
+
+        # Las 4 ausencias de días calendario cubren TODAS sus fechas (lunes a domingo, festivos incluidos): son las que ``_ne_dias_pagables``
+        # descuenta con ``_ne_ausencia_calendario``.
+        ausencia_calendario = set()
+        for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            for _ausencia, _dias, desde, hasta in self._ne_ausencia_calendario(codigo)[1]:
+                ausencia_calendario.update(desde + timedelta(days=n) for n in range((hasta - desde).days + 1))
+
+        # Fechas con jornada en el horario (sin descontar festivos). Misma forma de llamar al calendario que ``_ne_dias_habiles`` del documento.
+        con_jornada = {a.astimezone(zona).date() for a, _b, _rec in calendario.with_company(self.company_id)._attendance_intervals_batch(
+            inicio, fin)[False]}
+
+        resultado = {clave: set() for clave in ('ausentes', 'festivos_trabajados', 'laborados', 'descansos', 'sin_entrada')}
+        horas_festivos = 0.0
+        dia = activo_ini
+        while dia <= activo_fin:
+            datos = por_fecha.get(dia)
+            if dia in ausencia_calendario or (datos and datos['ausencia']):
+                resultado['ausentes'].add(dia)
+            elif datos and datos['trabajo']:
+                if dia in festivos:
+                    resultado['festivos_trabajados'].add(dia)
+                    horas_festivos += datos['horas']
+                else:
+                    resultado['laborados'].add(dia)
+            elif (datos and datos['oculto']) or dia in festivos or dia not in con_jornada:
+                resultado['descansos'].add(dia)
+            else:
+                resultado['sin_entrada'].add(dia)
+            dia += timedelta(days=1)
+        resultado['horas_festivos_trabajados'] = horas_festivos
+        resultado['dias_reales'] = (activo_fin - activo_ini).days + 1
+        resultado['dias_comerciales'] = self._ne_dias_bajo_contrato()
+        return resultado
+
+    def _ne_desglose_por_fecha(self, asistencia, pagables, horas_asistencia, horas_ocultas, clasificacion):
+        """Reparte los días pagados y las horas de «Asistencia» (las de .280) en líneas ``[(tipo, días, horas)]``, omitiendo las vacías:
+
+        1. «Asistencia» (WORK100): los días laborados = pagables - ajuste - festivos trabajados - descansos (RESIDUO), con las horas de la
+           asistencia menos las de los festivos trabajados.
+        2. «Festivos trabajados»: una fecha por festivo con entrada de asistencia; horas = ``duration`` de esas entradas (sin pasar de las horas
+           de asistencia del nativo).
+        3. «Descansos remunerados»: descansos del horario y festivos no trabajados; horas = las de los tipos ocultos (festivo, descanso).
+        4. «Ajuste mes comercial»: lo que separa las fechas reales del mes comercial (31 de mes: -1; febrero hasta el 28: +2). Sin horas.
+
+        Σ días = ``pagables`` y Σ horas = ``horas_asistencia + horas_ocultas`` SIEMPRE. Si el residuo saliera negativo (más descansos y festivos
+        que días pagables: una ausencia contada por horas ÷ horas por día en un periodo casi todo de ausencias) se recortan primero los descansos,
+        luego los festivos y por último se mueve lo que falte al ajuste; así «Asistencia» nunca queda con días negativos."""
+        self.ensure_one()
+        ref = self.env.ref
+        festivos = float(len(clasificacion['festivos_trabajados']))
+        descansos = float(len(clasificacion['descansos']))
+        ajuste = float(clasificacion['dias_comerciales'] - clasificacion['dias_reales'])
+        horas_festivos = max(min(clasificacion['horas_festivos_trabajados'], horas_asistencia), 0.0)
+        laborados = pagables - ajuste - festivos - descansos
+        if laborados < 0:
+            exceso = -laborados
+            quitar = min(descansos, exceso)
+            descansos -= quitar
+            exceso -= quitar
+            quitar = min(festivos, exceso)
+            festivos -= quitar
+            exceso -= quitar
+            ajuste -= exceso
+            laborados = 0.0
+        lineas = (
+            (asistencia, laborados, horas_asistencia - horas_festivos),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_festivo_trabajado'), festivos, horas_festivos),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_descanso_remunerado'), descansos, horas_ocultas),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_ajuste_mes_comercial'), ajuste, 0.0),
+        )
+        return [(tipo, dias, horas) for tipo, dias, horas in lineas if dias or horas]
 
     def _get_worked_day_lines_values(self, domain=None):
         """Punto de extensión nativo de las líneas de días (``hr.payslip._get_worked_day_lines_values``): ver
