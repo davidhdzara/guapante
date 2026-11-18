@@ -7,11 +7,25 @@ from unittest.mock import patch
 from odoo.addons.l10n_co_nomina_electronica.services import dian_utils
 
 
+# Acciones planificadas de la cola de envío y de las reconsultas. En producción se PAUSAN a propósito (David, 17-nov-2026: ids 76, 77 y 78
+# ``active = False``) y la regresión corre sobre una COPIA de esa base: las pruebas del documento mensual no pueden depender de ese estado.
+CRONES_DE_ENVIO = ('ir_cron_ne_documento_send', 'ir_cron_ne_documento_recheck', 'ir_cron_ne_dian_status_recheck')
+
+
+def activar_crons_de_envio(env):
+    """Activa, DENTRO de la transacción de la prueba, las acciones planificadas de envío y reconsulta del módulo. El cambio se deshace con el
+    rollback de la prueba: no toca la base ni dispara nada (el aviso al worker es posterior al commit, que una prueba nunca hace). Las pruebas
+    que necesitan el cron ARCHIVADO (``test_cron_archivado_*``) lo apagan ellas mismas dentro de la prueba."""
+    for nombre in CRONES_DE_ENVIO:
+        env.ref('l10n_co_nomina_electronica.%s' % nombre).sudo().write({'active': True})
+
+
 class DocumentoFixture:
     """Mixin para TransactionCase: crea una compañía colombiana y documentos con recibos pagados."""
 
     @classmethod
     def _fixture_documento(cls, nombre):
+        activar_crons_de_envio(cls.env)
         cls.company = cls.env['res.company'].create({
             'name': nombre, 'country_id': cls.env.ref('base.co').id,
             'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U',
