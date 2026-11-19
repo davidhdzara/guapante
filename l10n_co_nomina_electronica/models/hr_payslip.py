@@ -31,7 +31,7 @@ from datetime import date, datetime, timedelta
 from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
 
-from odoo import api, fields, models, _
+from odoo import Command, api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_is_zero, float_round
 
@@ -671,6 +671,28 @@ class HrPayslip(models.Model):
         colombia._ne_validar_terceros_deducciones()
         return res
 
+    @api.model
+    def _ne_comandos_cambian_novedades(self, comandos):
+        """¿Los comandos de ``input_line_ids`` de un ``write`` cambian lo que calcula la hoja? Altas, bajas, vínculos y reemplazos sí; un cambio
+        de ``name`` o ``sequence`` (comando UPDATE) no: los mismos campos que ``hr.payslip.input._NE_CAMPOS_QUE_RECALCULAN``."""
+        campos = self.env['hr.payslip.input']._NE_CAMPOS_QUE_RECALCULAN
+        for comando in comandos or ():
+            if comando[0] == Command.UPDATE:
+                if campos & set(comando[2] or ()):
+                    return True
+            else:
+                return True
+        return False
+
+    def write(self, vals):
+        """.286: el formulario guarda las novedades con ``write({'input_line_ids': [...]})``; durante ese ``write`` el campo está protegido y el
+        recálculo de ``hr.payslip.input`` se salta (ver ``_ne_recalcular_hoja_por_novedad``). Se recalcula aquí, una vez, al terminar el
+        ``write``. Las novedades creadas por el ORM directo (fuera de este ``write``) siguen recalculando desde ``hr.payslip.input``."""
+        res = super().write(vals)
+        if 'input_line_ids' in vals and self._ne_comandos_cambian_novedades(vals['input_line_ids']):
+            self._ne_recalcular_hoja_por_novedad()
+        return res
+
     def _ne_recalcular_hoja_por_novedad(self):
         """Recalcula la hoja de los recibos cuya novedad (``hr.payslip.input``) se creó, cambió o borró (.283, doc 68 §14; orden de David).
 
@@ -683,6 +705,11 @@ class HrPayslip(models.Model):
         No se recalcula con el contexto ``ne_sin_recalculo_hoja`` (cargas masivas; se enciende solo mientras se calcula aquí, contra la
         re-entrada), con ``import_file`` (importación: el lote queda sin recalcular, se calcula al final con «Calcular hoja») ni mientras Odoo
         calcula ``input_line_ids`` del recibo (embargos de ``hr.salary.attachment``).
+
+        .286: ``input_line_ids`` también está PROTEGIDO durante el ``write`` del recibo que trae ese campo (``odoo/models.py:4774-4785``,
+        ``:4798``), que es lo que manda el formulario (``web_save`` -> ``write``). Por eso las novedades guardadas desde el formulario no
+        recalculaban: sus ``create``/``write``/``unlink`` caían dentro de ese ``write``, con el campo protegido. Ese camino lo cubre
+        ``HrPayslip.write`` (abajo): recalcula UNA vez, después de ``super()``, cuando la protección ya terminó.
 
         Un error de ``compute_sheet`` (periodo inválido, terceros de embargos, reparto que no cuadra...) NO impide guardar la novedad: el
         recálculo corre en un savepoint, se revierte, la novedad se conserva y el recibo recibe una nota con el error y la instrucción de pulsar

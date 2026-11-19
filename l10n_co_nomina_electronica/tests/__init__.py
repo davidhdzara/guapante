@@ -149,3 +149,4 @@ from . import test_provisiones_periodo
 from . import test_dias_por_asistencia
 from . import test_novedades_recalculan_hoja
 from . import test_e11_pieza_1a
+from . import test_novedades_formulario
