@@ -73,7 +73,8 @@ Ejemplo real vigente (2026): <strong>1750905</strong>.</p>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html">
 <p>Auxilio de transporte mensual, fijado anualmente por Decreto. Aplica a
-trabajadores con salario &lt;= 2 SMMLV que no devenguen salario integral.</p>
+trabajadores con salario hasta el tope en SMMLV (parámetro <code>l10n_co_aux_transporte_tope_smmlv</code>, hoy 2)
+que no devenguen salario integral.</p>
 <h3 class="mt-5">Fuente</h3>
 <p>correcciones_normativas_2026/00_INDICE.md</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
@@ -95,6 +96,25 @@ Ejemplo real vigente (2026): <strong>249095</strong>.</p>
         <field name="parameter_value">249095</field>
         <field name="rule_parameter_id" ref="rule_parameter_aux_transporte"/>
         <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_aux_transporte_tope_smmlv" model="hr.rule.parameter">
+        <field name="name">Colombia: Tope del Auxilio de Transporte (SMMLV)</field>
+        <field name="code">l10n_co_aux_transporte_tope_smmlv</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Múltiplo de SMMLV hasta el cual (inclusive) un trabajador que no devenga salario
+integral tiene derecho al auxilio de transporte. Por encima de ese salario el auxilio no se paga ni entra a la base de prima,
+cesantías y sus provisiones.</p>
+<h3 class="mt-5">Fuente</h3>
+<p>Art. 7 Ley 1/1963 (fuente secundaria; pendiente de confirmar por David).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de veces el SMMLV, <strong>NO</strong> un valor en pesos:
+escriba <strong>2</strong> para representar "2 SMMLV". Valor vigente: <strong>2</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_aux_transporte_tope_smmlv_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">2</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aux_transporte_tope_smmlv"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
     <record id="rule_parameter_uvt" model="hr.rule.parameter">

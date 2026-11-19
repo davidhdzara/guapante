@@ -176,8 +176,8 @@ result_qty = dias_pagables
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Aplica si salario &lt;= 2 SMMLV y no es salario integral
-result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * 2 and not contract.l10n_co_ne_integral_salary
+# Aplica si salario &lt;= tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv) y no es salario integral
+result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -1542,11 +1542,12 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
 # No es un pago -- acumulacion contable. Ver CO_PRIMA para el pago real (input-driven).
 smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+tope_aux = payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from)
 if contract.l10n_co_ne_integral_salary:
     factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
     base = contract.wage * factor
 else:
-    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    aux = aux_trans if contract.wage &lt;= (smmlv * tope_aux) else 0.0
     base = contract.wage + aux
 result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             </field>
@@ -1566,11 +1567,12 @@ result = (base / 12.0) * payslip._ne_factor_provision_periodo()
 # recibo (.279: HrPayslip._ne_factor_provision_periodo()). CO_PROV_INT_CES la hereda: es un porcentaje de esta linea.
 smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
+tope_aux = payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from)
 if contract.l10n_co_ne_integral_salary:
     factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
     base = contract.wage * factor
 else:
-    aux = aux_trans if contract.wage &lt;= (smmlv * 2) else 0.0
+    aux = aux_trans if contract.wage &lt;= (smmlv * tope_aux) else 0.0
     base = contract.wage + aux
 result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             </field>

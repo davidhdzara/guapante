@@ -35,12 +35,13 @@
             <field name="amount_python_compute">
 # Base prima = salario mensual + auxilio de transporte (si aplica)
 # El auxilio de transporte se incluye en la base de prima siempre que
-# el salario no supere 2 SMMLV (Art. 7, Ley 1 de 1963)
+# el salario no supere el tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv; hoy 2 SMMLV, Art. 7 Ley 1 de 1963,
+# fuente secundaria: pendiente de confirmar por David)
 _salario = contract.wage
 
 # Determinar si incluye auxilio de transporte
 _aux_transporte = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * 2 and not contract.l10n_co_ne_integral_salary:
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary:
     _aux_transporte = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
 
 # Si es salario integral, la base es el 100% del salario
@@ -313,7 +314,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * 2:
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to):
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux
@@ -366,7 +367,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * 2:
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to):
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux

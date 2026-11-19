@@ -281,24 +281,18 @@ class HrPayslip(models.Model):
     # ══════════════════════════════════════════════════════════════════
 
 
-    # Deduccion (codigo de regla) -> campo del contrato con su tercero.
-    _NE_TERCERO_DEDUCCION_CONTRATO = {
-        'CO_SINDICATO': 'l10n_co_ne_sindicato_partner_id',
-        'CO_AFC': 'l10n_co_ne_afc_partner_id',
-        'CO_PENSION_VOL': 'l10n_co_ne_pension_voluntaria_partner_id',
-        'CO_PLAN_COMP': 'l10n_co_ne_plan_complementario_partner_id',
-        'CO_COOPERATIVA': 'l10n_co_ne_cooperativa_partner_id',
-        'CO_EDUCACION': 'l10n_co_ne_educacion_partner_id',
-    }
-
     def _ne_validar_terceros_deducciones(self):
         """Sin valores por defecto silenciosos: una deduccion calculada
         (desde el contrato o desde un input manual) exige el contacto al que
-        se paga lo retenido, definido en el contrato."""
+        se paga lo retenido, definido en el contrato. E11 pieza 1A (.285): el
+        campo del contrato sale del origen del tercero que la propia regla
+        declara (``l10n_co_tercero_origen`` = ``contract_*``, tabla unica
+        ``_NE_TERCERO_ORIGEN_CAMPO``); ya no hay una tabla por codigo de regla."""
         for slip in self:
             for line in slip.line_ids:
-                campo = self._NE_TERCERO_DEDUCCION_CONTRATO.get(line.code)
-                if not campo or not line.total:
+                origen = line.salary_rule_id.l10n_co_tercero_origen
+                modelo, campo = self._NE_TERCERO_ORIGEN_CAMPO.get(origen, (None, None))
+                if modelo != 'contract_id' or not line.total:
                     continue
                 contract = slip.contract_id
                 if not contract[campo]:
@@ -1278,13 +1272,13 @@ class HrPayslip(models.Model):
         return sum(neto.mapped('total'))
 
 
-    # Desglose del recibo para el comprobante de pago (Frente 5, C1): clasificación por CÓDIGO de regla del módulo (no
-    # por cliente). Lo que no cae en ninguna columna va a "otras deducciones" (negativo) o queda en el devengado
-    # (positivo), de modo que devengado - deducciones siempre se explica completo.
-    _NE_DESGLOSE_SALUD = ('CO_SALUD_EMP', 'CO_PRIMA_SALUD', 'CO_LIQ_SALUD', 'CO_BON_SALUD')
-    _NE_DESGLOSE_PENSION = ('CO_PENSION_EMP', 'CO_PRIMA_PENSION', 'CO_LIQ_PENSION', 'CO_BON_PENSION')
-    _NE_DESGLOSE_FSP = ('CO_FSP',)
-    _NE_DESGLOSE_RETENCION = ('CO_RETEFUENTE', 'CO_PRIMA_RETE', 'CO_LIQ_RETE', 'CO_BON_RETE')
+    # Desglose del recibo para el comprobante de pago (Frente 5, C1): clasificación por el CONCEPTO DIAN de la regla
+    # (``l10n_co_ne_dian_concept``, una sola fuente: el mismo dato que arma el XML; E11 pieza 1A, .285), ya no por lista de códigos.
+    # Lo que no cae en ninguna columna va a "otras deducciones" (negativo) o queda en el devengado (positivo), de modo que
+    # devengado - deducciones siempre se explica completo. Las claves son las columnas del desglose; los valores, los conceptos
+    # del anexo técnico (valores de la selección ``l10n_co_ne_dian_concept``, no códigos de regla).
+    _NE_DESGLOSE_CONCEPTO_DIAN = {
+        'salud': 'Salud', 'pension': 'FondoPension', 'fsp': 'FondoSP', 'retencion': 'RetencionFuente'}
 
     def _ne_fecha_pago_o_falso(self):
         """Primera fecha de pago del recibo o False si no se puede resolver (sin fecha, sin fuente configurada o sin
@@ -1353,15 +1347,16 @@ class HrPayslip(models.Model):
         self.ensure_one()
         lineas = self._ne_pdf_lineas()
 
-        def deducido(codigos):
-            return -sum(l.total for l in lineas if l.code in codigos)
+        def deducido(columna):
+            concepto = self._NE_DESGLOSE_CONCEPTO_DIAN[columna]
+            return -sum(l.total for l in lineas if l.salary_rule_id.l10n_co_ne_dian_concept == concepto)
 
         devengado = sum(l.total for l in lineas if l.total > 0)
         deducciones = -sum(l.total for l in lineas if l.total < 0)
-        salud = deducido(self._NE_DESGLOSE_SALUD)
-        pension = deducido(self._NE_DESGLOSE_PENSION)
-        fsp = deducido(self._NE_DESGLOSE_FSP)
-        retencion = deducido(self._NE_DESGLOSE_RETENCION)
+        salud = deducido('salud')
+        pension = deducido('pension')
+        fsp = deducido('fsp')
+        retencion = deducido('retencion')
         neto = self._ne_pdf_neto()
         return {
             'recibo': self,
@@ -2881,22 +2876,7 @@ class HrPayslip(models.Model):
         """Busca ausencias validadas del empleado en el periodo y las organiza por categoria."""
         def get_leave_category(leave):
             code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
-            if hasattr(self, '_LEAVE_CODE_MAP'):
-                return self._LEAVE_CODE_MAP.get(code)
-            # Copia defensiva de HrPayslipLeaveIntegration._LEAVE_CODE_MAP (hr_leave_ne.py)
-            # -- nunca se ejercita en producción porque ese mixin siempre está presente en
-            # este modelo heredado, pero debe quedar sincronizada para no divergir (H-014,
-            # revisión .78: se agregaron los 7 códigos CO_ al mapa real, ver ese archivo).
-            local_map = {
-                'INCAPACIDAD': 'incapacidad', 'SICK': 'incapacidad', 'INC_COMUN': 'incapacidad', 'INC_LABORAL': 'incapacidad',
-                'CO_INC_COMUN': 'incapacidad', 'CO_INC_LABORAL': 'incapacidad',
-                'MATERNIDAD': 'licencia_mat', 'MATERNITY': 'licencia_mat', 'PATERNIDAD': 'licencia_mat', 'PATERNITY': 'licencia_mat', 'LIC_MAT': 'licencia_mat', 'LIC_PAT': 'licencia_mat',
-                'CO_LIC_MAT': 'licencia_mat', 'CO_LIC_PAT': 'licencia_mat',
-                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones', 'CO_VAC': 'vacaciones',
-                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem', 'CO_LIC_REM': 'licencia_rem',
-                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr', 'CO_LIC_NR': 'licencia_nr',
-            }
-            return local_map.get(code)
+            return self._LEAVE_CODE_MAP.get(code)
 
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', self.employee_id.id),
