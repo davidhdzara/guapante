@@ -243,6 +243,26 @@ class HrSalaryRule(models.Model):
         help='Unidad con la que se muestra la cantidad de esta regla en «Conceptos de pago». Vacío: la regla es un valor y no tiene unidad '
              '(«valor» no es una unidad).')
 
+    def _compute_rule(self, localdict):
+        """E11 pieza 2b (.288, doc 71c §3): si el recibo tiene un ajuste de la empresa para esta regla, devuelve la tupla ajustada en vez de la
+        sugerida y guarda la sugerida en ``ne_sugeridos`` del contexto (la registra ``HrPayslip._ne_registrar_ajustes``). El bucle nativo
+        (``hr_payroll/models/hr_payslip.py:944-1018``) usa lo que devuelve esta función para el total de la línea, ``localdict`` y las sumas por
+        categoría, así que todo lo posterior (neto, bases, retención, IBC) sigue la cascada. Sin ajuste, o con un ``localdict`` mínimo (pruebas),
+        devuelve exactamente lo de ``super()``."""
+        resultado = super()._compute_rule(localdict)
+        recibo = localdict.get('payslip') if isinstance(localdict, dict) else None
+        if not recibo or not self.l10n_co_ne_ajustable or recibo.state not in ('draft', 'verify') or not recibo.id:
+            return resultado
+        if self.code in (localdict.get('same_type_input_lines') or {}):
+            return resultado                      # varias novedades del mismo código: se editan las novedades, no la regla
+        ajuste = recibo.l10n_co_ajuste_ids.filtered(lambda a: a.salary_rule_id == self)
+        if not ajuste:
+            return resultado
+        sugeridos = self.env.context.get('ne_sugeridos')
+        if sugeridos is not None:
+            sugeridos[(recibo.id, self.id)] = tuple(resultado)
+        return ajuste.amount, ajuste.quantity, ajuste.rate
+
     @api.depends('category_id.l10n_co_ne_seccion_concepto', 'struct_id.l10n_co_ne_conceptos_de_pago')
     def _compute_l10n_co_ne_ajustable(self):
         for regla in self:

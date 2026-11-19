@@ -667,9 +667,30 @@ class HrPayslip(models.Model):
         res = True
         for company in self.company_id:
             recibos = self.filtered(lambda s, c=company: s.company_id == c).with_company(company)
-            res = super(HrPayslip, recibos).compute_sheet()
+            # E11 pieza 2b (.288): el gancho de ``hr.salary.rule._compute_rule`` anota en este diccionario lo que SUGIRIÓ cada regla ajustada;
+            # al terminar el cálculo se registra en cada ajuste (sugerido, aviso de cambio, «sin línea»).
+            sugeridos = {}
+            res = super(HrPayslip, recibos.with_context(ne_sugeridos=sugeridos)).compute_sheet()
+            recibos._ne_registrar_ajustes(sugeridos)
         colombia._ne_validar_terceros_deducciones()
         return res
+
+    # ── Ajustes de la empresa (E11 pieza 2b, .288, doc 71c) ──────────────────────────────────────────────────────────────────────
+    l10n_co_ajuste_ids = fields.One2many(
+        'l10n.co.payslip.ajuste', 'slip_id', string='Ajustes de la empresa', copy=False,
+        help='Ajustes que la empresa hizo a conceptos de este recibo. Se aplican dentro del cálculo y se conservan al recalcular. '
+             'No se copian a otro recibo.')
+
+    def _ne_estado_documento_ajuste(self):
+        """Estado del documento DIAN del recibo (``False`` si no tiene). Una sola lectura para el bloqueo de ajustes (Q6 de TL)."""
+        self.ensure_one()
+        return self.l10n_co_ne_documento_state
+
+    def _ne_registrar_ajustes(self, sugeridos):
+        """Después de ``compute_sheet``: cada ajuste de estos recibos guarda lo sugerido de ese cálculo (``l10n.co.payslip.ajuste._registrar_calculo``)."""
+        for recibo in self:
+            for ajuste in recibo.sudo().l10n_co_ajuste_ids:
+                ajuste._registrar_calculo(sugeridos)
 
     @api.model
     def _ne_comandos_cambian_novedades(self, comandos):
