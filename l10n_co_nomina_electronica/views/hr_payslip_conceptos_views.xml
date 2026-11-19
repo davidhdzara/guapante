@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 pieza 3 (.289, doc 71c §5): pestaña «Conceptos de pago» del recibo. Solo para las estructuras con el interruptor
+         l10n_co_ne_conceptos_de_pago; en las demás la pestaña nativa «Worked Days & Inputs» queda igual. Selectores por @name (nunca por @string),
+         sin colores ni íconos propios. Lista con el widget nativo section_and_note_one2many del módulo account (secciones y notas como una orden de
+         venta) y SOLO «Agregar concepto» (patrón de sale/views/sale_order_views.xml:511-516 sin las opciones de sección y nota). -->
+    <record id="view_payslip_form_ne_conceptos" model="ir.ui.view">
+        <field name="name">hr.payslip.form.ne.conceptos</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='worked_days_input']" position="attributes">
+                <attribute name="invisible">l10n_co_ne_usa_conceptos</attribute>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']" position="after">
+                <page string="Conceptos de pago" name="conceptos_de_pago" invisible="not l10n_co_ne_usa_conceptos">
+                    <field name="l10n_co_ne_usa_conceptos" invisible="1"/>
+                    <div class="alert alert-warning mb-2" role="alert" invisible="not l10n_co_ne_aviso_dias">
+                        <strong>Revise las entradas de trabajo</strong><br/>
+                        <field name="l10n_co_ne_aviso_dias" readonly="1" nolabel="1"/>
+                    </div>
+                    <field name="l10n_co_concepto_ids" nolabel="1" mode="list" widget="section_and_note_one2many"
+                           readonly="state not in ['draft', 'verify']">
+                        <list editable="bottom">
+                            <control>
+                                <create name="add_concepto_control" string="Agregar concepto"/>
+                            </control>
+                            <!-- Como en la lista nativa de novedades (hr_payroll/views/hr_payslip_views.xml:172): el cliente debe enviar el recibo en el
+                                 onchange de una fila nueva para calcular qué se puede editar. -->
+                            <field name="slip_id" column_invisible="True" required="0"/>
+                            <field name="sequence" widget="handle"/>
+                            <field name="display_type" column_invisible="True"/>
+                            <field name="origen" column_invisible="True"/>
+                            <field name="ajustado" column_invisible="True"/>
+                            <field name="edita_cantidad" column_invisible="True"/>
+                            <field name="edita_porcentaje" column_invisible="True"/>
+                            <field name="edita_importe" column_invisible="True"/>
+                            <field name="name" widget="section_and_note_text" readonly="origen in ('calculado', 'dias')"/>
+                            <field name="input_type_id" readonly="id" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="quantity" readonly="not edita_cantidad"/>
+                            <field name="unidad" readonly="1"/>
+                            <field name="rate" readonly="not edita_porcentaje" invisible="origen == 'dias'"/>
+                            <field name="amount" readonly="not edita_importe" invisible="origen == 'dias'"/>
+                            <field name="total" readonly="1" invisible="origen == 'dias'"/>
+                        </list>
+                    </field>
+                    <group col="12">
+                        <group colspan="7" name="conceptos_observaciones">
+                            <field name="note" nolabel="1" placeholder="Observaciones..." readonly="state not in ['draft', 'verify']"/>
+                        </group>
+                        <group class="oe_subtotal_footer" colspan="5" name="conceptos_totales">
+                            <field name="l10n_co_total_devengado"/>
+                            <field name="l10n_co_total_deducciones"/>
+                            <field name="net_wage" string="Neto a pagar" class="oe_subtotal_footer_separator"/>
+                            <field name="l10n_co_costo_empresa"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

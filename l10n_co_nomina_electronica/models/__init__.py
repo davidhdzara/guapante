@@ -40,3 +40,4 @@ from . import hr_payslip_input
 from . import hr_salary_rule_category
 from . import hr_payslip_input_type
 from . import l10n_co_payslip_ajuste
+from . import l10n_co_payslip_concepto

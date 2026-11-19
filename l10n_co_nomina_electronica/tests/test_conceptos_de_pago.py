@@ -1,0 +1,383 @@
+# -*- coding: utf-8 -*-
+"""E11 pieza 3 (.289, doc 71c §4 y §5): pestaña y filas de «Conceptos de pago» del recibo. NO EJECUTADAS en Odoo al escribirlas (el N1 necesita
+``-u``: tabla, permisos, reglas de registro y vista nuevos).
+
+- Carga de la vista (``get_view`` del formulario del recibo) y reglas de UX: selectores por @name, sin ``@string``, sin colores ni íconos propios,
+  solo «Agregar concepto».
+- La pestaña y las filas solo existen en estructuras con ``l10n_co_ne_conceptos_de_pago``; en las demás la vista nativa queda igual.
+- Las filas son una VISTA: se regeneran en cada cálculo, no se copian y nada las lee para calcular.
+- Con ``odoo.tests.Form`` (el mismo camino ``web_save`` → ``write`` del cliente): editar el importe de una fila ajustable crea el ajuste y recalcula
+  UNA vez; editar, agregar y borrar una novedad desde la misma tabla siguen el camino de .286 (una sola llamada de ``compute_sheet`` por guardado y
+  el neto igual al de «Calcular hoja»)."""
+
+from datetime import date
+from unittest.mock import patch
+
+from lxml import etree
+
+from odoo.exceptions import AccessError, UserError
+from odoo.tests import Form
+from odoo.tests.common import TransactionCase, tagged
+
+_G_MANAGER = 'hr_payroll.group_hr_payroll_manager'
+_G_USER = 'hr_payroll.group_hr_payroll_user'
+
+
+@tagged('post_install', '-at_install')
+class TestConceptosDePago(TransactionCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        valores = {
+            'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id,
+            'l10n_co_pila_clase_riesgo': '1', 'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN'}
+        cls.company = cls.env['res.company'].create(dict(valores, name='Compañía Conceptos A'))
+        cls.company_b = cls.env['res.company'].create(dict(valores, name='Compañía Conceptos B'))
+        cls.structure_type = cls.env['hr.payroll.structure.type'].create({
+            'name': 'Prueba Estructura Conceptos', 'country_id': cls.env.ref('base.co').id})
+        ref = cls.env.ref
+        cls.general = ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        cls.prima = ref('l10n_co_nomina_electronica.hr_payroll_structure_co_prima')
+        cls.tipo_bonif_nosal = ref('l10n_co_nomina_electronica.input_co_bonif_nosal')
+        cls.Concepto = cls.env['l10n.co.payslip.concepto']
+        cls.n = 0
+
+    # ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    def _recibo(self, estructura=None, desde=date(2026, 9, 1), hasta=date(2026, 9, 15), compania=None):
+        type(self).n += 1
+        compania = compania or self.company
+        empleado = self.env['hr.employee'].create({
+            'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 'name': 'Empleado Conceptos %s' % self.n,
+            'company_id': compania.id, 'l10n_co_ne_payment_method': '10'})
+        contrato = self.env['hr.contract'].create({
+            'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00',
+            'name': 'Contrato Conceptos %s' % self.n, 'employee_id': empleado.id, 'company_id': compania.id,
+            'structure_type_id': self.structure_type.id, 'wage': 3000000.0, 'date_start': date(2024, 3, 1), 'state': 'open'})
+        recibo = self.env['hr.payslip'].create({
+            'name': 'Recibo Conceptos %s' % self.n, 'employee_id': empleado.id, 'contract_id': contrato.id, 'company_id': compania.id,
+            'struct_id': (estructura or self.general).id, 'date_from': desde, 'date_to': hasta})
+        recibo.compute_sheet()
+        return recibo
+
+    def _fila(self, recibo, codigo):
+        fila = recibo.l10n_co_concepto_ids.filtered(lambda f: not f.display_type and f.salary_rule_id.code == codigo)
+        self.assertEqual(len(fila), 1, 'Debe haber una fila para %s' % codigo)
+        return fila
+
+    def _indice(self, recibo, fila):
+        return recibo.l10n_co_concepto_ids.ids.index(fila.id)
+
+    def _total(self, recibo, codigo):
+        return sum(recibo.line_ids.filtered(lambda l: l.code == codigo).mapped('total'))
+
+    def _contando_calculos(self, recibo):
+        original = type(recibo).compute_sheet
+        llamadas = []
+
+        def espia(slip):
+            llamadas.append(slip.ids)
+            return original(slip)
+
+        return patch.object(type(recibo), 'compute_sheet', espia), llamadas
+
+    def _usuario(self, login, grupos, companias):
+        return self.env['res.users'].with_context(no_reset_password=True).create({
+            'name': login, 'login': login, 'email': '%s@example.com' % login, 'company_id': companias[0].id,
+            'company_ids': [(6, 0, companias.ids)], 'groups_id': [(6, 0, [self.env.ref(g).id for g in grupos])]})
+
+    # ── la vista ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    def test_01_la_vista_del_recibo_carga_con_la_pestana_por_nombre_y_sin_estilos_propios(self):
+        vista = self.env['hr.payslip'].get_view(view_type='form')
+        arch = etree.fromstring(vista['arch'].encode('utf-8') if isinstance(vista['arch'], str) else vista['arch'])
+        paginas = arch.xpath("//page[@name='conceptos_de_pago']")
+        self.assertEqual(len(paginas), 1, 'Falta la pestaña «Conceptos de pago» en la vista del recibo')
+        pagina = paginas[0]
+        self.assertEqual(pagina.get('invisible'), 'not l10n_co_ne_usa_conceptos')
+        nativa = arch.xpath("//page[@name='worked_days_input']")
+        self.assertEqual(len(nativa), 1)
+        self.assertEqual(nativa[0].get('invisible'), 'l10n_co_ne_usa_conceptos', 'La pestaña nativa solo se oculta en estructuras con conceptos')
+        campo = pagina.xpath(".//field[@name='l10n_co_concepto_ids']")[0]
+        self.assertEqual(campo.get('widget'), 'section_and_note_one2many')
+        self.assertEqual(len(campo.xpath(".//control/create")), 1, 'Solo «Agregar concepto»')
+        self.assertEqual(campo.xpath(".//control/create")[0].get('name'), 'add_concepto_control')
+        self.assertFalse(campo.xpath(".//create[@context]"), 'Sin «Agregar sección» ni «Agregar nota»')
+        for columna in ('display_type', 'slip_id', 'edita_cantidad', 'edita_porcentaje', 'edita_importe'):
+            self.assertTrue(campo.xpath(".//list/field[@name='%s']" % columna), columna)
+        self.assertFalse(pagina.xpath(".//*[@style]"), 'Sin estilos propios')
+        self.assertFalse(pagina.xpath(".//i"), 'Sin íconos propios')
+        texto = etree.tostring(pagina, encoding='unicode')
+        for prohibido in ('text-muted', 'decoration-', 'fa fa-'):
+            self.assertNotIn(prohibido, texto)
+
+    def test_02_la_vista_heredada_no_selecciona_por_string(self):
+        arch = etree.fromstring(self.env.ref('l10n_co_nomina_electronica.view_payslip_form_ne_conceptos').arch_db.encode('utf-8'))
+        for xpath in arch.xpath('//xpath'):
+            self.assertNotIn('@string', xpath.get('expr') or '', 'La herencia debe anclar por @name o posición')
+            self.assertNotIn('@help', xpath.get('expr') or '')
+
+    # ── estructuras con y sin el interruptor ──────────────────────────────────────────────────────────────────────────────────
+    def test_03_solo_las_estructuras_con_el_interruptor_tienen_filas(self):
+        general = self._recibo()
+        self.assertTrue(general.l10n_co_ne_usa_conceptos)
+        self.assertTrue(general.l10n_co_concepto_ids)
+        prima = self._recibo(estructura=self.prima, desde=date(2026, 7, 1), hasta=date(2026, 12, 31))
+        self.assertFalse(prima.l10n_co_ne_usa_conceptos)
+        self.assertFalse(prima.l10n_co_concepto_ids, 'La estructura de prima no usa Conceptos de pago: sin filas')
+        self.prima.l10n_co_ne_conceptos_de_pago = True
+        prima.compute_sheet()
+        self.assertTrue(prima.l10n_co_concepto_ids, 'Al activar el interruptor de la estructura, el siguiente cálculo genera las filas')
+
+    # ── las filas ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    def test_04_las_filas_traen_secciones_en_orden_y_una_fila_por_linea_con_valor(self):
+        recibo = self._recibo()
+        filas = recibo.l10n_co_concepto_ids
+        self.assertEqual(filas[0].display_type, 'line_section')
+        self.assertEqual(filas[0].name, 'Devengados')
+        secciones = filas.filtered(lambda f: f.display_type == 'line_section')
+        self.assertEqual(secciones.mapped('name'), ['Devengados', 'Deducciones'])
+        self.assertEqual(len(set(filas.mapped('sequence'))), len(filas), 'Cada fila con su propia secuencia')
+        con_linea = filas.filtered(lambda f: f.line_id)
+        for fila in con_linea:
+            self.assertEqual(fila.total, fila.line_id.total, fila.name)
+            self.assertEqual((fila.quantity, fila.rate, fila.amount), (fila.line_id.quantity, fila.line_id.rate, fila.line_id.amount))
+        self.assertFalse(filas.filtered(lambda f: f.salary_rule_id.code in ('CO_NETO', 'CO_BRUTO')), 'Los totales no son conceptos')
+        self.assertFalse(filas.filtered(lambda f: f.salary_rule_id.code.endswith('_CIA') if f.salary_rule_id else False))
+        self.assertTrue(self._fila(recibo, 'CO_BASICO'))
+        self.assertTrue(self._fila(recibo, 'CO_SALUD_EMP'))
+        deducciones = filas[list(filas.ids).index(secciones[1].id) + 1:]
+        self.assertTrue(all(f.line_id.category_id.l10n_co_ne_seccion_concepto == 'deducciones' for f in deducciones if f.line_id))
+
+    def test_05_los_dias_trabajados_salen_bajo_el_sueldo_solo_con_cantidad_y_unidad(self):
+        recibo = self._recibo()
+        filas = recibo.l10n_co_concepto_ids
+        sueldo = self._fila(recibo, 'CO_BASICO')
+        siguientes = filas[list(filas.ids).index(sueldo.id) + 1:]
+        dias = siguientes.filtered(lambda f: f.origen == 'dias')
+        self.assertTrue(dias, 'Premisa: el recibo trae líneas de días trabajados')
+        self.assertEqual(siguientes[0].origen, 'dias', 'Las filas de días van JUSTO bajo el sueldo')
+        for fila in dias:
+            self.assertEqual((fila.unidad, fila.amount, fila.total, fila.edita_cantidad, fila.edita_importe), ('dias', 0.0, 0.0, False, False))
+            self.assertTrue(fila.quantity or fila.worked_day_id.number_of_hours)
+
+    def test_06_los_totales_del_pie_salen_de_las_lineas_y_coinciden_con_las_filas(self):
+        recibo = self._recibo()
+        por_seccion = {}
+        for linea in recibo.line_ids:
+            seccion = linea.category_id.l10n_co_ne_seccion_concepto
+            if seccion and (seccion == 'costo_empresa' or linea.appears_on_payslip):
+                por_seccion[seccion] = por_seccion.get(seccion, 0.0) + linea.total
+        self.assertAlmostEqual(recibo.l10n_co_total_devengado, por_seccion.get('devengados', 0.0), delta=0.005)
+        self.assertAlmostEqual(recibo.l10n_co_total_deducciones, por_seccion.get('deducciones', 0.0), delta=0.005)
+        self.assertAlmostEqual(recibo.l10n_co_costo_empresa, por_seccion.get('costo_empresa', 0.0), delta=0.005)
+        self.assertGreater(recibo.l10n_co_costo_empresa, 0.0, 'Aportes de la empresa y provisiones')
+        filas = recibo.l10n_co_concepto_ids.filtered(lambda f: f.line_id)
+        self.assertAlmostEqual(
+            sum(filas.filtered(lambda f: f.line_id.category_id.l10n_co_ne_seccion_concepto == 'devengados').mapped('total')),
+            recibo.l10n_co_total_devengado, delta=0.005)
+        self.assertAlmostEqual(
+            sum(filas.filtered(lambda f: f.line_id.category_id.l10n_co_ne_seccion_concepto == 'deducciones').mapped('total')),
+            recibo.l10n_co_total_deducciones, delta=0.005)
+        self.assertEqual(recibo.net_wage, recibo._ne_pdf_neto())
+
+    def test_07_las_filas_son_una_vista_no_se_copian_ni_alimentan_el_calculo(self):
+        recibo = self._recibo()
+        antes = sorted((l.code, l.total) for l in recibo.line_ids)
+        self.assertNotIn('l10n_co_concepto_ids', recibo.copy_data()[0])
+        self.assertFalse(self.env['hr.payslip']._fields['l10n_co_concepto_ids'].copy)
+        self.Concepto.sudo().with_context(ne_regenerar_conceptos=True).search([('slip_id', '=', recibo.id)]).unlink()
+        recibo.compute_sheet()
+        self.assertEqual(sorted((l.code, l.total) for l in recibo.line_ids), antes, 'El cálculo no depende de las filas')
+        self.assertTrue(recibo.l10n_co_concepto_ids, 'Y las filas se vuelven a generar')
+
+    # ── editar con Form (el mismo camino del cliente web) ──────────────────────────────────────────────────────────────────────
+    def test_08_editar_el_importe_de_una_fila_ajustable_crea_el_ajuste_y_recalcula_una_vez(self):
+        recibo = self._recibo()
+        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        self.assertTrue(fila.edita_importe and fila.edita_cantidad and fila.edita_porcentaje, 'Gerente: la fila ajustable se edita')
+        sugerido, neto0 = fila.total, recibo._ne_pdf_neto()
+        espia, llamadas = self._contando_calculos(recibo)
+        with espia:
+            with Form(recibo) as formulario:
+                with formulario.l10n_co_concepto_ids.edit(self._indice(recibo, fila)) as editada:
+                    editada.amount = 0.0
+        self.assertEqual(llamadas, [recibo.ids], 'UN recálculo por guardado')
+        ajuste = recibo.l10n_co_ajuste_ids
+        self.assertEqual((len(ajuste), ajuste.salary_rule_id.code, ajuste.amount, ajuste.estado), (1, 'CO_SALUD_EMP', 0.0, 'aplicado'))
+        self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
+        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
+        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        self.assertEqual((fila.total, fila.ajustado), (0.0, True), 'La fila se regeneró con el valor ajustado')
+        siguiente = recibo.l10n_co_concepto_ids[self._indice(recibo, fila) + 1]
+        self.assertEqual(siguiente.display_type, 'line_note', 'La nota va como fila nativa line_note, justo debajo')
+        self.assertTrue(siguiente.name.startswith('Ajustado por la empresa. Sugerido:'))
+        neto_formulario = recibo._ne_pdf_neto()
+        self.assertNotEqual(neto_formulario, neto0)
+        recibo.compute_sheet()
+        self.assertEqual(recibo._ne_pdf_neto(), neto_formulario, 'Igual que «Calcular hoja»')
+
+    def test_09_editar_una_novedad_desde_la_tabla_sigue_el_camino_de_286(self):
+        recibo = self._recibo()
+        self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 100000.0})
+        fila = self._fila(recibo, 'CO_BONIF_NOSAL')
+        self.assertEqual((fila.origen, fila.input_id.amount, fila.edita_importe, fila.edita_cantidad), ('novedad', 100000.0, True, False))
+        espia, llamadas = self._contando_calculos(recibo)
+        with espia:
+            with Form(recibo) as formulario:
+                with formulario.l10n_co_concepto_ids.edit(self._indice(recibo, fila)) as editada:
+                    editada.amount = 250000.0
+        self.assertEqual(llamadas, [recibo.ids], 'UN recálculo por guardado, no cero ni dos')
+        self.assertEqual(recibo.input_line_ids.amount, 250000.0)
+        self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 250000.0)
+        self.assertFalse(recibo.l10n_co_ajuste_ids, 'Una novedad se edita en la novedad, no con un ajuste')
+        neto_formulario = recibo._ne_pdf_neto()
+        recibo.compute_sheet()
+        self.assertEqual(recibo._ne_pdf_neto(), neto_formulario, 'Igual que «Calcular hoja»')
+
+    def test_10_agregar_y_borrar_un_concepto_desde_la_tabla(self):
+        recibo = self._recibo()
+        neto0 = recibo._ne_pdf_neto()
+        espia, llamadas = self._contando_calculos(recibo)
+        with espia:
+            with Form(recibo) as formulario:
+                with formulario.l10n_co_concepto_ids.new() as nueva:
+                    nueva.input_type_id = self.tipo_bonif_nosal
+                    nueva.amount = 80000.0
+        self.assertEqual(llamadas, [recibo.ids], 'Agregar: UN recálculo')
+        self.assertEqual(recibo.input_line_ids.mapped('amount'), [80000.0])
+        self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 80000.0)
+        fila = self._fila(recibo, 'CO_BONIF_NOSAL')
+        self.assertEqual(fila.origen, 'novedad')
+        espia, llamadas = self._contando_calculos(recibo)
+        with espia:
+            with Form(recibo) as formulario:
+                formulario.l10n_co_concepto_ids.remove(self._indice(recibo, fila))
+        self.assertEqual(llamadas, [recibo.ids], 'Borrar: UN recálculo')
+        self.assertFalse(recibo.input_line_ids)
+        self.assertFalse(self._total(recibo, 'CO_BONIF_NOSAL'))
+        self.assertEqual(recibo._ne_pdf_neto(), neto0)
+
+    # ── lo que NO se puede hacer ───────────────────────────────────────────────────────────────────────────────────────────────
+    def test_11_las_filas_de_dias_secciones_y_calculadas_no_se_editan_ni_se_borran(self):
+        recibo = self._recibo()
+        dias = recibo.l10n_co_concepto_ids.filtered(lambda f: f.origen == 'dias')[:1]
+        self.assertTrue(dias)
+        with self.assertRaises(AssertionError):                            # el modificador readonly de la vista
+            with Form(recibo) as formulario:
+                with formulario.l10n_co_concepto_ids.edit(self._indice(recibo, dias)) as editada:
+                    editada.quantity = 5.0
+        with self.assertRaises(UserError):
+            dias.write({'quantity': 5.0})
+        calculada = self._fila(recibo, 'CO_SALUD_EMP')
+        with self.assertRaises(UserError):
+            calculada.unlink()
+        with self.assertRaises(UserError):
+            calculada.write({'name': 'Otro nombre'})
+        seccion = recibo.l10n_co_concepto_ids.filtered(lambda f: f.display_type == 'line_section')[:1]
+        with self.assertRaises(UserError):
+            seccion.unlink()
+        with self.assertRaises(UserError):
+            self.Concepto.create({'slip_id': recibo.id, 'display_type': 'line_note', 'name': 'Nota a mano'})
+        with self.assertRaises(UserError):
+            self.Concepto.create({'slip_id': recibo.id, 'amount': 5.0})   # sin tipo de novedad
+
+    def test_12_una_regla_no_ajustable_deja_su_fila_de_solo_lectura(self):
+        recibo = self._recibo()
+        regla = self._fila(recibo, 'CO_SALUD_EMP').salary_rule_id
+        regla.l10n_co_ne_ajustable = False
+        recibo.compute_sheet()
+        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        self.assertEqual((fila.edita_cantidad, fila.edita_porcentaje, fila.edita_importe), (False, False, False))
+        with self.assertRaises(AssertionError):
+            with Form(recibo) as formulario:
+                with formulario.l10n_co_concepto_ids.edit(self._indice(recibo, fila)) as editada:
+                    editada.amount = 0.0
+
+    def test_13_un_recibo_hecho_conserva_sus_filas_y_no_las_deja_editar(self):
+        recibo = self._recibo()
+        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        cantidad = len(recibo.l10n_co_concepto_ids)
+        recibo.write({'state': 'done'})
+        self.assertEqual(len(recibo.l10n_co_concepto_ids), cantidad)
+        fila.invalidate_recordset()
+        self.assertEqual((fila.edita_cantidad, fila.edita_porcentaje, fila.edita_importe), (False, False, False))
+        with self.assertRaises(UserError):
+            fila.write({'amount': 0.0})
+
+    # ── permisos y compañía ────────────────────────────────────────────────────────────────────────────────────────────────────
+    def test_14_el_gerente_ajusta_y_el_usuario_de_nomina_solo_edita_novedades(self):
+        recibo = self._recibo()
+        self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 100000.0})
+        gerente = self._usuario('gerente_conceptos', (_G_MANAGER, 'base.group_user'), self.company)
+        oficial = self._usuario('oficial_conceptos', (_G_USER, 'base.group_user'), self.company)
+        salud = self._fila(recibo, 'CO_SALUD_EMP')
+        novedad = self._fila(recibo, 'CO_BONIF_NOSAL')
+        self.assertTrue(salud.with_user(gerente).edita_importe)
+        self.assertFalse(salud.with_user(oficial).edita_importe, 'El oficial no ajusta conceptos calculados')
+        self.assertTrue(novedad.with_user(oficial).edita_importe, 'Pero sí edita novedades')
+        with self.assertRaises(AccessError):
+            salud.with_user(oficial).write({'amount': 0.0})
+        novedad.with_user(oficial).write({'amount': 90000.0})
+        self.assertEqual(novedad.input_id.amount, 90000.0)
+
+    def test_15_las_filas_de_la_compania_a_son_invisibles_desde_la_compania_b(self):
+        recibo = self._recibo()
+        usuario_b = self._usuario('gerente_conceptos_b', (_G_MANAGER, 'base.group_user'), self.company_b)
+        usuario_ab = self._usuario('gerente_conceptos_ab', (_G_MANAGER, 'base.group_user'), self.company | self.company_b)
+        self.assertFalse(self.Concepto.with_user(usuario_b).search([('slip_id', '=', recibo.id)]))
+        con_ambas = self.Concepto.with_user(usuario_ab).with_context(allowed_company_ids=[self.company.id, self.company_b.id])
+        self.assertTrue(con_ambas.search([('slip_id', '=', recibo.id)]))
+        solo_b = self.Concepto.with_user(usuario_ab).with_context(allowed_company_ids=[self.company_b.id])
+        self.assertFalse(solo_b.search([('slip_id', '=', recibo.id)]))
+
+    def test_16_la_funcion_de_datos_genera_las_filas_de_los_recibos_que_no_las_tienen_sin_recalcular(self):
+        """Recibos calculados antes de la pieza (o de activar la estructura): al hacer -u su pestaña no queda vacía y el dinero no cambia."""
+        recibo = self._recibo()
+        otro = self._recibo()
+        antes = sorted((l.code, l.total) for l in recibo.line_ids)
+        propias = self.Concepto.sudo().with_context(ne_regenerar_conceptos=True)
+        propias.search([('slip_id', 'in', (recibo | otro).ids)]).unlink()
+        self.assertFalse(recibo.l10n_co_concepto_ids)
+        otro.write({'state': 'done'})                              # un recibo hecho también recibe sus filas, de solo lectura
+        espia, llamadas = self._contando_calculos(recibo)
+        with espia:
+            self.assertTrue(self.env['hr.payslip']._ne_generar_conceptos_pendientes())
+        self.assertEqual(llamadas, [], 'No recalcula ningún recibo')
+        self.assertTrue(recibo.l10n_co_concepto_ids)
+        self.assertTrue(otro.l10n_co_concepto_ids)
+        self.assertEqual(sorted((l.code, l.total) for l in recibo.line_ids), antes)
+        filas = recibo.l10n_co_concepto_ids
+        self._indice(recibo, self._fila(recibo, 'CO_SALUD_EMP'))
+        self.assertEqual(len(filas), len(set(filas.ids)))
+        cantidad = len(recibo.l10n_co_concepto_ids)
+        self.env['hr.payslip']._ne_generar_conceptos_pendientes()
+        self.assertEqual(len(recibo.l10n_co_concepto_ids), cantidad, 'Idempotente: no duplica filas')
+
+    def test_17_la_funcion_de_datos_no_cambia_ninguna_linea_ni_el_neto_de_un_recibo_calculado_ni_de_uno_hecho(self):
+        """TL: la función de datos solo genera filas. Las líneas (mismos registros, mismos valores), el neto, el básico y el bruto de un recibo
+        ya calculado y de uno hecho quedan IGUALES, y no se publica ninguna nota ni se llama a ``compute_sheet``."""
+        calculado = self._recibo()
+        hecho = self._recibo()
+        hecho.write({'state': 'done'})
+        recibos = calculado | hecho
+
+        def foto(recibo):
+            return {
+                'ids': sorted(recibo.line_ids.ids),
+                'lineas': sorted((l.code, l.name, l.sequence, l.amount, l.quantity, l.rate, l.total) for l in recibo.line_ids),
+                'neto': recibo._ne_pdf_neto(), 'net_wage': recibo.net_wage, 'basic_wage': recibo.basic_wage, 'gross_wage': recibo.gross_wage,
+                'estado': recibo.state, 'notas': len(recibo.message_ids)}
+
+        antes = {recibo.id: foto(recibo) for recibo in recibos}
+        self.Concepto.sudo().with_context(ne_regenerar_conceptos=True).search([('slip_id', 'in', recibos.ids)]).unlink()
+        self.assertFalse(recibos.l10n_co_concepto_ids)
+        espia, llamadas = self._contando_calculos(calculado)
+        with espia:
+            self.env['hr.payslip']._ne_generar_conceptos_pendientes()
+        self.assertEqual(llamadas, [], 'No recalcula ningún recibo')
+        for recibo in recibos:
+            recibo.invalidate_recordset()
+            self.assertEqual(foto(recibo), antes[recibo.id], 'Cambió algo de %s' % recibo.name)
+            self.assertTrue(recibo.l10n_co_concepto_ids, 'Y sí tiene sus filas')

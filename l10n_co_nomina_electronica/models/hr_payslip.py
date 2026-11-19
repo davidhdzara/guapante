@@ -672,6 +672,7 @@ class HrPayslip(models.Model):
             sugeridos = {}
             res = super(HrPayslip, recibos.with_context(ne_sugeridos=sugeridos)).compute_sheet()
             recibos._ne_registrar_ajustes(sugeridos)
+            recibos._ne_regenerar_conceptos()
         colombia._ne_validar_terceros_deducciones()
         return res
 
@@ -680,6 +681,62 @@ class HrPayslip(models.Model):
         'l10n.co.payslip.ajuste', 'slip_id', string='Ajustes de la empresa', copy=False,
         help='Ajustes que la empresa hizo a conceptos de este recibo. Se aplican dentro del cálculo y se conservan al recalcular. '
              'No se copian a otro recibo.')
+
+    # ── «Conceptos de pago» (E11 pieza 3, .289, doc 71c §4 y §5) ─────────────────────────────────────────────────────────────────
+    l10n_co_concepto_ids = fields.One2many(
+        'l10n.co.payslip.concepto', 'slip_id', string='Conceptos de pago', copy=False,
+        help='Vista de lo calculado: se regenera al final de cada cálculo. Editar una fila cambia su fuente (ajuste o novedad).')
+    l10n_co_ne_usa_conceptos = fields.Boolean(
+        related='struct_id.l10n_co_ne_conceptos_de_pago', string='La estructura usa «Conceptos de pago»', readonly=True)
+    l10n_co_total_devengado = fields.Float(string='Total devengado', digits='Payroll', compute='_compute_l10n_co_totales')
+    l10n_co_total_deducciones = fields.Float(string='Total deducciones', digits='Payroll', compute='_compute_l10n_co_totales')
+    l10n_co_costo_empresa = fields.Float(
+        string='Costo empresa', digits='Payroll', compute='_compute_l10n_co_totales',
+        help='Aportes de la empresa y provisiones del recibo (las categorías con sección «Costo empresa»).')
+
+    @api.depends('line_ids.total', 'line_ids.category_id', 'line_ids.appears_on_payslip')
+    def _compute_l10n_co_totales(self):
+        """Totales del pie de «Conceptos de pago», sobre las LÍNEAS del recibo (no sobre las filas): devengados y deducciones de las categorías
+        con esa sección que se imprimen en el recibo, y costo de la empresa de las categorías con sección «costo_empresa»."""
+        for recibo in self:
+            devengado = deducciones = costo = 0.0
+            for linea in recibo.line_ids:
+                seccion = linea.category_id.l10n_co_ne_seccion_concepto
+                if seccion == 'devengados' and linea.appears_on_payslip:
+                    devengado += linea.total
+                elif seccion == 'deducciones' and linea.appears_on_payslip:
+                    deducciones += linea.total
+                elif seccion == 'costo_empresa':
+                    costo += linea.total
+            recibo.l10n_co_total_devengado = devengado
+            recibo.l10n_co_total_deducciones = deducciones
+            recibo.l10n_co_costo_empresa = costo
+
+    def _ne_regenerar_conceptos(self):
+        """Regenera las filas de «Conceptos de pago» de estos recibos (solo los de estructuras que lo usan)."""
+        self.env['l10n.co.payslip.concepto']._regenerar_de_recibos(self)
+
+    @api.model
+    def _ne_generar_conceptos_pendientes(self):
+        """Función de datos (corre en cada ``-u``): genera las filas de los recibos YA calculados de estructuras con «Conceptos de pago» que
+        todavía no las tienen (los creados antes de .289 y los de una estructura recién activada). No recalcula ni cambia ningún valor: las
+        filas son una vista de las líneas; un recibo hecho o pagado también las recibe, de solo lectura."""
+        recibos = self.sudo().with_context(active_test=False).search([
+            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_concepto_ids', '=', False)])
+        recibos._ne_regenerar_conceptos()
+        return True
+
+    @api.model
+    def _ne_comandos_cambian_conceptos(self, comandos):
+        """¿Los comandos de ``l10n_co_concepto_ids`` de un ``write`` cambian lo que calcula la hoja? Altas, bajas, vínculos y reemplazos sí; un
+        cambio solo de orden o de campos que no son valores (comando UPDATE) no."""
+        for comando in comandos or ():
+            if comando[0] == Command.UPDATE:
+                if {'quantity', 'rate', 'amount', 'name', 'input_type_id'} & set(comando[2] or ()):
+                    return True
+            else:
+                return True
+        return False
 
     def _ne_estado_documento_ajuste(self):
         """Estado del documento DIAN del recibo (``False`` si no tiene). Una sola lectura para el bloqueo de ajustes (Q6 de TL)."""
@@ -710,7 +767,8 @@ class HrPayslip(models.Model):
         recálculo de ``hr.payslip.input`` se salta (ver ``_ne_recalcular_hoja_por_novedad``). Se recalcula aquí, una vez, al terminar el
         ``write``. Las novedades creadas por el ORM directo (fuera de este ``write``) siguen recalculando desde ``hr.payslip.input``."""
         res = super().write(vals)
-        if 'input_line_ids' in vals and self._ne_comandos_cambian_novedades(vals['input_line_ids']):
+        if ('input_line_ids' in vals and self._ne_comandos_cambian_novedades(vals['input_line_ids'])) or (
+                'l10n_co_concepto_ids' in vals and self._ne_comandos_cambian_conceptos(vals['l10n_co_concepto_ids'])):
             self._ne_recalcular_hoja_por_novedad()
         return res
 
@@ -751,6 +809,7 @@ class HrPayslip(models.Model):
                     body=_('La hoja de cálculo no se pudo recalcular al cambiar una novedad: %(error)s. Hoja sin recalcular: corrija lo indicado '
                            'y pulse «Calcular hoja».', error=error.args[0] if error.args else error),
                     message_type='notification', subtype_xmlid='mail.mt_note')
+                recibo._ne_regenerar_conceptos()          # las filas vuelven a mostrar lo que SÍ está en la hoja
 
     # ──────────────────────────────────────────────────────────────────
     # Asiento contable por tercero
