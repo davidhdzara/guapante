@@ -165,6 +165,15 @@ class TestDiasPorAsistencia(TransactionCase):
                 'name': 'Festivo de prueba %s' % dia, 'date_from': inicio, 'date_to': fin, 'resource_id': False, 'calendar_id': False,
                 'company_id': self.company.id})
 
+    def _generar_entradas_y_festivos_de_prueba(self, recibo, *dias):
+        """Genera las entradas de trabajo del recibo ANTES de crear los festivos de prueba. Sonda en staging_dev (19-nov, con rollback): un recibo
+        sin calcular no tiene ninguna entrada (``hr.work.entry()`` vacío: era el fallo de estas pruebas, no un festivo de la base, cuyos festivos son
+        de la compañía 1 y no cruzan con la compañía de prueba); si los festivos existen al generar, las entradas de esos días salen SIN tipo y en
+        conflicto; y crear un festivo global DESPUÉS no regenera ni toca las entradas ya generadas. Así cada entrada de esos días es una asistencia
+        normal (dos de 4 h) y la prueba fija a mano su tipo, sin depender de los festivos que traiga la base."""
+        recibo.contract_id.generate_work_entries(recibo.date_from, recibo.date_to)
+        self._festivos_de_prueba(recibo, *dias)
+
     def _cifras(self, recibo):
         """Lo que importa de un recibo calculado: pago, días pagables, suma de importes de las líneas y las líneas BASIC/GROSS."""
         return {
@@ -580,7 +589,7 @@ class TestDiasPorAsistencia(TransactionCase):
         15. Las horas totales (88) y el pago son los del nativo."""
         recibo = self._recibo(date(2026, 4, 1), date(2026, 4, 15), calcular=False)
         festivo = self._tipo_entrada('FEST', 'Festivo', True)
-        self._festivos_de_prueba(recibo, date(2026, 4, 2), date(2026, 4, 3))
+        self._generar_entradas_y_festivos_de_prueba(recibo, date(2026, 4, 2), date(2026, 4, 3))
         for dia in (date(2026, 4, 2), date(2026, 4, 3)):
             entradas = self._entradas_del_dia(recibo, dia)
             self.assertTrue(entradas, 'Premisa: el calendario genera la entrada del %s' % dia)
@@ -604,7 +613,7 @@ class TestDiasPorAsistencia(TransactionCase):
         recibo = self._recibo(date(2026, 4, 1), date(2026, 4, 15), calcular=False)
         asistencia = recibo._ne_tipo_asistencia()
         festivo = self._tipo_entrada('FEST', 'Festivo', True)
-        self._festivos_de_prueba(recibo, date(2026, 4, 2), date(2026, 4, 3))
+        self._generar_entradas_y_festivos_de_prueba(recibo, date(2026, 4, 2), date(2026, 4, 3))
         for dia, tipo in ((date(2026, 4, 2), festivo), (date(2026, 4, 3), asistencia)):
             entradas = self._entradas_del_dia(recibo, dia)
             self.assertTrue(entradas, 'Premisa: el calendario genera la entrada del %s' % dia)
