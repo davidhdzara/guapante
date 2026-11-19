@@ -16,6 +16,7 @@
             <field name="code">DEV_SAL</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
             <field name="note">Pagos que constituyen salario (Art. 127 CST).</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_devengados_no_salariales" model="hr.salary.rule.category">
@@ -23,6 +24,7 @@
             <field name="code">DEV_NOSAL</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
             <field name="note">Pagos que NO constituyen salario (Art. 128 CST).</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_horas_extra" model="hr.salary.rule.category">
@@ -30,6 +32,7 @@
             <field name="code">HEX</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="note">Horas extra y recargos nocturnos/dominicales.</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_prestaciones" model="hr.salary.rule.category">
@@ -37,6 +40,7 @@
             <field name="code">PREST</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
             <field name="note">Prima de servicios, cesantías, intereses a las cesantías.</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_vacaciones" model="hr.salary.rule.category">
@@ -44,6 +48,7 @@
             <field name="code">VAC</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
             <field name="note">Vacaciones comunes y compensadas.</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_incapacidades" model="hr.salary.rule.category">
@@ -51,12 +56,14 @@
             <field name="code">INC</field>
             <field name="parent_id" ref="hr_salary_rule_category_devengados"/>
             <field name="note">Incapacidades EPS/ARL y licencias de maternidad/paternidad.</field>
+            <field name="l10n_co_ne_seccion_concepto">devengados</field>
         </record>
 
         <record id="hr_salary_rule_category_deducciones" model="hr.salary.rule.category">
             <field name="name">Deducciones</field>
             <field name="code">DEDU</field>
             <field name="note">Descuentos obligatorios y voluntarios del trabajador.</field>
+            <field name="l10n_co_ne_seccion_concepto">deducciones</field>
         </record>
 
         <record id="hr_salary_rule_category_seguridad_social_emp" model="hr.salary.rule.category">
@@ -64,12 +71,14 @@
             <field name="code">SS_EMP</field>
             <field name="parent_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="note">Aportes del empleado a salud y pensión.</field>
+            <field name="l10n_co_ne_seccion_concepto">deducciones</field>
         </record>
 
         <record id="hr_salary_rule_category_seguridad_social_cia" model="hr.salary.rule.category">
             <field name="name">Aportes Empresa</field>
             <field name="code">SS_CIA</field>
             <field name="note">Aportes patronales: salud, pensión, ARL, parafiscales.</field>
+            <field name="l10n_co_ne_seccion_concepto">costo_empresa</field>
         </record>
 
         <record id="hr_salary_rule_category_provisiones" model="hr.salary.rule.category">
@@ -79,6 +88,7 @@
                 pago al trabajador, no afecta el neto del período (Art. 249/306/186 CST, Ley
                 52/1975). Sin parent_id, igual que SS_CIA, para quedar fuera de
                 categories['DEV']/['DEDU'] que usa CO_NETO.</field>
+            <field name="l10n_co_ne_seccion_concepto">costo_empresa</field>
         </record>
 
         <record id="hr_salary_rule_category_totales_display" model="hr.salary.rule.category">
@@ -121,6 +131,7 @@
             <field name="name">Nómina Colombia - General</field>
             <field name="type_id" ref="hr_payroll_structure_type_co"/>
             <field name="country_id" ref="base.co"/>
+            <field name="l10n_co_ne_conceptos_de_pago" eval="True"/>
         </record>
 
         <!-- Estructura por defecto del tipo "Empleado Colombia" (.102, pedido de David):
@@ -165,6 +176,7 @@ result_qty = dias_pagables
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Sueldo</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <!-- ==================== AUXILIO TRANSPORTE ==================== -->
@@ -193,6 +205,7 @@ result_qty = dias_pagables
             <field name="l10n_co_ne_dian_concept">Transporte</field>
             <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
             <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <!-- ==================== HORAS EXTRA ==================== -->
@@ -214,6 +227,7 @@ result_qty = inputs['CO_HED'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HED</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_hen" model="hr.salary.rule">
@@ -234,6 +248,7 @@ result_qty = inputs['CO_HEN'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HEN</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_hrn" model="hr.salary.rule">
@@ -254,6 +269,7 @@ result_qty = inputs['CO_HRN'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRN</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_heddf" model="hr.salary.rule">
@@ -274,6 +290,7 @@ result_qty = inputs['CO_HEDDF'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HEDDF</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_hendf" model="hr.salary.rule">
@@ -294,6 +311,7 @@ result_qty = inputs['CO_HENDF'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HENDF</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_hrddf" model="hr.salary.rule">
@@ -314,6 +332,7 @@ result_qty = inputs['CO_HRDDF'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRDDF</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <record id="hr_salary_rule_co_hrndf" model="hr.salary.rule">
@@ -334,6 +353,7 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">HRNDF</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+            <field name="l10n_co_ne_unidad">horas</field>
         </record>
 
         <!-- ==================== COMISIONES ==================== -->
@@ -504,6 +524,7 @@ result = _pago / dias if dias else 0.0
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Incapacidad</field>
             <field name="l10n_co_ugpp_payment_type">tp_incapacidad</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_incapacidad_laboral" model="hr.salary.rule">
@@ -529,6 +550,7 @@ result = _pago / dias if dias else 0.0
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Incapacidad</field>
             <field name="l10n_co_ugpp_payment_type">tp_incapacidad</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_licencia_maternidad" model="hr.salary.rule">
@@ -555,6 +577,7 @@ result = _pago / dias if dias else 0.0
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
             <field name="l10n_co_ugpp_payment_type">tp_licencia_mat_pat</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_licencia_paternidad" model="hr.salary.rule">
@@ -581,6 +604,7 @@ result = _pago / dias if dias else 0.0
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaMP</field>
             <field name="l10n_co_ugpp_payment_type">tp_licencia_mat_pat</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_licencia_remunerada" model="hr.salary.rule">
@@ -605,6 +629,7 @@ result_qty = dias
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">LicenciaR</field>
             <field name="l10n_co_ugpp_payment_type">tp_licencia_remunerada</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_licencia_no_remunerada" model="hr.salary.rule">
@@ -653,6 +678,7 @@ result_qty = dias
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">VacacionesComunes</field>
             <field name="l10n_co_ugpp_payment_type">tp_vacaciones</field>
+            <field name="l10n_co_ne_unidad">dias</field>
         </record>
 
         <record id="hr_salary_rule_co_vacaciones_compensadas" model="hr.salary.rule">

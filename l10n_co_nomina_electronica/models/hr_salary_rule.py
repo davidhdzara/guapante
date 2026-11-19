@@ -226,6 +226,30 @@ class HrSalaryRule(models.Model):
              'reincorporado al IBC aunque esté marcado como no salarial.',
     )
 
+    # ──────────────────────────────────────────────────────────────────────
+    # E11 pieza 2a (.287, doc 71c §2 y §7): configuración de «Conceptos de pago». Sembrada en el XML de cada regla; nada en el código.
+    # ──────────────────────────────────────────────────────────────────────
+    l10n_co_ne_ajustable = fields.Boolean(
+        string='Permite ajuste de la empresa',
+        compute='_compute_l10n_co_ne_ajustable', store=True, readonly=False,
+        help='Si está marcada, quien administra la nómina puede cambiar la cantidad, el porcentaje o el importe de esta regla en un recibo '
+             'en borrador o en espera. El sistema conserva el valor sugerido y quién lo cambió; el ajuste es responsabilidad de la empresa. '
+             'Por defecto está marcada en las reglas de las estructuras que usan «Conceptos de pago» cuya categoría se muestra en '
+             '«Devengados» o «Deducciones» (no en costo de la empresa, bases, totales ni neto: son derivados). Se puede cambiar regla por '
+             'regla; el cambio se conserva mientras no cambie la categoría o la estructura de la regla.')
+    l10n_co_ne_unidad = fields.Selection(
+        selection=[('dias', 'Días'), ('horas', 'Horas')],
+        string='Unidad de la cantidad',
+        help='Unidad con la que se muestra la cantidad de esta regla en «Conceptos de pago». Vacío: la regla es un valor y no tiene unidad '
+             '(«valor» no es una unidad).')
+
+    @api.depends('category_id.l10n_co_ne_seccion_concepto', 'struct_id.l10n_co_ne_conceptos_de_pago')
+    def _compute_l10n_co_ne_ajustable(self):
+        for regla in self:
+            regla.l10n_co_ne_ajustable = bool(
+                regla.struct_id.l10n_co_ne_conceptos_de_pago
+                and regla.category_id.l10n_co_ne_seccion_concepto in ('devengados', 'deducciones'))
+
     _L10N_CO_ORIGEN_NO_SALARIAL_POR_CODIGO = {
         'CO_AUX_TRANS': 'naturaleza', 'CO_VIATICOS_NOSAL': 'naturaleza',
         'CO_DOTACION': 'naturaleza', 'CO_TELETRABAJO': 'naturaleza',

@@ -6,7 +6,7 @@
 defecto el informe nativo «Payslip». Funcion de datos idempotente: lo cambia al «Comprobante de pago» propio SOLO si la estructura trae el
 informe nativo o ninguno (un informe elegido a mano no se pisa)."""
 
-from odoo import api, models
+from odoo import api, fields, models
 
 NE_ESTRUCTURAS_PROPIAS = (
     'hr_payroll_structure_co_nomina', 'hr_payroll_structure_co_liquidacion', 'hr_payroll_structure_co_prima',
@@ -15,6 +15,11 @@ NE_ESTRUCTURAS_PROPIAS = (
 
 class HrPayrollStructure(models.Model):
     _inherit = 'hr.payroll.structure'
+
+    l10n_co_ne_conceptos_de_pago = fields.Boolean(
+        string='Usa «Conceptos de pago»',
+        help='E11 (doc 71c): la estructura usa la vista «Conceptos de pago» y sus reglas admiten, por defecto, el ajuste de la empresa '
+             '(según la sección de su categoría). Por ahora solo la estructura general; las demás se activan marcando esto.')
 
     @api.model
     def _ne_alinear_informe_recibo(self):

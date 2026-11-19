@@ -1,6 +1,6 @@
 {
     'name': 'Colombia - Nómina',
-    'version': '18.0.3.0.286',
+    'version': '18.0.3.0.287',
     'category': 'Human Resources/Payroll',
     'countries': ['co'],
     'summary': 'Generación y envío de Nómina Electrónica a la DIAN (Resolución 000013 de 2021)',
@@ -67,6 +67,7 @@ Funcionalidades principales:
         'data/hr_salary_rule_alinear_nativas.xml',
         'data/hr_salary_rule_auto_deductions.xml',
         'data/hr_salary_rule_tercero_origen.xml',
+        'data/hr_payslip_input_type_unidad.xml',
         'data/hr_retefuente_data.xml',
         'data/ir_cron_habilitacion.xml',
         'data/ir_cron_dian_status_recheck.xml',
@@ -88,6 +89,9 @@ Funcionalidades principales:
         # modulo ya instalado, -u en vez de -i).
         'views/hr_retefuente_views.xml',
         'views/hr_salary_rule_views.xml',
+        'views/hr_payslip_input_type_views.xml',
+        'views/hr_salary_rule_category_views.xml',
+        'views/hr_payroll_structure_views.xml',
         # res_config_settings_views.xml debe cargar DESPUES de
         # hr_salary_rule_views.xml -- su boton "Abrir Cuentas
         # Contables" referencia action_hr_salary_rule_account_ne,

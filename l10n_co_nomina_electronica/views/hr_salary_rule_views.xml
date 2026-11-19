@@ -25,6 +25,13 @@
                         </group>
                     </group>
 
+                    <group string="Conceptos de pago" name="conceptos_pago">
+                        <group>
+                            <field name="l10n_co_ne_ajustable"/>
+                            <field name="l10n_co_ne_unidad"/>
+                        </group>
+                    </group>
+
                     <group string="Clasificación UGPP" name="ugpp_classification">
                         <group>
                             <field name="l10n_co_ugpp_payment_type"
