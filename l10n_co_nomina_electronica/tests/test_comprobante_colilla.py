@@ -86,5 +86,5 @@ class TestComprobanteColilla(TransactionCase):
         self.assertIn(2880000.0, valores_monetarios(html))
 
     def test_los_bloques_comunes_existen_para_reutilizarlos(self):
-        for xmlid in ('ne_comprobante_encabezado', 'ne_comprobante_conceptos', 'ne_colilla_tabla'):
+        for xmlid in ('ne_comprobante_encabezado', 'ne_colilla_tabla'):
             self.assertTrue(self.env.ref('l10n_co_nomina_electronica.' + xmlid, raise_if_not_found=False), xmlid)

@@ -17,8 +17,8 @@
          solo las columnas que alguna fila usa (sin Cantidad y Unidad cuando ninguna fila lleva unidad; sin «%» cuando todas
          son 100). Lleva los datos de la empresa (nombre, NIT y dirección) y el mismo diseño de «Conceptos de pago»
          (secciones Devengados y Deducciones; las deducciones con su signo, en una sola columna). No lleva «Observaciones»
-         (es la nota interna nativa), ni el ajuste de la empresa, ni el costo de la empresa. El bloque
-         ``ne_comprobante_conceptos`` (tabla anterior) queda para el comprobante agrupado hasta la pieza 5b.
+         (es la nota interna nativa), ni el ajuste de la empresa, ni el costo de la empresa. El mismo encabezado y la misma
+         tabla los usa el comprobante agrupado (E11 pieza 5b, .292), una vez por cada origen del grupo.
          =================================================================== -->
 
     <!-- Formato de papel de MEDIA PÁGINA, propio de los comprobantes de pago (colilla por recibo y comprobante agrupado): no cambia el formato
@@ -49,20 +49,23 @@
     </record>
 
     <!-- Encabezado COMPACTO (media página): título, referencia del recibo, datos de la empresa (nombre, NIT y dirección, de la compañía del
-         recibo y de su contacto) y del empleado, y el periodo. Parámetro: ``o`` (recibo). -->
+         recibo y de su contacto) y del empleado, y el periodo. Parámetros: ``o`` (recibo), ``fecha_pago`` (la fecha de pago que se imprime: la del
+         recibo en la colilla, la del GRUPO en el comprobante agrupado) y ``agrupado`` (True en el comprobante agrupado: sin «No.» ni periodo ni
+         días trabajados, que son de cada origen y salen en el título de su sección). ``dias_pagados`` (id del recibo -> línea de sueldo) solo
+         lo usa la colilla por recibo. -->
     <template id="ne_comprobante_encabezado">
         <div class="row mb-1">
             <div class="col-7">
                 <h5 class="mb-0">Comprobante de pago</h5>
             </div>
             <div class="col-5 text-end small">
-                <span>
+                <span t-if="not agrupado">
                     <strong>No.:</strong>
                     <span t-out="o.number or o.name"/>
                 </span>
-                <span t-if="o.paid_date">
+                <span t-if="fecha_pago">
                     <strong>Fecha de pago:</strong>
-                    <span t-field="o.paid_date"/>
+                    <span t-out="fecha_pago" t-options='{"widget": "date"}'/>
                 </span>
             </div>
         </div>
@@ -94,7 +97,7 @@
                 </p>
             </div>
             <div class="col-6">
-                <p class="mb-0">
+                <p class="mb-0" t-if="not agrupado">
                     <strong>Periodo:</strong>
                     <span t-field="o.date_from"/> - <span t-field="o.date_to"/>
                 </p>
@@ -106,7 +109,7 @@
                 <!-- H-QA-034: los días con que se PAGÓ el recibo (cantidad guardada de su línea de sueldo; los entrega
                      report.l10n_co_nomina_electronica.report_payslip_ne). Sin esa línea (prima, bonificación) el campo no sale. -->
                 <t t-set="linea_dias" t-value="dias_pagados and dias_pagados.get(o.id)"/>
-                <p class="mb-0" t-if="linea_dias">
+                <p class="mb-0" t-if="linea_dias and not agrupado">
                     <strong>Días trabajados:</strong>
                     <span t-field="linea_dias.quantity"/>
                 </p>
@@ -198,67 +201,13 @@
         </table>
     </template>
 
-    <!-- Tabla de conceptos con totales y neto. Parámetros: ``lineas`` (líneas del recibo a imprimir), ``neto`` (valor) y
-         ``moneda`` (moneda de la compañía). Devengado = líneas positivas, deducción = negativas (en positivo). -->
-    <template id="ne_comprobante_conceptos">
-        <table class="table table-sm table-bordered">
-            <thead>
-                <tr class="table-light">
-                    <th>Código</th>
-                    <th class="w-50">Concepto</th>
-                    <th class="text-end">Devengado</th>
-                    <th class="text-end">Deducción</th>
-                </tr>
-            </thead>
-            <tbody>
-                <t t-foreach="lineas" t-as="line">
-                    <tr>
-                        <td>
-                            <span t-field="line.code"/>
-                        </td>
-                        <td>
-                            <span t-field="line.name"/>
-                        </td>
-                        <td class="text-end">
-                            <t t-if="line.total &gt;= 0">
-                                <span t-out="line.total" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                            </t>
-                        </td>
-                        <td class="text-end">
-                            <t t-if="line.total &lt; 0">
-                                <span t-out="abs(line.total)" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                            </t>
-                        </td>
-                    </tr>
-                </t>
-            </tbody>
-            <tfoot>
-                <tr class="fw-bold">
-                    <td colspan="2">Totales</td>
-                    <td class="text-end">
-                        <span t-out="sum(l.total for l in lineas if l.total &gt;= 0)"
-                              t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                    <td class="text-end">
-                        <span t-out="abs(sum(l.total for l in lineas if l.total &lt; 0))"
-                              t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                </tr>
-                <tr class="table-light fw-bold">
-                    <td colspan="3">Neto a pagar</td>
-                    <td class="text-end">
-                        <span t-out="neto" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                </tr>
-            </tfoot>
-        </table>
-    </template>
-
     <template id="report_payslip_ne">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
                 <t t-call="web.external_layout">
                     <div class="page">
+                        <t t-set="fecha_pago" t-value="o.paid_date"/>
+                        <t t-set="agrupado" t-value="False"/>
                         <t t-call="l10n_co_nomina_electronica.ne_comprobante_encabezado"/>
                         <t t-call="l10n_co_nomina_electronica.ne_colilla_tabla">
                             <t t-set="colilla" t-value="colillas[o.id]"/>

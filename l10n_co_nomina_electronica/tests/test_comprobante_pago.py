@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Frente 5, C3 (doc 58): informe "Comprobante de pago por fecha de pago": una página por (empleado, fecha de pago),
 una sección por recibo con el nombre de su estructura, neto total pagado, A5 horizontal con formato de papel propio,
-interno (sin DIAN/CUNE/QR), nativo y multicliente."""
+interno (sin DIAN/CUNE/QR), nativo y multicliente.
+
+E11 pieza 5b (.292; doc 58 §5(a) y §9 D5-1/D5-5/D5-7): cada sección por origen (quincena, prima...) trae la tabla compacta de la colilla (``ne_colilla_tabla``)
+con SU subtotal de devengado, deducciones y neto, y al pie va el neto total pagado; todo en UNA sola media página (``class="page"``) por grupo."""
 from datetime import date
+from html import escape
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
@@ -74,15 +78,52 @@ class TestComprobantePago(TransactionCase):
     def _cuerpo(self, html):
         return html.split('class="page"', 1)[-1]
 
-    def test_quincena_y_prima_del_mismo_dia_en_una_sola_pagina_con_neto_total(self):
+    def test_quincena_y_prima_del_mismo_dia_en_una_sola_pagina_con_dos_secciones_y_neto_total(self):
         q, p = self._quincena(), self._prima()
         html = self._html(q, p)
-        self.assertEqual(html.count('class="page"'), 1)
+        self.assertEqual(html.count('class="page"'), 1, 'UNA página por (empleado, fecha de pago), con las dos secciones de origen')
+        # una sección por origen, en orden (quincena y luego prima), cada una con el nombre de su estructura
         self.assertIn(self.nomina.name, html)
         self.assertIn(self.prima.name, html)
-        self.assertIn('Neto total pagado', html)
-        self.assertIn(4200000.0, valores_monetarios(html))          # 2.760.000 + 1.440.000
-        self.assertIn('Retención en la fuente', html)
+        self.assertLess(html.index(self.nomina.name), html.index(self.prima.name))
+        # cada sección trae la tabla compacta de la colilla con SU subtotal (devengado, deducciones y neto de esa sección)...
+        self.assertEqual(html.count('Total devengado'), 2)
+        self.assertEqual(html.count('Total deducciones'), 2)
+        self.assertEqual(html.count('Neto a pagar'), 2)
+        valores = valores_monetarios(html)
+        absolutos = {abs(v) for v in valores}
+        for esperado in (3000000.0, 240000.0, 2760000.0,      # quincena: devengado, deducciones (salud + pensión), neto
+                         1500000.0, 60000.0, 1440000.0):       # prima: devengado, retención, neto
+            self.assertIn(esperado, absolutos, esperado)
+        # ... y al pie, UNA vez y DESPUÉS de las dos secciones, el neto total pagado (2.760.000 + 1.440.000)
+        self.assertEqual(html.count('Neto total pagado'), 1)
+        self.assertGreater(html.index('Neto total pagado'), html.rindex('Neto a pagar'))
+        self.assertIn(4200000.0, valores)
+        # la retención de la prima sale como fila de Deducciones de su sección (la tabla compacta ya no lleva el párrafo de resumen)
+        retencion = self.env['hr.salary.rule'].search([('code', '=', 'CO_PRIMA_RETE'), ('struct_id', '=', self.prima.id)], limit=1).name
+        self.assertTrue(retencion in html or escape(retencion) in html)
+        self.assertNotIn('Salud:', html)
+        # encabezado del grupo: la fecha de pago del grupo UNA vez; el «No.» y el periodo son de cada origen (van en el título de su sección)
+        self.assertEqual(html.count('Fecha de pago:'), 1)
+        self.assertNotIn('No.:', html)
+        self.assertNotIn('Periodo:', html)
+        self.assertEqual(html.count('table table-sm table-bordered small'), 3, 'Dos tablas compactas (una por origen) y la del neto total')
+
+    def test_un_grupo_de_un_solo_recibo_trae_su_seccion_y_el_neto_total(self):
+        html = self._html(self._quincena())
+        self.assertEqual(html.count('class="page"'), 1)
+        self.assertEqual(html.count('Neto a pagar'), 1)
+        self.assertEqual(html.count('Neto total pagado'), 1)
+        self.assertIn(2760000.0, valores_monetarios(html))
+
+    def test_el_encabezado_de_la_colilla_por_recibo_no_cambia(self):
+        """El modo ``agrupado`` del encabezado compartido solo aplica al comprobante agrupado: la colilla individual conserva «No.» y periodo."""
+        html, _tipo = self.env['ir.actions.report']._render_qweb_html(
+            'l10n_co_nomina_electronica.action_report_payslip_ne', [self._quincena().id])
+        html = html.decode().replace('\xa0', ' ')
+        self.assertEqual(html.count('class="page"'), 1)
+        self.assertIn('No.:', html)
+        self.assertIn('Periodo:', html)
 
     def test_pagos_en_dias_distintos_son_paginas_distintas(self):
         html = self._html(self._quincena(), self._prima(pagado=date(2026, 6, 20)))

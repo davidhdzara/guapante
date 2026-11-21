@@ -102,7 +102,7 @@ class TestUiSinColoresPropios(TransactionCase):
         self._sin_estilo_propio('l10n_co_nomina_electronica.hr_payslip_send_view_form')
 
     def test_la_colilla_y_sus_bloques_comunes_sin_estilos_propios(self):
-        for xmlid in ('report_payslip_ne', 'ne_comprobante_encabezado', 'ne_comprobante_conceptos', 'ne_colilla_tabla'):
+        for xmlid in ('report_payslip_ne', 'ne_comprobante_encabezado', 'ne_colilla_tabla'):
             self._sin_estilo_propio('l10n_co_nomina_electronica.' + xmlid)
 
     def test_el_comprobante_agrupado_sin_estilos_propios(self):
