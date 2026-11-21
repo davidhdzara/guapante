@@ -166,10 +166,12 @@ class TestAjusteConceptoRecibo(TransactionCase):
         self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Calcular hoja')
         recibo.action_refresh_from_work_entries()
         self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Refrescar desde las entradas de trabajo')
-        with Form(recibo) as formulario:                                    # .286: el formulario recalcula la hoja
-            with formulario.input_line_ids.new() as novedad:
-                novedad.input_type_id = self.tipo_bonif_nosal
-                novedad.amount = 100000.0
+        # .286: el formulario recalcula la hoja. La estructura general oculta la página nativa de novedades (``views/hr_payslip_conceptos_views.xml:13-15``,
+        # ``odoo/tests/form.py:855``): la novedad se agrega como fila de «Conceptos de pago» (``l10n_co_concepto_ids``), lo que ve el usuario.
+        with Form(recibo) as formulario:
+            with formulario.l10n_co_concepto_ids.new() as fila:
+                fila.input_type_id = self.tipo_bonif_nosal
+                fila.amount = 100000.0
         self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 100000.0)
         self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Novedad guardada desde el formulario')
 
