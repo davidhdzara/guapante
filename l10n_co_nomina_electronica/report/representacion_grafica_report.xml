@@ -81,7 +81,7 @@
                         <h3 t-if="datos['tipo'] == 'documento'">Documento soporte de pago de nómina electrónica</h3>
                         <h3 t-else="">Nota de ajuste del documento soporte de pago de nómina electrónica
                             (<span t-out="'Reemplazar' if datos['tipo'] == 'nota_reemplazar' else 'Eliminar'"/>)</h3>
-                        <div class="row border rounded p-2 mb-2">
+                        <div class="row border rounded p-1 mb-1 small">
                             <div class="col-6">
                                 <p class="mb-1"><strong>Número:</strong> <span t-out="datos['numero']"/></p>
                                 <p class="mb-1"><strong>Fecha y hora de generación:</strong>
@@ -96,7 +96,7 @@
                                     <span t-out="datos['predecesor']['CUNEPred']"/></p>
                             </div>
                         </div>
-                        <div class="row mb-2">
+                        <div class="row mb-1 small">
                             <div class="col-6">
                                 <p class="mb-1"><strong>Empleador:</strong>
                                     <span t-out="datos['empleador']['RazonSocial'] or ' '.join(x for x in (datos['empleador']['PrimerApellido'], datos['empleador']['SegundoApellido'], datos['empleador']['PrimerNombre'], datos['empleador']['OtrosNombres']) if x)"/></p>
@@ -114,14 +114,20 @@
                             <span t-out="datos['medio_pago']['Metodo']"/>
                         </p>
                         <t t-if="datos['tipo'] != 'nota_eliminar'">
-                            <table class="table table-sm table-bordered">
+                            <!-- E11 pieza 5c (.295, doc 74 §4.5): la MISMA estructura de tabla que la colilla (``ne_colilla_tabla``): una tabla compacta con
+                                 filas de sección «Devengados» y «Deducciones», cada una con su total, y al final el valor total. Los datos siguen saliendo del XML
+                                 validado (no se recalcula nada) y las denominaciones son las del art. 5 de la Resolución 13 de 2021. -->
+                            <table class="table table-sm table-bordered small mb-2">
                                 <thead>
                                     <tr class="table-light">
-                                        <th>Devengados</th>
+                                        <th class="w-75">Concepto</th>
                                         <th class="text-end">Valor</th>
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    <tr class="table-light fw-bold">
+                                        <td colspan="2">Devengados</td>
+                                    </tr>
                                     <tr t-foreach="datos['devengados']" t-as="c">
                                         <td><span t-out="c[0]"/> - <span t-out="c[1]"/></td>
                                         <td class="text-end"><span t-out="float(c[2])" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
@@ -130,16 +136,9 @@
                                         <td>Total devengado</td>
                                         <td class="text-end"><span t-out="float(datos['devengados_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
                                     </tr>
-                                </tbody>
-                            </table>
-                            <table class="table table-sm table-bordered">
-                                <thead>
-                                    <tr class="table-light">
-                                        <th>Deducciones</th>
-                                        <th class="text-end">Valor</th>
+                                    <tr class="table-light fw-bold">
+                                        <td colspan="2">Deducciones</td>
                                     </tr>
-                                </thead>
-                                <tbody>
                                     <tr t-foreach="datos['deducciones']" t-as="c">
                                         <td><span t-out="c[0]"/> - <span t-out="c[1]"/></td>
                                         <td class="text-end"><span t-out="float(c[2])" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
@@ -149,12 +148,12 @@
                                         <td class="text-end"><span t-out="float(datos['deducciones_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
                                     </tr>
                                 </tbody>
-                            </table>
-                            <table class="table table-sm table-bordered">
-                                <tr class="table-light fw-bold">
-                                    <td>Valor total (devengado menos deducido)</td>
-                                    <td class="text-end"><span t-out="float(datos['comprobante_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
-                                </tr>
+                                <tfoot>
+                                    <tr class="table-light fw-bold">
+                                        <td>Valor total (devengado menos deducido)</td>
+                                        <td class="text-end"><span t-out="float(datos['comprobante_total'] or 0)" t-options='{"widget": "monetary", "display_currency": moneda}'/></td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </t>
                         <p class="mb-1"><strong>Proveedor de soluciones tecnológicas:</strong>
