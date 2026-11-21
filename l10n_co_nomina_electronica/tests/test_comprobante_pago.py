@@ -134,5 +134,7 @@ class TestComprobantePago(TransactionCase):
         self.assertFalse(formato.default)                          # no se vuelve el formato de papel por defecto
         self.assertEqual(formato, self.env.ref('l10n_co_nomina_electronica.paperformat_comprobante_pago'))
         self.assertNotEqual(formato, self.a.paperformat_id)        # no cambia el de la compañía
-        self.assertNotEqual(formato, self.env.ref(
+        # E11 pieza 5a (.291, decisión de David del 21-nov): la colilla por recibo TAMBIÉN es de media página, con el mismo formato (antes usaba el de la
+        # compañía); nunca carta completa.
+        self.assertEqual(formato, self.env.ref(
             'l10n_co_nomina_electronica.action_report_payslip_ne').paperformat_id)

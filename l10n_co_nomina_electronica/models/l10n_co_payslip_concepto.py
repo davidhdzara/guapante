@@ -12,13 +12,14 @@ de novedad cambia la novedad (``hr.payslip.input``); «Agregar concepto» crea u
 y la regeneración los hace ``HrPayslip.write`` UNA vez, después de ``super()`` (el mismo camino de .286); el One2many de filas NO es calculado, así
 que no sufre la protección de ``BaseModel.write``. NO EJECUTADO EN ODOO al escribirlo."""
 
-from collections import defaultdict
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
-SECCIONES = (('devengados', 'Devengados'), ('deducciones', 'Deducciones'))
+from .hr_payslip import NE_SECCIONES_CONCEPTO
+
+SECCIONES = NE_SECCIONES_CONCEPTO     # una sola fuente con la colilla (``models/hr_payslip.py``, E11 pieza 5a)
 GRUPO_GERENTE = 'hr_payroll.group_hr_payroll_manager'
 CAMPOS_DE_VALOR = ('quantity', 'rate', 'amount')
 
@@ -168,14 +169,11 @@ class L10nCoPayslipConcepto(models.Model):
     @api.model
     def _valores_del_recibo(self, recibo):
         """Filas (lista de diccionarios) del recibo: sección «Devengados», sus conceptos con los días trabajados bajo el sueldo, sección
-        «Deducciones» y sus conceptos; tras un concepto ajustado, una fila de nota con su valor sugerido."""
-        ajustes = {a.salary_rule_id.id: a for a in recibo.l10n_co_ajuste_ids}
-        entradas = defaultdict(list)
-        for entrada in recibo.input_line_ids.sorted(lambda i: (i.sequence, i.id)):
-            entradas[entrada.code].append(entrada)
-        lineas = recibo.line_ids.filtered(
-            lambda l: l.appears_on_payslip and l.category_id.l10n_co_ne_seccion_concepto in dict(SECCIONES)
-            and (l.total or l.salary_rule_id.id in ajustes)).sorted(lambda l: (l.sequence, l.id))
+        «Deducciones» y sus conceptos; tras un concepto ajustado, una fila de nota con su valor sugerido.
+
+        .291 (E11 pieza 5a): las filas de conceptos salen de ``HrPayslip._ne_filas_de_concepto`` (fuente ÚNICA con la colilla: qué líneas, en qué
+        orden, con qué unidad, enlace a la novedad); aquí solo se les agregan los títulos de sección, la nota del ajuste, las filas de días y los
+        vínculos propios de esta tabla."""
         titulos = {'devengados': _('Devengados'), 'deducciones': _('Deducciones')}
         valores, secuencia = [], 0
 
@@ -184,40 +182,30 @@ class L10nCoPayslipConcepto(models.Model):
             secuencia += 10
             return secuencia
 
-        vistos_por_codigo = defaultdict(int)
-        for seccion, _titulo in SECCIONES:
-            de_la_seccion = lineas.filtered(lambda l: l.category_id.l10n_co_ne_seccion_concepto == seccion)
-            if not de_la_seccion:
-                continue
-            valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_section', 'name': titulos[seccion], 'origen': 'calculado'})
-            dias_puestos = False
-            for linea in de_la_seccion:
-                regla = linea.salary_rule_id
-                ajuste = ajustes.get(regla.id)
-                posicion = vistos_por_codigo[regla.code]
-                vistos_por_codigo[regla.code] += 1
-                candidatas = entradas.get(regla.code, [])
-                entrada = candidatas[posicion] if posicion < len(candidatas) else False
-                origen = 'novedad' if entrada else 'calculado'
-                tipo = entrada.input_type_id if entrada else self.env['hr.payslip.input.type']
-                unidad = (tipo.l10n_co_ne_unidad if (tipo and tipo.is_quantity) else False) or regla.l10n_co_ne_unidad or False
-                valores.append({
-                    'slip_id': recibo.id, 'sequence': siguiente(), 'name': linea.name, 'origen': origen, 'line_id': linea.id,
-                    'salary_rule_id': regla.id, 'input_id': entrada.id if entrada else False, 'input_type_id': tipo.id if tipo else False,
-                    'quantity': linea.quantity, 'rate': linea.rate, 'amount': linea.amount, 'total': linea.total, 'unidad': unidad,
-                    'ajustado': bool(ajuste)})
-                if ajuste:
-                    texto = _('Ajustado por la empresa.')
-                    if ajuste.con_sugerido:
-                        texto = _('Ajustado por la empresa. Sugerido: %s', formatLang(self.env, ajuste.sugerido_total, digits=2))
-                    valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_note', 'name': texto, 'origen': 'calculado'})
-                if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
-                        and recibo.struct_id.use_worked_day_lines):
-                    dias_puestos = True
-                    for dia in recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)):
-                        if not (dia.number_of_days or dia.number_of_hours):
-                            continue
-                        valores.append({
-                            'slip_id': recibo.id, 'sequence': siguiente(), 'name': dia.name or dia.work_entry_type_id.name, 'origen': 'dias',
-                            'worked_day_id': dia.id, 'quantity': dia.number_of_days, 'unidad': 'dias', 'rate': 0.0})
+        seccion_actual, dias_puestos = None, False
+        for fila in recibo._ne_filas_de_concepto():
+            seccion, linea, regla, ajuste, entrada, tipo = (
+                fila['seccion'], fila['linea'], fila['regla'], fila['ajuste'], fila['entrada'], fila['tipo'])
+            if seccion != seccion_actual:
+                seccion_actual, dias_puestos = seccion, False
+                valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_section', 'name': titulos[seccion], 'origen': 'calculado'})
+            valores.append({
+                'slip_id': recibo.id, 'sequence': siguiente(), 'name': fila['nombre'], 'origen': 'novedad' if entrada else 'calculado', 'line_id': linea.id,
+                'salary_rule_id': regla.id, 'input_id': entrada.id if entrada else False, 'input_type_id': tipo.id if tipo else False,
+                'quantity': fila['cantidad'], 'rate': fila['porcentaje'], 'amount': fila['importe'], 'total': fila['total'], 'unidad': fila['unidad'],
+                'ajustado': bool(ajuste)})
+            if ajuste:
+                texto = _('Ajustado por la empresa.')
+                if ajuste.con_sugerido:
+                    texto = _('Ajustado por la empresa. Sugerido: %s', formatLang(self.env, ajuste.sugerido_total, digits=2))
+                valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_note', 'name': texto, 'origen': 'calculado'})
+            if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
+                    and recibo.struct_id.use_worked_day_lines):
+                dias_puestos = True
+                for dia in recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)):
+                    if not (dia.number_of_days or dia.number_of_hours):
+                        continue
+                    valores.append({
+                        'slip_id': recibo.id, 'sequence': siguiente(), 'name': dia.name or dia.work_entry_type_id.name, 'origen': 'dias',
+                        'worked_day_id': dia.id, 'quantity': dia.number_of_days, 'unidad': 'dias', 'rate': 0.0})
         return valores

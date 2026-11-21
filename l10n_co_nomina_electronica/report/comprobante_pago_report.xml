@@ -11,18 +11,8 @@
          Media hoja A4 horizontal (A5, 210 x 148 mm) con un formato de papel PROPIO del informe: no cambia el formato de
          papel de la compañía ni el de otros informes.
          =================================================================== -->
-    <record id="paperformat_comprobante_pago" model="report.paperformat">
-        <field name="name">Comprobante de pago (A5 horizontal)</field>
-        <field name="default" eval="False"/>
-        <field name="format">A5</field>
-        <field name="orientation">Landscape</field>
-        <field name="margin_top">30</field>
-        <field name="margin_bottom">18</field>
-        <field name="margin_left">8</field>
-        <field name="margin_right">8</field>
-        <field name="header_spacing">24</field>
-        <field name="dpi">90</field>
-    </record>
+    <!-- El formato de papel ``paperformat_comprobante_pago`` (A5 horizontal) se define en ``hr_payslip_ne_report.xml``: lo comparten la colilla
+         por recibo y este comprobante (E11 pieza 5a: la colilla también es de media página). -->
 
     <record id="action_report_comprobante_pago" model="ir.actions.report">
         <field name="name">Comprobante de pago por fecha de pago</field>

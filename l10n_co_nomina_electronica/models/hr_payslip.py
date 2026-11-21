@@ -89,6 +89,10 @@ _NOVEDAD_AUSENCIA_CALENDARIO_CODES = {
     'CO_LIC_MAT', 'CO_LIC_PAT', 'CO_INC_COMUN', 'CO_INC_LABORAL',
 }
 
+# Secciones de «Conceptos de pago» (E11 pieza 3, .289) y de la colilla (pieza 5a, .291): UNA sola fuente para la pestaña y el informe. Las claves
+# son valores de ``hr.salary.rule.category.l10n_co_ne_seccion_concepto``; el orden es el de impresión.
+NE_SECCIONES_CONCEPTO = (('devengados', 'Devengados'), ('deducciones', 'Deducciones'))
+
 DEDUCTION_SIMPLE_CONCEPTS = {
     'PensionVoluntaria': 'PensionVoluntaria',
     'RetencionFuente': 'RetencionFuente',
@@ -722,6 +726,84 @@ class HrPayslip(models.Model):
     def _ne_regenerar_conceptos(self):
         """Regenera las filas de «Conceptos de pago» de estos recibos (solo los de estructuras que lo usan)."""
         self.env['l10n.co.payslip.concepto']._regenerar_de_recibos(self)
+
+    def _ne_filas_de_concepto(self):
+        """Filas de conceptos del recibo, en el orden de impresión (E11 pieza 5a, .291, doc 74 §4.2): FUENTE ÚNICA de la pestaña «Conceptos de pago»
+        (``l10n.co.payslip.concepto._valores_del_recibo``) y de la colilla (``_ne_colilla``), para que no puedan diferir. Solo lee: no escribe ni
+        recalcula nada.
+
+        Una fila por línea del recibo que se imprime (``appears_on_payslip``), cuya categoría tiene sección ``devengados`` o ``deducciones``
+        (``NE_SECCIONES_CONCEPTO``) y que tiene valor, o que la empresa ajustó (una línea ajustada a 0 sigue visible). Orden: la sección y,
+        dentro de ella, la secuencia de la línea. Cada fila trae la sección, la línea y la regla, el ajuste de la empresa (si hay), la novedad que
+        la origina (la i-ésima línea de un código se enlaza a la i-ésima novedad de ese código) y los valores ya resueltos: nombre, cantidad,
+        unidad (la del tipo de novedad si lleva cantidad; si no, la de la regla), porcentaje, importe y total."""
+        self.ensure_one()
+        ajustes = {a.salary_rule_id.id: a for a in self.l10n_co_ajuste_ids}
+        entradas = defaultdict(list)
+        for entrada in self.input_line_ids.sorted(lambda i: (i.sequence, i.id)):
+            entradas[entrada.code].append(entrada)
+        secciones = dict(NE_SECCIONES_CONCEPTO)
+        lineas = self.line_ids.filtered(
+            lambda l: l.appears_on_payslip and l.category_id.l10n_co_ne_seccion_concepto in secciones
+            and (l.total or l.salary_rule_id.id in ajustes)).sorted(lambda l: (l.sequence, l.id))
+        vistos_por_codigo = defaultdict(int)
+        filas = []
+        for seccion in secciones:
+            for linea in lineas.filtered(lambda l: l.category_id.l10n_co_ne_seccion_concepto == seccion):
+                regla = linea.salary_rule_id
+                posicion = vistos_por_codigo[regla.code]
+                vistos_por_codigo[regla.code] += 1
+                candidatas = entradas.get(regla.code, [])
+                entrada = candidatas[posicion] if posicion < len(candidatas) else False
+                tipo = entrada.input_type_id if entrada else self.env['hr.payslip.input.type']
+                unidad = (tipo.l10n_co_ne_unidad if (tipo and tipo.is_quantity) else False) or regla.l10n_co_ne_unidad or False
+                filas.append({
+                    'seccion': seccion, 'linea': linea, 'regla': regla, 'ajuste': ajustes.get(regla.id), 'entrada': entrada, 'tipo': tipo,
+                    'nombre': linea.name, 'cantidad': linea.quantity, 'unidad': unidad, 'porcentaje': linea.rate, 'importe': linea.amount,
+                    'total': linea.total})
+        return filas
+
+    def _ne_colilla(self):
+        """Datos de la tabla de la colilla (E11 pieza 5a, .291, doc 74 §4): las secciones «Devengados» y «Deducciones» con sus filas, los totales por
+        sección y el neto. Sale de las LÍNEAS ya calculadas (``_ne_filas_de_concepto``) y del neto de la estructura (``_ne_pdf_neto``, que sin línea de
+        neto lanza un error claro): no recalcula ni escribe. Es un comprobante INTERNO: no lleva el ajuste de la empresa (ni su nota de sugerido) ni
+        el costo de la empresa; lo ajustado se imprime con su valor.
+
+        Reglas de impresión (el diseño de «Conceptos de pago»): cantidad y unidad solo si la fila tiene unidad (un concepto monetario las deja
+        vacías: ``False``); el porcentaje solo si es distinto de 100; las deducciones van con su signo (negativas). ``diferencia`` = neto - total
+        devengado - total de deducciones (0 si la tabla cuadra con el neto, o si difiere en menos de un peso: redondeo): si no cuadra NO se oculta ni
+        se bloquea la impresión (criterio del Frente 5: ``_ne_desglose()['diferencia']``), la plantilla la imprime como una fila «Diferencia sin
+        clasificar»."""
+        self.ensure_one()
+        neto = self._ne_pdf_neto()
+        unidades = dict(self.env['hr.salary.rule']._fields['l10n_co_ne_unidad']._description_selection(self.env))
+        titulos = {'devengados': _('Devengados'), 'deducciones': _('Deducciones')}
+        filas = self._ne_filas_de_concepto()
+        secciones = []
+        for seccion, _titulo in NE_SECCIONES_CONCEPTO:
+            de_la_seccion = [f for f in filas if f['seccion'] == seccion]
+            if not de_la_seccion:
+                continue
+            secciones.append({'seccion': seccion, 'titulo': titulos[seccion], 'filas': [{
+                'nombre': f['nombre'],
+                'cantidad': f['cantidad'] if f['unidad'] else False,
+                'unidad': unidades.get(f['unidad'], '') if f['unidad'] else '',
+                'porcentaje': False if float_is_zero(f['porcentaje'] - 100.0, precision_digits=4) else f['porcentaje'],
+                'importe': f['importe'],
+                'total': f['total'],
+            } for f in de_la_seccion]})
+        total_devengado = sum(f['total'] for f in filas if f['seccion'] == 'devengados')
+        total_deducciones = sum(f['total'] for f in filas if f['seccion'] == 'deducciones')
+        diferencia = self.company_id.currency_id.round(neto - total_devengado - total_deducciones)
+        if abs(diferencia) < self.env['l10n.co.ne.documento']._NE_UMBRAL_CONCILIACION:
+            diferencia = 0.0      # menos de un peso es redondeo (mismo umbral que la conciliación C4): no se imprime
+        return {
+            'secciones': secciones,
+            'total_devengado': total_devengado,
+            'total_deducciones': total_deducciones,
+            'neto': neto,
+            'diferencia': diferencia,
+        }
 
     @api.model
     def _ne_generar_conceptos_pendientes(self):
