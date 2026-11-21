@@ -134,17 +134,20 @@ class TestAjusteConceptoRecibo(TransactionCase):
         recibo = self._recibo()
         linea = self._linea(recibo, 'CO_SALUD_EMP')
         sugerido_total = linea.total
+        # ``compute_sheet`` borra las líneas del recibo y crea otras (nativo ``hr_payslip.py:600``): se leen ANTES de calcular, porque ``linea``
+        # ya no existe después (N2 «co» de .289: MissingError en la línea 59140).
+        cantidad, porcentaje = linea.quantity, linea.rate
         neto0, retencion0 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
         nuevo_importe = round(linea.amount / 2.0, 2)          # a la precisión con que se guarda el importe del ajuste
         ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=nuevo_importe)
         recibo.compute_sheet()
-        total_ajustado = nuevo_importe * linea.quantity * linea.rate / 100.0
+        total_ajustado = nuevo_importe * cantidad * porcentaje / 100.0
         self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), total_ajustado, delta=0.01)
         neto1, retencion1 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
         self.assertAlmostEqual(neto1 - neto0, (total_ajustado - sugerido_total) + (retencion1 - retencion0), delta=0.01)
         oraculo = self._recibo()
         regla = self._regla('CO_SALUD_EMP')
-        regla.amount_python_compute = 'result = %r\nresult_qty = %r\nresult_rate = %r' % (nuevo_importe, linea.quantity, linea.rate)
+        regla.amount_python_compute = 'result = %r\nresult_qty = %r\nresult_rate = %r' % (nuevo_importe, cantidad, porcentaje)
         oraculo.compute_sheet()
         self.assertFalse(oraculo.l10n_co_ajuste_ids, 'El oráculo no lleva ajuste')
         self.assertEqual(self._lineas(recibo), self._lineas(oraculo))
