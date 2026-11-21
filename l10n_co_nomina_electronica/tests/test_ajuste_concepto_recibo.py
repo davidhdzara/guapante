@@ -282,15 +282,18 @@ class TestAjusteConceptoRecibo(TransactionCase):
         recibo = self._recibo()
         sugerido = self._total(recibo, 'CO_SALUD_EMP')
         ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        moneda = recibo.company_id.currency_id
         notas = self._notas(recibo)
         self.assertIn('Ajuste creado', notas)
         self.assertIn('CO_SALUD_EMP', notas)
-        self.assertIn('Sugerido: %.2f' % sugerido, notas)
-        self.assertIn('Nuevo: 0.00', notas)
+        # .293: los importes salen con el formato monetario de la compañía (símbolo, separadores y decimales de la moneda), como en pantalla.
+        self.assertIn('Sugerido: %s' % moneda.format(sugerido), notas)
+        self.assertIn('Nuevo: %s' % moneda.format(0.0), notas)
+        self.assertNotIn('%.2f' % sugerido, notas, 'Sin el formato crudo «%.2f» (sin separadores de miles)')
         self.assertIn(self.env.user.name, notas)
         ajuste.write({'amount': round(sugerido / 2.0 / ajuste.quantity * 100.0 / ajuste.rate, 2)})
         self.assertIn('Ajuste cambiado', self._notas(recibo))
-        self.assertIn('Anterior: 0.00', self._notas(recibo))
+        self.assertIn('Anterior: %s' % moneda.format(0.0), self._notas(recibo))
         ajuste.unlink()
         self.assertIn('Ajuste eliminado', self._notas(recibo))
 
