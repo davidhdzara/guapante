@@ -699,6 +699,11 @@ class HrPayslip(models.Model):
         help='Vista de lo calculado: se regenera al final de cada cálculo. Editar una fila cambia su fuente (ajuste o novedad).')
     l10n_co_ne_usa_conceptos = fields.Boolean(
         related='struct_id.l10n_co_ne_conceptos_de_pago', string='La estructura usa «Conceptos de pago»', readonly=True)
+    # E11 pieza 4a (.294, doc 74 §3): «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría); se regenera junto a los conceptos.
+    l10n_co_calculo_ids = fields.One2many(
+        'l10n.co.payslip.calculo', 'slip_id', string='Cálculo del salario', copy=False,
+        help='Vista de solo lectura de lo calculado (sueldo, devengos, bases de cotización, deducciones, aportes de la empresa y provisiones). Se '
+             'regenera al final de cada cálculo. No se copia a otro recibo.')
     l10n_co_total_devengado = fields.Float(string='Total devengado', digits='Payroll', compute='_compute_l10n_co_totales')
     l10n_co_total_deducciones = fields.Float(string='Total deducciones', digits='Payroll', compute='_compute_l10n_co_totales')
     l10n_co_costo_empresa = fields.Float(
@@ -724,8 +729,9 @@ class HrPayslip(models.Model):
             recibo.l10n_co_costo_empresa = costo
 
     def _ne_regenerar_conceptos(self):
-        """Regenera las filas de «Conceptos de pago» de estos recibos (solo los de estructuras que lo usan)."""
+        """Regenera las filas de «Conceptos de pago» y de «Cálculo del salario» de estos recibos (solo los de estructuras que usan «Conceptos de pago»)."""
         self.env['l10n.co.payslip.concepto']._regenerar_de_recibos(self)
+        self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(self)
 
     def _ne_filas_de_concepto(self):
         """Filas de conceptos del recibo, en el orden de impresión (E11 pieza 5a, .291, doc 74 §4.2): FUENTE ÚNICA de la pestaña «Conceptos de pago»
@@ -813,6 +819,10 @@ class HrPayslip(models.Model):
         recibos = self.sudo().with_context(active_test=False).search([
             ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_concepto_ids', '=', False)])
         recibos._ne_regenerar_conceptos()
+        # .294: los recibos que YA tienen sus conceptos (hechos con .289-.293) y todavía no las filas de «Cálculo del salario».
+        sin_calculo = self.sudo().with_context(active_test=False).search([
+            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_calculo_ids', '=', False)])
+        self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(sin_calculo)
         return True
 
     @api.model

@@ -738,7 +738,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
 
         <!-- ==================== CO_LIQ_SALUD ==================== -->
         <record id="hr_salary_rule_co_liq_dias_sp" model="hr.salary.rule">
-            <field name="name">Dias Cotizados Salud y Pension Liquidacion (interno)</field>
+            <field name="name">Dias Cotizados Salud y Pension Liquidacion</field>
             <field name="code">CO_DIAS_SP</field>
             <field name="sequence">89</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -751,7 +751,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_salarial" model="hr.salary.rule">
-            <field name="name">IBC Salarial Liquidacion (interno)</field>
+            <field name="name">IBC Salarial Liquidacion</field>
             <field name="code">CO_IBC_SALARIAL</field>
             <field name="sequence">90</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -764,7 +764,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_remuneracion" model="hr.salary.rule">
-            <field name="name">IBC Remuneracion Base 40% Liquidacion (interno)</field>
+            <field name="name">IBC Remuneracion Base 40% Liquidacion</field>
             <field name="code">CO_IBC_REMUN</field>
             <field name="sequence">92</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -777,7 +777,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_pactados" model="hr.salary.rule">
-            <field name="name">IBC Pactados No Salariales Liquidacion (interno)</field>
+            <field name="name">IBC Pactados No Salariales Liquidacion</field>
             <field name="code">CO_IBC_PACTADOS</field>
             <field name="sequence">93</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -790,7 +790,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_sln" model="hr.salary.rule">
-            <field name="name">IBC Suspension / Licencia No Remunerada Liquidacion (interno)</field>
+            <field name="name">IBC Suspension / Licencia No Remunerada Liquidacion</field>
             <field name="code">CO_IBC_SLN</field>
             <field name="sequence">88</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -803,7 +803,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_incap" model="hr.salary.rule">
-            <field name="name">IBC Incapacidades y Licencias MP Liquidacion (interno)</field>
+            <field name="name">IBC Incapacidades y Licencias MP Liquidacion</field>
             <field name="code">CO_IBC_INCAP</field>
             <field name="sequence">91</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -816,7 +816,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_sp" model="hr.salary.rule">
-            <field name="name">IBC Salud y Pension Liquidacion (interno)</field>
+            <field name="name">IBC Salud y Pension Liquidacion</field>
             <field name="code">CO_IBC_SP</field>
             <field name="sequence">94</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>

@@ -108,6 +108,7 @@
         <record id="hr_salary_rule_category_acumuladores_internos" model="hr.salary.rule.category">
             <field name="name">Acumuladores Internos (invisible)</field>
             <field name="code">ACUM_INT</field>
+            <field name="l10n_co_ne_seccion_concepto">bases</field>
             <field name="note">Categoria para reglas invisibles (appears_on_payslip=False) que
                 guardan un valor interno para que otra formula lo consulte mas adelante (ej.
                 CO_EXENTO_PENSION_AFC, AUD-05/doc 32 -- acumulador anual de exencion combinada de
@@ -939,7 +940,7 @@ result_rate = pct * 100
 
         <!-- ==================== BASE IBC SS (invisible, acumulador H-017a) ==================== -->
         <record id="hr_salary_rule_co_ibc_sln" model="hr.salary.rule">
-            <field name="name">IBC Suspension / Licencia No Remunerada (interno)</field>
+            <field name="name">IBC Suspension / Licencia No Remunerada</field>
             <field name="code">CO_IBC_SLN</field>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -952,7 +953,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_dias_sp" model="hr.salary.rule">
-            <field name="name">Dias Cotizados Salud y Pension (interno)</field>
+            <field name="name">Dias Cotizados Salud y Pension</field>
             <field name="code">CO_DIAS_SP</field>
             <field name="sequence">87</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -965,7 +966,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_dias_arl" model="hr.salary.rule">
-            <field name="name">Dias Cotizados ARL (interno)</field>
+            <field name="name">Dias Cotizados ARL</field>
             <field name="code">CO_DIAS_ARL</field>
             <field name="sequence">88</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -978,7 +979,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_dias_paraf" model="hr.salary.rule">
-            <field name="name">Dias Cotizados Parafiscales (interno)</field>
+            <field name="name">Dias Cotizados Parafiscales</field>
             <field name="code">CO_DIAS_PARAF</field>
             <field name="sequence">89</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -991,7 +992,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_ibc_salarial" model="hr.salary.rule">
-            <field name="name">IBC Salarial (interno)</field>
+            <field name="name">IBC Salarial</field>
             <field name="code">CO_IBC_SALARIAL</field>
             <field name="sequence">90</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1004,7 +1005,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_ibc_incap" model="hr.salary.rule">
-            <field name="name">IBC Maternidad/Paternidad (interno)</field>
+            <field name="name">IBC Maternidad/Paternidad</field>
             <field name="code">CO_IBC_INCAP</field>
             <field name="sequence">91</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1017,7 +1018,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_ibc_remuneracion" model="hr.salary.rule">
-            <field name="name">IBC Remuneracion Base 40% (interno)</field>
+            <field name="name">IBC Remuneracion Base 40%</field>
             <field name="code">CO_IBC_REMUN</field>
             <field name="sequence">92</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1030,7 +1031,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_ibc_pactados" model="hr.salary.rule">
-            <field name="name">IBC Pactados No Salariales (interno)</field>
+            <field name="name">IBC Pactados No Salariales</field>
             <field name="code">CO_IBC_PACTADOS</field>
             <field name="sequence">93</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1043,7 +1044,7 @@ result_rate = pct * 100
         </record>
 
         <record id="hr_salary_rule_co_ibc_sp" model="hr.salary.rule">
-            <field name="name">IBC Salud y Pension (interno)</field>
+            <field name="name">IBC Salud y Pension</field>
             <field name="code">CO_IBC_SP</field>
             <field name="sequence">94</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1061,7 +1062,7 @@ result = payslip._ne_ibc_limites(
         </record>
 
         <record id="hr_salary_rule_co_ibc_arl" model="hr.salary.rule">
-            <field name="name">IBC ARL (interno)</field>
+            <field name="name">IBC ARL</field>
             <field name="code">CO_IBC_ARL</field>
             <field name="sequence">95</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1079,7 +1080,7 @@ result = payslip._ne_ibc_limites(
         </record>
 
         <record id="hr_salary_rule_co_ibc_paraf" model="hr.salary.rule">
-            <field name="name">IBC Parafiscales (interno)</field>
+            <field name="name">IBC Parafiscales</field>
             <field name="code">CO_IBC_PARAF</field>
             <field name="sequence">96</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1097,7 +1098,7 @@ result = payslip._ne_ibc_limites(
         </record>
 
         <record id="hr_salary_rule_co_ss_base_ibc" model="hr.salary.rule">
-            <field name="name">Base IBC Seguridad Social (acumulador interno)</field>
+            <field name="name">Base IBC Seguridad Social</field>
             <field name="code">CO_SS_BASE_IBC</field>
             <field name="sequence">103</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1208,7 +1209,7 @@ en meses futuros via payslip._sum().</field>
 
         <!-- ==================== RETEFUENTE BASE GROSS (invisible, acumulador doc 08) ==================== -->
         <record id="hr_salary_rule_co_retefuente_base_gross" model="hr.salary.rule">
-            <field name="name">Retención Fuente - Base Bruto (acumulador interno)</field>
+            <field name="name">Retención Fuente - Base Bruto</field>
             <field name="code">CO_RETEFUENTE_BASE_GROSS</field>
             <field name="sequence">112</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -1237,7 +1238,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
 
         <!-- ==================== RETEFUENTE BASE IBC (invisible, acumulador doc 08) ==================== -->
         <record id="hr_salary_rule_co_retefuente_base_ibc" model="hr.salary.rule">
-            <field name="name">Retención Fuente - Base IBC (acumulador interno)</field>
+            <field name="name">Retención Fuente - Base IBC</field>
             <field name="code">CO_RETEFUENTE_BASE_IBC</field>
             <field name="sequence">113</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>

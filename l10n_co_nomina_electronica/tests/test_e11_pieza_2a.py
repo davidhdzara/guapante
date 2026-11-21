@@ -19,9 +19,10 @@ _SECCIONES = {
     'prestaciones': 'devengados', 'vacaciones': 'devengados', 'incapacidades': 'devengados',
     'deducciones': 'deducciones', 'seguridad_social_emp': 'deducciones',
     'seguridad_social_cia': 'costo_empresa', 'provisiones': 'costo_empresa',
+    'acumuladores_internos': 'bases',      # .294 (pieza 4a): los acumuladores son la sección «Bases» de «Cálculo del salario»
 }
-# Sin sección a propósito: la raíz «Devengados» (trae la línea del neto), los totales de solo display y los acumuladores internos.
-_SIN_SECCION = ('devengados', 'totales_display', 'acumuladores_internos')
+# Sin sección a propósito: la raíz «Devengados» (trae la línea del neto) y los totales de solo display.
+_SIN_SECCION = ('devengados', 'totales_display')
 # Ejemplos de lo que TL pidió (no es la regla, solo una red de seguridad legible): ajustables / derivados que NO lo son.
 _EJEMPLOS_AJUSTABLES = ('CO_BASICO', 'CO_AUX_TRANS', 'CO_INC_COMUN', 'CO_LIC_MAT', 'CO_HED', 'CO_HRNDF', 'CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP',
                         'CO_RETEFUENTE', 'CO_SINDICATO', 'CO_EMBARGO')
@@ -102,7 +103,7 @@ class TestE11Pieza2a(TransactionCase):
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         regla = self._del_modulo('hr.salary.rule').filtered(lambda r: r.code == 'CO_OTRAS_DED' and r.struct_id == general)[:1]
         self.assertTrue(regla.l10n_co_ne_ajustable)
-        sin_seccion = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_acumuladores_internos')
+        sin_seccion = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_totales_display')
         con_seccion = regla.category_id
         regla.category_id = sin_seccion
         self.assertFalse(regla.l10n_co_ne_ajustable, 'Una categoría sin sección no se ajusta')

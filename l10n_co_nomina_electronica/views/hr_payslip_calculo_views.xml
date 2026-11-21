@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 pieza 4a (.294, doc 74 §3): pestaña «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría UGPP). Solo para las estructuras con el
+         interruptor l10n_co_ne_conceptos_de_pago; en las demás la pestaña nativa «Salary Computation» (hr_payroll/views/hr_payslip_views.xml:193 en v18,
+         :226 en v19) queda igual. Selectores por @name (nunca por @string), sin colores ni íconos propios. El campo es de solo lectura: sin «Agregar», sin
+         papelera, sin edición; la lista usa el widget nativo section_and_note_one2many del módulo account (secciones y notas como una orden de venta). -->
+    <record id="view_payslip_form_ne_calculo" model="ir.ui.view">
+        <field name="name">hr.payslip.form.ne.calculo</field>
+        <field name="model">hr.payslip</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+        <field name="priority">101</field>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='salary_computation']" position="attributes">
+                <attribute name="invisible">l10n_co_ne_usa_conceptos</attribute>
+            </xpath>
+            <xpath expr="//page[@name='salary_computation']" position="after">
+                <page string="Cálculo del salario" name="calculo_del_salario" invisible="not l10n_co_ne_usa_conceptos">
+                    <field name="l10n_co_calculo_ids" nolabel="1" mode="list" widget="section_and_note_one2many" readonly="1">
+                        <list>
+                            <field name="sequence" column_invisible="True"/>
+                            <field name="display_type" column_invisible="True"/>
+                            <field name="name" widget="section_and_note_text"/>
+                            <field name="quantity"/>
+                            <field name="unidad"/>
+                            <field name="rate"/>
+                            <field name="amount"/>
+                            <field name="total"/>
+                        </list>
+                    </field>
+                    <group col="12">
+                        <group colspan="7" name="calculo_nota"/>
+                        <group class="oe_subtotal_footer" colspan="5" name="calculo_totales">
+                            <field name="l10n_co_total_devengado"/>
+                            <field name="l10n_co_total_deducciones"/>
+                            <field name="net_wage" string="Neto a pagar" class="oe_subtotal_footer_separator"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
