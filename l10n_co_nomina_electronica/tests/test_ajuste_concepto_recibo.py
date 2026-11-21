@@ -315,3 +315,26 @@ class TestAjusteConceptoRecibo(TransactionCase):
         self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'), self.cr.savepoint():
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_SALUD_EMP').id, 'amount': 1.0})
+
+    # ── 15. dos cálculos en la misma transacción (N2 «co» de .289: test_02 y test_03 caían en el cálculo siguiente al ajuste) ────
+    def test_15_el_sugerido_se_registra_en_cada_calculo_aunque_ya_exista_un_entorno_con_el_mismo_contexto(self):
+        """``Environment.__new__`` (``odoo/api.py:570``) recorre ``transaction.envs`` y devuelve el entorno que ya existe si
+        ``(cr, uid, su, uid_origin, context)`` es IGUAL POR VALOR (``:584-587``): un ``{}`` nuevo es igual a un ``{}`` viejo. Sin el token
+        ``ne_calculo`` de ``compute_sheet`` el cálculo recibía el entorno del cálculo anterior con SU diccionario ``ne_sugeridos``: el gancho
+        escribía allí, ``_ne_registrar_ajustes`` leía otro, vacío, y el ajuste quedaba «sin línea» aunque sí se aplicaba. ``previo`` mantiene VIVO
+        a propósito un entorno con el contexto que dejaba el cálculo anterior (``with_company`` + ``ne_sugeridos={}``): así la prueba no depende de
+        cuándo el recolector de basura suelte el entorno viejo."""
+        recibo = self._recibo()                                  # cálculo 1, sin ajuste: su diccionario de sugeridos quedaba vacío
+        sugerido = self._total(recibo, 'CO_SALUD_EMP')
+        previo = recibo.with_company(recibo.company_id).with_context(ne_sugeridos={})
+        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        recibo.compute_sheet()                                   # cálculo 2: el primero que ve el ajuste
+        self.assertEqual(ajuste.estado, 'aplicado', 'El gancho vio el ajuste y el registro halló lo sugerido')
+        self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
+        self.assertFalse(previo.env.context['ne_sugeridos'], 'El diccionario del entorno viejo no se usó')
+        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
+        recibo.compute_sheet()                                   # cálculos 3 y 4, seguidos
+        recibo.compute_sheet()
+        self.assertEqual(ajuste.estado, 'aplicado')
+        self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
+        self.assertNotIn('no se aplicó en este cálculo', self._notas(recibo))
