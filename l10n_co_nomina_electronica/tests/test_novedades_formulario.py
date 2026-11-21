@@ -20,8 +20,10 @@ FILAS de «Conceptos de pago» (``l10n_co_concepto_ids``); ``odoo.tests.Form`` n
   ``HrPayslip.write`` en la rama de ``l10n_co_concepto_ids`` (``models/hr_payslip.py:771``);
 - el camino de ``input_line_ids`` del .286 se prueba con el interruptor de la estructura APAGADO (es configuración por estructura: sin él la página
   nativa queda visible y el recibo no genera filas), con ``Form`` y con ``write({'input_line_ids': [...]})`` (lo que envía ``web_save``), que también
-  usan el ORM y los asistentes. Así la prueba no depende del diario de otra estructura (``journal_id`` es un ``related`` de la estructura y la copia de
-  la base solo lo trae en la general: ``Form`` exige el campo requerido al guardar)."""
+  usan el ORM y los asistentes.
+
+.296: ``journal_id`` es un ``related`` de la estructura y ``Form`` exige el campo requerido al guardar; ya no se toma de la base (la copia de
+staging_dev solo lo traía en la general): ``setUpClass`` fija un diario de prueba (``tests/common_diario.py``)."""
 
 from datetime import date
 from unittest.mock import patch
@@ -29,6 +31,7 @@ from unittest.mock import patch
 from odoo import Command
 from odoo.tests import Form
 from odoo.tests.common import TransactionCase, tagged
+from .common_diario import fijar_diario_de_salarios
 
 
 @tagged('post_install', '-at_install')
@@ -44,6 +47,7 @@ class TestNovedadesDesdeElFormulario(TransactionCase):
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Estructura Novedades Formulario', 'country_id': cls.env.ref('base.co').id})
         cls.est_general = cls.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        fijar_diario_de_salarios(cls.env, cls.est_general)      # .296: ``Form`` exige el diario; no se toma de la base
         cls.tipo_bonificacion = cls.env.ref('l10n_co_nomina_electronica.input_co_bonif_nosal')
         cls.n = 0
 

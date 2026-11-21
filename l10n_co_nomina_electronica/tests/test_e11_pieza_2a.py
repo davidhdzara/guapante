@@ -12,6 +12,7 @@ NO EJECUTADAS en Odoo al escribirlas (el N1 necesita ``-u``: datos y vistas nuev
 from odoo.exceptions import ValidationError
 from odoo.tests import Form
 from odoo.tests.common import TransactionCase, tagged
+from .common_diario import fijar_diario_de_salarios
 
 _PREFIJO = 'hr_salary_rule_category_'
 _SECCIONES = {
@@ -197,6 +198,7 @@ class TestE11Pieza2a(TransactionCase):
 
     def test_el_formulario_de_la_estructura_trae_el_interruptor(self):
         estructura = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
+        fijar_diario_de_salarios(self.env, estructura)       # .296: el formulario de la estructura exige el diario; no se toma de la base
         self.assertFalse(estructura.l10n_co_ne_conceptos_de_pago)
         with Form(estructura) as formulario:
             formulario.l10n_co_ne_conceptos_de_pago = True

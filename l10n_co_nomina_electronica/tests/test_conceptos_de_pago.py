@@ -18,6 +18,7 @@ from lxml import etree
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import Form
 from odoo.tests.common import TransactionCase, tagged
+from .common_diario import fijar_diario_de_salarios
 
 _G_MANAGER = 'hr_payroll.group_hr_payroll_manager'
 _G_USER = 'hr_payroll.group_hr_payroll_user'
@@ -41,6 +42,7 @@ class TestConceptosDePago(TransactionCase):
         cls.prima = ref('l10n_co_nomina_electronica.hr_payroll_structure_co_prima')
         cls.tipo_bonif_nosal = ref('l10n_co_nomina_electronica.input_co_bonif_nosal')
         cls.Concepto = cls.env['l10n.co.payslip.concepto']
+        fijar_diario_de_salarios(cls.env, cls.general)      # .296: ``Form`` exige el diario; no se toma de la base
         cls.n = 0
 
     # ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
