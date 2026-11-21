@@ -10,6 +10,7 @@
   UNA vez; editar, agregar y borrar una novedad desde la misma tabla siguen el camino de .286 (una sola llamada de ``compute_sheet`` por guardado y
   el neto igual al de «Calcular hoja»)."""
 
+import json
 from datetime import date
 from unittest.mock import patch
 
@@ -117,6 +118,32 @@ class TestConceptosDePago(TransactionCase):
         for xpath in arch.xpath('//xpath'):
             self.assertNotIn('@string', xpath.get('expr') or '', 'La herencia debe anclar por @name o posición')
             self.assertNotIn('@help', xpath.get('expr') or '')
+
+    def _columna(self, nombre):
+        vista = self.env['hr.payslip'].get_view(view_type='form')
+        arch = etree.fromstring(vista['arch'].encode('utf-8') if isinstance(vista['arch'], str) else vista['arch'])
+        columnas = arch.xpath("//field[@name='l10n_co_concepto_ids']//list/field[@name='%s']" % nombre)
+        self.assertEqual(len(columnas), 1, nombre)
+        return columnas[0]
+
+    def test_la_columna_porcentaje_se_muestra_solo_si_es_distinta_de_100_y_con_dos_decimales(self):
+        """.297 (pedido del TL tras la captura de QA sobre .290): el % salía «100,0000» (4 decimales, la precisión «Payroll Rate»). Misma regla que aprobó David
+        para la colilla: solo si es distinto de 100 y con 2 decimales, con atributos nativos de la vista (``digits`` y ``invisible`` por fila)."""
+        columna = self._columna('rate')
+        self.assertEqual(json.loads(columna.get('digits')), [16, 2])
+        invisible = columna.get('invisible') or ''
+        self.assertIn('rate == 100', invisible, 'Con 100 el porcentaje no se muestra')
+        self.assertIn("origen == 'dias'", invisible, 'Se conserva que la fila de días no lo muestra')
+        self.assertIsNone(columna.get('style'))
+        self.assertEqual(self.env['l10n.co.payslip.concepto']._fields['rate']._digits, 'Payroll Rate',
+                         'El campo del modelo conserva su precisión: el cambio es solo de presentación')
+
+    def test_el_tipo_de_novedad_es_una_columna_opcional_oculta_por_defecto(self):
+        """.297: en las filas calculadas el tipo sale vacío; pasa a columna opcional (patrón nativo de las listas de Ventas, ``optional="hide"``)."""
+        columna = self._columna('input_type_id')
+        self.assertEqual(columna.get('optional'), 'hide')
+        self.assertFalse(columna.get('column_invisible'), 'Sigue disponible en el menú de columnas opcionales')
+        self.assertEqual(self._columna('name').get('optional'), None, 'Solo el tipo es opcional')
 
     # ── estructuras con y sin el interruptor ──────────────────────────────────────────────────────────────────────────────────
     def test_03_solo_las_estructuras_con_el_interruptor_tienen_filas(self):

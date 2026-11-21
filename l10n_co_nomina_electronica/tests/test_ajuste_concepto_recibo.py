@@ -7,6 +7,7 @@ comparación no depende del gancho que se prueba), la supervivencia al recálcul
 aislamiento por compañía. NO EJECUTADAS en Odoo al escribirlas (el N1 necesita ``-u``: tabla, permisos y reglas de registro nuevos)."""
 
 from datetime import date
+from html import unescape
 from unittest.mock import patch
 
 from psycopg2 import IntegrityError
@@ -285,7 +286,8 @@ class TestAjusteConceptoRecibo(TransactionCase):
         sugerido = self._total(recibo, 'CO_SALUD_EMP')
         ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
         moneda = recibo.company_id.currency_id
-        notas = self._notas(recibo)
+        # El chatter guarda el HTML con el espacio de no separación del formato monetario como ``&nbsp;``: se compara el texto ya decodificado.
+        notas = unescape(self._notas(recibo))
         self.assertIn('Ajuste creado', notas)
         self.assertIn('CO_SALUD_EMP', notas)
         # .293: los importes salen con el formato monetario de la compañía (símbolo, separadores y decimales de la moneda), como en pantalla.
@@ -295,7 +297,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
         self.assertIn(self.env.user.name, notas)
         ajuste.write({'amount': round(sugerido / 2.0 / ajuste.quantity * 100.0 / ajuste.rate, 2)})
         self.assertIn('Ajuste cambiado', self._notas(recibo))
-        self.assertIn('Anterior: %s' % moneda.format(0.0), self._notas(recibo))
+        self.assertIn('Anterior: %s' % moneda.format(0.0), unescape(self._notas(recibo)))
         ajuste.unlink()
         self.assertIn('Ajuste eliminado', self._notas(recibo))
 

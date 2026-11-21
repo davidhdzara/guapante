@@ -194,7 +194,7 @@ class HrPayslip(models.Model):
             fechas = ', '.join(dia.strftime('%d/%m/%Y') for dia in sorted(clasificacion['sin_entrada']))
             recibo.l10n_co_ne_aviso_dias = _(
                 'No hay entrada de trabajo de %(empleado)s en: %(fechas)s. Esos días se pagan como laborados con el horario del contrato. '
-                'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y pulse «Actualizar desde entradas de trabajo».',
+                'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y use «Recalcular la hoja entera» en el menú Acciones.',
                 empleado=recibo.employee_id.name, fechas=fechas)
 
     @api.depends('company_id.l10n_co_ne_environment', 'company_id.l10n_co_ne_certification_process')

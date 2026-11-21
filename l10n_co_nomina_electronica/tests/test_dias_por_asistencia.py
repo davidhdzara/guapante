@@ -421,7 +421,7 @@ class TestDiasPorAsistencia(TransactionCase):
     # ── recibos ya calculados y estructuras que no se tocan ───────────
     def test_un_recibo_ya_calculado_no_cambia_solo_y_el_boton_lo_actualiza(self):
         """Un recibo calculado con el comportamiento anterior conserva sus líneas al «Calcular hoja» (el nativo no regenera los días);
-        el botón «Actualizar desde entradas de trabajo» (borrador) las rearma con los días pagados."""
+        la acción «Recalcular la hoja entera» del menú Acciones (borrador) las rearma con los días pagados."""
         recibo = self._recibo()
         self._como_antes(recibo)
         dias_nativos = self._dias(recibo, 'WORK100')
@@ -655,6 +655,24 @@ class TestDiasPorAsistencia(TransactionCase):
         self.assertIn('10/09/2026', recibo.l10n_co_ne_aviso_dias)
         self.assertIn('11/09/2026', recibo.l10n_co_ne_aviso_dias)
         self.assertEqual(self._linea(recibo, 'CO_BASICO').quantity, 15.0, 'El pago no cambia: lo manda el horario')
+
+    def test_el_aviso_nombra_el_control_que_existe(self):
+        """H-QA-039 (QA, 21-nov): el aviso decía «pulse Actualizar desde entradas de trabajo» y ese control no existe. Lo real es la acción de servidor
+        nativa «Recompute Whole Sheet» (es: «Recalcular la hoja entera»), en el menú Acciones del recibo y de la lista, que llama a
+        ``action_refresh_from_work_entries`` (hr_payroll ``hr_payslip_views.xml:341-350``). El texto fija el nombre en español y el menú; la prueba
+        también comprueba que esa acción nativa exista y haga lo que el aviso pide."""
+        recibo = self._recibo(date(2026, 9, 1), date(2026, 9, 15))
+        self._entradas_del_dia(recibo, date(2026, 9, 10)).unlink()
+        self._como_ahora(recibo)
+        recibo.invalidate_recordset(['l10n_co_ne_aviso_dias'])
+        aviso = recibo.l10n_co_ne_aviso_dias
+        self.assertIn('10/09/2026', aviso)
+        self.assertIn('«Recalcular la hoja entera»', aviso)
+        self.assertIn('menú Acciones', aviso)
+        self.assertNotIn('Actualizar desde entradas', aviso, 'Ese control no existe')
+        accion = self.env.ref('hr_payroll.action_hr_payroll_recompute_whole_sheet')
+        self.assertEqual((accion.binding_model_id.model, accion.state), ('hr.payslip', 'code'))
+        self.assertIn('action_refresh_from_work_entries', accion.code)
 
     def test_ajuste_mes_comercial_en_la_quincena_del_16_al_31(self):
         """Agosto tiene 31 días: la quincena 16 al 31 tiene 16 fechas y se pagan 15 (el día 31 no se paga): línea «Ajuste mes comercial» de -1."""
