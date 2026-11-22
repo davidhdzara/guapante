@@ -26,7 +26,8 @@ class TestConstantes184(TransactionCase):
         self.assertEqual(self.company._ne_config_int_param(clave, 200), 3)
 
     def test_provision_de_vacaciones_es_un_veinticuatroavo_del_salario(self):
-        """3.000.000 x 30 / 720 = 125.000 (= 3.000.000 / 24, el valor de la constante anterior)."""
+        """3.000.000 x 30 / 720 = 125.000 (= 3.000.000 / 24, el valor de la constante anterior). .303: sobre el salario ordinario DEVENGADO del recibo (el sueldo que
+        pagó CO_BASICO, la base de vacaciones), no sobre el sueldo del contrato: se pasa en ``result_rules`` como lo hace el motor."""
         tipo = self.env['hr.payroll.structure.type'].create({
             'name': 'Prueba Provision', 'country_id': self.env.ref('base.co').id})
         empleado = self.env['hr.employee'].create({
@@ -43,5 +44,5 @@ class TestConstantes184(TransactionCase):
             'struct_id': self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina').id,
             'date_from': date(2026, 3, 1), 'date_to': date(2026, 3, 31)})
         regla = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_co_prov_vacaciones')
-        resultado = regla._compute_rule({'payslip': recibo, 'contract': contrato})
+        resultado = regla._compute_rule({'payslip': recibo, 'contract': contrato, 'result_rules': {'CO_BASICO': {'total': 3000000.0}}})
         self.assertAlmostEqual(resultado[0], 125000.0, delta=0.01)

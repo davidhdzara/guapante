@@ -35,8 +35,9 @@ _TERCERO_ANTES = {
     'CO_COOPERATIVA': 'l10n_co_ne_cooperativa_partner_id',
     'CO_EDUCACION': 'l10n_co_ne_educacion_partner_id',
 }
-# Las 6 reglas con el factor «2 × SMMLV» antes de .285 (doc 71a §5): código de regla de cada una.
-_REGLAS_CON_TOPE = ('CO_AUX_TRANS', 'CO_PROV_PRIMA', 'CO_PROV_CESANTIAS', 'CO_PRIMA_BASE', 'CO_LIQ_PRIMA', 'CO_LIQ_CESANTIAS')
+# Las reglas con el factor «2 × SMMLV» antes de .285 (doc 71a §5): código de regla de cada una. .303 (doc 78): CO_PROV_PRIMA y CO_PROV_CESANTIAS YA NO leen el tope: su base es lo
+# que paga la línea del auxilio (CO_AUX_TRANS, que sí lo lee), no el sueldo y el auxilio del contrato.
+_REGLAS_CON_TOPE = ('CO_AUX_TRANS', 'CO_PRIMA_BASE', 'CO_LIQ_PRIMA', 'CO_LIQ_CESANTIAS')
 _PARAMETRO_TOPE = 'l10n_co_aux_transporte_tope_smmlv'
 # Un literal 2 pegado a SMMLV: «... 'l10n_co_smmlv', fecha) * 2» o «(smmlv * 2)».
 _LITERAL_DOS = re.compile(r"l10n_co_smmlv'[^\n]*\)\s*\*\s*2\b|\bsmmlv\s*\*\s*2\b")
@@ -108,7 +109,7 @@ class TestE11Pieza1A(TransactionCase):
         self.assertIn('Ley 1/1963', parametro.description)
         self.assertIn('pendiente de confirmar por David', parametro.description)
 
-    def test_las_seis_formulas_leen_el_parametro_y_ya_no_el_literal_2(self):
+    def test_las_cuatro_formulas_leen_el_parametro_y_ya_no_el_literal_2(self):
         for codigo in _REGLAS_CON_TOPE:
             reglas = self._reglas_del_modulo([('code', '=', codigo)])
             self.assertTrue(reglas, codigo)
@@ -119,20 +120,26 @@ class TestE11Pieza1A(TransactionCase):
                 self.assertIn(_PARAMETRO_TOPE, texto, '%s (%s)' % (codigo, regla.struct_id.name))
                 self.assertIsNone(_LITERAL_DOS.search(texto), '%s (%s) aún multiplica por 2' % (codigo, regla.struct_id.name))
 
+    def _provision(self, recibo, codigo):
+        """.303: la provisión es lo que guarda la línea del recibo al calcular la hoja (la base sale de las líneas ya calculadas)."""
+        recibo.compute_sheet()
+        return sum(recibo.line_ids.filtered(lambda l: l.code == codigo).mapped('total'))
+
     def test_cambiar_el_tope_cambia_las_provisiones_que_suman_el_auxilio(self):
-        """Sueldo 4.000.000: entre 2 y 3 SMMLV (2026). Con tope 2 la base de prima/cesantías es el sueldo; con tope 3 suma el auxilio."""
+        """Sueldo 4.000.000: entre 2 y 3 SMMLV (2026). Con tope 2 no se paga auxilio y la base de prima/cesantías es el sueldo; con tope 3 la línea del auxilio se paga y suma.
+        .303: la base sale de lo que paga la línea de CO_AUX_TRANS (que lee el tope), no del sueldo y el auxilio del contrato."""
         recibo = self._recibo(wage=4000000.0, name='Cambia el tope')
         smmlv = recibo._rule_parameter('l10n_co_smmlv', recibo.date_from)
         self.assertTrue(smmlv * 2 < recibo.contract_id.wage <= smmlv * 3, 'Premisa: sueldo entre 2 y 3 SMMLV')
         auxilio = recibo._rule_parameter('l10n_co_aux_transporte', recibo.date_from)
-        reglas = ('hr_salary_rule_co_prov_prima', 'hr_salary_rule_co_prov_cesantias')
-        for xmlid in reglas:
-            self.assertAlmostEqual(self._monto(recibo, xmlid), 4000000.0 / 12, delta=0.005, msg='tope 2: %s' % xmlid)
+        codigos = ('CO_PROV_PRIMA', 'CO_PROV_CESANTIAS')
+        for codigo in codigos:
+            self.assertAlmostEqual(self._provision(recibo, codigo), 4000000.0 / 12, delta=0.01, msg='tope 2: %s' % codigo)
         self.env['hr.rule.parameter.value'].create({
             'rule_parameter_id': self.env.ref('l10n_co_nomina_electronica.rule_parameter_aux_transporte_tope_smmlv').id,
             'parameter_value': '3', 'date_from': date(2026, 1, 1)})
-        for xmlid in reglas:
-            self.assertAlmostEqual(self._monto(recibo, xmlid), (4000000.0 + auxilio) / 12, delta=0.005, msg='tope 3: %s' % xmlid)
+        for codigo in codigos:
+            self.assertAlmostEqual(self._provision(recibo, codigo), (4000000.0 + auxilio) / 12, delta=0.01, msg='tope 3: %s' % codigo)
 
     def test_con_tope_2_decide_igual_que_el_literal_anterior_en_el_borde(self):
         """Exactamente 2 SMMLV (inclusive) suma el auxilio; un peso más, no. Mismo resultado que ``smmlv * 2`` de .284."""
@@ -143,8 +150,8 @@ class TestE11Pieza1A(TransactionCase):
             recibo = self._recibo(wage=sueldo, name='Borde %s' % sueldo)
             esperado = (sueldo + (auxilio if sueldo <= smmlv * 2 else 0.0)) / 12.0
             self.assertEqual(sueldo <= smmlv * 2, suma_auxilio)
-            self.assertAlmostEqual(self._monto(recibo, 'hr_salary_rule_co_prov_prima'), esperado, delta=0.005, msg='prima %s' % sueldo)
-            self.assertAlmostEqual(self._monto(recibo, 'hr_salary_rule_co_prov_cesantias'), esperado, delta=0.005, msg='ces. %s' % sueldo)
+            self.assertAlmostEqual(self._provision(recibo, 'CO_PROV_PRIMA'), esperado, delta=0.01, msg='prima %s' % sueldo)
+            self.assertAlmostEqual(self._provision(recibo, 'CO_PROV_CESANTIAS'), esperado, delta=0.01, msg='ces. %s' % sueldo)
             self.assertAlmostEqual(
                 self._monto(recibo, 'hr_salary_rule_co_prima_base'), sueldo + (auxilio if suma_auxilio else 0.0), delta=0.005,
                 msg='base de prima %s' % sueldo)

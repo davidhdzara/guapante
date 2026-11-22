@@ -31,6 +31,9 @@
                             <field name="l10n_co_ne_ajustable" groups="base.group_system"/>
                             <!-- .301: igual que «ajustable», solo el administrador del sistema; el modelo lo exige también en write/create. -->
                             <field name="l10n_co_ne_vigilar_habitualidad" groups="base.group_system"/>
+                            <!-- .303: las bases de las provisiones de prestaciones (doc 78), también solo del administrador del sistema; el modelo lo exige en write/create. -->
+                            <field name="l10n_co_ne_base_prima_cesantias" groups="base.group_system"/>
+                            <field name="l10n_co_ne_base_vacaciones" groups="base.group_system"/>
                             <field name="l10n_co_ne_unidad"/>
                         </group>
                     </group>

@@ -272,9 +272,9 @@ class TestCalculoDelSalario(TransactionCase):
         IBC y los aportes de la empresa, y las cifras coinciden con las de un cálculo manual equivalente (mes completo de septiembre: 30 días de 30, sin
         ausencias; sueldo 3.000.000 → 100.000 por día).
 
-        Las PROVISIONES se comparan también con el cálculo manual, pero HOY no se mueven: las reglas CO_PROV_* se calculan sobre el sueldo y el auxilio del
-        CONTRATO, no sobre lo pagado. Si deben seguir una bonificación o un ajuste (base prestacional con salario variable) es una decisión normativa que
-        cambia esas reglas, no esta pestaña."""
+        Las PROVISIONES también se mueven (.303, doc 78, decisión del TL del 22-nov): se calculan sobre la base prestacional DEVENGADA del recibo (el sueldo ajustado, la
+        bonificación salarial y el auxilio de transporte para prima y cesantías; sin auxilio para vacaciones), no sobre el sueldo y el auxilio del contrato. Hasta .302 esta
+        prueba afirmaba lo contrario («hoy no se mueven»)."""
         ref = self.env.ref
         recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
         fecha = recibo.date_from
@@ -333,18 +333,19 @@ class TestCalculoDelSalario(TransactionCase):
             self.assertAlmostEqual(despues[codigo], esperado, delta=0.01, msg=codigo)
         for codigo in ('CO_PENSION_CIA', 'CO_ARL_CIA', 'CO_CCF_CIA'):
             self.assertGreater(despues[codigo], antes[codigo], '%s se movió con los conceptos' % codigo)
-        # Provisiones: cálculo manual sobre el sueldo y el auxilio del contrato (un mes completo: factor 1). Hoy no se mueven.
-        sueldo = contrato.wage
-        auxilio = parametro('l10n_co_aux_transporte') if sueldo <= parametro('l10n_co_smmlv') * parametro('l10n_co_aux_transporte_tope_smmlv') else 0.0
-        base = sueldo + auxilio
-        cesantias = base / 12.0
+        # Provisiones (.303): cálculo manual sobre lo DEVENGADO del recibo. Prima y cesantías: sueldo ajustado + bonificación salarial + el auxilio de transporte que paga la
+        # línea (Ley 1/1963 art. 7); vacaciones: sueldo ajustado + bonificación (sin auxilio, CST art. 192); intereses: sobre las cesantías. Todas se movieron respecto de antes.
+        auxilio = sum(recibo.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS').mapped('total'))
+        base_prima_cesantias = basico_nuevo + bonificacion + auxilio
+        base_vacaciones = basico_nuevo + bonificacion
+        cesantias = base_prima_cesantias / parametro('l10n_co_divisor_prov_cesantias')
         provisiones = {
-            'CO_PROV_PRIMA': base / 12.0, 'CO_PROV_CESANTIAS': cesantias,
+            'CO_PROV_PRIMA': base_prima_cesantias / parametro('l10n_co_divisor_prov_prima'), 'CO_PROV_CESANTIAS': cesantias,
             'CO_PROV_INT_CES': cesantias * parametro('l10n_co_pct_intereses_cesantias') / 100.0,
-            'CO_PROV_VACACIONES': sueldo * parametro('l10n_co_dias_mes_comercial') / parametro('l10n_co_divisor_vacaciones')}
+            'CO_PROV_VACACIONES': base_vacaciones * parametro('l10n_co_dias_mes_comercial') / parametro('l10n_co_divisor_vacaciones')}
         for codigo, esperado in provisiones.items():
             self.assertAlmostEqual(despues[codigo], esperado, delta=0.01, msg=codigo)
-            self.assertAlmostEqual(despues[codigo], antes[codigo], delta=0.01, msg='%s hoy no depende de lo pagado' % codigo)
+            self.assertGreater(despues[codigo], antes[codigo], '%s se movió con lo pagado' % codigo)
         # El total «Costo empresa» del pie es la suma de los aportes y las provisiones que muestra la pestaña.
         costo = sum(f.total for f in self._filas(recibo) if f.line_id and f.line_id.category_id.l10n_co_ne_seccion_concepto == 'costo_empresa')
         self.assertAlmostEqual(recibo.l10n_co_costo_empresa, costo, delta=0.01)

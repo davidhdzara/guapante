@@ -161,6 +161,8 @@
             <field name="code">CO_BASICO</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">10</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -188,6 +190,8 @@ result_qty = dias_pagables
             <field name="code">CO_AUX_TRANS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">15</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -219,6 +223,8 @@ result_qty = dias_pagables
             <field name="code">CO_HED</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">20</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -242,6 +248,8 @@ result_qty = inputs['CO_HED'].amount
             <field name="code">CO_HEN</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">21</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -265,6 +273,8 @@ result_qty = inputs['CO_HEN'].amount
             <field name="code">CO_HRN</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">22</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -288,6 +298,8 @@ result_qty = inputs['CO_HRN'].amount
             <field name="code">CO_HEDDF</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">23</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -311,6 +323,8 @@ result_qty = inputs['CO_HEDDF'].amount
             <field name="code">CO_HENDF</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">24</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -334,6 +348,8 @@ result_qty = inputs['CO_HENDF'].amount
             <field name="code">CO_HRDDF</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">25</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -357,6 +373,8 @@ result_qty = inputs['CO_HRDDF'].amount
             <field name="code">CO_HRNDF</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">26</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -381,6 +399,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_COMISIONES</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">30</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -399,6 +419,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_BONIF_SAL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">35</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -416,6 +438,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_BONIF_NOSAL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="True"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">36</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -435,6 +459,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_AUX_ALIM</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="True"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">37</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -454,6 +480,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_VIATICOS_SAL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">38</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -471,6 +499,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_VIATICOS_NOSAL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="True"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">39</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -490,6 +520,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_DOTACION</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">40</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -509,6 +541,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_TELETRABAJO</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">41</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -530,6 +564,8 @@ result_qty = inputs['CO_HRNDF'].amount
             <field name="code">CO_INC_COMUN</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">50</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -569,6 +605,8 @@ result = _pago / dias if dias else 0.0
             <field name="code">CO_INC_LABORAL</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">51</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -597,6 +635,8 @@ result = _pago / dias if dias else 0.0
             <field name="code">CO_LIC_MAT</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">55</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -626,6 +666,8 @@ result = _pago / dias if dias else 0.0
             <field name="code">CO_LIC_PAT</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">56</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -655,6 +697,8 @@ result = _pago / dias if dias else 0.0
             <field name="code">CO_LIC_REM</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">57</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -682,6 +726,8 @@ result_qty = dias
             <field name="code">CO_LIC_NR</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">58</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -705,6 +751,8 @@ result = _dias_aus > 0 or _dias_inp > 0
             <field name="code">CO_VAC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
             <field name="sequence">60</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -735,6 +783,8 @@ result_qty = dias
             <field name="code">CO_VAC_COMP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">61</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -755,6 +805,8 @@ result_qty = dias
             <field name="code">CO_PRIMA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">70</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -777,6 +829,8 @@ result = inputs['CO_PRIMA'].amount
             <field name="code">CO_CESANTIAS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">71</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -800,6 +854,8 @@ result = inputs['CO_CESANTIAS'].amount
             <field name="code">CO_INT_CES</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">72</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -823,6 +879,8 @@ result = inputs['CO_INT_CES'].amount
             <field name="code">CO_APOYO_SOST</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">80</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -840,6 +898,8 @@ result = inputs['CO_INT_CES'].amount
             <field name="code">CO_BONIF_RET</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="True"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">85</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -858,6 +918,8 @@ result = inputs['CO_INT_CES'].amount
             <field name="code">CO_INDEMNIZ</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -879,6 +941,8 @@ result = inputs['CO_INT_CES'].amount
             <field name="code">CO_BRUTO</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">99</field>
             <!-- Bug critico corregido: categoria propia era DEV (la misma que
                  lee en amount_python_compute), y CO_NETO (seq 200) volvia a
@@ -908,6 +972,8 @@ result = inputs['CO_INT_CES'].amount
             <field name="code">CO_SALUD_EMP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">100</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -933,6 +999,8 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="code">CO_PENSION_EMP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">101</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -957,6 +1025,8 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="code">CO_FSP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">102</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1014,6 +1084,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_SLN</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1029,6 +1101,8 @@ result_rate = pct * 100
             <field name="code">CO_DIAS_SP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">87</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1044,6 +1118,8 @@ result_rate = pct * 100
             <field name="code">CO_DIAS_ARL</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">88</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1059,6 +1135,8 @@ result_rate = pct * 100
             <field name="code">CO_DIAS_PARAF</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">89</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1074,6 +1152,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_SALARIAL</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">90</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1089,6 +1169,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_INCAP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">91</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1104,6 +1186,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_REMUN</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">92</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1119,6 +1203,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_PACTADOS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">93</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1134,6 +1220,8 @@ result_rate = pct * 100
             <field name="code">CO_IBC_SP</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">94</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1154,6 +1242,8 @@ result = payslip._ne_ibc_limites(
             <field name="code">CO_IBC_ARL</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">95</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1174,6 +1264,8 @@ result = payslip._ne_ibc_limites(
             <field name="code">CO_IBC_PARAF</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">96</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1192,6 +1284,8 @@ result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
             <field name="code">CO_SS_BASE_IBC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">103</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1218,6 +1312,8 @@ recibo ni afecta el neto.</field>
             <field name="code">CO_RETEFUENTE</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">110</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1263,6 +1359,8 @@ La depuracion incluye: aportes obligatorios, voluntarios, AFC, dependientes, ren
             <field name="code">CO_EXENTO_PENSION_AFC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">111</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1309,6 +1407,8 @@ en meses futuros via payslip._sum().</field>
             <field name="code">CO_RETEFUENTE_BASE_GROSS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">112</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1340,6 +1440,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_RETEFUENTE_BASE_IBC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">113</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1371,6 +1473,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_SINDICATO</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">121</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1387,6 +1491,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_AFC</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">122</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1403,6 +1509,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_PENSION_VOL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">123</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1419,6 +1527,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_COOPERATIVA</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">124</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1435,6 +1545,8 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="code">CO_EMBARGO</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">118</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1466,6 +1578,8 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
             <field name="code">CO_PLAN_COMP</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">126</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1482,6 +1596,8 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
             <field name="code">CO_EDUCACION</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">127</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1498,6 +1614,8 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
             <field name="code">CO_OTRAS_DED</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">130</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1517,6 +1635,8 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
             <field name="code">CO_NETO</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">200</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1539,6 +1659,8 @@ result = payslip._ne_neto_redondeado(result_rules, 'DEV')</field>
             <field name="code">CO_SALUD_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">300</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1570,6 +1692,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.da
             <field name="code">CO_PENSION_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">301</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1592,6 +1716,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_pension_empleador', payslip.
             <field name="code">CO_ARL_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">302</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1613,6 +1739,8 @@ result = ibc * payslip._ne_pct_arl() / 100
             <field name="code">CO_CCF_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">303</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1630,6 +1758,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_ccf', payslip.date_from) / 1
             <field name="code">CO_SENA_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">304</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1656,6 +1786,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_sena', payslip.date_from) / 
             <field name="code">CO_ICBF_CIA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">305</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1690,25 +1822,24 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
             <field name="code">CO_PROV_PRIMA</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">310</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Provision de prima de servicios (Art. 306 CST) = base_prestacional / 12 (valor de un MES) x la fraccion del mes que cubre
-# el recibo (.279: HrPayslip._ne_factor_provision_periodo(): mes completo = 1, quincena = 15/30, semana = 7/30).
-# No es un pago -- acumulacion contable. Ver CO_PRIMA para el pago real (input-driven).
-smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
-aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
-tope_aux = payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from)
+# .303 (doc 78): provision de prima de servicios (CST art. 306, Ley 1788/2016: 30 dias de salario por ano) = base prestacional DEVENGADA de ESTE recibo / divisor.
+# La base es la suma de lo que pagan las reglas YA calculadas con la marca «Base de prima y cesantias» (salario del art. 127 CST con extras y recargos + auxilio de
+# transporte, Ley 1/1963 art. 7): lo devengado del periodo ya trae la fraccion (mes completo, quincena, semana, ingreso a mitad de mes, ausencias sin pago, auxilio por
+# dias), asi que no hay factor de periodo. El divisor (12) es un parametro con vigencia. Salario integral: 0 (el integral compensa las primas, CST art. 132 num. 2).
+# Variable: la causacion periodo a periodo equivale al promedio (criterio del TL por analogia con el art. 253; el art. 306 no define la base). No es un pago.
 if contract.l10n_co_ne_integral_salary:
-    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-    base = contract.wage * factor
+    result = 0.0
 else:
-    aux = aux_trans if contract.wage &lt;= (smmlv * tope_aux) else 0.0
-    base = contract.wage + aux
-result = (base / 12.0) * payslip._ne_factor_provision_periodo()
+    base = payslip._ne_base_prestacional(result_rules, 'l10n_co_ne_base_prima_cesantias')
+    result = base / payslip._rule_parameter('l10n_co_divisor_prov_prima', payslip._ne_fecha_parametros())
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>
@@ -1718,24 +1849,23 @@ result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             <field name="code">CO_PROV_CESANTIAS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">311</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Provision de cesantias (Art. 249 CST) = base_prestacional / 12 (valor de un MES) x la fraccion del mes que cubre el
-# recibo (.279: HrPayslip._ne_factor_provision_periodo()). CO_PROV_INT_CES la hereda: es un porcentaje de esta linea.
-smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
-aux_trans = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
-tope_aux = payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from)
+# .303 (doc 78): provision de cesantias (CST art. 249: un mes de salario por ano; art. 253: base = salario devengado, promedio si varia) = base prestacional DEVENGADA
+# de ESTE recibo / divisor. Misma base que la prima (marca «Base de prima y cesantias»: salario con extras y recargos + auxilio de transporte, Ley 1/1963 art. 7).
+# CO_PROV_INT_CES la hereda: es un porcentaje de esta linea. Salario integral: 0 (CST art. 132 num. 2). Limite conocido: con un salario FIJO que sube a mitad de ano
+# la ley liquida con el ultimo salario si no vario en tres meses (art. 253); la causacion por periodo queda por debajo hasta entonces (ajuste de cierre aparte).
 if contract.l10n_co_ne_integral_salary:
-    factor = payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-    base = contract.wage * factor
+    result = 0.0
 else:
-    aux = aux_trans if contract.wage &lt;= (smmlv * tope_aux) else 0.0
-    base = contract.wage + aux
-result = (base / 12.0) * payslip._ne_factor_provision_periodo()
+    base = payslip._ne_base_prestacional(result_rules, 'l10n_co_ne_base_prima_cesantias')
+    result = base / payslip._rule_parameter('l10n_co_divisor_prov_cesantias', payslip._ne_fecha_parametros())
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>
@@ -1745,6 +1875,8 @@ result = (base / 12.0) * payslip._ne_factor_provision_periodo()
             <field name="code">CO_PROV_INT_CES</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">312</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1775,21 +1907,21 @@ result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
             <field name="code">CO_PROV_VACACIONES</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">313</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Provision mensual de vacaciones (Art. 186 CST) = salario_base / 24 -- 15
-# dias habiles/ano, NO incluye auxilio de transporte. Distinto del disfrute
-# real de vacaciones (integracion con hr.leave, tipo VACACIONES) -- esta
-# regla es la acumulacion del pasivo, no el pago cuando se toman.
-# 1/24 = 15 dias habiles por cada 360 de servicio: salario x dias_mes / divisor_vacaciones
-# (30 / 720), de los mismos parametros que usa la liquidacion de vacaciones. Es el valor de un MES y se multiplica por la
-# fraccion del mes que cubre el recibo (.279: HrPayslip._ne_factor_provision_periodo(); equivale a salario x dias / divisor).
+# .303 (doc 78): provision de vacaciones (CST art. 186: 15 dias habiles por ano; art. 192: se liquidan con el salario ordinario, excluyendo solo el trabajo en dias de
+# descanso obligatorio y las horas extras) = base de vacaciones DEVENGADA de ESTE recibo x dias_mes_comercial / divisor_vacaciones (30 / 720 = 1/24). La base suma lo que
+# pagan las reglas YA calculadas con la marca «Base de vacaciones» (sin extras, sin recargos de dias de descanso, sin auxilio de transporte; el recargo nocturno ordinario
+# si entra). Salario integral: SI se provisiona (CST art. 132 num. 2: el integral compensa todo excepto las vacaciones), sobre lo devengado. No es un pago.
 _fecha = payslip._ne_fecha_parametros()
-result = contract.wage * payslip._rule_parameter('l10n_co_dias_mes_comercial', _fecha) / payslip._rule_parameter('l10n_co_divisor_vacaciones', _fecha) * payslip._ne_factor_provision_periodo()
+base = payslip._ne_base_prestacional(result_rules, 'l10n_co_ne_base_vacaciones')
+result = base * payslip._rule_parameter('l10n_co_dias_mes_comercial', _fecha) / payslip._rule_parameter('l10n_co_divisor_vacaciones', _fecha)
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>

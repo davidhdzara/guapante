@@ -16,6 +16,8 @@
             <field name="code">CO_LIBRANZAS</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">119</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -42,6 +44,8 @@ result = -payslip._ne_libranzas_calcular(_neto_ley, _embargo)
             <field name="code">CO_SINDICATO</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">121</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -70,6 +74,8 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
             <field name="code">CO_AFC</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">122</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -98,6 +104,8 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
             <field name="code">CO_PENSION_VOL</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">123</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -126,6 +134,8 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
             <field name="code">CO_COOPERATIVA</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">124</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -154,6 +164,8 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
             <field name="code">CO_PLAN_COMP</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">126</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -182,6 +194,8 @@ result = -abs(_from_input if _from_input > 0 else _from_contract)
             <field name="code">CO_EDUCACION</field>
             <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
             <field name="sequence">127</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>

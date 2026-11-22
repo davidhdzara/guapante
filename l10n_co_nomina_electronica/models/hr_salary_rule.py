@@ -257,6 +257,22 @@ class HrSalaryRule(models.Model):
              'salariales. NO se marcan los pagos que la ley hace todos los meses (auxilio de transporte, auxilio de conectividad del teletrabajo, apoyo de sostenimiento). '
              'Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
              'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    # .303 (doc 78, decisiones del TL del 22-nov): qué reglas entran a la base de las provisiones de prestaciones (``HrPayslip._ne_base_prestacional``). Datos PLANOS por
+    # regla, sembrados explícitos en el XML como ``l10n_co_ne_ajustable`` (nada de listas de códigos en la fórmula; la categoría ``DEV_SAL`` mezcla cosas: las horas
+    # extras entran a la prima y las cesantías pero no a las vacaciones). ``False`` por defecto; solo ``base.group_system`` las cambia.
+    l10n_co_ne_base_prima_cesantias = fields.Boolean(
+        string='Base de prima y cesantías', default=False,
+        help='Si está marcada, lo que paga esta regla en el recibo suma a la base de las provisiones de prima de servicios y de cesantías (y de sus intereses): lo devengado '
+             'como salario (CST art. 127), incluidas las horas extras y los recargos, más el auxilio de transporte (Ley 1/1963 art. 7). NO se marcan los pagos no salariales, '
+             'las prestaciones, las vacaciones compensadas, las incapacidades ni las licencias de ley (decisión del TL del 22-nov: por prudencia, a revisar con datos reales). '
+             'Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo devuelve a su valor '
+             'sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    l10n_co_ne_base_vacaciones = fields.Boolean(
+        string='Base de vacaciones', default=False,
+        help='Si está marcada, lo que paga esta regla en el recibo suma a la base de la provisión de vacaciones: el salario ordinario (CST art. 192): se excluyen las horas '
+             'extras y el trabajo en días de descanso obligatorio (dominicales y festivos), y el auxilio de transporte (no es salario para las vacaciones). El recargo nocturno '
+             'ordinario sí entra. Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
+             'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',
@@ -300,12 +316,25 @@ class HrSalaryRule(models.Model):
                 'Solo un administrador del sistema puede marcar o desmarcar «Vigilar habitualidad» en una regla salarial: decide de qué conceptos no salariales '
                 'avisa el recibo cuando se pagan mes a mes.'))
 
+    _NE_MARCAS_DE_LA_BASE_PRESTACIONAL = ('l10n_co_ne_base_prima_cesantias', 'l10n_co_ne_base_vacaciones')
+
+    def _ne_exigir_administrador_para_base_prestacional(self):
+        """.303: marcar o desmarcar las bases de las provisiones («Base de prima y cesantías», «Base de vacaciones») es del administrador del sistema, como «ajustable» y
+        «Vigilar habitualidad» (``base.group_system``). El superusuario (carga de datos del módulo, ``-u``) no pasa por aquí. Sin ``groups=`` en el campo: el cálculo de
+        las provisiones lo lee con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar la base de prima, cesantías o vacaciones en una regla salarial: decide qué pagos entran a la base '
+                'de las provisiones de prestaciones.'))
+
     @api.model_create_multi
     def create(self, vals_list):
         if any(vals.get('l10n_co_ne_ajustable') for vals in vals_list):
             self._ne_exigir_administrador_para_ajustable()
         if any(vals.get('l10n_co_ne_vigilar_habitualidad') for vals in vals_list):
             self._ne_exigir_administrador_para_habitualidad()
+        if any(vals.get(campo) for vals in vals_list for campo in self._NE_MARCAS_DE_LA_BASE_PRESTACIONAL):
+            self._ne_exigir_administrador_para_base_prestacional()
         return super().create(vals_list)
 
     def write(self, vals):
@@ -313,6 +342,8 @@ class HrSalaryRule(models.Model):
             self._ne_exigir_administrador_para_ajustable()
         if 'l10n_co_ne_vigilar_habitualidad' in vals:
             self._ne_exigir_administrador_para_habitualidad()
+        if any(campo in vals for campo in self._NE_MARCAS_DE_LA_BASE_PRESTACIONAL):
+            self._ne_exigir_administrador_para_base_prestacional()
         res = super().write(vals)
         if 'l10n_co_ne_ajustable' in vals and not vals['l10n_co_ne_ajustable']:
             self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables(self)

@@ -1452,4 +1452,29 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
         <field name="rule_parameter_id" ref="rule_parameter_exigir_pacto_no_salarial"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
+    <!-- .303 (doc 78, decisión del TL del 22-nov): los divisores de las provisiones de prima y cesantías salen de las fórmulas a parámetros con vigencia (doc 10: si lo puede
+         cambiar una ley, no va en el código). Prima: 30 días de salario por año (CST art. 306, Ley 1788/2016) = un mes por año ÷ 12 meses. Cesantías: un mes de salario por año
+         (CST art. 249) ÷ 12. Hoy coinciden en 12 pero son dos normas distintas: dos parámetros, para que un cambio de una no mueva la otra. -->
+    <record id="rule_parameter_divisor_prov_prima" model="hr.rule.parameter">
+        <field name="name">Colombia: Divisor de la Provisión de Prima de Servicios</field>
+        <field name="code">l10n_co_divisor_prov_prima</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: escriba el número por el que se divide lo devengado en el periodo (la base de prima y cesantías del recibo) para obtener la provisión de la prima de servicios. De fábrica 12: la prima son 30 días de salario por año (CST art. 306, Ley 1788 de 2016), es decir un mes por año, y cada periodo provisiona su fracción de la doceava parte. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_divisor_prov_prima_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">12</field>
+        <field name="rule_parameter_id" ref="rule_parameter_divisor_prov_prima"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_divisor_prov_cesantias" model="hr.rule.parameter">
+        <field name="name">Colombia: Divisor de la Provisión de Cesantías</field>
+        <field name="code">l10n_co_divisor_prov_cesantias</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: escriba el número por el que se divide lo devengado en el periodo (la base de prima y cesantías del recibo) para obtener la provisión de las cesantías. De fábrica 12: un mes de salario por año de servicios (CST art. 249), y cada periodo provisiona su fracción de la doceava parte. Los intereses de las cesantías salen de esta provisión con su propio porcentaje (12 % anual, Ley 50 de 1990 art. 99). Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_divisor_prov_cesantias_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">12</field>
+        <field name="rule_parameter_id" ref="rule_parameter_divisor_prov_cesantias"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
 </odoo>
