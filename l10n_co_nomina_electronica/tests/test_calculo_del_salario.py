@@ -231,6 +231,28 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertEqual([(f.display_type, f.name, f.total) for f in self._filas(recibo)], antes, 'Las filas vuelven a ser las mismas')
         self.assertEqual((recibo.state, recibo._ne_pdf_neto()), ('done', neto), 'Sin recalcular ni cambiar el estado')
 
+    def test_12b_la_funcion_de_datos_regenera_el_calculo_de_los_recibos_en_borrador_y_en_espera_y_no_toca_los_hechos(self):
+        """H-QA-040 (QA sobre .298, pedido del TL): un recibo en borrador o en espera con filas de una versión anterior las recibe nuevas en el -u; los hechos y pagados son
+        históricos y se quedan como están (aunque tengan filas viejas), porque la función solo genera lo que les falta."""
+        borrador, espera, hecho, pagado = self._recibo(), self._recibo(), self._recibo(), self._recibo()
+        espera.write({'state': 'verify'})
+        hecho.write({'state': 'done'})
+        pagado.write({'state': 'paid'})
+        recibos = borrador | espera | hecho | pagado
+        actuales = {r.id: [(f.display_type, f.name, f.total) for f in self._filas(r)] for r in recibos}
+        for recibo in recibos:
+            self.assertTrue(actuales[recibo.id], 'Premisa: tiene filas')
+            self.Calculo.sudo().with_context(ne_regenerar_calculo=True).search([('slip_id', '=', recibo.id)]).unlink()
+            self.Calculo.sudo().with_context(ne_regenerar_calculo=True).create({'slip_id': recibo.id, 'name': 'Fila de una versión anterior', 'sequence': 10})
+        neto = {r.id: r._ne_pdf_neto() for r in recibos}
+        self.env['hr.payslip']._ne_generar_conceptos_pendientes()
+        for recibo in borrador | espera:
+            self.assertEqual([(f.display_type, f.name, f.total) for f in self._filas(recibo)], actuales[recibo.id], 'Borrador y en espera: regenerado')
+        for recibo in hecho | pagado:
+            self.assertEqual([f.name for f in self._filas(recibo)], ['Fila de una versión anterior'], 'Hecho y pagado: histórico, queda como está')
+        for recibo in recibos:
+            self.assertEqual(recibo._ne_pdf_neto(), neto[recibo.id], 'Nada se recalcula')
+
     # ── datos nuevos ───────────────────────────────────────────────────────────────────────────────────────────────────────────
     def test_13_los_acumuladores_son_la_seccion_bases_y_sus_nombres_no_dicen_interno(self):
         acumuladores = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_acumuladores_internos')

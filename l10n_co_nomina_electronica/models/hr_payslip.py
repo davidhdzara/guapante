@@ -919,13 +919,18 @@ class HrPayslip(models.Model):
     def _ne_generar_conceptos_pendientes(self):
         """Función de datos (corre en cada ``-u``): genera las filas de los recibos YA calculados de estructuras con «Conceptos de pago» que
         todavía no las tienen (los creados antes de .289 y los de una estructura recién activada). No recalcula ni cambia ningún valor: las
-        filas son una vista de las líneas; un recibo hecho o pagado también las recibe, de solo lectura."""
+        filas son una vista de las líneas; un recibo hecho o pagado también las recibe, de solo lectura. Las de «Cálculo del salario» se regeneran además en los
+        recibos en borrador o en espera (H-QA-040)."""
         recibos = self.sudo().with_context(active_test=False).search([
             ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_concepto_ids', '=', False)])
         recibos._ne_regenerar_conceptos()
         # .294: los recibos que YA tienen sus conceptos (hechos con .289-.293) y todavía no las filas de «Cálculo del salario».
+        # H-QA-040 (QA sobre .298, pedido del TL): además, los recibos en BORRADOR o EN ESPERA se regeneran siempre: una versión anterior de «Cálculo del salario» (la de
+        # .294-.297 traía devengados y deducciones, la de .298 solo Bases, aportes y provisiones) quedaba con sus filas viejas porque ya tenía alguna. Regenerar solo lee las
+        # líneas (no recalcula ni cambia un valor). Los HECHOS y PAGADOS son históricos: se quedan como están, salvo que no tengan ninguna fila.
         sin_calculo = self.sudo().with_context(active_test=False).search([
-            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_calculo_ids', '=', False)])
+            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), '|', ('l10n_co_calculo_ids', '=', False),
+            ('state', 'in', ('draft', 'verify'))])
         self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(sin_calculo)
         # .298: los ajustes que quedaron sobre reglas que ya no son ajustables (la decisión de David del 21-nov por el riesgo UGPP): se retiran en los recibos
         # en borrador o en espera, con nota; los de recibos confirmados no se tocan. Corre DESPUÉS de cargar las reglas con su valor sembrado (manifest).
