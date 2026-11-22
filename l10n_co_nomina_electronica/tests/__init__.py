@@ -48,6 +48,7 @@ from . import test_embargo_nombre_linea
 from . import test_formatos_de_mensajes
 from . import test_porcentaje_horas_dominicales
 from . import test_validacion_afiliacion
+from . import test_pension_no_exigida
 from . import test_liquidacion_embargo_libranza
 from . import test_ibc_unico
 from . import test_dias_cotizados

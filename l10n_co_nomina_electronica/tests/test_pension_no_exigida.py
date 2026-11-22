@@ -1,0 +1,86 @@
+# -*- coding: utf-8 -*-
+# Part of InSoTech. See LICENSE file for full copyright and licensing details.
+"""H-F1-06 (QA sobre el aviso de afiliacion, decidido por el TL el 22-nov): la excepcion de AFP del parametro ``l10n_co_afiliaciones_no_exigidas`` (pensionado, aprendiz en etapa lectiva) hacia desaparecer el aviso
+pero CO_PENSION_EMP (-60.000) y CO_PENSION_CIA (180.000) se seguian calculando, y confirmar fallaba con «paga a un tercero y falta AFP»: las reglas solo se omitian con la marca del extranjero. Ahora UNA funcion
+(``HrEmployee._ne_entidad_exigida`` / ``HrPayslip._ne_no_cotiza_pension``) decide que la AFP no se exige Y que la pension del empleado, la de la empresa y el FSP no se calculan; quitar la fila del parametro vuelve
+a calcularlas sin tocar codigo. El IBC de salud no cambia.
+
+Valores a mano: sueldo 10.000.000 en marzo de 2026 (un mes: IBC 10.000.000; salud 4 % = 400.000, pension 4 % = 400.000, pension de la empresa 12 % = 1.200.000; el FSP aplica desde 4 SMMLV = 7.003.620)."""
+
+from datetime import date
+
+from odoo.tests.common import tagged
+
+from . import test_validacion_afiliacion as base
+
+PARAMETRO = 'l10n_co_nomina_electronica.rule_parameter_afiliaciones_no_exigidas_2024'
+REGLAS_DE_PENSION = ('CO_PENSION_EMP', 'CO_PENSION_CIA', 'CO_FSP', 'CO_LIQ_PENSION', 'CO_PRIMA_PENSION', 'CO_BON_PENSION')
+
+
+@tagged('post_install', '-at_install')
+class TestPensionNoExigida(base.TestValidacionAfiliacion):
+
+    def _calculado(self, nombre, tipo='01', subtipo='00', **entidades):
+        empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, subtipo=subtipo, desde=date(2026, 3, 1), hasta=date(2026, 3, 31), **entidades)
+        recibo.contract_id.write({'wage': 10000000.0})
+        recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
+        recibo.compute_sheet()
+        return empleado, recibo
+
+    def _total(self, recibo, codigo):
+        return sum(recibo.line_ids.filtered(lambda l: l.code == codigo).mapped('total'))
+
+    def _sin_lineas_de_pension(self, recibo, mensaje=''):
+        for codigo in ('CO_PENSION_EMP', 'CO_PENSION_CIA', 'CO_FSP'):
+            self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == codigo), '%s %s' % (codigo, mensaje))
+
+    # ── la excepcion llega a las reglas ──
+    def test_el_pensionado_y_el_aprendiz_lectivo_no_calculan_pension_ni_fsp_pero_si_salud(self):
+        for nombre, tipo, subtipo in (('Pensionado Dep', '01', '01'), ('Pensionado Ind', '03', '02'), ('Aprendiz Lectiva', '12', '00')):
+            _empleado, recibo = self._calculado(nombre, tipo=tipo, subtipo=subtipo, eps=self.eps, ccf=self.ccf)
+            self._sin_lineas_de_pension(recibo, nombre)
+            self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), -400000.0, delta=0.01, msg=nombre)       # la EPS se sigue exigiendo y la salud sigue igual
+            self.assertAlmostEqual(self._total(recibo, 'CO_IBC_SP'), 10000000.0, delta=0.01, msg=nombre)         # el IBC no cambia
+            self.assertFalse(recibo.l10n_co_ne_aviso_afiliacion, nombre)
+            recibo._ne_validar_afiliaciones()                                                                    # confirma sin AFP
+
+    def test_el_pensionado_sin_eps_sigue_sin_poder_confirmar(self):
+        _empleado, recibo = self._calculado('Pensionado Sin EPS', tipo='01', subtipo='01', ccf=self.ccf)
+        self._sin_lineas_de_pension(recibo)
+        texto = self._error(lambda: recibo._ne_validar_afiliaciones())
+        self.assertIn('EPS', texto)
+        self.assertNotIn('AFP', texto)
+
+    def test_un_empleado_normal_no_cambia(self):
+        """Dependiente normal con AFP: pension del empleado -400.000, de la empresa 1.200.000 y FSP (10.000.000 >= 4 SMMLV) con valor."""
+        _empleado, recibo = self._calculado('Normal', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_EMP'), -400000.0, delta=0.01)
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_CIA'), 1200000.0, delta=0.01)
+        self.assertTrue(self._total(recibo, 'CO_FSP'))
+        self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), -400000.0, delta=0.01)
+
+    def test_quitar_la_fila_del_parametro_vuelve_a_calcular_la_pension(self):
+        """Sin la fila (12, *, afp) el aprendiz es un dependiente normal: la pension del empleado y de la empresa y el FSP se calculan y el aviso pide la AFP."""
+        self.env.ref(PARAMETRO).parameter_value = "[('*', '01', 'afp'), ('*', '02', 'afp')]"
+        _empleado, recibo = self._calculado('Aprendiz Sin Fila', tipo='12', subtipo='00', eps=self.eps, ccf=self.ccf)
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_EMP'), -400000.0, delta=0.01)
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_CIA'), 1200000.0, delta=0.01)
+        self.assertTrue(self._total(recibo, 'CO_FSP'))
+        self.assertIn('AFP', recibo.l10n_co_ne_aviso_afiliacion)
+
+    def test_el_extranjero_no_obligado_sigue_sin_pension_y_ahora_tampoco_fsp(self):
+        """La marca de la ficha sigue valiendo (misma funcion). Antes el FSP no miraba la marca: un extranjero no obligado a pension con IBC >= 4 SMMLV pagaba FSP; ahora no."""
+        empleado, recibo = self._empleado_y_recibo('Extranjero', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
+        empleado.l10n_co_ne_foreigner_no_pension = True
+        recibo.contract_id.write({'wage': 10000000.0})
+        recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
+        recibo.compute_sheet()
+        self._sin_lineas_de_pension(recibo)
+
+    def test_las_seis_reglas_llaman_a_la_funcion_y_no_a_una_lista_propia(self):
+        """Una sola decision: ninguna condicion repite la lista ni mira la marca del extranjero por su cuenta."""
+        reglas = self.env['hr.salary.rule'].search([('code', 'in', REGLAS_DE_PENSION)])
+        self.assertEqual(set(reglas.mapped('code')), set(REGLAS_DE_PENSION))
+        for regla in reglas:
+            self.assertIn('_ne_no_cotiza_pension', regla.condition_python, regla.code)
+            self.assertNotIn('foreigner', regla.condition_python, regla.code)

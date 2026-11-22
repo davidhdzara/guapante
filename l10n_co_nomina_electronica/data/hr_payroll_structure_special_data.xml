@@ -153,9 +153,9 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_prima"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Aplica si hay valor de prima y el empleado no es extranjero exento de pension
+# Aplica si hay valor de prima y el empleado cotiza a pension (no es extranjero exento ni tiene la AFP exceptuada; H-F1-06)
 result = (result_rules.get('CO_PRIMA_VALOR') and result_rules['CO_PRIMA_VALOR']['total'] &gt; 0
-          and not employee.l10n_co_ne_foreigner_no_pension)
+          and not payslip._ne_no_cotiza_pension())
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -862,8 +862,8 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica si es extranjero no obligado a pension
-result = not employee.l10n_co_ne_foreigner_no_pension
+# No aplica si el empleado no cotiza a pension: extranjero no obligado o AFP no exigida por el tipo/subtipo de cotizante del contrato (H-F1-06)
+result = not payslip._ne_no_cotiza_pension()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -1054,10 +1054,10 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Solo aplica si la bonificacion es salarial y no es extranjero exento
+# Solo aplica si la bonificacion es salarial y el empleado cotiza a pension (no es extranjero exento ni tiene la AFP exceptuada; H-F1-06)
 result = (payslip.l10n_co_ne_is_salarial
           and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
-          and not employee.l10n_co_ne_foreigner_no_pension)
+          and not payslip._ne_no_cotiza_pension())
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">

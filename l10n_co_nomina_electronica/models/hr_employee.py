@@ -165,6 +165,32 @@ class HrEmployee(models.Model):
                 company=company.name, employee=self.name, ubicacion=NE_UBICACION_AJUSTES_PILA))
         return company.l10n_co_pila_ccf_id
 
+    def _ne_afiliaciones_no_exigidas(self, fecha):
+        """Lista versionada ``[(tipo de cotizante, subtipo, entidad)]`` (``*`` = cualquiera) que el parametro ``l10n_co_afiliaciones_no_exigidas`` exceptua a ``fecha``. Sin el parametro, un error que lo
+        nombra y dice que hacer: nunca se asume que todo se exige ni que nada."""
+        self.ensure_one()
+        try:
+            return self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_afiliaciones_no_exigidas', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante» (código l10n_co_afiliaciones_no_exigidas) para el %(fecha)s, que se necesita '
+                'para revisar la afiliación a la seguridad social del empleado %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
+                fecha=fecha, empleado=self.name)) from None
+
+    def _ne_entidad_exigida(self, entidad, contrato, fecha, no_exigidas=None):
+        """¿Se exige la afiliación Y la cotización a ``entidad`` (``'eps'``, ``'afp'``, ``'ccf'``, ``'arl'``) para el tipo y el subtipo de cotizante del CONTRATO a ``fecha``? Falso si el parámetro
+        versionado ``l10n_co_afiliaciones_no_exigidas`` la exceptua. FUENTE ÚNICA (H-F1-06): la usan el aviso y el error de la afiliación (``_ne_afiliaciones_faltantes``) Y las reglas que calculan la
+        cotización (pensión del empleado y de la empresa y FSP, vía ``HrPayslip._ne_no_cotiza_pension``): quitar la fila del parámetro vuelve a exigir la afiliación y a calcular la cotización,
+        sin tocar código. Base del régimen por tipo de cotizante de H-F1-09 (aprendiz: lectiva = sin AFP). No mira lo que cotice otra entidad: el IBC de salud y de las demás no cambia."""
+        self.ensure_one()
+        if no_exigidas is None:
+            no_exigidas = self._ne_afiliaciones_no_exigidas(fecha)
+        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
+        subtipo = contrato.l10n_co_pila_subtipo_cotizante or ''
+        return not any(
+            clave_entidad == entidad and clave_tipo in ('*', tipo) and clave_subtipo in ('*', subtipo)
+            for clave_tipo, clave_subtipo, clave_entidad in no_exigidas)
+
     def _ne_afiliaciones_faltantes(self, contrato, fecha):
         """H-F1-06 (doc 87): LO QUE FALTA de la afiliación a la seguridad social del empleado, como ``[(etiqueta, nivel)]`` (``nivel`` = ``'empleado'`` o ``'compañía'``); vacío si está completa.
         FUENTE ÚNICA del aviso del recibo, del error al confirmar y del mensaje del asiento; independiente de que las reglas tengan cuenta contable. Exige EPS y AFP del empleado, la Caja
@@ -174,20 +200,10 @@ class HrEmployee(models.Model):
         self.ensure_one()
         if self.l10n_co_ne_is_habilitacion_test:
             return []
-        try:
-            no_exigidas = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_afiliaciones_no_exigidas', fecha)
-        except UserError:
-            raise UserError(_(
-                'Falta el parámetro de nómina «Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante» (código l10n_co_afiliaciones_no_exigidas) para el %(fecha)s, que se necesita '
-                'para revisar la afiliación a la seguridad social del empleado %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
-                fecha=fecha, empleado=self.name)) from None
-        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
-        subtipo = contrato.l10n_co_pila_subtipo_cotizante or ''
+        no_exigidas = self._ne_afiliaciones_no_exigidas(fecha)
 
         def _exigida(entidad):
-            return not any(
-                clave_entidad == entidad and clave_tipo in ('*', tipo) and clave_subtipo in ('*', subtipo)
-                for clave_tipo, clave_subtipo, clave_entidad in no_exigidas)
+            return self._ne_entidad_exigida(entidad, contrato, fecha, no_exigidas)
 
         compania = self.company_id
         faltan = []

@@ -1007,8 +1007,8 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica si es extranjero no obligado a pensión
-result = not employee.l10n_co_ne_foreigner_no_pension
+# No aplica si el empleado no cotiza a pensión: extranjero no obligado o AFP no exigida por el tipo/subtipo de cotizante del contrato (pensionado, aprendiz lectiva; H-F1-06)
+result = not payslip._ne_no_cotiza_pension()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -1035,10 +1035,11 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="condition_python">
 # Aplica desde fsp_umbral_base SMMLV (Art. 27 Ley 100/1993)
 # H-017a (2026-10-11): misma fuente que CO_SALUD_EMP -- ver _ne_ibc_seguridad_social().
+# H-F1-06: el FSP es parte de la cotizacion a pension: no aplica si el empleado no cotiza a pension (payslip._ne_no_cotiza_pension())
 SMMLV = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 _umbral_base = payslip._rule_parameter('l10n_co_fsp_umbral_base', payslip.date_from)
 ibc = max(0.0, result_rules['CO_IBC_SP']['total'] - result_rules['CO_IBC_SLN']['total'])  # IBC unico (H-017b); en SLN el trabajador no paga su cuota ni nadie la asume
-result = ibc &gt;= SMMLV * _umbral_base
+result = ibc &gt;= SMMLV * _umbral_base and not payslip._ne_no_cotiza_pension()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -1707,7 +1708,8 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.da
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
-            <field name="condition_python">result = not employee.l10n_co_ne_foreigner_no_pension</field>
+            <field name="condition_python"># Mismo criterio que CO_PENSION_EMP (H-F1-06): una sola decision, payslip._ne_no_cotiza_pension()
+result = not payslip._ne_no_cotiza_pension()</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # La pension patronal sobre la base SLN es opcional en el sector privado (Concepto MinProteccion

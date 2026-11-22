@@ -332,6 +332,15 @@ class HrPayslip(models.Model):
         self.ensure_one()
         return self.employee_id._ne_afiliaciones_faltantes(self.contract_id, self._ne_fecha_parametros())
 
+    def _ne_no_cotiza_pension(self):
+        """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
+        subtipo de cotizante de su contrato segun el parametro versionado ``l10n_co_afiliaciones_no_exigidas`` (pensionado: Ley 100/1993 art. 17, mod. Ley 797/2003 art. 4; aprendiz en etapa lectiva: solo
+        salud y riesgos, Decreto 223/2026 art. 2.2.6.3.3.6). UNA sola decision para el aviso de afiliacion y para las reglas de pension del empleado y de la empresa, el FSP y los descuentos de pension de la
+        liquidacion, la prima y la bonificacion (H-F1-06): no hay una segunda lista en las condiciones de las reglas, y quitar la fila del parametro vuelve a calcularlas. El IBC de salud y de las
+        demas administradoras no cambia."""
+        self.ensure_one()
+        return bool(self.employee_id.l10n_co_ne_foreigner_no_pension) or not self.employee_id._ne_entidad_exigida('afp', self.contract_id, self._ne_fecha_parametros())
+
     @api.model
     def _ne_texto_afiliacion(self, por_empleado, separador):
         """Texto (traducible) de lo que falta: ``por_empleado`` = ``[(nombre, [(etiqueta, nivel)])]``. Una línea por empleado con TODOS sus campos y, al final, DÓNDE completarlos según el nivel
