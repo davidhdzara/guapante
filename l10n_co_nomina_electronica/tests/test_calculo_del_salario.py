@@ -110,7 +110,7 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertLess(orden.index('name'), orden.index('cuenta'))
         self.assertLess(orden.index('cuenta'), orden.index('amount'))
         for nombre in ('quantity', 'unidad'):
-            self.assertEqual(calculo[nombre].get('invisible'), 'quantity == 1 and rate == 100', nombre)
+            self.assertEqual(calculo[nombre].get('invisible'), 'quantity == 1', 'Menor de QA («cv»): también en los aportes del empleado, que traen % distinto de 100: %s' % nombre)
         self.assertEqual(calculo['rate'].get('invisible'), 'rate == 100')
         conceptos, orden_c = self._columnas_de('conceptos_de_pago', 'l10n_co_concepto_ids')
         self.assertEqual(conceptos['cuenta'].get('optional'), 'hide')
@@ -234,6 +234,26 @@ class TestCalculoDelSalario(TransactionCase):
         codigos = set(self._filas(recibo).filtered('line_id').mapped('line_id.code'))
         self.assertTrue({'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'} <= codigos, 'Con retención vuelven a salir')
 
+    def test_04e_las_bases_salariales_intermedias_no_salen_y_queda_una_sola_fila_de_base_salarial(self):
+        """Menor de QA sobre «cv» (22-nov, decisión del TL): en «Bases» salían tres filas con el mismo valor («IBC Salarial», «IBC Remuneración Base 40 %» y «Base salarial del mes»).
+        Las dos primeras son acumuladores INTERMEDIOS de la tercera y de los IBC de los aportes: se marcan (``l10n_co_ne_calculo_oculta``) y no salen en la pestaña; las reglas siguen
+        calculándose y sus líneas siguen en el recibo (las lee la regla del 40 % y la fila del exceso)."""
+        Regla = self.env['hr.salary.rule']
+        ocultas = Regla.search([('l10n_co_ne_calculo_oculta', '=', True)])
+        self.assertEqual(set(ocultas.mapped('code')), {'CO_IBC_SALARIAL', 'CO_IBC_REMUN'}, 'La siembra marca solo los dos acumuladores intermedios')
+        recibo = self._recibo()
+        lineas = {l.code: l for l in recibo.line_ids}
+        for codigo in ('CO_IBC_SALARIAL', 'CO_IBC_REMUN', 'CO_SS_BASE_IBC'):
+            self.assertTrue(lineas[codigo].total, 'Premisa: la regla se calcula y su línea sigue en el recibo: %s' % codigo)
+        self.assertAlmostEqual(lineas['CO_IBC_SALARIAL'].total, lineas['CO_SS_BASE_IBC'].total, delta=0.01, msg='Premisa: sin maternidad ni contrato integral, los tres valen lo mismo')
+        self.assertAlmostEqual(lineas['CO_IBC_REMUN'].total, lineas['CO_SS_BASE_IBC'].total, delta=0.01)
+        codigos = self._filas(recibo).filtered('line_id').mapped('line_id.code')
+        self.assertNotIn('CO_IBC_SALARIAL', codigos)
+        self.assertNotIn('CO_IBC_REMUN', codigos)
+        self.assertEqual(codigos.count('CO_SS_BASE_IBC'), 1, 'Una sola fila de base salarial del mes')
+        for visible in ('CO_IBC_SP', 'CO_IBC_ARL', 'CO_IBC_PARAF'):
+            self.assertIn(visible, codigos, 'Los IBC de los aportes siguen: %s' % visible)
+
     def test_04c_el_fsp_sale_en_la_seccion_de_aportes_del_empleado_solo_si_aplica(self):
         """Con un sueldo bajo no hay fondo de solidaridad pensional: la sección lleva solo salud y pensión. Con una línea de FSP con valor, sale ahí."""
         recibo = self._recibo()
@@ -260,7 +280,7 @@ class TestCalculoDelSalario(TransactionCase):
                 titulo = fila.name
             elif fila.line_id:
                 seccion_de[fila.line_id.code] = titulo
-        self.assertEqual(seccion_de['CO_IBC_SALARIAL'], 'Bases')
+        self.assertEqual(seccion_de['CO_SS_BASE_IBC'], 'Bases')
         categoria_aportes = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_seguridad_social_cia')
         categoria_provisiones = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_provisiones')
         for linea in recibo.line_ids.filtered(lambda l: l.total and l.category_id == categoria_aportes):
@@ -428,7 +448,7 @@ class TestCalculoDelSalario(TransactionCase):
             return {f.line_id.code: f.total for f in self._filas(recibo) if f.line_id}
 
         antes = en_calculo()
-        self.assertAlmostEqual(antes['CO_IBC_SALARIAL'], contrato.wage, delta=0.01, msg='Premisa: sin movimientos el IBC es el sueldo')
+        self.assertAlmostEqual(antes['CO_SS_BASE_IBC'], contrato.wage, delta=0.01, msg='Premisa: sin movimientos la base salarial es el sueldo')
 
         # 1. Bonificación salarial: fila nueva en «Conceptos de pago» con su tipo de novedad.
         bonificacion = 500000.0
@@ -456,7 +476,7 @@ class TestCalculoDelSalario(TransactionCase):
 
         # Cálculo manual. IBC = sueldo ajustado + bonificación salarial (sin ausencias, sin pagos no salariales pactados: no hay excedente del 40 %).
         ibc = basico_nuevo + bonificacion
-        self.assertAlmostEqual(despues['CO_IBC_SALARIAL'], ibc, delta=0.01)
+        self.assertAlmostEqual(despues['CO_SS_BASE_IBC'], ibc, delta=0.01)
         self.assertAlmostEqual(despues['CO_IBC_SP'], ibc, delta=0.01)
         self.assertGreater(despues['CO_IBC_SP'], antes['CO_IBC_SP'], 'El IBC se movió con los conceptos')
         # Aportes de la empresa: IBC x porcentaje del parámetro.
@@ -534,7 +554,7 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertEqual(siguiente.display_type, 'line_section', 'Va al final de la sección «Bases»: lo que sigue es otra sección')
         # y es justo lo que suma al IBC de salud y pensión
         valores = {f.line_id.code: f.total for f in filas if f.line_id}
-        self.assertAlmostEqual(valores['CO_IBC_SP'], valores['CO_IBC_SALARIAL'] + fila.total, delta=0.01)
+        self.assertAlmostEqual(valores['CO_IBC_SP'], valores['CO_SS_BASE_IBC'] + fila.total, delta=0.01)
 
     def test_17_con_pactados_bajo_el_40_la_fila_se_muestra_en_cero(self):
         recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))

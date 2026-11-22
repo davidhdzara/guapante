@@ -108,7 +108,8 @@ class L10nCoPayslipCalculo(models.Model):
         lineas = recibo.line_ids.filtered(
             lambda l: (l.category_id.l10n_co_ne_seccion_concepto in SECCIONES_DE_CATEGORIA or l.category_id.l10n_co_ne_aportes_empleado)
             and (l.total or l.salary_rule_id.id in ajustes)
-            and (con_retencion or not l.salary_rule_id.l10n_co_ne_calculo_si_retencion)).sorted(lambda l: (l.sequence, l.id))
+            and (con_retencion or not l.salary_rule_id.l10n_co_ne_calculo_si_retencion)
+            and not l.salary_rule_id.l10n_co_ne_calculo_oculta).sorted(lambda l: (l.sequence, l.id))
         valores, secuencia = [], 0
 
         def siguiente():

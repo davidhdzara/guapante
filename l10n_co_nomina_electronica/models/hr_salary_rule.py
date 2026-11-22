@@ -298,6 +298,12 @@ class HrSalaryRule(models.Model):
         help='Si está marcada, la línea de esta regla se muestra en «Cálculo del salario» solo cuando el recibo tiene retención en la fuente distinta de 0 (una línea con valor '
              'de una regla cuyo tercero es la DIAN). Es de presentación: no cambia el cálculo. De fábrica, las dos bases de la retención en la fuente: sin retención verlas '
              'confunde.')
+    # Menor de QA sobre «cv» (22-nov, decisión del TL): en «Bases» salían tres filas con el mismo valor (IBC Salarial, IBC Remuneración Base 40 % y Base salarial del mes).
+    l10n_co_ne_calculo_oculta = fields.Boolean(
+        string='Oculta en «Cálculo del salario»', default=False,
+        help='Si está marcada, la línea de esta regla NO se muestra en «Cálculo del salario» aunque tenga valor: es un acumulador intermedio de otra base que sí se muestra. '
+             'Es de presentación: la regla se sigue calculando, otras reglas la leen y la línea sigue en el recibo. De fábrica, «IBC Salarial» y «IBC Remuneración Base 40 %», '
+             'componentes de «Base salarial del mes».')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',

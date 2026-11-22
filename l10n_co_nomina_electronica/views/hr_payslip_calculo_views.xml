@@ -22,10 +22,10 @@
                             <field name="display_type" column_invisible="True"/>
                             <field name="name" widget="section_and_note_text"/>
                             <!-- Ajuste de David (22-nov): la cuenta contable de la regla como en los apuntes (visible por defecto, la puede ocultar el usuario) y, en las filas de
-                                 cantidad 1 y 100 %, sin Cantidad, Unidad ni %: «Concepto | Cuenta | Importe | Total». -->
+                                 cantidad 1, sin Cantidad ni Unidad (el % solo si no es 100: los aportes del empleado) y en las de 100 % sin %: «Concepto | Cuenta | Importe | Total». -->
                             <field name="cuenta" optional="show"/>
-                            <field name="quantity" invisible="quantity == 1 and rate == 100"/>
-                            <field name="unidad" invisible="quantity == 1 and rate == 100"/>
+                            <field name="quantity" invisible="quantity == 1"/>
+                            <field name="unidad" invisible="quantity == 1"/>
                             <field name="rate" invisible="rate == 100"/>
                             <field name="amount"/>
                             <field name="total"/>
