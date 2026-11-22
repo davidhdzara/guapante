@@ -135,6 +135,49 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
             wage=25000000.0, l10n_co_ne_integral_salary=True)
         self.assertAlmostEqual(septiembre._ne_ibc_mes_anterior(contrato), 17500000.0, delta=0.01)
 
+    def _anular_despues_de_confirmar(self, nombre, tipo, desde, hasta):
+        """Confirma agosto con la ausencia, lee la base de septiembre, anula la ausencia y vuelve a leerla: devuelve (antes, despues)."""
+        empleado, contrato = self._empleado(nombre)
+        contrato.generate_work_entries(date(2026, 1, 1), date(2026, 9, 30))
+        ausencia = self.env['hr.leave'].create({
+            'employee_id': empleado.id, 'holiday_status_id': self.env.ref(tipo).id, 'request_date_from': desde, 'request_date_to': hasta})
+        ausencia.action_validate()
+        self._recibo(empleado, contrato, date(2026, 8, 1), date(2026, 8, 31), confirmar=True)
+        septiembre = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
+        antes = septiembre._ne_ibc_mes_anterior(contrato)
+        ausencia.action_refuse()
+        self.assertEqual(ausencia.state, 'refuse')
+        return antes, septiembre._ne_ibc_mes_anterior(contrato)
+
+    def test_anular_la_incapacidad_despues_de_confirmar_no_cambia_la_base(self):
+        """Los dias de incapacidad del divisor son los del recibo CONFIRMADO (la cantidad de su linea CO_INC_COMUN), no los de las ausencias de hoy: si la ausencia se anula despues de confirmar, la base
+        sigue siendo 4.000.000 x 30 / 20 = 6.000.000 (recalculando en vivo daria 4.000.000 x 30 / 30 = 4.000.000, que no corresponde a lo que se pago)."""
+        antes, despues = self._anular_despues_de_confirmar(
+            'AnulaIncapacidad', 'l10n_co_nomina_electronica.hr_leave_type_co_inc_comun', date(2026, 8, 10), date(2026, 8, 19))
+        self.assertAlmostEqual(antes, SUELDO, delta=0.01)
+        self.assertAlmostEqual(despues, antes, delta=0.01)
+
+    def test_anular_la_suspension_despues_de_confirmar_no_cambia_la_base(self):
+        """Igual con SLN: sus dias salen de las worked_days guardadas del recibo confirmado."""
+        antes, despues = self._anular_despues_de_confirmar(
+            'AnulaSln', 'l10n_co_nomina_electronica.hr_leave_type_co_lic_nr', date(2026, 8, 10), date(2026, 8, 14))
+        self.assertAlmostEqual(antes, SUELDO, delta=0.01)
+        self.assertAlmostEqual(despues, antes, delta=0.01)
+
+    def test_el_aviso_no_repite_el_error_de_una_liquidacion_mal_fechada(self):
+        """Una liquidacion cuyo date_from no es el inicio del contrato da su error al calcular; el aviso (campo calculado de la vista) no lo repite ni se rompe: queda vacio."""
+        empleado, contrato = self._empleado('LiquidacionMalFechada')
+        liquidacion = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
+        recibo = self.env['hr.payslip'].create({
+            'name': 'Liquidacion mal fechada', 'employee_id': empleado.id, 'contract_id': contrato.id, 'company_id': self.company.id,
+            'struct_id': liquidacion.id, 'date_from': date(2026, 1, 11), 'date_to': date(2026, 8, 15)})
+        regla = self.env['hr.salary.rule'].search([('code', '=', 'CO_LIQ_VAC_DISFRUTADAS'), ('struct_id', '=', liquidacion.id)], limit=1)
+        self.assertTrue(regla)
+        self.env['hr.payslip.line'].create({
+            'slip_id': recibo.id, 'salary_rule_id': regla.id, 'code': 'CO_LIQ_VAC_DISFRUTADAS', 'name': 'Vacaciones', 'contract_id': contrato.id, 'employee_id': empleado.id,
+            'quantity': 1.0, 'rate': 100.0, 'amount': 100.0, 'total': 100.0})
+        self.assertFalse(recibo.l10n_co_ne_aviso_ibc_anterior)
+
     def test_el_sueldo_de_respaldo_en_v18_ignora_la_fecha(self):
         """UNA funcion (consultor v19): en v18 la fecha no cambia el resultado; en v19 sera el sueldo de la version vigente en ella."""
         empleado, contrato = self._empleado('Respaldo')

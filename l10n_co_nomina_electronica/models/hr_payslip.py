@@ -88,6 +88,7 @@ HORA_EXTRA_CONCEPTS = {'HED', 'HEN', 'HRN', 'HEDDF', 'HRDDF', 'HENDF', 'HRNDF'}
 #   4 cuentan directamente desde las fechas de la hr.leave validada
 #   (_ne_ausencia_calendario()), no desde worked_days.
 _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES = {'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR'}
+_NOVEDAD_INCAPACIDAD_CODES = ('CO_INC_COMUN', 'CO_INC_LABORAL')       # incapacidades: no entran a CO_SS_BASE_IBC (H-F1-11)
 _NOVEDAD_AUSENCIA_CALENDARIO_CODES = {
     'CO_LIC_MAT', 'CO_LIC_PAT', 'CO_INC_COMUN', 'CO_INC_LABORAL',
 }
@@ -305,6 +306,10 @@ class HrPayslip(models.Model):
             recibo.l10n_co_ne_aviso_ibc_anterior = False
             if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
                 continue
+            try:
+                recibo._ne_validar_inicio_liquidacion()
+            except UserError:
+                continue                  # una liquidacion mal fechada ya da su error al calcular: el aviso no lo repite ni lo pisa
             try:
                 fechas = recibo._ne_fechas_base_ibc_mes_anterior()
             except UserError as error:
@@ -3149,8 +3154,11 @@ class HrPayslip(models.Model):
             base += sum(lineas_base.mapped('total'))
             dias_recibo = sum(recibo.line_ids.filtered(lambda l: l.code == 'CO_DIAS_SP').mapped('total'))
             if not recibo.contract_id.l10n_co_ne_integral_salary:
-                dias_recibo -= (recibo._ne_dias_sln() + recibo._ne_ausencia_calendario('CO_INC_COMUN')[0]
-                                + recibo._ne_ausencia_calendario('CO_INC_LABORAL')[0])
+                # Los dias de ESTE recibo ya confirmado, no los de las ausencias de hoy: una ausencia anulada o editada despues de confirmar no cambia la base que se pago. SLN: las worked_days
+                # guardadas (``_ne_dias_sln``, un recibo de un solo mes); incapacidad: la CANTIDAD de las lineas CO_INC_COMUN y CO_INC_LABORAL (``result_qty = dias``, dias CALENDARIO que se
+                # pagaron; las worked_days no sirven: cuentan dias habiles).
+                dias_recibo -= recibo._ne_dias_sln() + sum(
+                    recibo.line_ids.filtered(lambda l: l.code in _NOVEDAD_INCAPACIDAD_CODES).mapped('quantity'))
             dias += dias_recibo
         if base > 0 and dias > 0:
             return base * self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros()) / dias, mes, True
