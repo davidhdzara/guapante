@@ -146,8 +146,7 @@ class L10nCoIbcMensual(models.Model):
             'payslip_ids': [(6, 0, slips.ids)],
             'ibc_sp': ibc_sp,
             'ibc_arl': ref._ne_ibc_limites(salarial * f_arl, 0.0, remuneracion * f_arl, pactados * f_arl, dias_arl),
-            'ibc_paraf': ref._ne_ibc_limites(
-                salarial * f_paraf, 0.0, remuneracion * f_paraf, pactados * f_paraf, dias_paraf),
+            'ibc_paraf': ref._ne_ibc_parafiscales(salarial * f_paraf),      # .299: solo lo salarial (sin 40 %, piso ni techo)
             'dias_sp': dias_sp, 'dias_arl': dias_arl, 'dias_paraf': dias_paraf,
             **self._valores_sln(slips, ibc_sp, dias_sp),
             'ibc_recibos_sp': suma('CO_IBC_SP'),

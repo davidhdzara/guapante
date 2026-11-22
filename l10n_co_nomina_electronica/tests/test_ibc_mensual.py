@@ -130,3 +130,19 @@ class TestIbcMensual(TransactionCase):
         # 70% del integral UNA vez (cada recibo aporta la mitad), no el doble
         self.assertAlmostEqual(cons.ibc_sp, 20000000.0 * factor, delta=1.0)
         self.assertEqual(cons.dias_sp, 30)
+
+    def test_parafiscales_del_consolidado_es_solo_salarial_igual_al_de_los_recibos(self):
+        """.299: el IBC mensual de parafiscales (``ibc_paraf``) sale del mismo helper que la regla CO_IBC_PARAF: solo lo salarial, sin el 40 %, el piso ni el techo;
+        con dos recibos de un salario sobre 25 SMMLV la suma NO se topa (la de salud y pensión sí) y la diferencia con los recibos queda en cero."""
+        employee, contract = self._empleado('Paraf mensual', 80000000.0)
+        a = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
+        b = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
+        self._confirmar(a, b)
+        cons = self.Consolidado.search([('employee_id', '=', employee.id)])
+        smmlv = a._rule_parameter('l10n_co_smmlv', a.date_from)
+        self.assertAlmostEqual(cons.ibc_sp, 25 * smmlv, delta=0.01)
+        paraf_recibos = sum(l.total for s in (a, b) for l in s.line_ids if l.code == 'CO_IBC_PARAF')
+        self.assertAlmostEqual(cons.ibc_paraf, 80000000.0, delta=0.01)
+        self.assertAlmostEqual(cons.ibc_paraf, paraf_recibos, delta=0.01)
+        self.assertAlmostEqual(cons.diferencia_paraf, 0.0, delta=0.01)
+

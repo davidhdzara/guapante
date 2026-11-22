@@ -2961,16 +2961,33 @@ class HrPayslip(models.Model):
             ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
         return ultimo_ibc / dias_mes * dias
 
+    def _ne_exceso_no_salarial(self, remuneracion, pactados):
+        """Exceso del 40% (Ley 1393/2010 Art. 30; SU 25185/2021): la parte de los pagos no salariales POR PACTO (``pactados``) que supera el porcentaje del
+        parámetro ``l10n_co_pct_tope_no_salarial`` del total de la remuneración (``remuneracion`` + ``pactados``). Ese exceso suma al IBC de salud, pensión
+        y ARL. .299: se extrajo de ``_ne_ibc_limites`` SIN cambiar su resultado, para mostrarlo en «Cálculo del salario» con la misma cuenta."""
+        self.ensure_one()
+        pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
+        return max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
+
+    def _ne_ibc_parafiscales(self, salarial):
+        """IBC de CCF, SENA e ICBF (.299, decisión del TL del 22-nov): SOLO lo salarial. Sin el excedente del 40%, sin el piso de 1 SMMLV y sin el techo
+        de 25 SMMLV. Ley 21/1982 art. 17 («nómina mensual de salarios»: los pagos por los elementos integrantes del salario, más los descansos
+        remunerados) y Ley 344/1996 art. 17 (los acuerdos sobre pagos que no constituyen salario, CST art. 128, y el auxilio de transporte no hacen parte de
+        la base de SENA, ICBF, ESAP y subsidio familiar, sin tope porcentual). El 40% del art. 30 de la Ley 1393/2010 es de salud, pensión y riesgos
+        laborales (``_ne_ibc_limites``), no de parafiscales. El salario integral entra por ``salarial`` con su 70% (``_ne_ibc_salarial``)."""
+        self.ensure_one()
+        return salarial
+
     def _ne_ibc_limites(self, salarial, incap, remuneracion, pactados, dias):
         """IBC del recibo con regla del 40%, techo (sin prorratear) y piso (prorrateado
-        por dias). Ley 1393/2010 Art. 30; Ley 797/2003; SU 25185/2021."""
+        por dias). Ley 1393/2010 Art. 30; Ley 797/2003; SU 25185/2021. Es la base de salud, pensión y ARL; la de parafiscales es
+        ``_ne_ibc_parafiscales`` (.299)."""
         self.ensure_one()
         smmlv = self._rule_parameter('l10n_co_smmlv', self._ne_fecha_parametros())
-        pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
         minimo = self._rule_parameter('l10n_co_ibc_min_smmlv', self._ne_fecha_parametros())
         maximo = self._rule_parameter('l10n_co_ibc_max_smmlv', self._ne_fecha_parametros())
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
-        excedente = max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
+        excedente = self._ne_exceso_no_salarial(remuneracion, pactados)
         ibc = min(salarial + incap + excedente, maximo * smmlv)
         if dias > 0:
             ibc = max(ibc, minimo * smmlv / dias_mes * dias)

@@ -343,3 +343,41 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertAlmostEqual(colilla['neto'], recibo.net_wage, delta=0.01)
         calculo = set(self._filas(recibo).filtered('line_id').mapped('line_id'))
         self.assertFalse(calculo & set(f['linea'] for f in filas), 'Ninguna línea está en la colilla y en «Cálculo del salario» a la vez')
+
+    # ── .299 (c): la fila del exceso del 40 % ─────────────────────────────────────────────────────────────────────────────────
+    def _fila_exceso(self, recibo):
+        return self._filas(recibo).filtered(lambda f: not f.display_type and (f.name or '').startswith('Exceso del 40'))
+
+    def test_16_la_fila_del_exceso_del_40_sale_al_final_de_bases_con_el_valor_manual(self):
+        """Sueldo 3.000.000 + 3.000.000 de pagos no salariales POR PACTO (CO_BONIF_NOSAL): el 40 % de 6.000.000 son 2.400.000 y el exceso, 600.000, pasa al IBC de
+        salud, pensión y ARL. Sin pactados no hay fila."""
+        recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
+        self.assertFalse(self._fila_exceso(recibo), 'Sin pagos pactados no hay fila del exceso')
+        self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_bonif_nosal').id,
+            'code': 'CO_BONIF_NOSAL', 'amount': 3000000.0})
+        recibo.compute_sheet()
+        fila = self._fila_exceso(recibo)
+        self.assertEqual(len(fila), 1)
+        pct = recibo._rule_parameter('l10n_co_pct_tope_no_salarial', recibo.date_from)
+        esperado = 3000000.0 - pct / 100.0 * (3000000.0 + 3000000.0)          # pactados - 40 % x (remuneración + pactados)
+        self.assertAlmostEqual(fila.total, esperado, delta=0.01)
+        self.assertGreater(fila.total, 0.0)
+        self.assertFalse(fila.line_id, 'No es una línea del recibo: es informativa')
+        filas = self._filas(recibo)
+        siguiente = filas[list(filas.ids).index(fila.id) + 1]
+        self.assertEqual(siguiente.display_type, 'line_section', 'Va al final de la sección «Bases»: lo que sigue es otra sección')
+        # y es justo lo que suma al IBC de salud y pensión
+        valores = {f.line_id.code: f.total for f in filas if f.line_id}
+        self.assertAlmostEqual(valores['CO_IBC_SP'], valores['CO_IBC_SALARIAL'] + fila.total, delta=0.01)
+
+    def test_17_con_pactados_bajo_el_40_la_fila_se_muestra_en_cero(self):
+        recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
+        self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_bonif_nosal').id,
+            'code': 'CO_BONIF_NOSAL', 'amount': 500000.0})
+        recibo.compute_sheet()
+        fila = self._fila_exceso(recibo)
+        self.assertEqual(len(fila), 1, 'Hay pagos pactados: la fila se muestra aunque el exceso sea cero (se revisó el límite)')
+        self.assertEqual(fila.total, 0.0)
+

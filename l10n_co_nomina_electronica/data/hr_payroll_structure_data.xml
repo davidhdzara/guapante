@@ -1134,13 +1134,11 @@ result = payslip._ne_ibc_limites(
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-_r = result_rules
-result = payslip._ne_ibc_limites(
-    _r['CO_IBC_SALARIAL']['total'], 0.0,
-    _r['CO_IBC_REMUN']['total'], _r['CO_IBC_PACTADOS']['total'], _r['CO_DIAS_PARAF']['total'])
+# .299 (decisión del TL, 22-nov): el IBC de parafiscales es SOLO lo salarial: sin el 40 %, sin piso y sin techo (Ley 21/1982 art. 17; Ley 344/1996 art. 17).
+result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
             </field>
             <field name="appears_on_payslip" eval="False"/>
-            <field name="note">IBC de CCF, SENA e ICBF del recibo (sin maternidad/paternidad).</field>
+            <field name="note">IBC de CCF, SENA e ICBF del recibo: solo lo salarial (sin el excedente del 40 %, sin piso ni techo; sin maternidad/paternidad).</field>
         </record>
 
         <record id="hr_salary_rule_co_ss_base_ibc" model="hr.salary.rule">
