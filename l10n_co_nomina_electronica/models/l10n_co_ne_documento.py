@@ -67,7 +67,7 @@ class L10nCoNeDocumento(models.Model):
                                   help='Contrato vigente en el mes (ingreso/retiro, tipo de contrato).')
     period = fields.Date(string='Mes', required=True, index=True,
                          help='Primer día del mes del documento (mes de la primera fecha de pago de sus recibos).')
-    payslip_ids = fields.One2many('hr.payslip', 'l10n_co_ne_documento_id', string='Recibos incluidos')
+    payslip_ids = fields.One2many('hr.payslip', 'l10n_co_ne_documento_id', string='Recibos incluidos', check_company=True)       # H-F2-03 (C5)
     recibo_xml_ids = fields.Many2many('hr.payslip', string='Recibos del XML', compute='_compute_recibo_xml_ids',
                                       help='Recibos con los que se arma el XML: los propios y, en una nota de ajuste, '
                                            'los de la cadena de documentos (doc 53 §23.16, D-1).')
@@ -101,7 +101,7 @@ class L10nCoNeDocumento(models.Model):
     hab_set_id = fields.Char(string='Set de habilitación DIAN', copy=False, index=True)
     exchange_ids = fields.Many2many('l10n.co.ne.exchange', 'l10n_co_ne_exchange_documento_rel',
                                     'documento_id', 'exchange_id', string='Historial de intercambios DIAN',
-                                    readonly=True, copy=False)
+                                    readonly=True, copy=False, check_company=True)
 
     is_adjustment = fields.Boolean(string='Es nota de ajuste', copy=False)
     adjustment_type = fields.Selection([('1', 'Reemplazar'), ('2', 'Eliminar')], string='Tipo de nota de ajuste',

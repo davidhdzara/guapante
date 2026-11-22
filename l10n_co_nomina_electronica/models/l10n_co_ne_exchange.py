@@ -11,6 +11,7 @@ from odoo.exceptions import AccessError
 
 class L10nCoNeExchange(models.Model):
     _name = 'l10n.co.ne.exchange'
+    _check_company_auto = True      # H-F2-03 (C5): la compañía de los recibos y del intercambio anterior es la del intercambio
     _description = 'Intercambio DIAN de Nómina Electrónica'
     _order = 'create_date desc, id desc'
 
@@ -26,7 +27,7 @@ class L10nCoNeExchange(models.Model):
     zip_key = fields.Char(readonly=True, index=True)
     queried_zip_key = fields.Char(readonly=True, index=True)
     parent_exchange_id = fields.Many2one('l10n.co.ne.exchange', readonly=True,
-        ondelete='restrict')
+        ondelete='restrict', check_company=True)
     transport_error = fields.Text(readonly=True)
     request_payload = fields.Binary(attachment=True, readonly=True)
     response_payload = fields.Binary(attachment=True, readonly=True)
@@ -34,7 +35,7 @@ class L10nCoNeExchange(models.Model):
     response_filename = fields.Char(compute='_compute_nombres_descarga', string='Archivo de la respuesta')
     payslip_ids = fields.Many2many('hr.payslip',
         'l10n_co_ne_exchange_payslip_rel', 'exchange_id', 'payslip_id',
-        string='Nóminas', readonly=True)
+        string='Nóminas', readonly=True, check_company=True)
     document_ids = fields.One2many('l10n.co.ne.exchange.document', 'exchange_id',
         string='Manifiesto', readonly=True)
     unidentified_count = fields.Integer(
@@ -129,15 +130,16 @@ class L10nCoNeExchange(models.Model):
 
 class L10nCoNeExchangeDocument(models.Model):
     _name = 'l10n.co.ne.exchange.document'
+    _check_company_auto = True      # H-F2-03 (C5)
     _description = 'Documento del manifiesto DIAN'
     _order = 'id'
 
     exchange_id = fields.Many2one('l10n.co.ne.exchange', required=True,
-        readonly=True, ondelete='cascade')
+        readonly=True, ondelete='cascade', check_company=True)
     company_id = fields.Many2one(related='exchange_id.company_id', store=True,
         readonly=True, index=True)
     payslip_id = fields.Many2one('hr.payslip', required=True, readonly=True,
-        ondelete='restrict')
+        ondelete='restrict', check_company=True)
     cune = fields.Char(readonly=True, index=True)
     file_name = fields.Char(required=True, readonly=True)
     numero = fields.Char(string='Número', readonly=True, index=True,
