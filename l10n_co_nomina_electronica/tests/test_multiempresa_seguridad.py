@@ -11,6 +11,7 @@ modelos derivados (documento, intento, intercambio, manifiesto, cálculo, concep
 from datetime import date
 
 from odoo.exceptions import AccessError, UserError
+from odoo.service.model import get_public_method
 from odoo.tests.common import TransactionCase, tagged
 
 CLAVES = ('a', 'b')
@@ -209,6 +210,30 @@ class TestMultiempresaSeguridad(TransactionCase):
             self.assertIn('software_pin', Admin.get_view(view_type=tipo)['arch'], 'La vista %s del administrador si' % tipo)
         self.assertNotIn('message_ids', self.env['l10n.co.ne.operation_mode']._fields, 'Sin chatter ni tracking: el PIN no queda en el historial')
         self.assertEqual(Oficial.browse(modo.id)._ne_pin_del_software(), 'PIN-a', 'El sistema lo sigue leyendo para el CUNE y el codigo de seguridad aunque genere un oficial')
+
+    def test_el_oficial_calcula_el_cune_con_el_pin_sin_error_de_acceso_y_un_rpc_suyo_no_devuelve_el_pin(self):
+        """Condicion del TL (C4): ``_ne_pin_del_software`` es privado (``odoo/service/model.py:29-45``, ``get_public_method``: un metodo con «_» no se llama por RPC) y lee con ``sudo`` solo para el CUNE y
+        el codigo de seguridad. El oficial genera el CUNE del documento (``_ne_calcular_cune``) sin ``AccessError`` y con el mismo resultado que el sistema; el CUNE cambia con el PIN (se usa de verdad);
+        y por RPC ``read``/``search_read`` del oficial sobre el modo de operacion NO devuelven el PIN."""
+        d, oficial = self.d['a'], self.oficial['a']
+        datos = {'informacion_general': {'FechaGen': '2026-04-01', 'HoraGen': '10:00:00-05:00'},
+                 'totales': {'DevengadosTotal': '1000000.00', 'DeduccionesTotal': '80000.00', 'ComprobanteTotal': '920000.00'}}
+        d.documento.consecutive = 'NE1000'
+        como_oficial = d.documento.with_user(oficial).with_context(allowed_company_ids=self.a.ids)
+        cune = como_oficial._ne_calcular_cune(datos)                                       # con el PIN leido directo daria AccessError
+        self.assertTrue(cune)
+        self.assertEqual(cune, d.documento._ne_calcular_cune(datos), 'El oficial obtiene el mismo CUNE que el sistema')
+        d.modo.software_pin = 'OTRO-PIN'
+        self.assertNotEqual(como_oficial._ne_calcular_cune(datos), cune, 'El PIN entra al CUNE')
+        d.modo.software_pin = 'PIN-a'
+        Modo = self._como('l10n.co.ne.operation_mode', oficial)
+        self.assertNotIn('software_pin', Modo.browse(d.modo.id).read()[0], 'read sin campos no devuelve el PIN')
+        self.assertNotIn('software_pin', Modo.search_read([('id', '=', d.modo.id)])[0], 'search_read sin campos no devuelve el PIN')
+        with self.assertRaises(AccessError):
+            Modo.search_read([('id', '=', d.modo.id)], ['software_id', 'software_pin'])
+        with self.assertRaises(AccessError):
+            get_public_method(Modo.browse(d.modo.id), '_ne_pin_del_software')
+        self.assertTrue(get_public_method(Modo.browse(d.modo.id), 'read'), 'Control positivo: read si es publico')
 
     # ── pacto y dia de descanso con la visibilidad del recibo (G4) ─────────────────────────────────────────────────────────
     def test_el_oficial_solo_ve_pactos_y_descansos_de_los_empleados_que_ve_en_el_recibo_y_el_administrador_todos_los_de_su_compania(self):
