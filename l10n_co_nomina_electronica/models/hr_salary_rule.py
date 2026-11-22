@@ -242,7 +242,9 @@ class HrSalaryRule(models.Model):
              'empleado, la retención en la fuente, los embargos, los aportes de la empresa, las provisiones, las bases, las incapacidades, '
              'las licencias ni las vacaciones: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
              'UGPP. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
-             'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan.')
+             'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan. '
+             'Esta marca se siembra desde el XML del módulo: cada actualización del módulo devuelve a su valor sembrado la de las reglas de la estructura '
+             'general; las reglas propias del cliente no se tocan.')
     # .301 (decisión del TL, 22-nov): qué conceptos no salariales avisan cuando se repiten mes a mes (``HrPayslip._ne_avisos_habitualidad``). Dato PLANO sembrado
     # explícito en el XML de cada regla, igual que ``l10n_co_ne_ajustable``, y NO se deduce de «ajustable» (son dos cosas distintas: quién puede editar un concepto y
     # si su repetición es sospechosa) ni del origen (el auxilio de transporte y el de conectividad se pagan todos los meses por ley y avisarían siempre).
@@ -253,7 +255,8 @@ class HrSalaryRule(models.Model):
              'puede ser salario aunque se llame no salarial (art. 127 CST; los viáticos permanentes de manutención y alojamiento son salario, art. 130 CST) y entrar al '
              'IBC. Solo es un aviso: no cambia el cálculo. De fábrica se vigilan el auxilio de alimentación, las bonificaciones no salariales y los viáticos no '
              'salariales. NO se marcan los pagos que la ley hace todos los meses (auxilio de transporte, auxilio de conectividad del teletrabajo, apoyo de sostenimiento). '
-             'Solo el administrador del sistema puede marcarla o desmarcarla.')
+             'Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
+             'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',
