@@ -15,7 +15,7 @@ from datetime import date
 
 from lxml import etree
 
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import UserError
 from odoo.tests import Form
 from odoo.tests.common import TransactionCase, tagged
 from .common_diario import fijar_diario_de_salarios
@@ -202,7 +202,9 @@ class TestCalculoDelSalario(TransactionCase):
         with self.assertRaises(UserError):
             recibo.write({'l10n_co_calculo_ids': [(0, 0, {'name': 'Desde el recibo'})]})
         gerente = self._usuario('calculo_gerente', [_GRUPO_GERENTE], self.company)
-        with self.assertRaises((AccessError, UserError)):
+        # ``assertRaises`` de Odoo 18 no acepta una tupla (``odoo/tests/common.py:490`` hace ``issubclass(exception, AccessError)``: TypeError). ``AccessError`` es
+        # subclase de ``UserError`` (``odoo/exceptions.py:64``): ``UserError`` cubre el error del modelo y el de acceso.
+        with self.assertRaises(UserError):
             self.Calculo.with_user(gerente).create({'slip_id': recibo.id, 'name': 'Gerente a mano'})
         self.assertEqual(len(self.Calculo.with_user(gerente).search([('slip_id', '=', recibo.id)])), len(self._filas(recibo)), 'El gerente sí las lee')
 
@@ -210,7 +212,7 @@ class TestCalculoDelSalario(TransactionCase):
         recibo = self._recibo()
         usuario = self._usuario('calculo_usuario', [_GRUPO_USUARIO], self.company)
         self.assertTrue(self.Calculo.with_user(usuario).search([('slip_id', '=', recibo.id)]))
-        with self.assertRaises((AccessError, UserError)):
+        with self.assertRaises(UserError):                       # ``AccessError`` hereda de ``UserError``: ver la prueba anterior
             self.Calculo.with_user(usuario).search([('slip_id', '=', recibo.id)], limit=1).write({'name': 'x'})
         usuario_b = self._usuario('calculo_otra_compania', [_GRUPO_GERENTE], self.company_b)
         self.assertFalse(self.Calculo.with_user(usuario_b).search([('slip_id', '=', recibo.id)]), 'Las filas de la compañía A no se ven desde la B')
