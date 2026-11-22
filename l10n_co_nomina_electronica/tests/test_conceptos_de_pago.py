@@ -138,23 +138,36 @@ class TestConceptosDePago(TransactionCase):
         self.assertEqual(self.env['l10n.co.payslip.concepto']._fields['rate']._digits, 'Payroll Rate',
                          'El campo del modelo conserva su precisión: el cambio es solo de presentación')
 
-    def test_el_concepto_es_el_selector_de_la_regla_editable_solo_en_la_fila_nueva_y_el_tipo_ya_no_es_una_columna(self):
-        """Selector del concepto (22-nov, diseño aprobado por el TL; doc 74 §19): la columna principal «Concepto» es la REGLA (Many2one), editable solo en la fila nueva, con
-        dominio de la estructura del recibo, las reglas que se alimentan de una novedad y las secciones de devengados o deducciones; el tipo de novedad queda como columna INVISIBLE
-        (lo leen la edición y los cálculos) y la descripción como columna opcional visible (el widget de secciones la necesita)."""
-        concepto = self._columna('salary_rule_id')
-        self.assertEqual(concepto.get('string'), 'Concepto')
-        self.assertEqual(concepto.get('readonly'), 'id', 'Solo se elige en la fila nueva')
-        dominio = concepto.get('domain')
+    def test_la_primera_columna_es_el_concepto_el_nombre_y_la_segunda_la_regla_editable_solo_en_la_fila_nueva(self):
+        """Presentación (22-nov, decisión del TL tras el re-test de QA; doc 74 §19): la PRIMERA columna es «Concepto» (el nombre de la fila: en los días, «Asistencia»; el
+        widget de secciones la necesita visible) y la SEGUNDA «Regla», el selector (Many2one), editable solo en la fila nueva y requerida allí, solo en las novedades, con el dominio
+        de la estructura del recibo, las reglas que se alimentan de una novedad y las secciones de devengados o deducciones; el tipo de novedad queda como columna INVISIBLE (lo leen la
+        edición y los cálculos)."""
+        vista = self.env['hr.payslip'].get_view(view_type='form')
+        arch = etree.fromstring(vista['arch'].encode('utf-8') if isinstance(vista['arch'], str) else vista['arch'])
+        columnas = arch.xpath("//field[@name='l10n_co_concepto_ids']//list/field")
+        visibles = [c.get('name') for c in columnas if not c.get('column_invisible')]
+        self.assertEqual(visibles[:2], ['name', 'salary_rule_id'], '«Concepto» primero y «Regla» segunda')
+        self.assertLess(visibles.index('salary_rule_id'), visibles.index('cuenta'))
+        nombre = self._columna('name')
+        self.assertEqual(nombre.get('string'), 'Concepto')
+        self.assertEqual(nombre.get('widget'), 'section_and_note_text')
+        self.assertFalse(nombre.get('optional'), 'Siempre visible: el widget de secciones la necesita')
+        self.assertFalse(nombre.get('invisible'), 'También en las calculadas y en los días: es lo que se lee como concepto')
+        self.assertIn('calculado', nombre.get('readonly'))
+        self.assertIn('dias', nombre.get('readonly'))
+        regla = self._columna('salary_rule_id')
+        self.assertEqual(regla.get('string'), 'Regla')
+        self.assertEqual(regla.get('readonly'), 'id', 'Solo se elige en la fila nueva')
+        self.assertIn('not id', regla.get('required'), 'Requerida en la fila nueva')
+        self.assertEqual(regla.get('invisible'), "origen != 'novedad'", 'Solo en las novedades: en las calculadas repetiría el nombre y en los días no hay regla')
+        dominio = regla.get('domain')
         for texto in ('parent.struct_id', 'l10n_co_ne_alimentada_por_novedad', 'l10n_co_ne_seccion_concepto'):
             self.assertIn(texto, dominio)
-        self.assertIn('no_create', concepto.get('options'))
+        self.assertIn('no_create', regla.get('options'))
         tipo = self._columna('input_type_id')
         self.assertTrue(tipo.get('column_invisible'), 'La columna «Tipo de novedad» desaparece')
         self.assertFalse(tipo.get('optional'))
-        descripcion = self._columna('name')
-        self.assertEqual(descripcion.get('string'), 'Descripción')
-        self.assertEqual(descripcion.get('optional'), 'show', 'El widget de secciones necesita la columna del nombre visible')
 
     def test_la_regla_se_alimenta_de_una_novedad_si_hay_un_tipo_con_su_mismo_codigo_y_la_estructura_general_es_uno_a_uno(self):
         """Doc 74 §19: 38 de los 44 tipos tienen exactamente una regla de su mismo código en la estructura general; los otros 6 son de otras estructuras (liquidación y bonificación)

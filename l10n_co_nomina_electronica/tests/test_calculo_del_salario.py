@@ -114,7 +114,8 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertEqual(calculo['rate'].get('invisible'), 'rate == 100')
         conceptos, orden_c = self._columnas_de('conceptos_de_pago', 'l10n_co_concepto_ids')
         self.assertEqual(conceptos['cuenta'].get('optional'), 'hide')
-        self.assertLess(orden_c.index('salary_rule_id'), orden_c.index('cuenta'), 'Con el selector, «Concepto» es la regla: Concepto | Cuenta | Importe | Total')
+        self.assertLess(orden_c.index('name'), orden_c.index('salary_rule_id'), '«Concepto» (el nombre) primero y «Regla» después')
+        self.assertLess(orden_c.index('salary_rule_id'), orden_c.index('cuenta'))
         self.assertLess(orden_c.index('cuenta'), orden_c.index('amount'))
         for nombre in ('quantity', 'unidad'):
             self.assertEqual(conceptos[nombre].get('invisible'), 'quantity == 1 and rate == 100 and not edita_cantidad', 'Una fila editable sí muestra la cantidad: %s' % nombre)
