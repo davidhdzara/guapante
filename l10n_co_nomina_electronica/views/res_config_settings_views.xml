@@ -109,6 +109,13 @@
                             <field name="l10n_co_ne_pre_sequence_id"
                                    string="Secuencia Temporal (PRE-NOM -- NO es la de Notas de Ajuste)"/>
                         </setting>
+                        <!-- .304 (doc 77, E): control manual tras restaurar una copia de la base y contadores de los números usados (lista: Nómina > Consecutivos de nómina). -->
+                        <setting string="Último consecutivo que viajó" help="Control manual para proteger los consecutivos tras restaurar una copia de la base: anote el último número que ya viajó a la DIAN en el ambiente actual. 0 = sin control manual.">
+                            <field name="l10n_co_ne_ultimo_nomina"/>
+                            <field name="l10n_co_ne_ultimo_ajuste"/>
+                            <field name="l10n_co_ne_consecutivos_usados"/>
+                            <field name="l10n_co_ne_consecutivos_rechazados"/>
+                        </setting>
                     </block>
                     <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">
                         <setting class="w-100" help="Agregue sus certificados para firmar los documentos de nómina electrónica (XAdES-BES). Es la misma lista de certificados que usa facturación electrónica -- no requiere uno independiente. Nómina usa siempre el último certificado de la lista, igual que Facturación Electrónica.">

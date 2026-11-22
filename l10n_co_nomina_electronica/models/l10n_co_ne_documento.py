@@ -867,57 +867,25 @@ class L10nCoNeDocumento(models.Model):
     # Generar y firmar (etapa 3b): consecutivo, CUNE, firma y adjunto
     # ──────────────────────────────────────────────────────────────────
     def _ne_prefijo_nomina(self):
-        """Prefijo de nómina electrónica de la compañía. Sin prefijo configurado es un error claro: no se inventa
-        uno (antes caía en 'NE' o en '' en silencio, igual que la secuencia sin configurar)."""
+        """Prefijo de nómina electrónica de la compañía. Sin prefijo configurado es un error claro (``res.company._ne_prefijo_consecutivo``, .304: una sola fuente)."""
         self.ensure_one()
-        prefijo = self.company_id.l10n_co_ne_payroll_prefix
-        if not prefijo or not prefijo.strip():
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene prefijo de nómina electrónica. Configúrelo en Ajustes > Nómina '
-                '(Prefijo Nómina) antes de generar el documento.', compania=self.company_id.name))
-        return prefijo
+        return self.company_id._ne_prefijo_consecutivo(False)
 
     def _ne_prefijo_ajuste(self):
-        """Prefijo de las notas de ajuste de la compañía. Sin prefijo es un error claro (el 'NA' del recibo cae en
-        silencio: no se copia)."""
+        """Prefijo de las notas de ajuste de la compañía. Sin prefijo es un error claro."""
         self.ensure_one()
-        prefijo = self.company_id.l10n_co_ne_adjust_prefix
-        if not prefijo or not prefijo.strip():
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene prefijo de notas de ajuste. Configúrelo en Ajustes > Nómina '
-                '(Prefijo Nota de Ajuste) antes de generar la nota.', compania=self.company_id.name))
-        return prefijo
+        return self.company_id._ne_prefijo_consecutivo(True)
 
     def _ne_prefijo(self):
         """Prefijo del consecutivo de ESTE documento: el de ajuste para una nota, el de nómina para un original."""
         self.ensure_one()
-        return self._ne_prefijo_ajuste() if self.is_adjustment else self._ne_prefijo_nomina()
-
-    def _ne_siguiente_consecutivo_ajuste(self):
-        """Siguiente consecutivo de la secuencia de ajuste (código ``l10n_co_nomina.ajuste``): primero la de la
-        compañía y, si no, la sin compañía. Sin secuencia es un error claro: no hay fallback silencioso."""
-        self.ensure_one()
-        secuencia = self.env['ir.sequence'].search([
-            ('code', '=', 'l10n_co_nomina.ajuste'), '|', ('company_id', '=', self.company_id.id),
-            ('company_id', '=', False)], order='company_id', limit=1)   # la de la compañía primero (NULL al final)
-        if not secuencia:
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene secuencia de notas de ajuste de nómina electrónica (código '
-                'l10n_co_nomina.ajuste). Configúrela antes de generar la nota.', compania=self.company_id.name))
-        return secuencia.next_by_id()
+        return self.company_id._ne_prefijo_consecutivo(self.is_adjustment)
 
     def _ne_siguiente_consecutivo(self):
-        """Siguiente consecutivo oficial de la compañía (misma secuencia no_gap del ciclo por recibo). Sin secuencia
-        configurada es un error claro: no se inventa un número."""
+        """Siguiente consecutivo oficial de la compañía (la misma secuencia no_gap del ciclo por recibo): UNA sola función, ``res.company._ne_tomar_consecutivo`` (.304), con los controles de
+        número ya enviado, secuencia atrasada y número ya asignado; sin secuencia o sin prefijo es un error claro, no hay fallback."""
         self.ensure_one()
-        if self.is_adjustment:
-            return self._ne_siguiente_consecutivo_ajuste()
-        secuencia = self.company_id.l10n_co_ne_sequence_id
-        if not secuencia:
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene secuencia de nómina electrónica. Configúrela en Ajustes > '
-                'Nómina antes de generar el documento.', compania=self.company_id.name))
-        return secuencia.next_by_id()
+        return self.company_id._ne_tomar_consecutivo(self.is_adjustment)
 
     def action_generar_xml(self):
         """Genera el XML mensual firmado: revalida, toma consecutivo (después de una corrida en seco), arma el
@@ -1033,6 +1001,8 @@ class L10nCoNeDocumento(models.Model):
                 '(toma un consecutivo nuevo): el mismo XML no se reenvía.', self.display_name))
         if self.etapa != 'ready' or not (self.cune and self.consecutive and self.xml_attachment_id):
             raise UserError(_('Genere el XML del documento "%s" antes de enviarlo.', self.display_name))
+        # .304 (doc 77, A): el número de este documento no pudo haber viajado ya en otro (p. ej. tras restaurar o mover la secuencia).
+        self.company_id._ne_exigir_numero_sin_viajar(self.consecutive, self.is_adjustment, documento=self)
         if confirmado is None:
             confirmado = bool((self.sending_data or {}).get('extemporaneo_confirmado'))
         self._ne_exigir_plazo(confirmado)

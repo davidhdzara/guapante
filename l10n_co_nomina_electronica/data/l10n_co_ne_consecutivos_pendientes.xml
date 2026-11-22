@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- .304: rellena el número y el ambiente de los manifiestos DIAN anteriores a .304 (el nombre del archivo trae el número; el endpoint, el ambiente). Es la única escritura
+         permitida sobre un manifiesto (evidencia inmutable): contexto explícito, solo esos dos campos y una sola vez (``write`` de ``l10n.co.ne.exchange.document``). Fuera de
+         noupdate para re-aplicarse en -u (idempotente: solo toca los que aún no los traen). -->
+    <function model="l10n.co.ne.exchange.document" name="_ne_rellenar_numero_y_ambiente"/>
+</odoo>

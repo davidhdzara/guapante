@@ -38,3 +38,5 @@ access_l10n_co_payslip_calculo_manager,l10n.co.payslip.calculo manager,model_l10
 access_l10n_co_payslip_calculo_user,l10n.co.payslip.calculo user,model_l10n_co_payslip_calculo,hr_payroll.group_hr_payroll_user,1,0,0,0
 access_l10n_co_employee_pacto_manager,l10n.co.employee.pacto manager,model_l10n_co_employee_pacto,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_employee_pacto_user,l10n.co.employee.pacto user,model_l10n_co_employee_pacto,hr_payroll.group_hr_payroll_user,1,1,1,0
+access_l10n_co_ne_consecutivo_manager,l10n.co.ne.consecutivo manager,model_l10n_co_ne_consecutivo,hr_payroll.group_hr_payroll_manager,1,0,0,0
+access_l10n_co_ne_consecutivo_user,l10n.co.ne.consecutivo user,model_l10n_co_ne_consecutivo,hr_payroll.group_hr_payroll_user,1,0,0,0

@@ -43,3 +43,4 @@ from . import l10n_co_payslip_ajuste
 from . import l10n_co_payslip_concepto
 from . import l10n_co_payslip_calculo
 from . import l10n_co_employee_pacto
+from . import l10n_co_ne_consecutivo      # .304: después de l10n_co_ne_exchange y de l10n_co_ne_documento (la vista SQL lee sus tablas)

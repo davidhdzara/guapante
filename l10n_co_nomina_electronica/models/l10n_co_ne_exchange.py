@@ -110,6 +110,9 @@ class L10nCoNeExchange(models.Model):
                 'payslip_id': item['payslip'].id,
                 'cune': item['payslip'].l10n_co_ne_cune,
                 'file_name': item['filename'],
+                # .304: el número que viajó y el ambiente en que viajó, para que ``l10n.co.ne.consecutivo`` y los controles de consecutivo no dependan de leer el nombre del archivo.
+                'numero': item['payslip'].l10n_co_ne_consecutive or False,
+                'ambiente': company._ne_ambiente_consecutivos(),
                 'sha256': hashlib.sha256(xml).hexdigest(),
                 'signed_xml': self._binary(xml),
                 'manifest_json': json.dumps({
@@ -137,6 +140,10 @@ class L10nCoNeExchangeDocument(models.Model):
         ondelete='restrict')
     cune = fields.Char(readonly=True, index=True)
     file_name = fields.Char(required=True, readonly=True)
+    numero = fields.Char(string='Número', readonly=True, index=True,
+                         help='Consecutivo del documento que viajó en este envío (.304). Los manifiestos anteriores a .304 lo traen del nombre del archivo.')
+    ambiente = fields.Selection([('habilitacion', 'Habilitación'), ('produccion', 'Producción')], string='Ambiente', readonly=True, index=True,
+                                help='Ambiente DIAN en que viajó el envío (.304): los números de habilitación no cuentan contra los de producción.')
     sha256 = fields.Char(required=True, readonly=True)
     signed_xml = fields.Binary(attachment=True, readonly=True)
     manifest_json = fields.Text(readonly=True)
@@ -150,7 +157,30 @@ class L10nCoNeExchangeDocument(models.Model):
         return records
 
     def write(self, vals):
+        """Inmutable. ÚNICA excepción (.304, condición del TL): el relleno de los manifiestos anteriores a .304 por la función de datos (``_ne_rellenar_numero_y_ambiente``), con el
+        contexto explícito ``ne_rellenar_numero_ambiente``, SOLO los campos ``numero`` y ``ambiente`` y SOLO si todavía están vacíos (una vez). Cualquier otro cambio sigue rechazado."""
+        if (self.env.context.get('ne_rellenar_numero_ambiente') and vals and set(vals) <= {'numero', 'ambiente'}
+                and all(not manifiesto[campo] for manifiesto in self for campo in vals)):
+            return super().write(vals)
         raise AccessError(_('El manifiesto DIAN es evidencia inmutable.'))
+
+    @api.model
+    def _ne_rellenar_numero_y_ambiente(self):
+        """Función de datos (corre en cada ``-u``, .304): rellena ``numero`` (del nombre del archivo, ``ne_<NIT>_<consecutivo>.xml``) y ``ambiente`` (por el endpoint: el de producción de la
+        compañía o habilitación) de los manifiestos que todavía no los traen. Es la única escritura permitida sobre un manifiesto, con contexto explícito y una sola vez."""
+        for manifiesto in self.sudo().search(['|', ('numero', '=', False), ('ambiente', '=', False)]):
+            valores = {}
+            if not manifiesto.numero:
+                numero = (manifiesto.file_name or '').rsplit('_', 1)[-1]
+                numero = numero[:-4] if numero.lower().endswith('.xml') else numero
+                if numero and numero[-1:].isdigit():
+                    valores['numero'] = numero
+            if not manifiesto.ambiente:
+                compania = manifiesto.company_id
+                valores['ambiente'] = 'produccion' if manifiesto.exchange_id.endpoint == compania._ne_dian_endpoint('1') else 'habilitacion'
+            if valores:
+                manifiesto.with_context(ne_rellenar_numero_ambiente=True).write(valores)
+        return True
 
     def unlink(self):
         raise AccessError(_('El manifiesto DIAN no puede eliminarse automáticamente.'))

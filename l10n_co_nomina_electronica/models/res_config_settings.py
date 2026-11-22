@@ -73,6 +73,12 @@ class ResConfigSettings(models.TransientModel):
         domain="[('code', 'like', 'l10n_co_nomina.')]",
     )
 
+    # .304 (doc 77): control manual del último consecutivo que viajó y contadores informativos
+    l10n_co_ne_ultimo_nomina = fields.Integer(related='company_id.l10n_co_ne_ultimo_nomina', readonly=False)
+    l10n_co_ne_ultimo_ajuste = fields.Integer(related='company_id.l10n_co_ne_ultimo_ajuste', readonly=False)
+    l10n_co_ne_consecutivos_usados = fields.Integer(related='company_id.l10n_co_ne_consecutivos_usados', readonly=True)
+    l10n_co_ne_consecutivos_rechazados = fields.Integer(related='company_id.l10n_co_ne_consecutivos_rechazados', readonly=True)
+
     # Ambiente (doc 22 §3)
     l10n_co_ne_test_environment = fields.Boolean(related='company_id.l10n_co_ne_test_environment', readonly=False)
     l10n_co_ne_certification_process = fields.Boolean(related='company_id.l10n_co_ne_certification_process', readonly=False)

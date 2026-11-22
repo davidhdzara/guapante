@@ -494,6 +494,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
         company = self.company_id
         self._validate_company_ne_config(company)
+        self._ne_exigir_numero_no_reusado()
 
         if company.l10n_co_ne_demo_mode:
             # Doc 37: Modo Demo -- equivalente a _send_bill_sync() del
@@ -854,6 +855,17 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 'sticky': True,
             },
         }
+
+    def _ne_exigir_numero_no_reusado(self):
+        """.304 (doc 77, A y F): ANTES de enviar un recibo o una nota. (F) Un número que ya viajó y fue RECHAZADO no se reutiliza jamás: la DIAN devuelve el veredicto viejo (regla 90);
+        se genera el XML otra vez, que toma uno nuevo. (A) El número no pudo haber viajado ya, en este ambiente, en OTRO documento de la compañía."""
+        self.ensure_one()
+        if self.l10n_co_ne_consecutive and self.l10n_co_ne_state == 'rejected' and self.env['l10n.co.ne.consecutivo'].sudo().search_count([
+                ('payslip_id', '=', self.id), ('numero', '=', self.l10n_co_ne_consecutive), ('estado', '=', 'rechazado')]):
+            raise UserError(_(
+                'La DIAN rechazó el consecutivo %(numero)s de %(nombre)s: ese número no se reenvía (devolvería el veredicto viejo). Use «Regenerar XML», que toma un consecutivo nuevo.',
+                numero=self.l10n_co_ne_consecutive, nombre=self.name))
+        self.company_id._ne_exigir_numero_sin_viajar(self.l10n_co_ne_consecutive, self.l10n_co_ne_is_adjustment, payslip=self)
 
     def action_regenerate_ne_xml(self):
         """Regenera el XML con consecutivo y CUNE nuevos (no para documentos enviados/aceptados).
@@ -1269,64 +1281,25 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         pero que no es PRE-NOM pasaba como si fuera válido. Defensa en
         profundidad: el consecutivo solo se considera válido si tiene
         el prefijo que corresponde a este tipo de documento.
+
+        .304: sin prefijo configurado es un error claro (antes caía en 'NE'/'NA' en silencio).
         """
         self.ensure_one()
-        company = self.company_id
-        if self.l10n_co_ne_is_adjustment:
-            return company.l10n_co_ne_adjust_prefix or 'NA'
-        return company.l10n_co_ne_payroll_prefix or 'NE'
+        return self.company_id._ne_prefijo_consecutivo(self.l10n_co_ne_is_adjustment)
 
     def _get_next_ne_consecutive(self):
         """
-        Genera el siguiente consecutivo de nómina electrónica para la empresa
-        utilizando las secuencias configuradas en la compañía.
+        Consecutivo oficial de nómina electrónica de este recibo o nota: el que ya tiene si
+        lleva el prefijo que corresponde a su tipo; si no (temporal PRE-NOM o el prefijo de
+        ajuste/nómina equivocado), uno nuevo de ``res.company._ne_tomar_consecutivo`` (.304:
+        ÚNICA función que toma consecutivos; sin secuencia o sin prefijo es un error claro,
+        ya no hay un fallback silencioso por prefijo por defecto y ``zfill``).
         """
         self.ensure_one()
-        company = self.company_id
-
-        # Si ya tiene un consecutivo asignado con el prefijo correcto para
-        # este tipo de documento, lo reutilizamos -- cualquier otro caso
-        # (temporal PRE-NOM, o el prefijo de ajuste/nómina equivocado) se
-        # reasigna.
         expected_prefix = self._ne_expected_prefix()
         if self.l10n_co_ne_consecutive and self.l10n_co_ne_consecutive.startswith(expected_prefix):
             return self.l10n_co_ne_consecutive
-
-        if self.l10n_co_ne_is_adjustment:
-            seq = self.env['ir.sequence'].search([
-                ('code', '=', 'l10n_co_nomina.ajuste'),
-                ('|'),
-                ('company_id', '=', company.id),
-                ('company_id', '=', False)
-            ], order='company_id', limit=1)  # la propia de la compania primero (NULL al final)
-            if seq:
-                return seq.next_by_id()
-            prefix = company.l10n_co_ne_adjust_prefix or 'NA'
-        else:
-            if company.l10n_co_ne_sequence_id:
-                return company.l10n_co_ne_sequence_id.next_by_id()
-            prefix = company.l10n_co_ne_payroll_prefix or 'NE'
-
-        # Fallback manual por si no hay secuencia configurada
-        last_payslip = self.search(
-            [
-                ('company_id', '=', company.id),
-                ('l10n_co_ne_consecutive', '!=', False),
-                ('l10n_co_ne_consecutive', '=like', prefix + '%'),
-            ],
-            order='l10n_co_ne_consecutive desc',
-            limit=1,
-        )
-        if last_payslip and last_payslip.l10n_co_ne_consecutive and not last_payslip.l10n_co_ne_consecutive.startswith('PRE-NOM'):
-            last_num_str = last_payslip.l10n_co_ne_consecutive[len(prefix):]
-            try:
-                next_num = int(last_num_str) + 1
-            except ValueError:
-                next_num = 1
-        else:
-            next_num = 1
-
-        return '%s%s' % (prefix, str(next_num).zfill(8))
+        return self.company_id._ne_tomar_consecutivo(self.l10n_co_ne_is_adjustment)
 
     def _get_ne_xml_filename(self):
         """Genera el nombre del archivo XML de nómina electrónica."""
