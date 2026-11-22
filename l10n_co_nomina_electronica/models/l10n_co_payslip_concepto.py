@@ -228,9 +228,9 @@ class L10nCoPayslipConcepto(models.Model):
         de_asistencia = lineas.filtered(lambda w: w.work_entry_type_id in tipos)
         filas = []
         if de_asistencia:
-            principal = de_asistencia[0]                      # la primera: «Asistencia» (WORK100) va primero en el desglose
+            principal = de_asistencia[0]                      # la línea que enlaza la fila; el NOMBRE no sale de ella (N2 «cu»): siempre «Asistencia»
             filas.append({
-                'slip_id': recibo.id, 'sequence': siguiente(), 'name': principal.name or principal.work_entry_type_id.name, 'origen': 'dias',
+                'slip_id': recibo.id, 'sequence': siguiente(), 'name': recibo._ne_nombre_dias_de_asistencia(), 'origen': 'dias',
                 'worked_day_id': principal.id, 'quantity': sum(de_asistencia.mapped('number_of_days')), 'unidad': 'dias', 'rate': 0.0})
         for dia in lineas - de_asistencia:
             filas.append({

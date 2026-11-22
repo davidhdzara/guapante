@@ -298,6 +298,27 @@ class TestConceptosDePago(TransactionCase):
             self.assertEqual(len(dias), 1)
         self.assertEqual(len(recibo.worked_days_line_ids), 2 + (1 if vacaciones else 0), 'La pestaña de días trabajados sigue desglosada')
 
+    def test_05c_la_fila_unida_se_llama_asistencia_sin_importar_el_nombre_de_la_primera_linea(self):
+        """N2 «cu»: la fila unida tomaba el nombre de la PRIMERA línea de días (el nativo agrega « (Half-Day)»; si «Asistencia» no tiene días la primera es otro tipo). Siempre lleva el
+        nombre del tipo «Asistencia» (traducible), con las líneas en cualquier orden y con nombres explícitos de otro tipo."""
+        recibo = self._recibo()
+        asistencia = recibo._ne_tipo_asistencia()
+        descanso = self.env.ref('l10n_co_nomina_electronica.hr_work_entry_type_co_descanso_remunerado')
+        festivo = self.env.ref('l10n_co_nomina_electronica.hr_work_entry_type_co_festivo_trabajado')
+        recibo.worked_days_line_ids.unlink()
+        Dia = self.env['hr.payslip.worked_days']
+        # el descanso va PRIMERO (secuencia menor) y con nombre explícito; «Asistencia» después; un festivo trabajado también se junta
+        Dia.create([
+            {'payslip_id': recibo.id, 'work_entry_type_id': descanso.id, 'number_of_days': 4.0, 'number_of_hours': 28.0, 'sequence': 1, 'name': 'Descansos remunerados'},
+            {'payslip_id': recibo.id, 'work_entry_type_id': festivo.id, 'number_of_days': 1.0, 'number_of_hours': 7.0, 'sequence': 2, 'name': 'Festivos trabajados'},
+            {'payslip_id': recibo.id, 'work_entry_type_id': asistencia.id, 'number_of_days': 10.0, 'number_of_hours': 70.0, 'sequence': 3}])
+        self.Concepto._regenerar_de_recibos(recibo)
+        dias = recibo.l10n_co_concepto_ids.filtered(lambda f: f.origen == 'dias')
+        self.assertEqual(len(dias), 1)
+        self.assertEqual(dias.quantity, 15.0)
+        self.assertEqual(dias.name, asistencia.name)
+        self.assertEqual(recibo._ne_nombre_dias_de_asistencia(), asistencia.name)
+
     def test_06_los_totales_del_pie_salen_de_las_lineas_y_coinciden_con_las_filas(self):
         recibo = self._recibo()
         por_seccion = {}

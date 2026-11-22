@@ -2293,6 +2293,17 @@ class HrPayslip(models.Model):
             tipos |= self.env.ref('l10n_co_nomina_electronica.%s' % xmlid, raise_if_not_found=False) or tipos.browse()
         return tipos
 
+    def _ne_nombre_dias_de_asistencia(self):
+        """Nombre de la fila única «Asistencia» de «Conceptos de pago» (N2 «cu», 22-nov): el del TIPO «Asistencia» (WORK100), que Odoo traduce al idioma del usuario, sin importar
+        qué tipos junte la fila ni cuál sea la primera línea: el nombre de una línea de días puede ser el nativo con « (Half-Day)» (``hr_payslip_worked_days.py:49-53``) o el de
+        «Festivos trabajados»/«Descansos remunerados» si «Asistencia» no tiene días. Sin el tipo en la base (no hay desglose por fecha: ``_ne_tipos_dias_de_asistencia``) se usa
+        el texto traducible «Asistencia»."""
+        self.ensure_one()
+        try:
+            return self._ne_tipo_asistencia().name
+        except UserError:
+            return _('Asistencia')
+
     def _ne_ajustar_dias_por_asistencia(self, valores):
         """Rearma la lista de líneas de días que calculó el nativo (``valores``: diccionarios con ``work_entry_type_id``, ``sequence``,
         ``number_of_days`` y ``number_of_hours``):
