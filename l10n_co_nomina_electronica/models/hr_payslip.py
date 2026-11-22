@@ -35,6 +35,7 @@ from lxml import etree as _etree
 from odoo import Command, api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_is_zero, float_round
+from odoo.tools.misc import format_date
 
 from ..services import (
     cune as cune_service,
@@ -206,6 +207,79 @@ class HrPayslip(models.Model):
                 except UserError:
                     pass
             recibo.l10n_co_ne_aviso_dias = ' '.join(avisos) or False
+
+    l10n_co_ne_aviso_no_salarial = fields.Char(
+        string='Aviso de habitualidad de pagos no salariales', compute='_compute_ne_aviso_no_salarial',
+        help='Solo para las vistas: aviso (no bloquea ni cambia el cálculo) cuando un concepto no salarial vigilado se pagó en cada uno de los últimos N meses calendario.')
+
+    @api.depends('line_ids', 'line_ids.total', 'date_to', 'employee_id', 'company_id', 'state')
+    def _compute_ne_aviso_no_salarial(self):
+        """.301 (doc 76 §2.2): ver ``_ne_avisos_habitualidad``. Un parámetro que falta NO se calla (sería un valor por defecto silencioso) ni bloquea el formulario: el
+        aviso dice qué falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_no_salarial = False
+            if not (isinstance(recibo.id, int) and recibo.date_to and recibo.employee_id and recibo.line_ids):
+                continue
+            try:
+                recibo.l10n_co_ne_aviso_no_salarial = ' '.join(recibo._ne_avisos_habitualidad()) or False
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_no_salarial = error.args[0]
+
+    def _ne_meses_habitualidad(self):
+        """Parámetro ``l10n_co_no_salarial_meses_habitualidad`` (``hr.rule.parameter``, 3 de fábrica, decisión del TL del 22-nov; 0 apaga el aviso). OBLIGATORIO: si falta hay
+        un error claro que dice dónde crearlo; nunca se asume un valor."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        try:
+            return int(self._rule_parameter('l10n_co_no_salarial_meses_habitualidad', fecha))
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Meses de Habitualidad de Pagos No Salariales» (código l10n_co_no_salarial_meses_habitualidad) para el %(fecha)s, '
+                'que se necesita para avisar de los pagos no salariales que se repiten mes a mes. Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas (cantidad de meses; 0 apaga el aviso).', fecha=fecha)) from None
+
+    def _ne_avisos_habitualidad(self):
+        """.301 (doc 76 §2.2, decisión del TL del 22-nov): avisos de los conceptos no salariales VIGILADOS (``DEV_NOSAL`` con ``l10n_co_ne_vigilar_habitualidad``) del recibo que
+        se pagaron en cada uno de los últimos N meses calendario, contando el mes del recibo. El mes de un recibo es el de su ``date_to`` (un solo criterio de mes con el
+        IBC mensual y la UGPP); un concepto cuenta en un mes si está en CUALQUIER recibo de ese mes (da igual que el pago sea quincenal o mensual), de cualquier
+        estructura, del mismo empleado y compañía. Los meses anteriores y los otros recibos del mes cuentan solo hechos o pagados; el recibo que se mira cuenta en el estado
+        en que esté. Solo informa: no cambia el cálculo. No hay norma que fije N (criterio del TL); lo que mueve el aviso es el art. 127 CST (el salario es lo que
+        retribuye el servicio, se llame como se llame)."""
+        self.ensure_one()
+        vigiladas = self.line_ids.filtered(
+            lambda l: l.total and l.salary_rule_id.category_id.code == 'DEV_NOSAL' and l.salary_rule_id.l10n_co_ne_vigilar_habitualidad)
+        if not vigiladas:
+            return []
+        n = self._ne_meses_habitualidad()
+        if n <= 0:
+            return []
+        indice = self.date_to.year * 12 + self.date_to.month - 1
+        requeridos = [indice - k for k in range(n - 1, -1, -1)]               # de más antiguo a más reciente
+        primero = date(requeridos[0] // 12, requeridos[0] % 12 + 1, 1)
+        ultimo = date(self.date_to.year, self.date_to.month, calendar.monthrange(self.date_to.year, self.date_to.month)[1])
+        codigos = vigiladas.mapped('code')
+        lineas = self.env['hr.payslip.line'].sudo().search([
+            ('slip_id.employee_id', '=', self.employee_id.id), ('slip_id.company_id', '=', self.company_id.id),
+            ('code', 'in', codigos), ('total', '!=', 0),
+            ('slip_id.date_to', '>=', primero), ('slip_id.date_to', '<=', ultimo),
+            '|', ('slip_id', '=', self.id), ('slip_id.state', 'in', ('done', 'paid'))])
+        meses_por_codigo = defaultdict(set)
+        for linea in lineas:
+            fecha = linea.slip_id.date_to
+            meses_por_codigo[linea.code].add(fecha.year * 12 + fecha.month - 1)
+        nombres = [format_date(self.env, date(i // 12, i % 12 + 1, 1), date_format='MMMM y') for i in requeridos]
+        meses = nombres[0] if len(nombres) == 1 else _('%(lista)s y %(ultimo)s', lista=', '.join(nombres[:-1]), ultimo=nombres[-1])
+        avisos, puestos = [], set()
+        for linea in vigiladas.sorted(lambda l: (l.sequence, l.id)):
+            if linea.code in puestos or not set(requeridos) <= meses_por_codigo[linea.code]:
+                continue
+            puestos.add(linea.code)
+            avisos.append(_(
+                'El concepto «%(concepto)s» (no salarial) se pagó a %(empleado)s en cada uno de los últimos %(n)s meses (%(meses)s).',
+                concepto=linea.salary_rule_id.name, empleado=self.employee_id.name, n=n, meses=meses))
+        if avisos:
+            avisos.append(_('Un pago habitual que retribuye el servicio puede ser salario aunque se llame no salarial (art. 127 CST) y entrar al IBC. Revise su naturaleza.'))
+        return avisos
 
     @api.depends('company_id.l10n_co_ne_environment', 'company_id.l10n_co_ne_certification_process')
     def _compute_ne_en_produccion(self):

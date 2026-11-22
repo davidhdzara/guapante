@@ -1426,4 +1426,17 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
         <field name="rule_parameter_id" ref="rule_parameter_ausencia_fraccion_dia"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
+    <!-- .301 (decisión del TL, 22-nov): cuántos meses calendario seguidos, contando el mes del recibo, hacen «habitual» un pago no salarial. No hay norma que fije la
+         cifra: es un criterio prudencial del equipo. Solo alimenta un aviso (no cambia el cálculo); el art. 127 CST define el salario por lo que retribuye el servicio. -->
+    <record id="rule_parameter_no_salarial_meses_habitualidad" model="hr.rule.parameter">
+        <field name="name">Colombia: Meses de Habitualidad de Pagos No Salariales</field>
+        <field name="code">l10n_co_no_salarial_meses_habitualidad</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: escriba la cantidad de meses calendario seguidos, contando el mes del recibo, en que un concepto no salarial vigilado (auxilio de alimentación, bonificaciones y viáticos no salariales) se paga para que el recibo avise que podría ser habitual. De fábrica 3: si se pagó en septiembre, octubre y noviembre, el recibo de noviembre avisa. Escriba 0 para apagar el aviso. Solo es un aviso: no cambia el cálculo. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_no_salarial_meses_habitualidad_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">3</field>
+        <field name="rule_parameter_id" ref="rule_parameter_no_salarial_meses_habitualidad"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
 </odoo>

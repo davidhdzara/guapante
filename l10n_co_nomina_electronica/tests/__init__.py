@@ -157,3 +157,4 @@ from . import test_colilla_conceptos
 from . import test_calculo_del_salario
 from . import test_diario_de_las_pruebas
 from . import test_ausencia_por_fecha
+from . import test_habitualidad_no_salarial

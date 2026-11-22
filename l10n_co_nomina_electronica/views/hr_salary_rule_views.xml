@@ -29,6 +29,8 @@
                         <group>
                             <!-- .298: solo el administrador del sistema marca o desmarca (decisión de David, riesgo UGPP); el modelo lo exige también en write/create. -->
                             <field name="l10n_co_ne_ajustable" groups="base.group_system"/>
+                            <!-- .301: igual que «ajustable», solo el administrador del sistema; el modelo lo exige también en write/create. -->
+                            <field name="l10n_co_ne_vigilar_habitualidad" groups="base.group_system"/>
                             <field name="l10n_co_ne_unidad"/>
                         </group>
                     </group>

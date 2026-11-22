@@ -243,6 +243,17 @@ class HrSalaryRule(models.Model):
              'las licencias ni las vacaciones: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
              'UGPP. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
              'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan.')
+    # .301 (decisión del TL, 22-nov): qué conceptos no salariales avisan cuando se repiten mes a mes (``HrPayslip._ne_avisos_habitualidad``). Dato PLANO sembrado
+    # explícito en el XML de cada regla, igual que ``l10n_co_ne_ajustable``, y NO se deduce de «ajustable» (son dos cosas distintas: quién puede editar un concepto y
+    # si su repetición es sospechosa) ni del origen (el auxilio de transporte y el de conectividad se pagan todos los meses por ley y avisarían siempre).
+    l10n_co_ne_vigilar_habitualidad = fields.Boolean(
+        string='Vigilar habitualidad', default=False,
+        help='Solo para conceptos no salariales. Si está marcada y el concepto se paga en cada uno de los últimos N meses calendario (el parámetro «Colombia: Meses de '
+             'Habitualidad de Pagos No Salariales», 3 de fábrica, contando el mes del recibo), el recibo muestra un aviso: un pago habitual que retribuye el servicio '
+             'puede ser salario aunque se llame no salarial (art. 127 CST; los viáticos permanentes de manutención y alojamiento son salario, art. 130 CST) y entrar al '
+             'IBC. Solo es un aviso: no cambia el cálculo. De fábrica se vigilan el auxilio de alimentación, las bonificaciones no salariales y los viáticos no '
+             'salariales. NO se marcan los pagos que la ley hace todos los meses (auxilio de transporte, auxilio de conectividad del teletrabajo, apoyo de sostenimiento). '
+             'Solo el administrador del sistema puede marcarla o desmarcarla.')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',
@@ -278,15 +289,27 @@ class HrSalaryRule(models.Model):
                 'Solo un administrador del sistema puede marcar o desmarcar «Permite ajuste de la empresa» en una regla salarial: decide qué conceptos '
                 'puede cambiar a mano la empresa y un cambio expone la nómina a inexactitud ante la UGPP.'))
 
+    def _ne_exigir_administrador_para_habitualidad(self):
+        """.301: marcar o desmarcar «Vigilar habitualidad» es del administrador del sistema, igual que «ajustable» (decisión del TL, 22-nov). El superusuario (carga de
+        datos del módulo, ``-u``) no pasa por aquí. Sin ``groups=`` en el campo: el cálculo del aviso lo lee con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar «Vigilar habitualidad» en una regla salarial: decide de qué conceptos no salariales '
+                'avisa el recibo cuando se pagan mes a mes.'))
+
     @api.model_create_multi
     def create(self, vals_list):
         if any(vals.get('l10n_co_ne_ajustable') for vals in vals_list):
             self._ne_exigir_administrador_para_ajustable()
+        if any(vals.get('l10n_co_ne_vigilar_habitualidad') for vals in vals_list):
+            self._ne_exigir_administrador_para_habitualidad()
         return super().create(vals_list)
 
     def write(self, vals):
         if 'l10n_co_ne_ajustable' in vals:
             self._ne_exigir_administrador_para_ajustable()
+        if 'l10n_co_ne_vigilar_habitualidad' in vals:
+            self._ne_exigir_administrador_para_habitualidad()
         res = super().write(vals)
         if 'l10n_co_ne_ajustable' in vals and not vals['l10n_co_ne_ajustable']:
             self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables(self)
