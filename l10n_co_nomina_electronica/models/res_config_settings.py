@@ -104,6 +104,7 @@ class ResConfigSettings(models.TransientModel):
     l10n_co_ne_exoneration_1607 = fields.Boolean(related='company_id.l10n_co_ne_exoneration_1607', readonly=False)
     l10n_co_ne_pension_patronal_sln = fields.Boolean(related='company_id.l10n_co_ne_pension_patronal_sln', readonly=False)
     l10n_co_ne_febrero_modo = fields.Selection(related='company_id.l10n_co_ne_febrero_modo', readonly=False)
+    l10n_co_ne_pago_dominical_mensual = fields.Selection(related='company_id.l10n_co_ne_pago_dominical_mensual', readonly=False)
     l10n_co_ne_fuente_fecha_pago = fields.Selection(related='company_id.l10n_co_ne_fuente_fecha_pago', readonly=False)
     l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
         related='company_id.l10n_co_ne_bloquear_extemporaneo', readonly=False)

@@ -358,6 +358,24 @@ class HrPayslip(models.Model):
         self.ensure_one()
         return self.employee_id._ne_afiliaciones_faltantes(self.contract_id, self._ne_fecha_parametros())
 
+    _NE_FACTOR_DOMINICAL = {'CO_HRDDF': 'l10n_co_factor_hrddf', 'CO_HRNDF': 'l10n_co_factor_hrndf'}
+
+    def _ne_factor_dominical(self, codigo):
+        """Factor con el que se paga una hora de la JORNADA ORDINARIA en día de descanso obligatorio (``CO_HRDDF`` diurna, ``CO_HRNDF`` nocturna): UNA sola decisión (H-F1-07, doc 92; decisión del TL del 22-nov).
+        Es el factor TOTAL del parámetro (1,80 / 1,90 / 2,00 el diurno) si la compañía eligió «día ordinario + recargo» (concepto MinTrabajo 24429 de 2026; la decisión D1 de David del 17-nov, el comportamiento
+        de siempre) y ese factor menos 1 si eligió «solo el recargo» (CSJ SL3567-2019: el día de descanso ya está en el sueldo mensual). El módulo paga todo contrato por sueldo mensual (el valor de la hora
+        es sueldo / ``l10n_co_horas_mensuales``): no hay que distinguir al pagado por horas. Las horas EXTRA dominicales (HEDDF, HENDF) no pasan por aquí: el sueldo mensual no las cubre. La compañía no tiene
+        valor por defecto: sin elegir, un error que dice dónde elegir."""
+        self.ensure_one()
+        factor = self._rule_parameter(self._NE_FACTOR_DOMINICAL[codigo], self.date_from)
+        forma = self.company_id.l10n_co_ne_pago_dominical_mensual
+        if not forma:
+            raise UserError(_(
+                'La compañía %(compania)s no ha elegido cómo se paga el dominical o festivo con salario mensual y el recibo de %(empleado)s trae horas de recargo dominical. Elíjalo en Nómina > Configuración > Ajustes, '
+                'bloque «Parámetros Nómina Colombia», «Pago del dominical con salario mensual»: «Día ordinario + recargo» (concepto MinTrabajo 24429 de 2026) o «Solo el recargo» (CSJ SL3567-2019).',
+                compania=self.company_id.name, empleado=self.employee_id.name))
+        return factor - 1.0 if forma == 'solo_recargo' else factor
+
     def _ne_regimen_cotizante(self):
         """Régimen de cotización del empleado de este recibo según el tipo de cotizante y el tipo de contrato del CONTRATO del recibo (H-F1-09, doc 88): UN solo método para el aprendiz. Devuelve
         ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False}``: la tabla es el parámetro versionado ``l10n_co_aprendiz_etapas``, tuplas
