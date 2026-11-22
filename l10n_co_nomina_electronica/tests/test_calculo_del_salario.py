@@ -160,6 +160,26 @@ class TestCalculoDelSalario(TransactionCase):
         costo = sum(l.total for l in recibo.line_ids if l.category_id.l10n_co_ne_seccion_concepto == 'costo_empresa')
         self.assertAlmostEqual(recibo.l10n_co_costo_empresa, costo, delta=0.01)
 
+    def test_04d_las_bases_de_la_retencion_salen_solo_si_el_recibo_tiene_retencion(self):
+        """Ajuste de David (22-nov): sin retención en la fuente ver «Retención Fuente - Base Bruto / Base salarial» confunde. Con una línea de retención con valor vuelven a salir."""
+        marcadas = self.env['hr.salary.rule'].search([('l10n_co_ne_calculo_si_retencion', '=', True)])
+        self.assertEqual(set(marcadas.mapped('code')), {'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'}, 'La siembra marca solo las dos bases')
+        recibo = self._recibo()
+        bases = recibo.line_ids.filtered(lambda l: l.code in ('CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC') and l.total)
+        self.assertTrue(bases, 'Premisa: el recibo calcula las bases de la retención')
+        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_RETEFUENTE' and l.total), 'Premisa: con 3.000.000 no hay retención')
+        codigos = set(self._filas(recibo).filtered('line_id').mapped('line_id.code'))
+        self.assertFalse(codigos & {'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'}, 'Sin retención no salen las bases de la retención')
+        self.assertIn('CO_IBC_SP', codigos, 'Las demás bases salen igual')
+        regla = self.env['hr.salary.rule'].search([('code', '=', 'CO_RETEFUENTE'), ('struct_id', '=', recibo.struct_id.id)], limit=1)
+        self.assertEqual(regla.l10n_co_tercero_origen, 'company_dian', 'Premisa: la retención es de la DIAN')
+        self.env['hr.payslip.line'].create({
+            'slip_id': recibo.id, 'salary_rule_id': regla.id, 'code': 'CO_RETEFUENTE', 'name': regla.name, 'category_id': regla.category_id.id,
+            'contract_id': recibo.contract_id.id, 'employee_id': recibo.employee_id.id, 'quantity': 1.0, 'rate': 100.0, 'amount': -50000.0, 'total': -50000.0})
+        self.Calculo._regenerar_de_recibos(recibo)
+        codigos = set(self._filas(recibo).filtered('line_id').mapped('line_id.code'))
+        self.assertTrue({'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'} <= codigos, 'Con retención vuelven a salir')
+
     def test_04c_el_fsp_sale_en_la_seccion_de_aportes_del_empleado_solo_si_aplica(self):
         """Con un sueldo bajo no hay fondo de solidaridad pensional: la sección lleva solo salud y pensión. Con una línea de FSP con valor, sale ahí."""
         recibo = self._recibo()

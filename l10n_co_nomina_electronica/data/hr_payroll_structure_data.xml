@@ -1408,6 +1408,7 @@ en meses futuros via payslip._sum().</field>
             <field name="name">Retención Fuente - Base Bruto</field>
             <field name="code">CO_RETEFUENTE_BASE_GROSS</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_calculo_si_retencion" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
             <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
             <field name="l10n_co_ne_base_vacaciones" eval="False"/>
@@ -1441,6 +1442,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
             <field name="name">Retención Fuente - Base salarial del mes</field>
             <field name="code">CO_RETEFUENTE_BASE_IBC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_calculo_si_retencion" eval="True"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
             <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
             <field name="l10n_co_ne_base_vacaciones" eval="False"/>

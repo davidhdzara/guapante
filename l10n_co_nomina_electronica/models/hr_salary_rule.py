@@ -273,6 +273,12 @@ class HrSalaryRule(models.Model):
              'extras y el trabajo en días de descanso obligatorio (dominicales y festivos), y el auxilio de transporte (no es salario para las vacaciones). El recargo nocturno '
              'ordinario sí entra. Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
              'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    # Ajuste de David (22-nov, decisión del TL): las bases de la retención en la fuente solo se muestran en «Cálculo del salario» si el recibo tiene retención.
+    l10n_co_ne_calculo_si_retencion = fields.Boolean(
+        string='En «Cálculo del salario» solo con retención', default=False,
+        help='Si está marcada, la línea de esta regla se muestra en «Cálculo del salario» solo cuando el recibo tiene retención en la fuente distinta de 0 (una línea con valor '
+             'de una regla cuyo tercero es la DIAN). Es de presentación: no cambia el cálculo. De fábrica, las dos bases de la retención en la fuente: sin retención verlas '
+             'confunde.')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',

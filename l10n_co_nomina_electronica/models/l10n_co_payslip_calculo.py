@@ -102,9 +102,12 @@ class L10nCoPayslipCalculo(models.Model):
         tienen sección. Los días cotizados son acumuladores cuyo importe ES un número de días: se muestran como cualquier otra fila (en la columna Total,
         que no lleva símbolo de moneda)."""
         ajustes = {a.salary_rule_id.id: a for a in recibo.l10n_co_ajuste_ids}
+        # Ajuste de David (22-nov): las bases de la retención solo si el recibo TIENE retención (una línea con valor de una regla cuyo tercero es la DIAN).
+        con_retencion = any(l.total and l.salary_rule_id.l10n_co_tercero_origen == 'company_dian' for l in recibo.line_ids)
         lineas = recibo.line_ids.filtered(
             lambda l: (l.category_id.l10n_co_ne_seccion_concepto in SECCIONES_DE_CATEGORIA or l.category_id.l10n_co_ne_aportes_empleado)
-            and (l.total or l.salary_rule_id.id in ajustes)).sorted(lambda l: (l.sequence, l.id))
+            and (l.total or l.salary_rule_id.id in ajustes)
+            and (con_retencion or not l.salary_rule_id.l10n_co_ne_calculo_si_retencion)).sorted(lambda l: (l.sequence, l.id))
         valores, secuencia = [], 0
 
         def siguiente():
