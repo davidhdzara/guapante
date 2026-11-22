@@ -265,6 +265,35 @@ class TestPactoDesalarizacion(TransactionCase):
         pacto.with_user(gerente).unlink()
         self.assertFalse(pacto.exists())
 
+    def test_14b_el_adjunto_subido_en_una_fila_nueva_lo_ve_otro_usuario_de_nomina(self):
+        """Revisión v19 del consultor (pedido del TL): ``many2many_binary`` sube el archivo ANTES de guardar la fila, con ``res_id = 0``, y un ``ir.attachment`` sin ``res_id``
+        solo lo lee quien lo creó o el administrador (``ir.attachment.check``). Dos usuarios de nómina: Ana crea el pacto con su adjunto (como desde el formulario del
+        empleado) y Beto lo lee; al guardar el pacto toma los adjuntos (``res_model`` y ``res_id``)."""
+        empleado, _contrato = self._empleado()
+        ana = self._usuario('ana_pactos_adjunto', (_G_USER, 'base.group_user'), self.company)
+        beto = self._usuario('beto_pactos_adjunto', (_G_USER, 'base.group_user'), self.company)
+        subido = self.env['ir.attachment'].with_user(ana).create({
+            'name': 'Pacto firmado.pdf', 'raw': b'%PDF-1.4 pacto de prueba', 'mimetype': 'application/pdf', 'res_model': 'l10n.co.employee.pacto', 'res_id': 0})
+        with self.assertRaises(UserError):           # Premisa: sin guardar la fila, Beto no puede leerlo (AccessError es un UserError en Odoo 18)
+            subido.with_user(beto).read(['name'])
+        pacto = self.Pacto.with_user(ana).create({
+            'employee_id': empleado.id, 'salary_rule_id': self.regla_bonif.id, 'fecha_firma': date(2026, 1, 1), 'attachment_ids': [(6, 0, subido.ids)]})
+        self.assertEqual((subido.res_model, subido.res_id), ('l10n.co.employee.pacto', pacto.id), 'Al guardar, el pacto toma el adjunto')
+        leido = pacto.with_user(beto).attachment_ids
+        self.assertEqual(leido.ids, subido.ids, 'Beto ve el documento del pacto que creó Ana')
+        self.assertEqual(leido.read(['name'])[0]['name'], 'Pacto firmado.pdf')
+        self.assertEqual(leido.with_user(beto).raw, b'%PDF-1.4 pacto de prueba')
+        # Agregar otro adjunto subido sin guardar a un pacto que ya existe: también se vincula.
+        otro = self.env['ir.attachment'].with_user(ana).create({
+            'name': 'Otrosí.pdf', 'raw': b'%PDF-1.4 otrosi', 'mimetype': 'application/pdf', 'res_model': 'l10n.co.employee.pacto', 'res_id': 0})
+        pacto.with_user(ana).write({'attachment_ids': [(4, otro.id)]})
+        self.assertEqual(otro.res_id, pacto.id)
+        self.assertEqual(sorted(pacto.with_user(beto).attachment_ids.mapped('name')), ['Otrosí.pdf', 'Pacto firmado.pdf'])
+        # Lo que ya cuelga de otro registro no se mueve.
+        ajeno = self.env['ir.attachment'].create({'name': 'De otro.pdf', 'raw': b'x', 'res_model': 'hr.employee', 'res_id': empleado.id})
+        pacto.write({'attachment_ids': [(4, ajeno.id)]})
+        self.assertEqual((ajeno.res_model, ajeno.res_id), ('hr.employee', empleado.id))
+
     # ── las vistas y los datos ──────────────────────────────────────────────────────────────────────────────────────────────
     def test_15_la_pestana_nomina_del_empleado_trae_los_pactos_y_el_recibo_el_aviso(self):
         arch = etree.fromstring(self.env['hr.employee'].get_view(view_type='form')['arch'].encode('utf-8'))
