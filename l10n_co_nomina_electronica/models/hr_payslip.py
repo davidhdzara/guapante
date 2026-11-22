@@ -3720,7 +3720,9 @@ class HrPayslip(models.Model):
         if cesantias_lines or intereses_lines:
             devengados['Cesantias'] = {
                 'Pago': '%.2f' % sum(l.total for l in cesantias_lines),
-                'Porcentaje': '12.00' if intereses_lines else '0.00',
+                # H-F3-04 (decisión del TL del 22-nov): el porcentaje anual de los intereses (Ley 52/1975) es el MISMO parámetro con que se calculan (``l10n_co_pct_intereses_cesantias``: CO_PROV_INT_CES con la
+                # fecha del recibo y CO_LIQ_INT_CES con la de retiro, ambas por ``_ne_fecha_parametros``); sin intereses en el recibo, 0.
+                'Porcentaje': ('%.2f' % self._rule_parameter('l10n_co_pct_intereses_cesantias', self._ne_fecha_parametros())) if intereses_lines else '0.00',
                 'PagoIntereses': '%.2f' % sum(
                     l.total for l in intereses_lines
                 ),
@@ -4020,7 +4022,10 @@ class HrPayslip(models.Model):
                 )),
             }
 
-        # Fondo de Solidaridad Pensional
+        # Fondo de Solidaridad Pensional. NO VERIFICADO / sin derivar (H-F3-04, decisión del TL del 22-nov): ``PorcentajeSub`` y ``DeduccionSub`` (subsistencia) siguen en 0.00 y todo lo descontado va en
+        # ``DeduccionSP`` con el porcentaje TOTAL de la regla. Los parámetros ``l10n_co_fsp_pct_*`` son el total por tramo (1,0 a 2,0) y NO distinguen la solidaridad de la subsistencia; la ley sí las
+        # distingue (Ley 797 de 2003, art. 8, que subroga el art. 27 de la Ley 100: el 50 % de la cotización adicional del 1 % va a la subcuenta de solidaridad y el otro 50 % a la de subsistencia, más
+        # 0,2/0,4/0,6/0,8/1,0 % a subsistencia desde 16 SMMLV), pero la división no está en los datos del módulo y no se inventa aquí.
         if 'FondoSP' in concept_lines:
             deducciones['FondoSP'] = {
                 'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['FondoSP']),

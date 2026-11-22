@@ -94,6 +94,29 @@ class TestPorcentajesDeduccionesXml(aprendiz.TestAprendizAportes):
         self.assertEqual((nodo['Salud']['Porcentaje'], nodo['Salud']['Deduccion'], nodo['FondoPension']['Porcentaje'], nodo['FondoPension']['Deduccion']), ('0.00', '0.00', '0.00', '0.00'))
 
 
+    # ── Cesantias/@Porcentaje: el de los intereses (Ley 52/1975), del parametro ──
+    def _recibo_con_intereses(self, nombre, sueldo):
+        recibo = self._normal(nombre, sueldo)
+        recibo.write({'input_line_ids': [(0, 0, {'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_int_ces').id, 'amount': 150000.0})]})
+        recibo.compute_sheet()
+        return recibo
+
+    def test_el_porcentaje_de_las_cesantias_es_el_parametro_de_los_intereses_y_no_un_12_fijo(self):
+        for sueldo in (10000000.0, 30000000.0, 40000000.0):
+            with self.subTest(sueldo=sueldo):
+                recibo = self._recibo_con_intereses('Intereses %s' % int(sueldo), sueldo)
+                cesantias = recibo._map_salary_rules_to_xml()[0]['Cesantias']
+                self.assertEqual(cesantias['Porcentaje'], '12.00')                          # valor de fabrica (Ley 52 de 1975)
+                self.assertEqual(cesantias['PagoIntereses'], '150000.00')
+        parametro = self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_pct_intereses_cesantias')])
+        self.env['hr.rule.parameter.value'].create({'rule_parameter_id': parametro.id, 'date_from': FECHA, 'parameter_value': '13.0'})
+        self.assertEqual(self._recibo_con_intereses('Intereses Cambiado', 10000000.0)._map_salary_rules_to_xml()[0]['Cesantias']['Porcentaje'], '13.00')
+
+    def test_sin_cesantias_ni_intereses_en_el_recibo_no_hay_nodo_de_cesantias(self):
+        devengados = self._normal('Sin Intereses')._map_salary_rules_to_xml()[0]
+        self.assertNotIn('Cesantias', devengados)                                           # sin cesantias ni intereses no hay nodo
+
+
 @tagged('post_install', '-at_install')
 class TestFusionDelFondoSp(BaseCase):
     """La fusion mensual con los porcentajes ya derivados: el tramo del FSP puede cambiar entre recibos del mes (no detiene el documento); Salud y FondoPension siguen exigiendo el mismo porcentaje."""
