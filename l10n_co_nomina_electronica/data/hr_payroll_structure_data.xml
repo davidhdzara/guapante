@@ -1547,7 +1547,7 @@ NO es el IBC de los aportes («IBC Salud y Pension», CO_IBC_SP; H-QA-042). No a
         </record>
 
         <record id="hr_salary_rule_co_embargo" model="hr.salary.rule">
-            <field name="name">Embargo Fiscal</field>
+            <field name="name">Embargo judicial</field>
             <field name="code">CO_EMBARGO</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
@@ -1574,6 +1574,8 @@ _smmlv = payslip._rule_parameter('l10n_co_smmlv', payslip.date_from)
 _salario_neto = categories['DEV'] + categories['DEDU']
 _manual = (inputs.get('CO_EMBARGO') and inputs.get('CO_EMBARGO').amount) or 0
 result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
+# Nombre de la línea (nativo: result_name): el tipo real si el empleado tiene UN solo tipo de embargo abierto; si no, el nombre neutro de la regla.
+result_name = payslip._ne_nombre_embargo()
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">EmbargoFiscal</field>

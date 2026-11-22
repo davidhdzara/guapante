@@ -537,6 +537,18 @@ class HrPayslip(models.Model):
         self._ne_guardar_reparto('CO_EMBARGO', filas)
         return total
 
+    def _ne_nombre_embargo(self):
+        """Nombre de la línea de la regla ``CO_EMBARGO`` (``result_name`` nativo, ``hr_payroll/models/hr_salary_rule.py:92``): una sola línea suma todos los embargos del empleado, así que
+        lleva el nombre del TIPO real (el del tipo de entrada: «Embargo - Civil / Comercial», «Embargo - Alimentos…», «Embargo - Cooperativa / Fondo») cuando solo hay uno abierto, y
+        ``False`` (la regla usa su nombre neutro, «Embargo judicial») cuando hay varios o solo el ajuste manual. Antes se llamaba «Embargo Fiscal» siempre, que es el nombre del NODO
+        del XML de la DIAN (``EmbargoFiscal``, que no cambia) y no de un embargo civil o de alimentos."""
+        self.ensure_one()
+        tipos = self.employee_id.salary_attachment_ids.filtered(
+            lambda a: a.state == 'open' and a.other_input_type_id.code in self._NE_PRIORIDAD_EMBARGO).mapped('other_input_type_id')
+        if len(tipos) != 1:
+            return False
+        return tipos.with_context(lang=self.employee_id.lang or self.env.lang).name
+
     # ──────────────────────────────────────────────────────────────────
     # Liquidacion: embargos y libranzas por tipo de concepto
     # (CST arts. 154-156 y 344; Ley 1527/2012; SL3208-2022)

@@ -118,7 +118,7 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertLess(orden_c.index('salary_rule_id'), orden_c.index('cuenta'))
         self.assertLess(orden_c.index('cuenta'), orden_c.index('amount'))
         for nombre in ('quantity', 'unidad'):
-            self.assertEqual(conceptos[nombre].get('invisible'), 'quantity == 1 and rate == 100 and not edita_cantidad', 'Una fila editable sí muestra la cantidad: %s' % nombre)
+            self.assertEqual(conceptos[nombre].get('invisible'), 'quantity == 1 and not edita_cantidad', 'Cantidad 1 oculta (también con %% distinto de 100); una fila editable sí muestra la cantidad: %s' % nombre)
         self.assertIn('rate == 100', conceptos['rate'].get('invisible'))
         self.assertNotIn('journal_id', calculo)
         self.assertNotIn('journal_id', conceptos)
