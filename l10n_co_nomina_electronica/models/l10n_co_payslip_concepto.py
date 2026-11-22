@@ -37,12 +37,15 @@ class L10nCoPayslipConcepto(models.Model):
     display_type = fields.Selection(
         selection=[('line_section', 'Sección'), ('line_note', 'Nota')], default=False,
         help='Lo lee el widget de secciones y notas de la lista (títulos «Devengados» y «Deducciones» y la nota de los conceptos ajustados).')
-    name = fields.Text(string='Concepto')
+    name = fields.Text(string='Descripción')
     origen = fields.Selection(
         selection=[('calculado', 'Calculado'), ('novedad', 'Novedad'), ('dias', 'Días trabajados')], string='Origen', required=True,
         default='novedad', help='De dónde sale la fila: una regla calculada, una novedad del recibo o el detalle de días trabajados.')
     line_id = fields.Many2one('hr.payslip.line', string='Línea del recibo', ondelete='set null')
-    salary_rule_id = fields.Many2one('hr.salary.rule', string='Regla', ondelete='set null')
+    salary_rule_id = fields.Many2one(
+        'hr.salary.rule', string='Concepto', ondelete='set null',
+        help='La regla salarial del concepto. En una fila NUEVA se elige entre las reglas de la estructura del recibo que se alimentan de una novedad (mismo código que un tipo de '
+             'novedad): el tipo se deduce solo. En una fila ya guardada no se cambia.')
     worked_day_id = fields.Many2one('hr.payslip.worked_days', string='Línea de días', ondelete='set null')
     input_id = fields.Many2one('hr.payslip.input', string='Novedad', ondelete='set null')
     input_type_id = fields.Many2one('hr.payslip.input.type', string='Tipo de novedad', ondelete='set null')
@@ -88,6 +91,27 @@ class L10nCoPayslipConcepto(models.Model):
             if fila.input_type_id and not fila.name:
                 fila.name = fila.input_type_id.name
 
+    @api.model
+    def _tipo_de_la_regla(self, regla):
+        """El tipo de novedad de una regla: el de SU MISMO ``code``. Sin tipo (la regla no se alimenta de una novedad) es un error claro: no se inventa uno."""
+        tipo = self.env['hr.payslip.input.type'].search([('code', '=', regla.code)], limit=1)
+        if not tipo:
+            raise UserError(_('El concepto «%(concepto)s» no se alimenta de una novedad: no se agrega a mano en «Conceptos de pago».', concepto=regla.name))
+        return tipo
+
+    @api.onchange('salary_rule_id')
+    def _onchange_salary_rule_id(self):
+        """Selector del concepto: elegir la regla deduce el tipo de novedad (el de su mismo código) y el nombre. Una regla sin tipo no se puede elegir (el dominio de la vista no la
+        ofrece; aquí se limpia por si llega por otra vía)."""
+        for fila in self:
+            if not fila.salary_rule_id:
+                fila.input_type_id = False
+                continue
+            tipo = self.env['hr.payslip.input.type'].search([('code', '=', fila.salary_rule_id.code)], limit=1)
+            fila.input_type_id = tipo
+            if tipo:
+                fila.name = fila.salary_rule_id.name
+
     # ── crear, editar y borrar desde la tabla ───────────────────────────────────────────────────────────────────────────────────
     @api.model_create_multi
     def create(self, vals_list):
@@ -97,10 +121,21 @@ class L10nCoPayslipConcepto(models.Model):
         for vals in vals_list:
             if vals.get('display_type'):
                 raise UserError(_('En «Conceptos de pago» solo se agregan conceptos: las secciones y las notas las genera el sistema.'))
-            tipo = self.env['hr.payslip.input.type'].browse(vals.get('input_type_id'))
-            if not tipo:
-                raise UserError(_('Elija el tipo de concepto (novedad) que va a agregar.'))
             recibo = self.env['hr.payslip'].browse(vals['slip_id'])
+            regla = self.env['hr.salary.rule'].browse(vals.get('salary_rule_id'))
+            tipo = self.env['hr.payslip.input.type'].browse(vals.get('input_type_id'))
+            if regla and not tipo:
+                tipo = self._tipo_de_la_regla(regla)           # selector del concepto: el tipo sale de la regla
+            if not tipo:
+                raise UserError(_('Elija el concepto que va a agregar.'))
+            if regla and tipo.code != regla.code:
+                raise UserError(_('El concepto «%(concepto)s» no corresponde al tipo de novedad «%(tipo)s».', concepto=regla.name, tipo=tipo.name))
+            if regla and regla.struct_id != recibo.struct_id:
+                raise UserError(_('El concepto «%(concepto)s» no es de la estructura salarial del recibo (%(estructura)s).', concepto=regla.name, estructura=recibo.struct_id.name))
+            if not regla:                                      # agregado por el tipo (compatibilidad): la regla del mismo código en la estructura del recibo, si hay
+                regla = recibo.struct_id.rule_ids.filtered(lambda r: r.code == tipo.code)[:1]
+                if regla:
+                    vals['salary_rule_id'] = regla.id
             Ajuste._validar_recibos_ajustables(recibo)
             valor = vals.get('quantity') if tipo.is_quantity else vals.get('amount')
             entrada = self.env['hr.payslip.input'].with_context(ne_sin_recalculo_hoja=True).create({
@@ -112,6 +147,8 @@ class L10nCoPayslipConcepto(models.Model):
     def write(self, vals):
         if self.env.context.get('ne_regenerar_conceptos'):
             return super().write(vals)
+        if 'salary_rule_id' in vals:
+            raise UserError(_('El concepto de una fila ya guardada no se cambia: borre la novedad y agregue otra.'))
         if 'sequence' in vals:
             # Mover una fila (la secuencia que escribe el arrastre del widget de la lista) no es una edición de datos: no cambia ningún valor, pero deja la tabla
             # fuera de orden (un título de sección en medio de los conceptos) hasta el siguiente cálculo. La vista ya no ofrece el arrastre; esto cierra la

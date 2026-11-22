@@ -176,7 +176,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
         # ``odoo/tests/form.py:855``): la novedad se agrega como fila de «Conceptos de pago» (``l10n_co_concepto_ids``), lo que ve el usuario.
         with Form(recibo) as formulario:
             with formulario.l10n_co_concepto_ids.new() as fila:
-                fila.input_type_id = self.tipo_bonif_nosal
+                fila.salary_rule_id = self.env['hr.salary.rule'].search([('code', '=', 'CO_BONIF_NOSAL'), ('struct_id', '=', recibo.struct_id.id)], limit=1)   # selector del concepto
                 fila.amount = 100000.0
         self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 100000.0)
         self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0, 'Novedad guardada desde el formulario')

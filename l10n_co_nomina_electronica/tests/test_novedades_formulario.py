@@ -106,7 +106,7 @@ class TestNovedadesDesdeElFormulario(TransactionCase):
         with espia:
             with Form(recibo) as formulario:
                 with formulario.l10n_co_concepto_ids.new() as fila:
-                    fila.input_type_id = self.tipo_bonificacion
+                    fila.salary_rule_id = self.env['hr.salary.rule'].search([('code', '=', 'CO_BONIF_NOSAL'), ('struct_id', '=', recibo.struct_id.id)], limit=1)   # selector del concepto
                     fila.amount = 300000.0
         neto_formulario, linea_formulario = recibo._ne_pdf_neto(), sum(self._linea(recibo).mapped('total'))
         self.assertEqual(llamadas, [recibo.ids], 'Crear: UN recálculo por guardado, no cero ni dos')

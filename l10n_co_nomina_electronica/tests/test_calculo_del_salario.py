@@ -434,7 +434,7 @@ class TestCalculoDelSalario(TransactionCase):
         bonificacion = 500000.0
         with Form(recibo) as formulario:
             with formulario.l10n_co_concepto_ids.new() as fila:
-                fila.input_type_id = ref('l10n_co_nomina_electronica.input_co_bonif_sal')
+                fila.salary_rule_id = self.env['hr.salary.rule'].search([('code', '=', 'CO_BONIF_SAL'), ('struct_id', '=', recibo.struct_id.id)], limit=1)   # selector del concepto
                 fila.amount = bonificacion
         # 2. Ajustar un devengado: el importe diario del sueldo básico pasa de 100.000 a 110.000.
         basico = recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id.code == 'CO_BASICO')

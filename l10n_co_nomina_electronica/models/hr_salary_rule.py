@@ -273,6 +273,25 @@ class HrSalaryRule(models.Model):
              'extras y el trabajo en días de descanso obligatorio (dominicales y festivos), y el auxilio de transporte (no es salario para las vacaciones). El recargo nocturno '
              'ordinario sí entra. Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
              'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    # Selector del concepto en «Agregar concepto» (22-nov, diseño aprobado por el TL; doc 74 §19): una regla «se alimenta de una novedad» si existe un tipo de novedad
+    # (``hr.payslip.input.type``) con SU MISMO ``code``. Es la definición verificable (1 a 1 por ``code`` en la estructura general: 38 de 44 tipos; los otros 6 son de otras
+    # estructuras o de las asignaciones salariales). Calculado y buscable: sin dato nuevo que mantener ni listas de códigos en el código.
+    l10n_co_ne_alimentada_por_novedad = fields.Boolean(
+        string='Se alimenta de una novedad', compute='_compute_ne_alimentada_por_novedad', search='_search_ne_alimentada_por_novedad',
+        help='Verdadero si existe un tipo de novedad con el mismo código de esta regla: el usuario puede agregar ese concepto a mano en «Conceptos de pago» y el recibo lo '
+             'calcula con la novedad. Calculado: no se marca.')
+
+    def _compute_ne_alimentada_por_novedad(self):
+        codigos = set(self.env['hr.payslip.input.type'].sudo().search([]).mapped('code'))
+        for regla in self:
+            regla.l10n_co_ne_alimentada_por_novedad = regla.code in codigos
+
+    def _search_ne_alimentada_por_novedad(self, operator, value):
+        if operator not in ('=', '!=') or not isinstance(value, bool):
+            raise NotImplementedError('Solo se busca con = o != y un booleano.')
+        codigos = self.env['hr.payslip.input.type'].sudo().search([]).mapped('code')
+        return [('code', 'in' if (operator == '=') == value else 'not in', codigos)]
+
     # Ajuste de David (22-nov, decisión del TL): las bases de la retención en la fuente solo se muestran en «Cálculo del salario» si el recibo tiene retención.
     l10n_co_ne_calculo_si_retencion = fields.Boolean(
         string='En «Cálculo del salario» solo con retención', default=False,

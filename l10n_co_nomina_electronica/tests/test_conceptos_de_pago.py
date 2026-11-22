@@ -138,13 +138,76 @@ class TestConceptosDePago(TransactionCase):
         self.assertEqual(self.env['l10n.co.payslip.concepto']._fields['rate']._digits, 'Payroll Rate',
                          'El campo del modelo conserva su precisión: el cambio es solo de presentación')
 
-    def test_el_tipo_de_novedad_es_una_columna_opcional_visible_por_defecto(self):
-        """.298: en las filas calculadas el tipo sale vacío, pero en «Agregar concepto» es OBLIGATORIO y ahí se elige: columna opcional VISIBLE por defecto (patrón
-        nativo de las listas de Ventas, ``optional="show"``; en .297 salía ``hide`` y el usuario no veía dónde elegirlo)."""
-        columna = self._columna('input_type_id')
-        self.assertEqual(columna.get('optional'), 'show')
-        self.assertFalse(columna.get('column_invisible'))
-        self.assertEqual(self._columna('name').get('optional'), None, 'Solo el tipo es opcional')
+    def test_el_concepto_es_el_selector_de_la_regla_editable_solo_en_la_fila_nueva_y_el_tipo_ya_no_es_una_columna(self):
+        """Selector del concepto (22-nov, diseño aprobado por el TL; doc 74 §19): la columna principal «Concepto» es la REGLA (Many2one), editable solo en la fila nueva, con
+        dominio de la estructura del recibo, las reglas que se alimentan de una novedad y las secciones de devengados o deducciones; el tipo de novedad queda como columna INVISIBLE
+        (lo leen la edición y los cálculos) y la descripción como columna opcional visible (el widget de secciones la necesita)."""
+        concepto = self._columna('salary_rule_id')
+        self.assertEqual(concepto.get('string'), 'Concepto')
+        self.assertEqual(concepto.get('readonly'), 'id', 'Solo se elige en la fila nueva')
+        dominio = concepto.get('domain')
+        for texto in ('parent.struct_id', 'l10n_co_ne_alimentada_por_novedad', 'l10n_co_ne_seccion_concepto'):
+            self.assertIn(texto, dominio)
+        self.assertIn('no_create', concepto.get('options'))
+        tipo = self._columna('input_type_id')
+        self.assertTrue(tipo.get('column_invisible'), 'La columna «Tipo de novedad» desaparece')
+        self.assertFalse(tipo.get('optional'))
+        descripcion = self._columna('name')
+        self.assertEqual(descripcion.get('string'), 'Descripción')
+        self.assertEqual(descripcion.get('optional'), 'show', 'El widget de secciones necesita la columna del nombre visible')
+
+    def test_la_regla_se_alimenta_de_una_novedad_si_hay_un_tipo_con_su_mismo_codigo_y_la_estructura_general_es_uno_a_uno(self):
+        """Doc 74 §19: 38 de los 44 tipos tienen exactamente una regla de su mismo código en la estructura general; los otros 6 son de otras estructuras (liquidación y bonificación)
+        o de las asignaciones salariales y NO se ofrecen en la nómina general."""
+        Regla = self.env['hr.salary.rule']
+        tipos = self.env['hr.payslip.input.type'].search([])
+        por_codigo = {}
+        for tipo in tipos:
+            por_codigo.setdefault(tipo.code, []).append(tipo)
+        self.assertFalse({c for c, t in por_codigo.items() if len(t) > 1}, 'Ningún código de tipo repetido')
+        sin_regla = set()
+        for codigo in por_codigo:
+            reglas = Regla.search([('code', '=', codigo), ('struct_id', '=', self.general.id)])
+            self.assertLessEqual(len(reglas), 1, 'Una sola regla por código en la estructura general: %s' % codigo)
+            if not reglas:
+                sin_regla.add(codigo)
+        self.assertTrue({'CO_LIQ_INDEMNIZ', 'CO_BON_VALOR', 'L10N_CO_EMBARGO_ALIMENTOS', 'L10N_CO_EMBARGO_CIVIL', 'L10N_CO_EMBARGO_COOPERATIVA', 'L10N_CO_LIBRANZA'} <= sin_regla,
+                        'Los 6 tipos de otras estructuras o de las asignaciones no tienen regla en la general')
+        ofrecidas = Regla.search([('struct_id', '=', self.general.id), ('l10n_co_ne_alimentada_por_novedad', '=', True)])
+        self.assertEqual(set(ofrecidas.mapped('code')), set(por_codigo) - sin_regla)
+        self.assertEqual(len(ofrecidas), len(set(ofrecidas.mapped('code'))), 'Una regla por código')
+        no_ofrecidas = Regla.search([('struct_id', '=', self.general.id), ('l10n_co_ne_alimentada_por_novedad', '=', False)])
+        self.assertFalse(set(no_ofrecidas.mapped('code')) & set(por_codigo))
+        self.assertIn('CO_SALUD_EMP', no_ofrecidas.mapped('code'), 'La salud del empleado no se agrega a mano')
+        self.assertIn('CO_BONIF_NOSAL', ofrecidas.mapped('code'))
+        self.assertTrue(Regla.search([('code', '=', 'CO_BONIF_NOSAL')], limit=1).l10n_co_ne_alimentada_por_novedad)
+
+    def test_agregar_por_la_regla_deduce_el_tipo_y_el_nombre_y_rechaza_lo_que_no_es_de_la_estructura_ni_de_una_novedad(self):
+        recibo = self._recibo()
+        regla = self.env['hr.salary.rule'].search([('code', '=', 'CO_BONIF_NOSAL'), ('struct_id', '=', self.general.id)], limit=1)
+        nueva = self.Concepto.new({'slip_id': recibo.id, 'salary_rule_id': regla.id})
+        nueva._onchange_salary_rule_id()
+        self.assertEqual(nueva.input_type_id, self.tipo_bonif_nosal, 'El tipo sale de la regla (mismo código)')
+        self.assertEqual(nueva.name, regla.name)
+        nueva.salary_rule_id = False
+        nueva._onchange_salary_rule_id()
+        self.assertFalse(nueva.input_type_id)
+        fila = self.Concepto.create({'slip_id': recibo.id, 'salary_rule_id': regla.id, 'amount': 80000.0})
+        self.assertEqual((fila.origen, fila.input_type_id, fila.salary_rule_id), ('novedad', self.tipo_bonif_nosal, regla))
+        self.assertEqual(recibo.input_line_ids.mapped('amount'), [80000.0])
+        with self.assertRaisesRegex(UserError, 'no corresponde al tipo'):
+            self.Concepto.create({'slip_id': recibo.id, 'salary_rule_id': regla.id, 'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_hed').id, 'amount': 1.0})
+        salud = self.env['hr.salary.rule'].search([('code', '=', 'CO_SALUD_EMP'), ('struct_id', '=', self.general.id)], limit=1)
+        with self.assertRaisesRegex(UserError, 'no se alimenta de una novedad'):
+            self.Concepto.create({'slip_id': recibo.id, 'salary_rule_id': salud.id, 'amount': 1.0})
+        de_liquidacion = self.env['hr.salary.rule'].search([('code', '=', 'CO_INC_COMUN'), ('struct_id', '=', self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion').id)], limit=1)
+        self.assertTrue(de_liquidacion, 'Premisa: la liquidación tiene su regla CO_INC_COMUN')
+        with self.assertRaisesRegex(UserError, 'no es de la estructura salarial del recibo'):
+            self.Concepto.create({'slip_id': recibo.id, 'salary_rule_id': de_liquidacion.id, 'amount': 1.0})
+        with self.assertRaisesRegex(UserError, 'Elija el concepto'):
+            self.Concepto.create({'slip_id': recibo.id, 'amount': 5.0})
+        with self.assertRaisesRegex(UserError, 'ya guardada no se cambia'):
+            fila.write({'salary_rule_id': salud.id})
 
     def test_el_pie_de_conceptos_de_pago_no_lleva_el_costo_de_la_empresa(self):
         """.298 (David): el «Costo empresa» pasa al pie de «Cálculo del salario»; aquí quedan Total devengado, Total deducciones y Neto."""
@@ -317,7 +380,7 @@ class TestConceptosDePago(TransactionCase):
         with espia:
             with Form(recibo) as formulario:
                 with formulario.l10n_co_concepto_ids.new() as nueva:
-                    nueva.input_type_id = self.tipo_bonif_nosal
+                    nueva.salary_rule_id = self.env['hr.salary.rule'].search([('code', '=', 'CO_BONIF_NOSAL'), ('struct_id', '=', recibo.struct_id.id)], limit=1)   # selector del concepto
                     nueva.amount = 80000.0
         self.assertEqual(llamadas, [recibo.ids], 'Agregar: UN recálculo')
         self.assertEqual(recibo.input_line_ids.mapped('amount'), [80000.0])
