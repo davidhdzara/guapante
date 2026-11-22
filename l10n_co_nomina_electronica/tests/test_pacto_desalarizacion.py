@@ -274,13 +274,17 @@ class TestPactoDesalarizacion(TransactionCase):
         beto = self._usuario('beto_pactos_adjunto', (_G_USER, 'base.group_user'), self.company)
         subido = self.env['ir.attachment'].with_user(ana).create({
             'name': 'Pacto firmado.pdf', 'raw': b'%PDF-1.4 pacto de prueba', 'mimetype': 'application/pdf', 'res_model': 'l10n.co.employee.pacto', 'res_id': 0})
-        with self.assertRaises(UserError):           # Premisa: sin guardar la fila, Beto no puede leerlo (AccessError es un UserError en Odoo 18)
-            subido.with_user(beto).read(['name'])
+        # Premisa (N2 «ct»: en Odoo 18 ``read`` de un adjunto sin ``res_id`` NO lo bloquea; lo que lo filtra es la BÚSQUEDA, ``ir.attachment._search``: ``not res_id`` solo lo ve
+        # quien lo creó o el administrador, odoo/addons/base/models/ir_attachment.py): sin vincular, Beto no lo encuentra.
+        Adjunto = self.env['ir.attachment']
+        self.assertFalse(Adjunto.with_user(beto).search([('id', '=', subido.id)]), 'Premisa: Beto no encuentra un adjunto sin res_id')
+        self.assertTrue(Adjunto.with_user(ana).search([('id', '=', subido.id)]), 'Premisa: Ana sí')
         pacto = self.Pacto.with_user(ana).create({
             'employee_id': empleado.id, 'salary_rule_id': self.regla_bonif.id, 'fecha_firma': date(2026, 1, 1), 'attachment_ids': [(6, 0, subido.ids)]})
         self.assertEqual((subido.res_model, subido.res_id), ('l10n.co.employee.pacto', pacto.id), 'Al guardar, el pacto toma el adjunto')
         leido = pacto.with_user(beto).attachment_ids
         self.assertEqual(leido.ids, subido.ids, 'Beto ve el documento del pacto que creó Ana')
+        self.assertTrue(Adjunto.with_user(beto).search([('id', '=', subido.id)]), 'Y lo encuentra en la búsqueda: ya cuelga del pacto')
         self.assertEqual(leido.read(['name'])[0]['name'], 'Pacto firmado.pdf')
         self.assertEqual(leido.with_user(beto).raw, b'%PDF-1.4 pacto de prueba')
         # Agregar otro adjunto subido sin guardar a un pacto que ya existe: también se vincula.

@@ -2533,13 +2533,10 @@ class HrPayslip(models.Model):
 
         Una regla de la estructura que aún no se calcula (o que no aplica) no suma: según el motor ``result_rules`` trae el código o no."""
         self.ensure_one()
-        estructura = self.struct_id
-        estructuras = estructura
-        while estructura.parent_id:
-            estructura = estructura.parent_id
-            estructuras |= estructura
+        # La estructura NO hereda (en Odoo 18 ``hr.payroll.structure`` no tiene ``parent_id``: la N2 «ct» dio 280 errores por ``AttributeError`` al subir por padres, igual que
+        # la regresión «bu» del 16-nov): las reglas con la marca son las de la estructura del recibo.
         total = 0.0
-        for regla in estructuras.rule_ids.filtered(lambda r: r[campo]):
+        for regla in self.struct_id.rule_ids.filtered(lambda r: r[campo]):
             try:
                 total += result_rules[regla.code]['total']
             except (KeyError, TypeError):
