@@ -1407,4 +1407,23 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
         <field name="rule_parameter_id" ref="rule_parameter_dias_trabajados_ocultar"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         .300 (E2b, doc 72 §3): INTERRUPTOR de fracciones de día en las ausencias de días hábiles (vacaciones, licencias remuneradas y no remuneradas y los
+         tipos sin sueldo). 0 de fábrica = días ENTEROS: una fecha con entrada de la ausencia cuenta 1 día (decisión del TL del 21-nov: no hay caso conocido
+         de medio día). 1 = cuenta la FRACCIÓN: las horas de las entradas de la ausencia ÷ las horas de todas las entradas de esa fecha (medio día = 0,5).
+         OBLIGATORIO: sin este parámetro el cálculo de una ausencia falla con un error claro (nunca un valor por defecto en silencio). Para activarlo NO se
+         edita el valor de fábrica (se reescribe en cada actualización del módulo): se agrega un valor nuevo con la fecha desde la que rige.
+         ════════════════════════════════════════════════════════════════ -->
+    <record id="rule_parameter_ausencia_fraccion_dia" model="hr.rule.parameter">
+        <field name="name">Colombia: Ausencias de Días Hábiles por Fracción de Día</field>
+        <field name="code">l10n_co_ausencia_fraccion_dia</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: escriba 0 para contar las ausencias (vacaciones, licencias, tipos sin sueldo) en días ENTEROS (una fecha con entrada de la ausencia es 1 día) o 1 para contar la FRACCIÓN del día (las horas de la ausencia sobre las horas de todas las entradas de esa fecha; un medio día es 0,5). De fábrica 0. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_ausencia_fraccion_dia_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_ausencia_fraccion_dia"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
 </odoo>

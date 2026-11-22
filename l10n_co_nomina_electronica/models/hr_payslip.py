@@ -176,26 +176,36 @@ class HrPayslip(models.Model):
         string='Aviso de días trabajados', compute='_compute_ne_aviso_dias',
         help='Solo para las vistas: aviso (no bloquea) con las fechas del recibo que no tienen entrada de trabajo y se pagan con el horario del contrato.')
 
-    @api.depends('worked_days_line_ids', 'date_from', 'date_to', 'contract_id', 'state')
+    @api.depends('worked_days_line_ids', 'worked_days_line_ids.number_of_days', 'date_from', 'date_to', 'contract_id', 'state')
     def _compute_ne_aviso_dias(self):
         """.284 (E2a, doc 68 §12): regla de David «si falta la entrada manda el horario del contrato»: la fecha se paga como laborada y aquí se
-        avisa cuál es, para que se genere o corrija la entrada. Solo recibos en borrador o en espera que se desglosan por fecha."""
+        avisa cuál es, para que se genere o corrija la entrada. Solo recibos en borrador o en espera que se desglosan por fecha.
+
+        .300 (E2b): además, aviso de «líneas desactualizadas»: los días de una vacación o licencia de la pestaña no coinciden con las fechas de las entradas
+        (``_ne_avisos_ausencias_desactualizadas``: un recibo calculado antes de .300 o cuyas entradas cambiaron). Los avisos se juntan en el mismo campo; un
+        error al leerlos (p. ej. sin el parámetro de fracciones) no se lanza al abrir el formulario: sale al calcular."""
         for recibo in self:
             recibo.l10n_co_ne_aviso_dias = False
-            if not (isinstance(recibo.id, int) and recibo.state in ('draft', 'verify') and recibo.worked_days_line_ids
-                    and recibo.contract_id and recibo._ne_desglosa_por_fecha()):
+            if not (isinstance(recibo.id, int) and recibo.state in ('draft', 'verify') and recibo.worked_days_line_ids and recibo.contract_id):
                 continue
-            try:
-                clasificacion = recibo._ne_clasificar_fechas()
-            except UserError:
-                continue    # sin el tipo «Asistencia» no hay desglose: el error ya sale al calcular los días, no al abrir el formulario
-            if not clasificacion or not clasificacion['sin_entrada']:
-                continue
-            fechas = ', '.join(dia.strftime('%d/%m/%Y') for dia in sorted(clasificacion['sin_entrada']))
-            recibo.l10n_co_ne_aviso_dias = _(
-                'No hay entrada de trabajo de %(empleado)s en: %(fechas)s. Esos días se pagan como laborados con el horario del contrato. '
-                'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y use «Recalcular la hoja entera» en el menú Acciones.',
-                empleado=recibo.employee_id.name, fechas=fechas)
+            avisos = []
+            if recibo._ne_desglosa_por_fecha():
+                try:
+                    clasificacion = recibo._ne_clasificar_fechas()
+                except UserError:
+                    clasificacion = None    # sin el tipo «Asistencia» no hay desglose: el error ya sale al calcular los días, no al abrir el formulario
+                if clasificacion and clasificacion['sin_entrada']:
+                    fechas = ', '.join(dia.strftime('%d/%m/%Y') for dia in sorted(clasificacion['sin_entrada']))
+                    avisos.append(_(
+                        'No hay entrada de trabajo de %(empleado)s en: %(fechas)s. Esos días se pagan como laborados con el horario del contrato. '
+                        'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y use «Recalcular la hoja entera» en el menú Acciones.',
+                        empleado=recibo.employee_id.name, fechas=fechas))
+            if recibo._ne_aplica_dias_por_asistencia():
+                try:
+                    avisos.extend(recibo._ne_avisos_ausencias_desactualizadas())
+                except UserError:
+                    pass
+            recibo.l10n_co_ne_aviso_dias = ' '.join(avisos) or False
 
     @api.depends('company_id.l10n_co_ne_environment', 'company_id.l10n_co_ne_certification_process')
     def _compute_ne_en_produccion(self):
@@ -2187,8 +2197,9 @@ class HrPayslip(models.Model):
            fechas de la ausencia y estas líneas no se leen (.281). Las horas no se tocan, así que ``amount`` y ``BASIC`` no cambian. No se
            reemplaza la línea si no hay ausencia validada (entradas de trabajo sueltas) ni si el tipo es ``unpaid`` (su código SÍ entra a
            ``_ne_dias_habiles_excluidos`` y el cambio movería el pago).
-        4. Todo lo demás (vacaciones, licencias remuneradas y sin sueldo) se conserva igual y en su orden (días = horas ÷ horas por día del
-           nativo; contarlos por fecha cambia plata y es otra pieza).
+        4. .300 (E2b): las vacaciones, licencias remuneradas y sin sueldo (y los tipos sin sueldo) cuentan sus días por FECHA con entrada de la ausencia
+           (``_ne_dias_ausencia_por_fecha``), no horas ÷ horas por día del nativo (un domingo de 7 h en un horario de 44 h en 6 días se pagaba 0,95 días);
+           las horas no se tocan. Todo lo demás se conserva igual y en su orden.
 
         .284 (E2a): en un recibo que se desglosa por fecha (``_ne_desglosa_por_fecha``) el punto 1 se reparte en «Asistencia» (días laborados),
         «Festivos trabajados», «Descansos remunerados» y «Ajuste mes comercial» (``_ne_desglose_por_fecha``); los días siguen sumando los
@@ -2202,6 +2213,8 @@ class HrPayslip(models.Model):
         asistencia = self._ne_tipo_asistencia()
         ocultos = self._ne_codigos_dias_ocultos()
         no_remunerados = self._ne_codigos_tipos_no_remunerados()
+        # .300 (E2b): las ausencias de días hábiles se cuentan por FECHA ANTES de calcular los días pagables (que las resta leyendo estas líneas).
+        valores = self._ne_dias_ausencia_por_fecha(valores, codigo_por_tipo, nombre_por_tipo, no_remunerados)
         pagables = max(self._ne_dias_pagables(valores=valores), 0)
         horas_asistencia = sum(valor['number_of_hours'] for valor in valores if valor['work_entry_type_id'] == asistencia.id)
         horas_ocultas = sum(valor['number_of_hours'] for valor in valores
@@ -2664,6 +2677,10 @@ class HrPayslip(models.Model):
         Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
         mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
         _dev_prestaciones() los traten igual.
+
+        .300 (E2b): es la ÚNICA fuente de los días de estas ausencias: las líneas de días del recibo (``_ne_dias_ausencia_por_fecha``), el pago, el IBC, la
+        UGPP y el XML la leen. Cuenta FECHAS locales (zona del calendario) con entrada ``draft``/``validated`` de la ausencia; con el interruptor
+        ``l10n_co_ausencia_fraccion_dia`` encendido, la fracción del día (horas de la ausencia ÷ horas de todas las entradas de esa fecha).
         """
         self.ensure_one()
         desde = desde or self.date_from
@@ -2678,32 +2695,101 @@ class HrPayslip(models.Model):
         if not leaves:
             return 0, []
 
-        periodo_ini_dt = datetime.combine(desde, datetime.min.time())
-        periodo_fin_dt = datetime.combine(hasta + timedelta(days=1), datetime.min.time())
-        work_entries = self.env['hr.work.entry'].search([
-            ('employee_id', '=', self.employee_id.id),
-            ('leave_id', 'in', leaves.ids),
-            ('date_start', '<', periodo_fin_dt),
-            ('date_stop', '>', periodo_ini_dt),
-        ])
+        # .300 (E2b, doc 72 §3): la fecha de una entrada es la de su INICIO en la zona del calendario del contrato (como ``_ne_clasificar_fechas``, E2a), no la
+        # fecha UTC (un turno de 22:00 a 06:00 hora de Colombia cae en el día equivocado, y una entrada de las 22:00 del último día del periodo quedaba fuera), y solo
+        # cuentan las entradas ``draft`` y ``validated`` (los estados que cuenta el nativo; una entrada ``conflict`` o ``cancelled`` de una ausencia validada ya no suma).
+        por_fracciones = self._ne_ausencia_por_fracciones()
+        zona = self._ne_zona_calendario()
+        utc = _pytz_timezone('UTC')
+        inicio_utc = zona.localize(datetime.combine(desde, datetime.min.time())).astimezone(utc).replace(tzinfo=None)
+        fin_utc = zona.localize(datetime.combine(hasta, datetime.max.time())).astimezone(utc).replace(tzinfo=None)
+        dominio = [
+            ('employee_id', '=', self.employee_id.id), ('state', 'in', ('draft', 'validated')),
+            ('date_start', '>=', inicio_utc), ('date_start', '<=', fin_utc)]
+        WorkEntry = self.env['hr.work.entry']
+        work_entries = WorkEntry.search(dominio + [('leave_id', 'in', leaves.ids)])
 
-        entries_by_leave = defaultdict(list)
+        def fecha_local(momento):
+            return utc.localize(momento).astimezone(zona).date()
+
+        # Solo con el interruptor de fracciones encendido: las horas de TODAS las entradas de cada fecha (el denominador de la fracción).
+        horas_del_dia = defaultdict(float)
+        if por_fracciones:
+            for entry in WorkEntry.search(dominio):
+                horas_del_dia[fecha_local(entry.date_start)] += entry.duration
+
+        horas_de_la_ausencia = defaultdict(lambda: defaultdict(float))        # id de la ausencia -> {fecha local: horas de sus entradas}
         for entry in work_entries:
-            entries_by_leave[entry.leave_id.id].append(entry)
+            horas_de_la_ausencia[entry.leave_id.id][fecha_local(entry.date_start)] += entry.duration
 
         detalle = []
         dias_totales = 0
         for leave in leaves:
-            entries = entries_by_leave.get(leave.id)
-            if not entries:
+            fechas = horas_de_la_ausencia.get(leave.id)
+            if not fechas:
                 continue
-            dias = len({entry.date_start.date() for entry in entries})
+            if por_fracciones:
+                dias = sum(min(1.0, horas / horas_del_dia[fecha]) if horas_del_dia[fecha] else 1.0 for fecha, horas in fechas.items())
+            else:
+                dias = len(fechas)                                           # días ENTEROS: una fecha con entrada de la ausencia es 1 día
             if dias > 0:
                 ini = max(leave.request_date_from, desde)
                 fin = min(leave.request_date_to, hasta)
                 detalle.append((leave, dias, ini, fin))
                 dias_totales += dias
         return dias_totales, detalle
+
+    def _ne_ausencia_por_fracciones(self):
+        """Interruptor ``l10n_co_ausencia_fraccion_dia`` (``hr.rule.parameter``, 0 de fábrica; .300, E2b): ¿las ausencias de días hábiles cuentan la FRACCIÓN
+        de día? OBLIGATORIO: si falta el parámetro hay un error claro que dice dónde crearlo; nunca se asume un valor."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        try:
+            return bool(self._rule_parameter('l10n_co_ausencia_fraccion_dia', fecha))
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Ausencias de Días Hábiles por Fracción de Día» (código l10n_co_ausencia_fraccion_dia) para el %(fecha)s, '
+                'que se necesita para contar las vacaciones y licencias de %(empleado)s por fecha. Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas (0 = días enteros, 1 = fracciones de día).',
+                fecha=fecha, empleado=self.employee_id.name)) from None
+
+    def _ne_dias_ausencia_por_fecha(self, valores, codigo_por_tipo, nombre_por_tipo, no_remunerados):
+        """.300 (E2b, doc 72 §3): las líneas de vacaciones, licencias remuneradas y no remuneradas y tipos sin sueldo (los códigos que ``_ne_dias_pagables`` descuenta
+        del básico leyendo sus líneas) cuentan los días por FECHA con entrada de la ausencia (``_ne_ausencia_habil_tramo``), no por horas ÷ horas por día del nativo.
+        Solo cambian los DÍAS y el nombre de la línea (el nativo agrega « (Half-Day)» cuando horas/días < horas por día): las HORAS no se tocan, así que ``amount``, la
+        suma de los importes (``BASIC``) y ``sum_worked_hours`` quedan idénticos. Sin una ausencia validada que respalde la línea (entradas sueltas o una novedad manual)
+        queda como la calculó el nativo. ``CO_VAC``, ``CO_LIC_REM``, ``CO_BASICO``, ``CO_AUX_TRANS``, el IBC, la UGPP y el XML leen esta línea: quedan en fechas por herencia."""
+        self.ensure_one()
+        codigos = _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES | no_remunerados
+        resultado = []
+        for valor in valores:
+            tipo_id = valor['work_entry_type_id']
+            codigo = codigo_por_tipo[tipo_id]
+            if codigo in codigos:
+                dias, detalle = self._ne_ausencia_habil_tramo(codigo)
+                if detalle:
+                    valor = dict(valor, number_of_days=dias, name=nombre_por_tipo[tipo_id])
+            resultado.append(valor)
+        return resultado
+
+    def _ne_avisos_ausencias_desactualizadas(self):
+        """.300 (E2b): textos de aviso (lista, vacía si todo coincide) cuando los días de una vacación o licencia de la pestaña «Días trabajados» no coinciden con las
+        FECHAS de las entradas de trabajo (un recibo calculado antes de .300, o cuyas entradas cambiaron): hay que recalcular la hoja. Una consulta por código de ausencia."""
+        self.ensure_one()
+        avisos = []
+        tipos = self.env['hr.work.entry.type']
+        for codigo in sorted(_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES | self._ne_codigos_tipos_no_remunerados()):
+            dias, detalle = self._ne_ausencia_habil_tramo(codigo)
+            if not detalle:
+                continue
+            en_la_pestana = sum(self.worked_days_line_ids.filtered(lambda w: w.work_entry_type_id.code == codigo).mapped('number_of_days'))
+            if abs(en_la_pestana - dias) > 1e-6:
+                tipo = tipos.search([('code', '=', codigo)], limit=1)
+                avisos.append(_(
+                    'Los días de «%(ausencia)s» en «Días trabajados» (%(pestana)s) no coinciden con las fechas de las entradas de trabajo de %(empleado)s (%(fechas)s). '
+                    'Use «Recalcular la hoja entera» en el menú Acciones.',
+                    ausencia=tipo.name or codigo, pestana='%g' % round(en_la_pestana, 4), fechas='%g' % round(dias, 4), empleado=self.employee_id.name))
+        return avisos
 
     def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
         """(días desde Ausencias, días desde el input manual) para un concepto de novedad en
