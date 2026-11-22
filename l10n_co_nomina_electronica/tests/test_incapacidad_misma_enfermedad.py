@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Vinculo "Prórroga de" entre incapacidades comunes (.183): solo el dato, sin plazo ni cambio de
-motor. Validaciones: mismo empleado, ambas incapacidad comun, la anterior termina antes, sin ciclos."""
+"""Vinculo "Prórroga de" entre incapacidades comunes (.183). Desde H-F1-01 (.305) ademas rige el tramo de pago y tiene plazo y unicidad: ver test_incapacidad_prorroga_vinculo.
+Validaciones de este archivo: mismo empleado, ambas incapacidad comun, la anterior termina antes, sin ciclos."""
 
 from datetime import date
 

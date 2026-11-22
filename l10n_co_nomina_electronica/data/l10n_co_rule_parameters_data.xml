@@ -639,17 +639,18 @@ propio, no debe confundirse con ningún otro parámetro de días.</p>
         <field name="name">Colombia: Incapacidad Común, Interrupción Máxima para Prórroga (Días)</field>
         <field name="code">l10n_co_dias_interrupcion_prorroga</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Días libres máximos entre dos incapacidades por enfermedad general
-del mismo trabajador para contarlas como UNA sola (prórroga): el tramo de pago (2 días del empleador,
-3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la primera, no desde cada incapacidad ni
-cada recibo (H-170). Con 0 solo se encadenan las incapacidades contiguas (la siguiente empieza el día
-posterior al fin de la anterior). La norma de prórroga puede admitir más días: valor a confirmar por el
-área normativa.</p>
+        <field name="description" type="html"><p>Días calendario de interrupción máxima entre dos incapacidades por enfermedad general del mismo trabajador
+para que la segunda pueda marcarse como PRÓRROGA de la primera (campo «Prórroga de» de la ausencia): la misma enfermedad o lesión, o una que tenga relación
+directa con ella aunque cambie el código CIE, «siempre que no haya una interrupción mayor a treinta (30) días calendario»
+(Decreto 1427 de 2022, art. 2.2.3.3.2, parágrafo 1; antes Decreto 1333 de 2018, art. 3, publicado el 27-jul-2018). El tramo de pago (2 días del
+empleador, 3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la INICIAL de la cadena, no desde cada incapacidad ni cada recibo (H-170). El módulo no
+decide si dos incapacidades son «la misma enfermedad»: lo marca quien registra la ausencia con el certificado de la EPS, y este parámetro solo
+rechaza un vínculo con más días libres (H-F1-01, doc 84).</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de días. Valor vigente: <strong>0</strong>.</p></field>
+<p>Escriba el número entero de días. Valor vigente: <strong>30</strong>.</p></field>
     </record>
     <record id="rule_parameter_dias_interrupcion_prorroga_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">0</field>
+        <field name="parameter_value">30</field>
         <field name="rule_parameter_id" ref="rule_parameter_dias_interrupcion_prorroga"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>

@@ -2711,44 +2711,40 @@ class HrPayslip(models.Model):
         return sum(_pago_posiciones(prev, en_periodo) for prev, en_periodo in cadenas)
 
     def _ne_incapacidad_cadenas(self):
-        """[(dias_previos, dias_en_periodo)] de cada incapacidad comun -- con sus prorrogas -- que
-        cae en el periodo del recibo (H-170). Las incapacidades validadas del empleado se encadenan
-        cuando la siguiente empieza a mas tardar l10n_co_dias_interrupcion_prorroga + 1 dias despues
-        del fin de la anterior (con 0, solo contiguas). dias_previos = dias CALENDARIO reales de
-        la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones 1..previos, y los
-        del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar)."""
+        """[(dias_previos, dias_en_periodo)] de cada incapacidad comun -- con sus prorrogas -- que cae en el periodo del recibo (H-170; H-F1-01, doc 84).
+        La cadena sale del vinculo EXPLICITO ``Prórroga de`` (``hr.leave.l10n_co_ne_prorroga_de_id``) que marca quien registra la incapacidad con el certificado de la EPS: ya NO se encadena por
+        fechas, porque que dos incapacidades sean «la misma enfermedad o una relacionada» (Decreto 1427 de 2022, art. 2.2.3.3.2, par. 1) es un juicio medico que el modulo no puede hacer.
+        Una incapacidad sin vinculo es la inicial de su propia cadena. dias_previos = dias CALENDARIO reales de la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones
+        1..previos, y los del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar). Una prorroga cuya anterior NO esta aprobada no tiene posicion cierta: error claro."""
         self.ensure_one()
         _dias, detalle = self._ne_ausencia_calendario('CO_INC_COMUN')
         if not detalle:
             return []
-        interrupcion = int(self._rule_parameter(
-            'l10n_co_dias_interrupcion_prorroga', self._ne_fecha_parametros()))
         periodo_ini = self._ne_tramo_pagable_periodo()[0]
         tramo_ini = max(periodo_ini, self.contract_id.date_start)
-        todas = self.env['hr.leave'].search([
-            ('employee_id', '=', self.employee_id.id),
-            ('state', '=', 'validate'),
-            ('holiday_status_id.work_entry_type_id.code', '=', 'CO_INC_COMUN'),
-        ], order='request_date_from, id')
-        cadenas, actual = [], []
-        for leave in todas:
-            if actual and leave.request_date_from <= actual[-1].request_date_to + timedelta(
-                    days=1 + interrupcion):
-                actual.append(leave)
-            else:
-                if actual:
-                    cadenas.append(actual)
-                actual = [leave]
-        if actual:
-            cadenas.append(actual)
         en_periodo = {leave.id: dias for leave, dias, _ini, _fin in detalle}
+        cadenas = {}                # id de la inicial -> {'miembros': {id: leave}} (la cadena es una lista: la inicial es el ultimo de la subida)
+        for leave, _dias_leave, _ini, _fin in detalle:
+            miembros, actual = [leave], leave
+            while actual.l10n_co_ne_prorroga_de_id:
+                actual = actual.l10n_co_ne_prorroga_de_id
+                if actual.state != 'validate':
+                    raise UserError(_(
+                        'La incapacidad de %(empleado)s del %(desde)s al %(hasta)s es prórroga de la del %(a_desde)s al %(a_hasta)s, que no está aprobada (estado «%(estado)s»). '
+                        'Sin la anterior no se sabe en qué posición de la cadena empieza esta (2 días del empleador, 3 a 90, 91 en adelante). Apruebe la anterior o quite el vínculo '
+                        '«Prórroga de» de la ausencia (Ausencias > la incapacidad).',
+                        empleado=self.employee_id.name, desde=leave.request_date_from, hasta=leave.request_date_to,
+                        a_desde=actual.request_date_from, a_hasta=actual.request_date_to,
+                        estado=dict(actual._fields['state']._description_selection(self.env)).get(actual.state, actual.state)))
+                miembros.append(actual)
+            cadena = cadenas.setdefault(miembros[-1].id, {'miembros': {}})
+            for miembro in miembros:
+                cadena['miembros'][miembro.id] = miembro
         resultado = []
-        for cadena in cadenas:
-            dias_periodo = sum(en_periodo.get(leave.id, 0) for leave in cadena)
-            if not dias_periodo:
-                continue
+        for cadena in cadenas.values():
+            dias_periodo = sum(en_periodo.get(leave_id, 0) for leave_id in cadena['miembros'])
             previos = 0
-            for leave in cadena:
+            for leave in cadena['miembros'].values():
                 fin = min(leave.request_date_to, tramo_ini - timedelta(days=1))
                 if fin >= leave.request_date_from:
                     previos += (fin - leave.request_date_from).days + 1
