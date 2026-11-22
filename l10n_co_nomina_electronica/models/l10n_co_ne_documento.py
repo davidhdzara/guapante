@@ -734,7 +734,7 @@ class L10nCoNeDocumento(models.Model):
             Consecutivo=numero[len(prefijo):] if prefijo and numero.startswith(prefijo) else numero)
         datos['proveedor_xml'] = dict(
             datos.get('proveedor_xml', {}),
-            SoftwareSC=dian_utils.compute_software_security_code(modo.software_id, modo.software_pin, numero)
+            SoftwareSC=dian_utils.compute_software_security_code(modo.software_id, modo._ne_pin_del_software(), numero)
             if numero else '')
         if self.is_adjustment:
             # Nota de ajuste (Anexo §5.5.8): TipoXML 103, ``novedad`` con el CUNE de referencia y la sección
@@ -945,7 +945,7 @@ class L10nCoNeDocumento(models.Model):
             val_dev=valores['val_dev'], val_ded=valores['val_ded'],
             val_tol=valores['val_tol'], nit_ne=dian_utils.clean_nit(company.vat),
             doc_trab=valores['doc_trab'], cl_ne='103' if self.is_adjustment else '102',
-            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
+            software_pin=company.l10n_co_ne_operation_mode_ids._ne_pin_del_software() or '',
             tipo_amb=company.l10n_co_ne_environment or '2')
         return cune
 

@@ -181,7 +181,7 @@ class ResCompany(models.Model):
         mode = company.l10n_co_ne_operation_mode_ids
         if not mode or not mode.software_id:
             missing.append(_('ID Software Nómina'))
-        if not mode or not mode.software_pin:
+        if not mode or not mode._ne_pin_del_software():
             missing.append(_('PIN Software Nómina'))
         if not company._get_ne_certificate():
             missing.append(_('Certificado Digital'))

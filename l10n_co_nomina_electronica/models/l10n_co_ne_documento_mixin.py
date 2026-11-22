@@ -422,7 +422,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
             nit_ne=dian_utils.clean_nit(company.vat),
             doc_trab=valores['doc_trab'],
             cl_ne='103' if self.l10n_co_ne_is_adjustment else '102',
-            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
+            software_pin=company.l10n_co_ne_operation_mode_ids._ne_pin_del_software() or '',
             tipo_amb=company.l10n_co_ne_environment or '2',
         )
         self.l10n_co_ne_cune = cune_value

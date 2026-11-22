@@ -1665,7 +1665,7 @@ class HrPayslip(models.Model):
                 'SoftwareID': company.l10n_co_ne_operation_mode_ids.software_id or '',
                 'SoftwareSC': dian_utils.compute_software_security_code(
                     company.l10n_co_ne_operation_mode_ids.software_id,
-                    company.l10n_co_ne_operation_mode_ids.software_pin,
+                    company.l10n_co_ne_operation_mode_ids._ne_pin_del_software(),
                     self.l10n_co_ne_consecutive,
                 ),
             },
