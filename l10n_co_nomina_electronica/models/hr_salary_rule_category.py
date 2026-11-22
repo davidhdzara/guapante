@@ -21,3 +21,10 @@ class HrSalaryRuleCategory(models.Model):
              '(solo lectura, soporte de auditoría) aparecen además las categorías de «Bases de cotización y retención» y, cada una en su sección, las de '
              '«Costo empresa». Vacío: sus líneas no se muestran en ninguna de las dos pestañas. La asignación es de esta categoría, no se hereda de '
              'la categoría padre.')
+
+    # Ajuste de David (22-nov, decisión del TL): los aportes del EMPLEADO (salud, pensión y FSP) se muestran también, a nivel informativo, en «Cálculo del salario».
+    l10n_co_ne_aportes_empleado = fields.Boolean(
+        string='Aportes del empleado en «Cálculo del salario»', default=False,
+        help='Si está marcada, las líneas de las reglas de esta categoría se muestran TAMBIÉN, a nivel informativo, en la sección «Aportes del empleado» de «Cálculo del '
+             'salario» (entre las bases y los aportes de la empresa). Siguen donde les toca en «Conceptos de pago» y en la colilla (deducciones) y NO suman al «Costo '
+             'empresa». Solo se marcan los aportes de seguridad social del empleado (salud, pensión y fondo de solidaridad pensional).')

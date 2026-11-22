@@ -72,6 +72,7 @@
             <field name="parent_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="note">Aportes del empleado a salud y pensión.</field>
             <field name="l10n_co_ne_seccion_concepto">deducciones</field>
+            <field name="l10n_co_ne_aportes_empleado" eval="True"/>
         </record>
 
         <record id="hr_salary_rule_category_seguridad_social_cia" model="hr.salary.rule.category">

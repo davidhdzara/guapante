@@ -74,17 +74,22 @@ class L10nCoPayslipCalculo(models.Model):
 
     @api.model
     def _secciones_del_recibo(self, recibo, lineas):
-        """``[(clave, titulo, [líneas])]`` en el orden de la pestaña: Bases y, después, una sección por categoría de «Costo empresa» (aportes de la empresa,
-        provisiones; en el orden de su primera línea). Sin líneas, la sección no sale.
+        """``[(clave, titulo, [líneas])]`` en el orden de la pestaña: Bases, «Aportes del empleado» (informativa: salud, pensión y FSP; ajuste de David del 22-nov) y, después,
+        una sección por categoría de «Costo empresa» (aportes de la empresa, provisiones; en el orden de su primera línea). Sin líneas, la sección no sale.
 
         Se decide por configuración, sin códigos de regla: la sección de la categoría de la línea (.298: ya no hay Básico, Devengos ni Deducciones)."""
-        fijas = {'bases': (0, _('Bases'))}
+        fijas = {'bases': (0, _('Bases')), 'aportes_empleado': (1, _('Aportes del empleado'))}
         grupos = {}
         for linea in lineas:
-            seccion = linea.category_id.l10n_co_ne_seccion_concepto
-            clave = seccion if seccion == 'bases' else 'costo_%s' % linea.category_id.id
+            categoria = linea.category_id
+            if categoria.l10n_co_ne_seccion_concepto == 'bases':
+                clave = 'bases'
+            elif categoria.l10n_co_ne_aportes_empleado:
+                clave = 'aportes_empleado'                       # informativa: no suma al «Costo empresa» (su categoría es de deducciones)
+            else:
+                clave = 'costo_%s' % categoria.id
             if clave not in grupos:
-                orden, titulo = fijas.get(clave) or (1, linea.category_id.name)
+                orden, titulo = fijas.get(clave) or (2, categoria.name)
                 grupos[clave] = {'clave': clave, 'orden': orden, 'primera': (linea.sequence, linea.id), 'titulo': titulo, 'lineas': []}
             grupos[clave]['lineas'].append(linea)
         return [(g['clave'], g['titulo'], g['lineas']) for g in sorted(grupos.values(), key=lambda g: (g['orden'], g['primera']))]
@@ -98,7 +103,7 @@ class L10nCoPayslipCalculo(models.Model):
         que no lleva símbolo de moneda)."""
         ajustes = {a.salary_rule_id.id: a for a in recibo.l10n_co_ajuste_ids}
         lineas = recibo.line_ids.filtered(
-            lambda l: l.category_id.l10n_co_ne_seccion_concepto in SECCIONES_DE_CATEGORIA
+            lambda l: (l.category_id.l10n_co_ne_seccion_concepto in SECCIONES_DE_CATEGORIA or l.category_id.l10n_co_ne_aportes_empleado)
             and (l.total or l.salary_rule_id.id in ajustes)).sorted(lambda l: (l.sequence, l.id))
         valores, secuencia = [], 0
 
