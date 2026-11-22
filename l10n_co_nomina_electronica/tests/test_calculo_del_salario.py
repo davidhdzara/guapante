@@ -110,7 +110,7 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertLess(orden.index('name'), orden.index('cuenta'))
         self.assertLess(orden.index('cuenta'), orden.index('amount'))
         for nombre in ('quantity', 'unidad'):
-            self.assertEqual(calculo[nombre].get('invisible'), 'quantity == 1', 'Menor de QA («cv»): también en los aportes del empleado, que traen % distinto de 100: %s' % nombre)
+            self.assertEqual(calculo[nombre].get('invisible'), 'quantity == 1', 'Menor de QA («cv»): también en los aportes del empleado, que traen %% distinto de 100: %s' % nombre)
         self.assertEqual(calculo['rate'].get('invisible'), 'rate == 100')
         conceptos, orden_c = self._columnas_de('conceptos_de_pago', 'l10n_co_concepto_ids')
         self.assertEqual(conceptos['cuenta'].get('optional'), 'hide')
