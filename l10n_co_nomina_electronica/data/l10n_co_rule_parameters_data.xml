@@ -546,7 +546,11 @@ compañía) y no festivo de la compañía. La vigencia se evalúa en el primer d
 <h3 class="mt-5">Norma</h3>
 <p>Resolución DIAN 000013 de 2021, art. 8 (Diario Oficial 51.585 del 11-feb-2021; compilado como art. 1.5.3.4.1.1 de la Resolución DIAN 227 de 2025): «…dentro de los diez (10) primeros días del mes siguiente
 al cual corresponde el pago o abono en cuenta…». <strong>NO VERIFICADO:</strong> que sean días HÁBILES: el texto leído dice «primeros días», sin «hábiles»; el módulo los cuenta hábiles (doc 53 §4.4, D10) y no se leyó el
-texto compilado de la Resolución 227 de 2025.</p></field>
+texto compilado de la Resolución 227 de 2025.</p>
+<p>Fundamento de los días HÁBILES (decisión del Tech Lead, D10): Ley 4 de 1913, art. 62: «En los plazos de días que se señalen en las leyes y actos oficiales, se entienden suprimidos los feriados y de vacantes,
+a menos de expresarse lo contrario. Los de meses y años se computan según el calendario; pero si el último día fuere feriado o de vacante, se extenderá el plazo hasta el primer día hábil.» (texto leído en la
+Secretaría del Senado, <code>secretariasenado.gov.co/senado/basedoc/ley_0004_1913_pr001.html</code>). <strong>NO VERIFICADO:</strong> la vigencia del artículo (la página del Senado no muestra notas de vigencia en el
+texto leído) y que aplique tal cual a una resolución de la DIAN que dice «primeros días» sin «hábiles».</p></field>
     </record>
     <record id="rule_parameter_dias_plazo_transmision_ne_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">10</field>
