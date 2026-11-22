@@ -6,4 +6,19 @@
         <field name="model_id" ref="model_l10n_co_employee_pacto"/>
         <field name="domain_force">[('employee_id.company_id', 'in', company_ids)]</field>
     </record>
+    <!-- H-F2-03 (G4, decisión del TL del 22-nov): el pacto trae información salarial y su documento firmado; su visibilidad no puede exceder la del recibo (P6-3, doc 59 4.4): el oficial de nómina solo ve lo de
+         los empleados que ve en el recibo y el administrador de nómina ve todo lo de su compañía. Las reglas de grupo se combinan con O entre sí y con Y con la regla global por compañía. El cálculo
+         del recibo lee el registro con ``sudo`` (``_vigente``), así que no depende de lo que el oficial vea. -->
+    <record id="rule_l10n_co_employee_pacto_oficial" model="ir.rule">
+        <field name="name">Pactos de desalarización: el oficial de nómina solo ve lo de los empleados que ve en el recibo</field>
+        <field name="model_id" ref="model_l10n_co_employee_pacto"/>
+        <field name="domain_force">['|', '|', ('employee_id.user_id', '=', user.id), ('employee_id.department_id', '=', False), ('employee_id.department_id.manager_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_user'))]"/>
+    </record>
+    <record id="rule_l10n_co_employee_pacto_administrador" model="ir.rule">
+        <field name="name">Pactos de desalarización: el administrador de nómina ve todo</field>
+        <field name="model_id" ref="model_l10n_co_employee_pacto"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+    </record>
 </odoo>
