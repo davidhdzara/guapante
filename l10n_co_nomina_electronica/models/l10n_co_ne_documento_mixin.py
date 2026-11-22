@@ -24,7 +24,7 @@ from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services import (
     cune as cune_service,
@@ -363,6 +363,17 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                     payslip.number or payslip.name,
                 ))
 
+    @api.model
+    def _ne_exigir_administrador_de_nomina(self):
+        """H-F2-03 (decisión del TL del 22-nov): GENERAR o TRANSMITIR a la DIAN el XML de nómina electrónica de un recibo lo hace el administrador de nómina, en TODOS los modos (habilitación y producción):
+        coherente con los botones «Generar XML», «Regenerar XML», «Enviar a DIAN» y «Enviar y Procesar» del recibo, que son solo suyos. El oficial de nómina calcula y confirma, pero no transmite. Un botón con
+        ``groups`` solo se oculta; esta es la barrera real (la llaman las acciones y el asistente). El superusuario (crons, motor de habilitación y datos) no se restringe."""
+        if self.env.su or self.env.user.has_group('hr_payroll.group_hr_payroll_manager'):
+            return
+        raise AccessError(_(
+            'Solo el administrador de nómina puede generar o transmitir a la DIAN el XML de nómina electrónica (recibos y documentos mensuales), también en habilitación. '
+            'El oficial de nómina calcula y confirma los recibos, pero no los transmite: pídale el envío al administrador de nómina.'))
+
     def action_generate_ne_xml(self):
         """
         Genera el XML de nómina electrónica firmado.
@@ -379,6 +390,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         9. Actualiza estado a ``generated``.
         """
         self.ensure_one()
+        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         self._validate_ne_prerequisites()
 
@@ -476,6 +488,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         5. Actualiza estado según resultado (accepted/rejected).
         """
         self.ensure_one()
+        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         if self.l10n_co_ne_state not in ('generated', 'rejected'):
             raise UserError(_(
@@ -658,6 +671,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_mass_generate_ne_xml(self):
         """Genera XML de nómina electrónica para múltiples nóminas."""
+        self._ne_exigir_administrador_de_nomina()
         records = self.filtered(
             lambda p: p.state == 'done'
             and p.l10n_co_ne_state in ('draft', False)
@@ -683,6 +697,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_mass_send_ne_dian(self):
         """Envía múltiples XMLs firmados a la DIAN."""
+        self._ne_exigir_administrador_de_nomina()
         records = self.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'rejected')
         )
@@ -873,6 +888,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         Un documento rechazado o con el SoftwareID/TestSetId desactualizado no se puede reenviar
         tal cual: la DIAN devolvería el mismo veredicto viejo (regla 90, "procesado anteriormente").
         """
+        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         for slip in self:
             if slip.l10n_co_ne_state in ('sent', 'accepted'):

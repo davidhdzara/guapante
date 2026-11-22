@@ -157,11 +157,21 @@ class ResCompany(models.Model):
         """Certificado usado para firmar nómina electrónica.
 
         Mismo criterio que Facturación Electrónica (l10n_co_dian):
-        el último certificado de la lista de la compañía, sin campo
+        el último certificado de la lista de la compañía (``certificates_sudo[-1]``), sin campo
         de selección explícita aparte.
+
+        H-F2-03 (defecto previo, decisión del TL del 22-nov): se lee con ``sudo``, SOLO el de la compañía
+        ``self``. ``certificate.certificate`` da permiso de acceso únicamente a ``base.group_system``
+        (``addons/certificate/security/ir.model.access.csv``), así que sin ``sudo`` el administrador de nómina,
+        que no es del sistema, no podía validar la configuración ni firmar. El ``sudo`` NO abre el modelo: nadie
+        más lee ``certificate.certificate`` directamente (la prueba lo confirma). El registro se devuelve (con
+        ``sudo``) únicamente a la validación de la configuración (``_l10n_co_ne_validar_config``) y a los
+        cargadores de la llave para firmar (``xml_signer.load_from_certificate``, en el mixin del recibo y en el
+        documento mensual): el método es privado (no se llama por RPC) y ningún campo, vista ni informe lo devuelve.
+        Quién puede GENERAR o TRANSMITIR lo decide ``_ne_exigir_administrador_de_nomina``, no este permiso.
         """
         self.ensure_one()
-        return self.l10n_co_ne_certificate_ids[-1:]
+        return self.sudo().l10n_co_ne_certificate_ids[-1:]
 
     def _l10n_co_ne_validar_config(self):
         """Valida la configuración de nómina electrónica DIAN de la compañía.
