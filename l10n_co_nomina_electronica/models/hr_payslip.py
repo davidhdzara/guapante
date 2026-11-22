@@ -227,10 +227,10 @@ class HrPayslip(models.Model):
 
     l10n_co_ne_aviso_pacto = fields.Char(
         string='Aviso del pacto de desalarización', compute='_compute_ne_aviso_pacto',
-        help='Solo para las vistas: aviso cuando el recibo trae un pago no salarial por pacto de desalarización y el empleado no tiene registrado el pacto.')
+        help='Solo para las vistas: aviso cuando el recibo trae un pago no salarial por pacto de desalarización y el empleado no tiene registrado el pacto o lo tiene sin el documento firmado.')
 
     @api.depends('line_ids', 'line_ids.total', 'date_to', 'employee_id', 'employee_id.l10n_co_pacto_ids', 'employee_id.l10n_co_pacto_ids.fecha_firma',
-                 'employee_id.l10n_co_pacto_ids.fecha_fin', 'employee_id.l10n_co_pacto_ids.salary_rule_id')
+                 'employee_id.l10n_co_pacto_ids.fecha_fin', 'employee_id.l10n_co_pacto_ids.salary_rule_id', 'employee_id.l10n_co_pacto_ids.attachment_ids')
     def _compute_ne_aviso_pacto(self):
         """.302 (doc 76 §2.3): ver ``l10n.co.employee.pacto``. SIEMPRE avisa, aunque el interruptor ``l10n_co_exigir_pacto_no_salarial`` esté en 0: así el dato
         que falta se ve sin bloquear a nadie. No lee el interruptor."""

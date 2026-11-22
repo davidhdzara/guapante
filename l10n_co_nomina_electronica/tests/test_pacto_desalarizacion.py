@@ -4,7 +4,8 @@ necesitan ``-u`` (modelo, permisos, regla de compañía, vistas y el parámetro 
 
 Qué se prueba:
 - Un pago no salarial POR PACTO (origen «pacto»: CO_AUX_ALIM, CO_BONIF_NOSAL) necesita un pacto del empleado; el de naturaleza no. Un pacto cubre los recibos cuyo ``date_to``
-  cae entre la firma y el fin (fin vacía = vigente), por el ``code`` del concepto y sin depender del contrato (renovarlo no lo pierde).
+  cae entre la firma y el fin (fin vacía = vigente), por el ``code`` del concepto y sin depender del contrato (renovarlo no lo pierde). Con el documento firmado: sin
+  documento se guarda pero NO cubre («pacto sin soporte», SU 25185: la carga de la prueba es del empleador).
 - Sin pacto el recibo AVISA siempre; al CONFIRMAR es un error solo si el interruptor ``l10n_co_exigir_pacto_no_salarial`` vale 1 (0 de fábrica); el parámetro es obligatorio
   y solo se lee si hay un pago por pacto sin cubrir.
 - Aislamiento por la compañía del empleado; la lista vive en la pestaña Nómina del empleado."""
@@ -82,8 +83,15 @@ class TestPactoDesalarizacion(TransactionCase):
         recibo.compute_sheet()
         return recibo
 
-    def _pacto(self, empleado, regla=None, firma=date(2026, 1, 1), fin=False):
-        return self.Pacto.create({'employee_id': empleado.id, 'salary_rule_id': (regla or self.regla_bonif).id, 'fecha_firma': firma, 'fecha_fin': fin})
+    def _documento(self):
+        return self.env['ir.attachment'].create({'name': 'Pacto firmado.pdf', 'raw': b'%PDF-1.4 pacto de prueba', 'mimetype': 'application/pdf'})
+
+    def _pacto(self, empleado, regla=None, firma=date(2026, 1, 1), fin=False, con_documento=True):
+        """Pacto del empleado; por defecto CON el documento firmado (decisión del TL, 22-nov: un pacto sin documento no cubre)."""
+        valores = {'employee_id': empleado.id, 'salary_rule_id': (regla or self.regla_bonif).id, 'fecha_firma': firma, 'fecha_fin': fin}
+        if con_documento:
+            valores['attachment_ids'] = [(4, self._documento().id)]
+        return self.Pacto.create(valores)
 
     def _aviso(self, recibo):
         recibo.invalidate_recordset(['l10n_co_ne_aviso_pacto'])
@@ -137,6 +145,38 @@ class TestPactoDesalarizacion(TransactionCase):
             'wage': 3000000.0, 'date_start': date(2026, 9, 1), 'state': 'open'})
         recibo = self._recibo(empleado, nuevo)
         self.assertFalse(self._aviso(recibo), 'El pacto es del empleado: el contrato nuevo queda cubierto')
+
+    def test_05b_un_pacto_sin_documento_se_guarda_pero_no_cubre_y_dice_pacto_sin_soporte(self):
+        """Decisión del TL (22-nov): se puede guardar sin adjunto (para cargarlo y escanear después), pero sin el documento firmado el pacto NO cubre: el aviso dice «pacto
+        sin soporte» (no «no tiene registrado el pacto») y, con el interruptor en 1, confirmar da error igual que sin pacto. Al adjuntar el documento, cubre."""
+        empleado, contrato = self._empleado()
+        recibo = self._recibo(empleado, contrato)
+        sin_pacto = self._aviso(recibo)
+        self.assertIn('no tiene registrado el pacto', sin_pacto)
+        self.assertNotIn('pacto sin soporte', sin_pacto)
+        pacto = self._pacto(empleado, con_documento=False)              # se guarda sin documento
+        self.assertTrue(pacto.exists())
+        aviso = self._aviso(recibo)
+        self.assertIn('pacto sin soporte', aviso)
+        self.assertNotIn('no tiene registrado el pacto', aviso)
+        self.assertIn(self.regla_bonif.name, aviso)
+        self.assertIn(empleado.name, aviso)
+        self.assertIn('SU 25185', aviso)
+        recibo._ne_validar_pacto_no_salarial()                          # interruptor en 0: solo avisa
+        self._exigir(1)
+        with self.assertRaisesRegex(UserError, 'pacto sin soporte'):
+            recibo._ne_validar_pacto_no_salarial()
+        pacto.attachment_ids = [(4, self._documento().id)]
+        self.assertFalse(self._aviso(recibo), 'Con el documento adjunto cubre')
+        recibo._ne_validar_pacto_no_salarial()
+
+    def test_05c_basta_un_pacto_vigente_con_documento_aunque_otro_no_lo_tenga(self):
+        empleado, contrato = self._empleado()
+        recibo = self._recibo(empleado, contrato)
+        self._pacto(empleado, firma=date(2026, 1, 1), fin=date(2026, 12, 31), con_documento=False)
+        self.assertIn('pacto sin soporte', self._aviso(recibo))
+        self._pacto(empleado, firma=date(2026, 3, 1))                   # otro pacto vigente, este con documento
+        self.assertFalse(self._aviso(recibo))
 
     def test_06_el_pacto_de_otro_empleado_no_cubre(self):
         empleado, contrato = self._empleado()
