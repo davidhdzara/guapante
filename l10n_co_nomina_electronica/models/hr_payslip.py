@@ -2126,6 +2126,19 @@ class HrPayslip(models.Model):
         return (meses * dias_mes + self._ne_dia_comercial(fecha_fin, dias_mes)
                 - self._ne_dia_comercial(fecha_ini, dias_mes) + 1)
 
+    def _ne_resultado_retefuente(self, categories):
+        """Resultado de la depuracion de la retencion en la fuente de la NOMINA GENERAL (el dict de ``l10n.co.retefuente.uvt.compute_retefuente``): UN solo lugar que arma las entradas -- ingreso bruto
+        (categoria GROSS o el sueldo), IBC de pension y salud (DEV_SAL, o el sueldo por el factor del integral) -- y llama a la depuracion. Lo usan las reglas CO_RETEFUENTE, CO_EXENTO_PENSION_AFC y
+        CO_RETEFUENTE_EXCESO_LIMITE (antes cada una copiaba las entradas: H-F1-02). Sin configuracion de retencion del anio, el error de ``_ne_retefuente_config``."""
+        self.ensure_one()
+        contract = self.contract_id
+        gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
+        ibc = categories.get('DEV_SAL', contract.wage)
+        if contract.l10n_co_ne_integral_salary:
+            ibc = contract.wage * self._rule_parameter('l10n_co_factor_integral_salary', self.date_from)
+        return self._ne_retefuente_config().compute_retefuente(
+            self.employee_id, gross, ibc, ibc, self.employee_id.company_id, contract=contract, payslip=self)
+
     def _ne_retefuente_config(self):
         """Configuracion de retencion en la fuente (l10n.co.retefuente.uvt) del anio de la
         nomina (anio de _ne_fecha_parametros: la fecha de retiro en la liquidacion). Primero la de

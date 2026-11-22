@@ -1333,21 +1333,9 @@ result = bool(_rete_cfg)
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Calculo automatico: Procedimiento 1 o 2 segun configuracion
-# Usa el metodo compute_retefuente() del modelo l10n.co.retefuente.uvt
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-# Calcular IBC y bruto para la depuracion
-_gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
-_ibc_pension = categories.get('DEV_SAL', contract.wage)
-if contract.l10n_co_ne_integral_salary:
-    _ibc_pension = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-_ibc_salud = _ibc_pension
-
-# Ejecutar depuracion y tabla marginal Art. 383 ET
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _gross, _ibc_pension, _ibc_salud, employee.company_id,
-    contract=contract, payslip=payslip,
-)
+# Depuracion y tabla marginal Art. 383 ET: payslip._ne_resultado_retefuente() arma las entradas (bruto, IBC, integral) y llama a
+# l10n.co.retefuente.uvt.compute_retefuente(); UserError si falta la configuracion del año (.167). Un solo lugar para las 3 reglas (H-F1-02).
+_rete_result = payslip._ne_resultado_retefuente(categories)
 _valor = _rete_result.get('retencion_pesos', 0)
 result = -abs(_valor) if _valor > 0 else 0
             </field>
@@ -1384,19 +1372,8 @@ result = bool(_rete_cfg)
 # puedan acumular via payslip._sum('CO_EXENTO_PENSION_AFC', ...). Mismo
 # patron que las reglas de provisiones (doc 18): un valor que se necesita
 # leer despues, no una deduccion real. Recalcula compute_retefuente() --
-# mismos inputs deterministicos que CO_RETEFUENTE, sin efectos secundarios.
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-_gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
-_ibc_pension = categories.get('DEV_SAL', contract.wage)
-if contract.l10n_co_ne_integral_salary:
-    _ibc_pension = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_from)
-_ibc_salud = _ibc_pension
-
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _gross, _ibc_pension, _ibc_salud, employee.company_id,
-    contract=contract, payslip=payslip,
-)
+# mismos inputs deterministicos que CO_RETEFUENTE, sin efectos secundarios (payslip._ne_resultado_retefuente(): un solo lugar, H-F1-02).
+_rete_result = payslip._ne_resultado_retefuente(categories)
 result = _rete_result.get('exento_vol_pension_afc', 0)
             </field>
             <field name="appears_on_payslip" eval="False"/>
@@ -1474,6 +1451,38 @@ result = _ibc_pension
             <field name="note">Acumulador interno (doc 08): guarda la base salarial mensual (el salario devengado, o el integral por su factor) para que
 action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el % fijo de Procedimiento 2 (Art. 384 ET).
 NO es el IBC de los aportes («IBC Salud y Pension», CO_IBC_SP; H-QA-042). No aparece en el recibo ni afecta el neto.</field>
+        </record>
+
+        <!-- ==================== RETEFUENTE EXCESO DEL LIMITE GLOBAL (invisible, H-F1-02) ==================== -->
+        <record id="hr_salary_rule_co_retefuente_exceso_limite" model="hr.salary.rule">
+            <field name="name">Retención Fuente - Exceso del límite global (art. 336 E.T.)</field>
+            <field name="code">CO_RETEFUENTE_EXCESO_LIMITE</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_calculo_si_retencion" eval="True"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="sequence">114</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Misma configuracion que CO_RETEFUENTE (error claro si falta la del ano, .167)
+_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
+result = bool(_rete_cfg)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+# H-F1-02 (doc 90): regla INVISIBLE que guarda lo que el limite global del art. 336 E.T. (40 % de la base y 1.340/12 UVT) NO dejo deducir en la retencion de este recibo,
+# para mostrarlo en «Calculo del salario» junto a las bases de la retencion. Recalcula la depuracion con payslip._ne_resultado_retefuente() -- mismos inputs deterministicos que CO_RETEFUENTE, sin
+# efectos secundarios (mismo patron que CO_EXENTO_PENSION_AFC). Vale 0 si el limite no recorto nada y entonces no sale en la pestaña.
+_rete_result = payslip._ne_resultado_retefuente(categories)
+result = _rete_result.get('exceso_limite_global', 0.0)
+            </field>
+            <field name="appears_on_payslip" eval="False"/>
+            <field name="note">Acumulador interno (H-F1-02): guarda la parte de las rentas exentas y deducciones (aporte voluntario a pension, AFC, dependientes y el 25 %) que el limite global del
+art. 336 num. 3 E.T. (40 % de «ingreso menos ingresos no constitutivos» y 1.340 UVT anuales, en la retencion 1.340/12 UVT al mes) no dejo restar de la base de la retencion de este recibo. Solo se
+muestra en «Cálculo del salario» cuando hay retencion y el limite recorto algo. No aparece en el recibo ni afecta el neto.</field>
         </record>
 
         <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">

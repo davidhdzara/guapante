@@ -218,7 +218,7 @@ class TestCalculoDelSalario(TransactionCase):
     def test_04d_las_bases_de_la_retencion_salen_solo_si_el_recibo_tiene_retencion(self):
         """Ajuste de David (22-nov): sin retención en la fuente ver «Retención Fuente - Base Bruto / Base salarial» confunde. Con una línea de retención con valor vuelven a salir."""
         marcadas = self.env['hr.salary.rule'].search([('l10n_co_ne_calculo_si_retencion', '=', True)])
-        self.assertEqual(set(marcadas.mapped('code')), {'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'}, 'La siembra marca solo las dos bases')
+        self.assertEqual(set(marcadas.mapped('code')), {'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC', 'CO_RETEFUENTE_EXCESO_LIMITE'}, 'La siembra marca solo las bases de la retención (y el exceso del límite global, H-F1-02)')
         recibo = self._recibo()
         bases = recibo.line_ids.filtered(lambda l: l.code in ('CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC') and l.total)
         self.assertTrue(bases, 'Premisa: el recibo calcula las bases de la retención')
@@ -234,6 +234,22 @@ class TestCalculoDelSalario(TransactionCase):
         self.Calculo._regenerar_de_recibos(recibo)
         codigos = set(self._filas(recibo).filtered('line_id').mapped('line_id.code'))
         self.assertTrue({'CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'} <= codigos, 'Con retención vuelven a salir')
+
+    def test_04f_el_exceso_del_limite_global_sale_en_calculo_solo_si_recorta(self):
+        """H-F1-02 (doc 90): lo que el limite global del art. 336 (40 % y 1.340/12 UVT) no dejo deducir en la retencion sale en «Calculo del salario» junto a las bases de la retencion, por el mismo mecanismo (sin
+        vista nueva): solo con retencion y solo si recorto algo. Mensual de 30.000.000 con pension voluntaria 3.000.000 + AFC 2.000.000: exceso 8.447.955 - 5.848.430 = 2.599.525 (doc 90, caso 3)."""
+        normal = self._recibo()
+        self.assertFalse(self._linea(normal, 'CO_RETEFUENTE_EXCESO_LIMITE').total, 'Premisa: con 3.000.000 el limite no recorta nada')
+        recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
+        recibo.contract_id.write({'wage': 30000000.0, 'l10n_co_ne_pension_voluntaria': 3000000.0, 'l10n_co_ne_afc': 2000000.0})
+        recibo.compute_sheet()
+        exceso = self._linea(recibo, 'CO_RETEFUENTE_EXCESO_LIMITE')
+        self.assertAlmostEqual(exceso.total, 2599525.0, delta=1.0)
+        self.assertTrue(self._linea(recibo, 'CO_RETEFUENTE').total, 'Premisa: el recibo tiene retencion')
+        self.assertFalse(exceso.salary_rule_id.appears_on_payslip, 'Acumulador interno: no sale en el recibo')
+        self.Calculo._regenerar_de_recibos(recibo)
+        codigos = set(self._filas(recibo).filtered('line_id').mapped('line_id.code'))
+        self.assertIn('CO_RETEFUENTE_EXCESO_LIMITE', codigos)
 
     def test_04e_las_bases_salariales_intermedias_no_salen_y_queda_una_sola_fila_de_base_salarial(self):
         """Menor de QA sobre «cv» (22-nov, decisión del TL): en «Bases» salían tres filas con el mismo valor («IBC Salarial», «IBC Remuneración Base 40 %» y «Base salarial del mes»).
