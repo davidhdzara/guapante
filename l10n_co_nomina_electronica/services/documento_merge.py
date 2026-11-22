@@ -171,12 +171,36 @@ def fusionar_devengados(recibos):
     return salida
 
 
+def _fusionar_fondo_sp(recibos):
+    """``FondoSP`` del mes. Su ``Porcentaje`` es el TRAMO del IBC de cada recibo (H-F3-04: sale de ``rate`` de la regla, ya no un literal) y es informativo (el Anexo no lo valida contra la deduccion; en el XSD es
+    opcional): dos recibos del mes pueden caer en tramos distintos (p. ej. una quincena con una bonificacion), y detenerse ahi bloquearia un documento legitimo. Si coinciden, ese valor; si no, el promedio
+    ponderado por lo deducido (``DeduccionSP``). Los demas campos del nodo se suman como siempre."""
+    nodos = [d.get('deducciones', {}).get('FondoSP') for d in recibos if d.get('deducciones', {}).get('FondoSP')]
+    if not nodos:
+        return None
+    acum = None
+    for nodo in nodos:
+        acum = _sumar_nodo('FondoSP', acum, {campo: valor for campo, valor in nodo.items() if campo != 'Porcentaje'})
+    porcentajes = [(nodo.get('Porcentaje'), _dec(nodo.get('DeduccionSP'))) for nodo in nodos if nodo.get('Porcentaje') not in (None, '')]
+    if porcentajes:
+        distintos = {str(valor) for valor, _peso in porcentajes}
+        total = sum(peso for _valor, peso in porcentajes)
+        if len(distintos) == 1 or not total:
+            acum['Porcentaje'] = porcentajes[0][0]
+        else:
+            acum['Porcentaje'] = _dinero(sum(_dec(valor) * peso for valor, peso in porcentajes) / total)
+    return acum
+
+
 def fusionar_deducciones(recibos):
     salida = {}
     for nombre in UNICOS_DEDUCCIONES:
-        acum = None
-        for datos in recibos:
-            acum = _sumar_nodo(nombre, acum, datos.get('deducciones', {}).get(nombre))
+        if nombre == 'FondoSP':
+            acum = _fusionar_fondo_sp(recibos)
+        else:
+            acum = None
+            for datos in recibos:
+                acum = _sumar_nodo(nombre, acum, datos.get('deducciones', {}).get(nombre))
         if acum is not None:
             salida[nombre] = acum
     for nombre in LISTAS_DEDUCCIONES:

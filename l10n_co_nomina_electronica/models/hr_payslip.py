@@ -3988,13 +3988,24 @@ class HrPayslip(models.Model):
                     l.total for l in concept_lines[concept_key]
                 )
 
+    @staticmethod
+    def _ne_porcentaje_de_lineas(lineas):
+        """Porcentaje (texto, 2 decimales) de un nodo de deducción del XML (Salud, FondoPension, FondoSP; H-F3-04, decisión del TL del 22-nov): el que usaron las reglas, no un literal. Cada regla fija
+        ``result_rate`` con el parámetro vigente (``l10n_co_pct_salud_empleado``, ``l10n_co_pct_pension_empleado`` y, en el FSP, el tramo del IBC), y la línea del recibo lo guarda en ``rate``: es la MISMA fuente
+        del cálculo. Un recibo trae una fecha y una tarifa, así que las líneas coinciden; si difirieran, el promedio ponderado por el valor absoluto. Sin líneas (la regla no se calculó: aprendiz lectivo,
+        pensionado, prima) no hay nodo y el constructor del XML escribe 0 en los dos obligatorios (Salud y FondoPension, ``minOccurs=1``; el porcentaje es un ``xsd:decimal`` sin mínimo)."""
+        total = sum(abs(linea.total) for linea in lineas)
+        if not total:
+            return '0.00'
+        return '%.2f' % (sum(abs(linea.total) * linea.rate for linea in lineas) / total)
+
     def _build_deducciones(self, concept_lines):
         """Construye el dict <Deducciones> del XML a partir de concept_lines."""
         deducciones = {}
         # Salud
         if 'Salud' in concept_lines:
             deducciones['Salud'] = {
-                'Porcentaje': '4.00',
+                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['Salud']),
                 'Deduccion': '%.2f' % abs(sum(
                     l.total for l in concept_lines['Salud']
                 )),
@@ -4003,7 +4014,7 @@ class HrPayslip(models.Model):
         # Fondo de Pensión
         if 'FondoPension' in concept_lines:
             deducciones['FondoPension'] = {
-                'Porcentaje': '4.00',
+                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['FondoPension']),
                 'Deduccion': '%.2f' % abs(sum(
                     l.total for l in concept_lines['FondoPension']
                 )),
@@ -4012,7 +4023,7 @@ class HrPayslip(models.Model):
         # Fondo de Solidaridad Pensional
         if 'FondoSP' in concept_lines:
             deducciones['FondoSP'] = {
-                'Porcentaje': '1.00',
+                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['FondoSP']),
                 'DeduccionSP': '%.2f' % abs(sum(
                     l.total for l in concept_lines['FondoSP']
                 )),
