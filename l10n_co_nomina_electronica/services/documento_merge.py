@@ -206,6 +206,16 @@ def fusionar_documento(recibos, fechas_pagos, periodo, periodo_nomina='5'):
     if not fechas_pagos:
         raise ErrorFusion('Falta la fecha de pago: FechasPagos exige al menos una (1..N).')
     base = recibos[0]
+    # H-F1-09 (decision del TL del 22-nov): un aprendiz que cambia de etapa dentro del mes (lectiva -> practica) cambia de TipoTrabajador; el documento mensual exige uno solo. Error claro que nombra al
+    # empleado y los dos tipos. La decision de fondo (un documento o dos por mes) queda para la lectura del Anexo Tecnico (hallazgo del F3).
+    trabajador_base = base.get('trabajador') or {}
+    for otro in recibos[1:]:
+        tipo_base, tipo_otro = trabajador_base.get('TipoTrabajador'), (otro.get('trabajador') or {}).get('TipoTrabajador')
+        if tipo_base and tipo_otro and tipo_base != tipo_otro:
+            nombre = ' '.join(filter(None, (trabajador_base.get('PrimerNombre'), trabajador_base.get('PrimerApellido')))) or '(sin nombre)'
+            raise ErrorFusion(
+                "El empleado %s (documento %s) cambia de tipo de trabajador dentro del mes (%s y %s, por ejemplo de la etapa lectiva a la practica de un aprendiz): el documento mensual exige un solo "
+                "TipoTrabajador, asi que esos recibos no se pueden fusionar en uno." % (nombre, trabajador_base.get('NumeroDocumento', ''), tipo_base, tipo_otro))
     for seccion in SECCIONES_IGUALES:
         for otro in recibos[1:]:
             if otro.get(seccion) != base.get(seccion):

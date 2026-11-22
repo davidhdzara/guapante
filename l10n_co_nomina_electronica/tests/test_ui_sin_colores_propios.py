@@ -45,10 +45,10 @@ class TestUiSinColoresPropios(TransactionCase):
         arch = self._arch('l10n_co_nomina_electronica.view_payslip_form_ne')
         banners = arch.xpath("//div[contains(@class, 'alert')]")
         # Los 3 banners de estado NE (sent/uncertain/rejected) se identifican por su modificador `l10n_co_ne_state`; los avisos (que no bloquean) por el campo de su `invisible`: periodicidad (E-2, recibo de
-        # 7 dias en un contrato no semanal), afiliacion incompleta (H-F1-06) e IBC del mes anterior (H-F1-11/H-F1-08).
+        # 7 dias en un contrato no semanal), afiliacion incompleta (H-F1-06), IBC del mes anterior (H-F1-11/H-F1-08) y tipo de trabajador del aprendiz (H-F1-09).
         de_estado = [b for b in banners if 'l10n_co_ne_state' in (b.get('invisible') or '')]
         avisos = {campo: [b for b in banners if campo in (b.get('invisible') or '')]
-                  for campo in ('l10n_co_ne_aviso_periodicidad', 'l10n_co_ne_aviso_afiliacion', 'l10n_co_ne_aviso_ibc_anterior')}
+                  for campo in ('l10n_co_ne_aviso_periodicidad', 'l10n_co_ne_aviso_afiliacion', 'l10n_co_ne_aviso_ibc_anterior', 'l10n_co_ne_aviso_tipo_trabajador')}
         self.assertEqual(len(de_estado), 3, 'Se esperaban los 3 banners de estado NE (sent/uncertain/rejected).')
         for campo, encontrados in avisos.items():
             self.assertEqual(len(encontrados), 1, 'Se esperaba un solo aviso con el campo %s.' % campo)

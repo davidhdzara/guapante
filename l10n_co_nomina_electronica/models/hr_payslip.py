@@ -274,6 +274,32 @@ class HrPayslip(models.Model):
                 continue
             recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
 
+    l10n_co_ne_aviso_tipo_trabajador = fields.Char(
+        string='Aviso del tipo de trabajador', compute='_compute_ne_aviso_tipo_trabajador',
+        help='Solo para las vistas: aviso (no bloquea) cuando el empleado es un aprendiz y el tipo de trabajador de su ficha no es el que corresponde al tipo de cotizante y de contrato de su contrato: el XML usa el del contrato.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'employee_id.l10n_co_ne_worker_type', 'contract_id.l10n_co_pila_tipo_cotizante',
+                 'contract_id.l10n_co_ne_contract_type')
+    def _compute_ne_aviso_tipo_trabajador(self):
+        """H-F1-09 (decision del TL del 22-nov): el TipoTrabajador del aprendiz sale del contrato (``_ne_regimen_cotizante``); si la ficha del empleado dice otro, se AVISA (el XML usa el del contrato). Los
+        demas empleados no se tocan. Un parametro que falta no rompe el formulario: el aviso dice que falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_tipo_trabajador = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            try:
+                derivado = recibo._ne_regimen_cotizante()['tipo_trabajador']
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_tipo_trabajador = error.args[0]
+                continue
+            ficha = recibo.employee_id.l10n_co_ne_worker_type
+            if derivado and ficha != derivado:
+                etiqueta = dict(recibo.employee_id._fields['l10n_co_ne_worker_type'].selection)
+                recibo.l10n_co_ne_aviso_tipo_trabajador = _(
+                    'El empleado %(empleado)s es un aprendiz: por el tipo de cotizante y el tipo de contrato de su contrato le corresponde el tipo de trabajador «%(derivado)s» y su ficha dice «%(ficha)s». '
+                    'El XML de nómina electrónica usa el del contrato; corrija el de la ficha (pestaña Nómina) para que coincidan.',
+                    empleado=recibo.employee_id.name, derivado=etiqueta.get(derivado, derivado), ficha=etiqueta.get(ficha, ficha) if ficha else _('(vacío)'))
+
     # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN); y la
     # incapacidad comun (H-F1-08), cuyo valor del dia sale del IBC del mes anterior al inicio de la inicial de su cadena.
     _NE_CODIGOS_BASE_IBC_MES_ANTERIOR = ('CO_VAC', 'CO_LIC_REM', 'CO_LIQ_VAC_DISFRUTADAS', 'CO_LIQ_LIC_REM', 'CO_IBC_SLN')
@@ -1973,7 +1999,9 @@ class HrPayslip(models.Model):
         _name_parts = employee._l10n_co_nombre_dian()
         lugar_trabajo = self._ne_lugar_trabajo_partner()
         return {
-            'TipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_type'),
+            # H-F1-09 (decision del TL del 22-nov): para el APRENDIZ el TipoTrabajador se DERIVA del tipo de cotizante y de contrato del CONTRATO del recibo (tabla ``l10n_co_aprendiz_etapas``: una sola
+            # fuente); para los demas sale de la ficha, como siempre. ``l10n_co_ne_aviso_tipo_trabajador`` avisa si la ficha del aprendiz dice otra cosa.
+            'TipoTrabajador': self._ne_regimen_cotizante()['tipo_trabajador'] or employee._ne_valor_obligatorio('l10n_co_ne_worker_type'),
             'SubTipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_subtype'),
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'

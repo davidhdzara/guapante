@@ -82,6 +82,13 @@
                     <field name="l10n_co_ne_aviso_afiliacion" readonly="1" nolabel="1"/>
                 </div>
 
+                <!-- H-F1-09 (doc 88): el tipo de trabajador de la ficha de un aprendiz no coincide con el del contrato (el XML usa el del contrato); no bloquea. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_tipo_trabajador">
+                    <field name="l10n_co_ne_aviso_tipo_trabajador" readonly="1" nolabel="1"/>
+                </div>
+
                 <!-- H-F1-11 (doc 89): sin IBC consolidado del mes anterior, la base de vacaciones, licencia remunerada y SLN es el sueldo de la ficha del empleado; no bloquea. -->
                 <div class="alert alert-warning mb-0"
                      role="alert"

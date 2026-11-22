@@ -162,3 +162,39 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         recibo.compute_sheet()
         self.assertAlmostEqual(self._total(recibo, 'CO_APOYO_SOST'), 500000.0, delta=0.01)
         self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))
+
+    # ── TipoTrabajador del XML y la fusion mensual ──
+    def test_el_tipo_de_trabajador_del_aprendiz_sale_del_contrato_y_el_de_los_demas_de_la_ficha(self):
+        _e, lectiva = self._empleado_y_recibo('TT Lectiva', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
+        _e, practica = self._empleado_y_recibo('TT Practica', tipo='01', tipo_contrato='4', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        _e, normal = self._empleado_y_recibo('TT Normal', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        self.assertEqual(lectiva._ne_trabajador()['TipoTrabajador'], '12')                    # la ficha dice 01
+        self.assertEqual(practica._ne_trabajador()['TipoTrabajador'], '19')
+        self.assertEqual(normal._ne_trabajador()['TipoTrabajador'], '01')                     # la ficha, como siempre
+
+    def test_aviso_si_la_ficha_del_aprendiz_dice_otro_tipo_y_nada_si_coincide(self):
+        empleado, recibo = self._empleado_y_recibo('Aviso TT', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
+        self.assertIn('Aviso TT', recibo.l10n_co_ne_aviso_tipo_trabajador)
+        self.assertIn('12 - Aprendiz del SENA en Etapa Lectiva', recibo.l10n_co_ne_aviso_tipo_trabajador)
+        self.assertIn('01 - Trabajador Dependiente', recibo.l10n_co_ne_aviso_tipo_trabajador)
+        empleado.l10n_co_ne_worker_type = '12'
+        self.assertFalse(recibo.l10n_co_ne_aviso_tipo_trabajador)
+        _e, normal = self._empleado_y_recibo('Normal TT', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        self.assertFalse(normal.l10n_co_ne_aviso_tipo_trabajador)
+
+    def test_la_fusion_del_mes_con_cambio_de_etapa_da_un_error_que_nombra_al_empleado_y_los_dos_tipos(self):
+        """Un aprendiz que pasa de la lectiva (12) a la practica (19) dentro del mes: el documento mensual exige un solo TipoTrabajador. Prueba obligatoria del TL (cuidado 3 del consultor)."""
+        from odoo.addons.l10n_co_nomina_electronica.services import documento_merge as fusion
+        from .test_documento_merge import PERIODO, _recibo as recibo_base
+
+        def recibo(tipo):
+            datos = recibo_base()
+            datos['trabajador'] = dict(datos['trabajador'], TipoTrabajador=tipo, PrimerNombre='Ana', PrimerApellido='Aprendiz')
+            return datos
+        fechas = ['2026-03-15', '2026-03-31']
+        with self.assertRaises(fusion.ErrorFusion) as exc:
+            fusion.fusionar_documento([recibo('12'), recibo('19')], fechas, PERIODO)
+        texto = str(exc.exception)
+        for esperado in ('Ana Aprendiz', '1020304050', '12', '19', 'TipoTrabajador'):
+            self.assertIn(esperado, texto)
+        fusion.fusionar_documento([recibo('12'), recibo('12')], fechas, PERIODO)           # el mismo tipo si se fusiona
