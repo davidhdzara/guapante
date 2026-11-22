@@ -18,6 +18,15 @@ class L10nCoNeConsecutivo(models.Model):
     _description = 'Consecutivo de nómina electrónica que viajó a la DIAN (solo lectura)'
     _auto = False
     _order = 'company_id, ambiente, prefijo, valor desc, id desc'
+    # Los campos de las tablas que lee la vista SQL: Odoo los escribe (flush) antes de cada búsqueda de este modelo (``_flush_search`` recorre ``_depends``). Sin esto, una búsqueda en la
+    # MISMA transacción que cambió el estado de un recibo o creó un manifiesto no lo veía (N2 «cv»: los controles de «no se reenvía» y los contadores de rechazados).
+    _depends = {
+        'hr.payslip': ['employee_id', 'l10n_co_ne_state'],
+        'l10n.co.ne.exchange': ['company_id'],
+        'l10n.co.ne.exchange.document': ['exchange_id', 'payslip_id', 'numero', 'ambiente'],
+        'l10n.co.ne.documento': ['company_id', 'employee_id'],
+        'l10n.co.ne.documento.intento': ['documento_id', 'numero', 'state', 'test_environment', 'certification_process'],
+    }
 
     company_id = fields.Many2one('res.company', string='Compañía', readonly=True)
     ambiente = fields.Selection([('habilitacion', 'Habilitación'), ('produccion', 'Producción')], string='Ambiente', readonly=True)

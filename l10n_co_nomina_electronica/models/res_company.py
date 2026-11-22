@@ -508,7 +508,7 @@ class ResCompany(models.Model):
         self.ensure_one()
         prefijo = self._ne_prefijo_consecutivo(es_ajuste)
         secuencia = self._ne_secuencia_consecutivo(es_ajuste)
-        siguiente = secuencia.number_next_actual
+        siguiente = self._ne_numero_siguiente(secuencia)
         maximo = self._ne_mayor_consecutivo_viajado(es_ajuste)
         if siguiente <= maximo:
             raise UserError(_(
@@ -524,7 +524,17 @@ class ResCompany(models.Model):
                 'El siguiente disponible es %(disponible)s: cambie «Siguiente número» de esa secuencia a %(sugerido)s (Ajustes > Técnico > Secuencias); no se corrige sola.',
                 secuencia=secuencia.name, codigo=secuencia.code, compania=self.name, numero=secuencia.get_next_char(siguiente), disponible=secuencia.get_next_char(asignado + 1),
                 sugerido=asignado + 1))
-        return secuencia.next_by_id()
+        numero = secuencia.next_by_id()
+        secuencia.invalidate_recordset(['number_next_actual'])      # el consumo (SQL) no invalida lo que leyó el control: la próxima lectura, aun en esta transacción, ve el siguiente
+        return numero
+
+    @api.model
+    def _ne_numero_siguiente(self, secuencia):
+        """Siguiente número de la secuencia, leído de la base y no de la caché de la transacción. ``ir.sequence._get_number_next_actual`` no declara dependencias: ``number_next_actual``
+        queda en la caché y ``next_by_id`` (``_update_nogap``) solo invalida ``number_next``, así que con varios documentos en la MISMA transacción (generar el XML de varios recibos o
+        documentos, o las pruebas) el segundo leía el mismo número que el primero y el control A lo daba por «ya asignado» (N2 «cv»: 16 errores y 14 fallos de ahí)."""
+        secuencia.invalidate_recordset(['number_next', 'number_next_actual'])
+        return secuencia.number_next_actual
 
     def _ne_exigir_numero_sin_viajar(self, numero, es_ajuste, payslip=None, documento=None):
         """Control A antes de ENVIAR (.304): el número de este documento no puede haber viajado ya, en este ambiente, en OTRO recibo, nota o documento mensual de la compañía (la DIAN

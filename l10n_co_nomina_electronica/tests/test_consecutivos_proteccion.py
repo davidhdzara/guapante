@@ -11,8 +11,10 @@ Qué se prueba:
 - D: la lista «Consecutivos de nómina» (vista SQL) con el destino y el «reemplazado por» de cada número.
 - El relleno de los manifiestos viejos (``numero`` y ``ambiente``) con contexto explícito, solo esos dos campos y una vez; la inmutabilidad sigue rechazando todo lo demás."""
 
+import ast
 import hashlib
 import inspect
+import textwrap
 from datetime import date
 from unittest.mock import patch
 
@@ -87,7 +89,13 @@ class TestConsecutivosProteccion(DocumentoFixture, TransactionCase):
 
     def test_02_ya_no_existe_el_fallback_del_recibo(self):
         """El prefijo por defecto 'NE'/'NA' y el ``zfill(8)`` desaparecieron: la función del recibo no lee ni escribe más que la secuencia."""
-        fuente = inspect.getsource(type(self.env['hr.payslip'])._get_next_ne_consecutive) + inspect.getsource(type(self.env['hr.payslip'])._ne_expected_prefix)
+        # Solo el CÓDIGO (sin la docstring, que cuenta lo que desapareció y nombra ``zfill``): N2 «cv», la docstring de la función lo traía.
+        fuente = ''
+        for funcion in (type(self.env['hr.payslip'])._get_next_ne_consecutive, type(self.env['hr.payslip'])._ne_expected_prefix):
+            nodo = ast.parse(textwrap.dedent(inspect.getsource(funcion))).body[0]
+            if nodo.body and isinstance(nodo.body[0], ast.Expr) and isinstance(nodo.body[0].value, ast.Constant) and isinstance(nodo.body[0].value.value, str):
+                nodo.body = nodo.body[1:]
+            fuente += ast.unparse(nodo)
         for resto in ('zfill', "or 'NE'", "or 'NA'", 'last_payslip', 'Fallback manual'):
             self.assertNotIn(resto, fuente)
         self.assertFalse(hasattr(self.env['l10n.co.ne.documento'], '_ne_siguiente_consecutivo_ajuste'), 'Una sola función: res.company._ne_tomar_consecutivo')
@@ -194,9 +202,13 @@ class TestConsecutivosProteccion(DocumentoFixture, TransactionCase):
     def test_12_antes_de_enviar_el_numero_no_pudo_haber_viajado_en_otro_documento_y_el_mismo_no_cuenta_contra_si(self):
         propio = self._recibo()
         self._viaja('NE0000000060', estado='sent', recibo=propio)
+        propio._ne_exigir_numero_no_reusado()                              # su propio envío no es un «otro»
+        # Un número no puede estar en dos recibos de la compañía a la vez (restricción única): el escenario real es que el recibo se REGENERÓ con otro número (el 60 queda en su
+        # manifiesto) y otro recibo recibe el 60 de una secuencia reiniciada.
+        propio.l10n_co_ne_consecutive = 'NE0000000062'
+        self.env.flush_all()
         otro = self._recibo()
         otro.l10n_co_ne_consecutive = 'NE0000000060'
-        propio._ne_exigir_numero_no_reusado()                              # su propio envío no es un «otro»
         with self.assertRaisesRegex(UserError, 'ya viajó a la DIAN'):
             otro._ne_exigir_numero_no_reusado()
         documento = self._documento(date(2024, 1, 1))
