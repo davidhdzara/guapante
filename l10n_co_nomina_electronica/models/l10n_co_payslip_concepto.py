@@ -10,7 +10,8 @@ nota como una orden de venta).
 Editar una fila es una ACCIÓN que se traduce a la fuente real: en una fila calculada crea o cambia el ajuste de la empresa (pieza 2b); en una fila
 de novedad cambia la novedad (``hr.payslip.input``); «Agregar concepto» crea una novedad; borrar una fila de novedad borra la novedad. El recálculo
 y la regeneración los hace ``HrPayslip.write`` UNA vez, después de ``super()`` (el mismo camino de .286); el One2many de filas NO es calculado, así
-que no sufre la protección de ``BaseModel.write``. NO EJECUTADO EN ODOO al escribirlo."""
+que no sufre la protección de ``BaseModel.write``. El ORDEN de las filas lo fija el sistema: la lista no ofrece el arrastre (sin el widget ``handle``) y
+el modelo rechaza escribir ``sequence`` fuera de la regeneración. NO EJECUTADO EN ODOO al escribirlo."""
 
 
 from odoo import api, fields, models, _
@@ -22,6 +23,7 @@ from .hr_payslip import NE_SECCIONES_CONCEPTO
 SECCIONES = NE_SECCIONES_CONCEPTO     # una sola fuente con la colilla (``models/hr_payslip.py``, E11 pieza 5a)
 GRUPO_GERENTE = 'hr_payroll.group_hr_payroll_manager'
 CAMPOS_DE_VALOR = ('quantity', 'rate', 'amount')
+SECUENCIA_DE_FILA_NUEVA = 9999        # una novedad agregada desde la tabla va al final hasta que el siguiente cálculo regenere el orden
 
 
 class L10nCoPayslipConcepto(models.Model):
@@ -102,12 +104,18 @@ class L10nCoPayslipConcepto(models.Model):
             valor = vals.get('quantity') if tipo.is_quantity else vals.get('amount')
             entrada = self.env['hr.payslip.input'].with_context(ne_sin_recalculo_hoja=True).create({
                 'payslip_id': recibo.id, 'input_type_id': tipo.id, 'amount': valor or 0.0, 'name': vals.get('name') or tipo.name})
-            vals.update({'origen': 'novedad', 'input_id': entrada.id, 'sequence': vals.get('sequence', 9999)})
+            # El orden de las filas lo fija el sistema (se regenera en cada cálculo): una fila nueva va al final, sin importar la secuencia que mande el cliente.
+            vals.update({'origen': 'novedad', 'input_id': entrada.id, 'sequence': SECUENCIA_DE_FILA_NUEVA})
         return super().create(vals_list)
 
     def write(self, vals):
-        if self.env.context.get('ne_regenerar_conceptos') or set(vals) <= {'sequence'}:
+        if self.env.context.get('ne_regenerar_conceptos'):
             return super().write(vals)
+        if 'sequence' in vals:
+            # Mover una fila (la secuencia que escribe el arrastre del widget de la lista) no es una edición de datos: no cambia ningún valor, pero deja la tabla
+            # fuera de orden (un título de sección en medio de los conceptos) hasta el siguiente cálculo. La vista ya no ofrece el arrastre; esto cierra la
+            # vía por el servidor (importación, RPC) y también en recibos hechos.
+            raise UserError(_('El orden de «Conceptos de pago» lo fija el sistema: las filas no se mueven.'))
         for fila in self:
             fila._aplicar_edicion(vals)
         return super().write(vals)

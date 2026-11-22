@@ -29,7 +29,9 @@
                             <!-- Como en la lista nativa de novedades (hr_payroll/views/hr_payslip_views.xml:172): el cliente debe enviar el recibo en el
                                  onchange de una fila nueva para calcular qué se puede editar. -->
                             <field name="slip_id" column_invisible="True" required="0"/>
-                            <field name="sequence" widget="handle"/>
+                            <!-- .300b: sin el widget ``handle``: el orden lo fija el sistema (se regenera en cada cálculo) y arrastrar una fila, o un título de sección, dejaba la
+                                 tabla desordenada. El widget nativo de secciones no trae menú de filas en Odoo 18 (``account/static/src/components/section_and_note_fields_backend``). -->
+                            <field name="sequence" column_invisible="True"/>
                             <field name="display_type" column_invisible="True"/>
                             <field name="origen" column_invisible="True"/>
                             <field name="ajustado" column_invisible="True"/>

@@ -320,6 +320,38 @@ class TestConceptosDePago(TransactionCase):
         with self.assertRaises(UserError):
             self.Concepto.create({'slip_id': recibo.id, 'amount': 5.0})   # sin tipo de novedad
 
+    def test_11b_el_orden_de_las_filas_lo_fija_el_sistema_no_se_mueven_ni_en_la_vista_ni_por_el_servidor(self):
+        """.300b (pedido del TL, revisión de la v19 del widget de secciones): en Odoo 18 el widget ``section_and_note_one2many`` no trae menú de filas (duplicar,
+        borrar y mover son de v19); lo que sí había era el arrastre del widget ``handle`` de ``sequence`` y el modelo dejaba escribir ``sequence`` sin revisar
+        nada (ni el estado del recibo). Duplicar una sección (crear con ``display_type``) y borrarla ya estaban bloqueados (``test_11``)."""
+        columna = self._columna('sequence')
+        self.assertTrue(columna.get('column_invisible'), 'La secuencia no se muestra')
+        self.assertNotEqual(columna.get('widget'), 'handle', 'Sin el arrastre de filas')
+        recibo = self._recibo()
+        seccion = recibo.l10n_co_concepto_ids.filtered(lambda f: f.display_type == 'line_section')[:1]
+        calculada = self._fila(recibo, 'CO_SALUD_EMP')
+        antes = {fila.id: fila.sequence for fila in recibo.l10n_co_concepto_ids}
+        for fila in (seccion, calculada):
+            with self.assertRaises(UserError):
+                fila.write({'sequence': 5})
+        hecho = self._recibo()
+        hecho.write({'state': 'done'})
+        with self.assertRaises(UserError):
+            hecho.l10n_co_concepto_ids[:1].write({'sequence': 5})
+        recibo.invalidate_recordset()
+        self.assertEqual({fila.id: fila.sequence for fila in recibo.l10n_co_concepto_ids}, antes, 'Ninguna fila cambió de lugar')
+        # La regeneración del sistema sí conserva su camino
+        nuevas = self.Concepto.sudo().with_context(ne_regenerar_conceptos=True).search([('slip_id', '=', recibo.id)])
+        nuevas.write({'sequence': 7})
+        self.assertEqual(set(nuevas.mapped('sequence')), {7})
+
+    def test_11c_una_fila_nueva_va_al_final_sin_importar_la_secuencia_que_mande_el_cliente(self):
+        """El cliente manda ``sequence`` (10, el valor por defecto) al crear una fila desde la tabla: el modelo la ignora y la deja al final."""
+        recibo = self._recibo()
+        fila = self.Concepto.create({'slip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'amount': 80000.0, 'sequence': 10})
+        self.assertEqual(fila.sequence, 9999)
+        self.assertGreater(fila.sequence, max((recibo.l10n_co_concepto_ids - fila).mapped('sequence')))
+
     def test_12_una_regla_no_ajustable_deja_su_fila_de_solo_lectura(self):
         """.298: se desmarca una regla que venía ajustable (el sueldo): su fila queda de solo lectura. La salud ya viene así sembrada (siguiente prueba)."""
         recibo = self._recibo()
