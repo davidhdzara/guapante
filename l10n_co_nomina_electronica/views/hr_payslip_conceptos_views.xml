@@ -49,12 +49,16 @@
                             <field name="edita_porcentaje" column_invisible="True"/>
                             <field name="edita_importe" column_invisible="True"/>
                             <field name="name" widget="section_and_note_text" readonly="origen in ('calculado', 'dias')"/>
+                            <!-- Ajuste de David (22-nov): la cuenta contable de la regla, oculta por defecto aquí (visible en «Cálculo del salario»); solo informativa. -->
+                            <field name="cuenta" optional="hide" readonly="1"/>
                             <!-- .298: el tipo solo lo llevan las filas de novedad (en las calculadas sale vacío) pero en «Agregar concepto» es OBLIGATORIO y aquí se elige:
                                  columna OPCIONAL visible por defecto (``optional="show"``, el patrón nativo de las listas de Ventas); el usuario puede ocultarla. En .297 salía
                                  oculta (``hide``) y el usuario no veía dónde elegir el tipo. -->
                             <field name="input_type_id" optional="show" readonly="id" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="quantity" readonly="not edita_cantidad"/>
-                            <field name="unidad" readonly="1"/>
+                            <!-- Ajuste de David (22-nov): sin ruido: en las filas de cantidad 1 y 100 % no se muestra Cantidad ni Unidad (ni %); una fila que se puede editar sí
+                                 muestra la cantidad. «Concepto | Cuenta | Importe | Total», como los apuntes contables. -->
+                            <field name="quantity" readonly="not edita_cantidad" invisible="quantity == 1 and rate == 100 and not edita_cantidad"/>
+                            <field name="unidad" readonly="1" invisible="quantity == 1 and rate == 100 and not edita_cantidad"/>
                             <!-- .297: el % se muestra SOLO si es distinto de 100 y con 2 decimales (la misma regla de la colilla). Atributo nativo ``digits`` del campo
                                  (``web/static/src/views/fields/float/float_field.js:133-139``); ``invisible`` por fila, como ``amount`` y ``total``. -->
                             <field name="rate" digits="[16, 2]" readonly="not edita_porcentaje" invisible="origen == 'dias' or rate == 100"/>

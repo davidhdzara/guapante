@@ -426,6 +426,16 @@ class HrSalaryRule(models.Model):
             ]).write({'l10n_co_liq_tratamiento': trat})
         return True
 
+    def _ne_cuenta_contable(self, total, compania):
+        """Columna «Cuenta» de «Conceptos de pago» y «Cálculo del salario» (ajuste de David, 22-nov): la cuenta contable de la regla en la COMPAÑÍA del recibo, la que aplica
+        al signo del valor (como en los apuntes: un valor positivo va por la cuenta de débito y uno negativo por la de crédito); si falta la que toca se muestra la otra. Sin cuenta, vacío:
+        no se inventa. Las cuentas de la regla son por compañía (``company_dependent``) y las lee con ``sudo``: es solo un texto de presentación, sin el diario."""
+        self.ensure_one()
+        regla = self.sudo().with_company(compania)
+        debito, credito = regla.account_debit, regla.account_credit
+        cuenta = (debito or credito) if total >= 0 else (credito or debito)
+        return cuenta.display_name if cuenta else False
+
     def _l10n_co_cuenta_pasivo(self):
         """Cuenta por pagar de la regla: account_credit si existe (aportes
         de empresa: gasto en debito, pasivo en credito); si no, account_debit

@@ -97,6 +97,60 @@ class TestCalculoDelSalario(TransactionCase):
         pie = [c.get('name') for c in pagina.xpath(".//group[@name='calculo_totales']/field")]
         self.assertEqual(pie, ['l10n_co_costo_empresa'])
 
+    def _columnas_de(self, pagina_name, lista='l10n_co_calculo_ids'):
+        arch = etree.fromstring(self.env['hr.payslip'].get_view(view_type='form')['arch'].encode('utf-8'))
+        campo = arch.xpath("//page[@name='%s']//field[@name='%s']" % (pagina_name, lista))[0]
+        return {c.get('name'): c for c in campo.xpath('.//list/field')}, [c.get('name') for c in campo.xpath('.//list/field')]
+
+    def test_01b_columna_cuenta_visible_en_calculo_y_oculta_en_conceptos_y_sin_ruido_en_las_filas_de_uno_y_cien_por_ciento(self):
+        """Ajuste de David (22-nov): columna «Cuenta» (optional="show" en «Cálculo del salario», "hide" en «Conceptos de pago», sin el diario), «Concepto | Cuenta | Importe |
+        Total» y sin Cantidad, Unidad ni % en las filas de cantidad 1 y 100 %."""
+        calculo, orden = self._columnas_de('calculo_del_salario')
+        self.assertEqual(calculo['cuenta'].get('optional'), 'show')
+        self.assertLess(orden.index('name'), orden.index('cuenta'))
+        self.assertLess(orden.index('cuenta'), orden.index('amount'))
+        for nombre in ('quantity', 'unidad'):
+            self.assertEqual(calculo[nombre].get('invisible'), 'quantity == 1 and rate == 100', nombre)
+        self.assertEqual(calculo['rate'].get('invisible'), 'rate == 100')
+        conceptos, orden_c = self._columnas_de('conceptos_de_pago', 'l10n_co_concepto_ids')
+        self.assertEqual(conceptos['cuenta'].get('optional'), 'hide')
+        self.assertLess(orden_c.index('name'), orden_c.index('cuenta'))
+        self.assertLess(orden_c.index('cuenta'), orden_c.index('amount'))
+        for nombre in ('quantity', 'unidad'):
+            self.assertEqual(conceptos[nombre].get('invisible'), 'quantity == 1 and rate == 100 and not edita_cantidad', 'Una fila editable sí muestra la cantidad: %s' % nombre)
+        self.assertIn('rate == 100', conceptos['rate'].get('invisible'))
+        self.assertNotIn('journal_id', calculo)
+        self.assertNotIn('journal_id', conceptos)
+
+    def test_17_la_cuenta_es_la_de_debito_si_el_valor_es_positivo_y_la_de_credito_si_es_negativo_de_la_compania_del_recibo(self):
+        recibo = self._recibo()
+        Cuenta = self.env['account.account'].with_company(self.company)
+        gasto = Cuenta.create({'code': '510506', 'name': 'Sueldos de prueba', 'account_type': 'expense'})
+        por_pagar = Cuenta.create({'code': '250501', 'name': 'Salarios por pagar de prueba', 'account_type': 'liability_current', 'reconcile': True})
+        sueldo = self.env['hr.salary.rule'].search([('code', '=', 'CO_BASICO'), ('struct_id', '=', recibo.struct_id.id)], limit=1)
+        salud = self.env['hr.salary.rule'].search([('code', '=', 'CO_SALUD_EMP'), ('struct_id', '=', recibo.struct_id.id)], limit=1)
+        sueldo.with_company(self.company).write({'account_debit': gasto.id, 'account_credit': por_pagar.id})
+        salud.with_company(self.company).write({'account_debit': False, 'account_credit': por_pagar.id})
+        self.assertEqual(sueldo._ne_cuenta_contable(100.0, self.company), gasto.display_name, 'Positivo: la de débito')
+        self.assertEqual(sueldo._ne_cuenta_contable(-100.0, self.company), por_pagar.display_name, 'Negativo: la de crédito')
+        self.assertEqual(salud._ne_cuenta_contable(100.0, self.company), por_pagar.display_name, 'Positivo sin débito: la otra')
+        self.assertEqual(salud._ne_cuenta_contable(-100.0, self.company), por_pagar.display_name)
+        sin_cuentas = self.env['hr.salary.rule'].search([('code', '=', 'CO_AUX_TRANS'), ('struct_id', '=', recibo.struct_id.id)], limit=1)
+        self.assertFalse(sin_cuentas.with_company(self.company).account_debit or sin_cuentas.with_company(self.company).account_credit, 'Premisa')
+        self.assertFalse(sin_cuentas._ne_cuenta_contable(100.0, self.company), 'Sin cuenta: vacío, no se inventa')
+        self.assertFalse(sueldo._ne_cuenta_contable(100.0, self.company_b), 'Las cuentas son de cada compañía: la otra no tiene')
+        # en las filas de las dos pestañas, al calcular
+        self.Calculo._regenerar_de_recibos(recibo)
+        self.env['l10n.co.payslip.concepto']._regenerar_de_recibos(recibo)
+        fila_sueldo = recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id == sueldo)
+        self.assertEqual(fila_sueldo.cuenta, gasto.display_name)
+        fila_salud = recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id == salud)
+        self.assertEqual(fila_salud.cuenta, por_pagar.display_name)
+        en_calculo = self._filas(recibo).filtered(lambda f: f.salary_rule_id == salud)
+        self.assertEqual(en_calculo.cuenta, por_pagar.display_name, 'También en «Cálculo del salario» (aportes del empleado)')
+        sin_regla = recibo.l10n_co_concepto_ids.filtered(lambda f: f.origen == 'dias' or f.display_type)
+        self.assertFalse(any(sin_regla.mapped('cuenta')), 'Las filas de días y los títulos no llevan cuenta')
+
     def test_02_la_vista_heredada_no_selecciona_por_string(self):
         arch = etree.fromstring(self.env.ref('l10n_co_nomina_electronica.view_payslip_form_ne_calculo').arch_db.encode('utf-8'))
         for xpath in arch.xpath('//xpath'):

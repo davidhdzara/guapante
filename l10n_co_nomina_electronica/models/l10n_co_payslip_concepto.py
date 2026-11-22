@@ -52,6 +52,7 @@ class L10nCoPayslipConcepto(models.Model):
     amount = fields.Float(string='Importe', digits='Payroll')
     total = fields.Float(string='Total', digits='Payroll')
     ajustado = fields.Boolean(string='Ajustado por la empresa')
+    cuenta = fields.Char(string='Cuenta', help='Cuenta contable de la regla en la compañía del recibo (débito si el valor es positivo, crédito si es negativo), como en los apuntes contables. Solo informativa.')
 
     edita_cantidad = fields.Boolean(compute='_compute_edita')
     edita_porcentaje = fields.Boolean(compute='_compute_edita')
@@ -227,7 +228,7 @@ class L10nCoPayslipConcepto(models.Model):
                 'slip_id': recibo.id, 'sequence': siguiente(), 'name': fila['nombre'], 'origen': 'novedad' if entrada else 'calculado', 'line_id': linea.id,
                 'salary_rule_id': regla.id, 'input_id': entrada.id if entrada else False, 'input_type_id': tipo.id if tipo else False,
                 'quantity': fila['cantidad'], 'rate': fila['porcentaje'], 'amount': fila['importe'], 'total': fila['total'], 'unidad': fila['unidad'],
-                'ajustado': bool(ajuste)})
+                'ajustado': bool(ajuste), 'cuenta': regla._ne_cuenta_contable(fila['total'], recibo.company_id)})
             if ajuste:
                 texto = _('Ajustado por la empresa.')
                 if ajuste.con_sugerido:

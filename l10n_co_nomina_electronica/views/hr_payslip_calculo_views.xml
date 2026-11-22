@@ -21,9 +21,12 @@
                             <field name="sequence" column_invisible="True"/>
                             <field name="display_type" column_invisible="True"/>
                             <field name="name" widget="section_and_note_text"/>
-                            <field name="quantity"/>
-                            <field name="unidad"/>
-                            <field name="rate"/>
+                            <!-- Ajuste de David (22-nov): la cuenta contable de la regla como en los apuntes (visible por defecto, la puede ocultar el usuario) y, en las filas de
+                                 cantidad 1 y 100 %, sin Cantidad, Unidad ni %: «Concepto | Cuenta | Importe | Total». -->
+                            <field name="cuenta" optional="show"/>
+                            <field name="quantity" invisible="quantity == 1 and rate == 100"/>
+                            <field name="unidad" invisible="quantity == 1 and rate == 100"/>
+                            <field name="rate" invisible="rate == 100"/>
                             <field name="amount"/>
                             <field name="total"/>
                         </list>
