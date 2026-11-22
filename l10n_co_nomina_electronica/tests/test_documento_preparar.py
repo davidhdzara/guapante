@@ -286,3 +286,27 @@ class TestDocumentoPreparar(TransactionCase):
     def test_parametro_del_plazo_esta_versionado(self):
         valor = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_ne_dias_plazo_transmision', date(2026, 4, 1))
         self.assertEqual(int(valor), 10)
+
+    def _plazo_virtual(self, doc, periodo):
+        """Fecha limite que tendria un documento del ``periodo`` (registro virtual: no toca los guardados, cuyo campo calculado no depende del parametro)."""
+        return doc.new({'company_id': doc.company_id.id, 'contract_id': doc.contract_id.id, 'period': periodo})._ne_calcular_fecha_limite()
+
+    def test_cambiar_la_vigencia_del_parametro_cambia_el_plazo_sin_tocar_codigo(self):
+        """H-F3-05 (Res. DIAN 000013/2021 art. 8): los dias del plazo salen del parametro versionado, no de una constante. Valor de fabrica 10: el 10.º dia habil de abril de 2026 (lun-vie) es el 14.
+        Un valor nuevo de 8 con vigencia desde el 1-abr-2026 (la vigencia se evalua en el primer dia del mes siguiente al periodo) da el 8.º dia habil, el 10; un periodo anterior a la vigencia (febrero:
+        primero = 1-mar-2026) conserva los 10 dias (13-mar-2026)."""
+        a1, a2, _b1 = self._marzo()
+        doc = self._preparar(a1 | a2)['documentos']
+        self.assertEqual(self._plazo_virtual(doc, date(2026, 3, 1)), date(2026, 4, 14))
+        parametro = self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_ne_dias_plazo_transmision')])
+        self.env['hr.rule.parameter.value'].create({'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': '8'})
+        self.assertEqual(self._plazo_virtual(doc, date(2026, 3, 1)), date(2026, 4, 10))          # abril 2026: 1,2,3,6,7,8,9,10 -> el 8.º es el 10
+        self.assertEqual(self._plazo_virtual(doc, date(2026, 2, 1)), date(2026, 3, 13))          # antes de la vigencia: siguen siendo 10 dias habiles
+        self.assertFalse(hasattr(type(doc), 'DIAS_HABILES_PLAZO'), 'La constante ya no existe: el plazo es solo el parametro')
+
+    def test_sin_el_parametro_del_plazo_un_error_que_lo_nombra(self):
+        a1, a2, _b1 = self._marzo()
+        doc = self._preparar(a1 | a2)['documentos']
+        self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_ne_dias_plazo_transmision')]).unlink()
+        with self.assertRaisesRegex(UserError, 'l10n_co_ne_dias_plazo_transmision'):
+            self._plazo_virtual(doc, date(2026, 3, 1))

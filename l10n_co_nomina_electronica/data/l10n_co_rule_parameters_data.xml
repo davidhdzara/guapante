@@ -538,11 +538,15 @@ los parámetros "% ..." de este módulo, este SÍ se ingresa como fracción): es
         <field name="name">Colombia: Plazo de Transmisión de Nómina Electrónica (días hábiles)</field>
         <field name="code">l10n_co_ne_dias_plazo_transmision</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Días hábiles del mes siguiente dentro de los cuales se transmite el documento
-de nómina electrónica del mes (Resolución DIAN 000013 de 2021, art. 8: los 10 primeros días hábiles). Día hábil: día con
-jornada en el calendario laboral y no festivo.</p>
+        <field name="description" type="html"><p>Días del mes siguiente dentro de los cuales se transmite el documento
+de nómina electrónica del mes y sus notas de ajuste. Día hábil: día con jornada en el calendario laboral del contrato (o de la
+compañía) y no festivo de la compañía. La vigencia se evalúa en el primer día del mes siguiente al periodo del documento.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de días. Valor vigente: <strong>10</strong>.</p></field>
+<p>Escriba el número entero de días. Valor vigente: <strong>10</strong>. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p>
+<h3 class="mt-5">Norma</h3>
+<p>Resolución DIAN 000013 de 2021, art. 8 (Diario Oficial 51.585 del 11-feb-2021; compilado como art. 1.5.3.4.1.1 de la Resolución DIAN 227 de 2025): «…dentro de los diez (10) primeros días del mes siguiente
+al cual corresponde el pago o abono en cuenta…». <strong>NO VERIFICADO:</strong> que sean días HÁBILES: el texto leído dice «primeros días», sin «hábiles»; el módulo los cuenta hábiles (doc 53 §4.4, D10) y no se leyó el
+texto compilado de la Resolución 227 de 2025.</p></field>
     </record>
     <record id="rule_parameter_dias_plazo_transmision_ne_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">10</field>

@@ -205,10 +205,8 @@ class L10nCoNeDocumento(models.Model):
                                               a.get('message') or '') for a in items) if items else False
 
     # ──────────────────────────────────────────────────────────────────
-    # Plazo de transmisión (doc 53 §4.4, D10)
+    # Plazo de transmisión (doc 53 §4.4, D10): los días salen del parámetro versionado ``l10n_co_ne_dias_plazo_transmision`` (H-F3-05)
     # ──────────────────────────────────────────────────────────────────
-    DIAS_HABILES_PLAZO = 10   # Res. DIAN 000013/2021 art. 8: 10 primeros días hábiles del mes siguiente
-
     def _ne_calendario(self):
         """Calendario laboral del documento: el del contrato; si no, el de la compañía."""
         self.ensure_one()
@@ -244,8 +242,13 @@ class L10nCoNeDocumento(models.Model):
         if not base:
             return False
         primero = (base.replace(day=28) + timedelta(days=4)).replace(day=1)
-        dias = int(self.env['hr.rule.parameter']._get_parameter_from_code(
-            'l10n_co_ne_dias_plazo_transmision', primero))   # Res. DIAN 000013/2021 art. 8 (versionado)
+        try:
+            dias = int(self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_ne_dias_plazo_transmision', primero))   # Res. DIAN 000013/2021 art. 8 (versionado)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Plazo de Transmisión de Nómina Electrónica (días hábiles)» (código l10n_co_ne_dias_plazo_transmision) para el %(fecha)s, que se necesita para '
+                'calcular la fecha límite de transmisión de «%(documento)s» a la DIAN (Resolución DIAN 000013 de 2021, art. 8). Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas.', fecha=primero, documento=self.display_name)) from None
         habiles = sorted(self._ne_dias_habiles(primero, primero + timedelta(days=44)))
         return habiles[dias - 1] if len(habiles) >= dias else False
 
