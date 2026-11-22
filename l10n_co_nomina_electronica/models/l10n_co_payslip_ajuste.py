@@ -83,8 +83,10 @@ class L10nCoPayslipAjuste(models.Model):
                     regla=regla.display_name, estructura=recibo.struct_id.display_name, recibo=recibo.display_name))
             if not regla.l10n_co_ne_ajustable:
                 raise ValidationError(_(
-                    'La regla "%(regla)s" no admite ajuste de la empresa. Márquela como ajustable en su configuración si debe poder '
-                    'ajustarse.', regla=regla.display_name))
+                    'La regla "%(regla)s" no admite ajuste de la empresa: su valor sale de la ley o del cálculo (seguridad social, retención, '
+                    'embargos, aportes de la empresa, provisiones, bases, incapacidades, licencias y vacaciones) y cambiarlo expone a la empresa a '
+                    'inexactitud ante la UGPP. Solo se ajustan los conceptos de pago y las deducciones voluntarias o pactadas.',
+                    regla=regla.display_name))
             if len(recibo.input_line_ids.filtered(lambda i: i.code == regla.code)) > 1:
                 raise ValidationError(_(
                     'La regla "%(regla)s" tiene varias novedades del mismo código en el recibo "%(recibo)s": se edita cada novedad, no la '
@@ -102,6 +104,34 @@ class L10nCoPayslipAjuste(models.Model):
                 raise UserError(_(
                     'El recibo "%(recibo)s" ya tiene su documento DIAN enviado o aceptado (estado "%(estado)s"): no admite ajustes de la '
                     'empresa.', recibo=recibo.display_name, estado=recibo._ne_estado_documento_ajuste()))
+
+    # ── reglas que dejan de ser ajustables (.298) ───────────────────────────────────────────────────────────────────────────────
+    @api.model
+    def _retirar_de_reglas_no_ajustables(self, reglas=None):
+        """Borra los ajustes de la empresa sobre reglas que NO son ajustables (``reglas``, o todas si no se da): una regla que deja de ser ajustable
+        no puede conservar un valor cambiado a mano. Solo en recibos en borrador o en espera cuyo documento DIAN no esté enviado, incierto ni
+        aceptado; un recibo confirmado (hecho, pagado) o con documento enviado NO se toca (queda como se pagó). Cada recibo recibe una nota en el chatter
+        que lo explica y se recalcula con el valor sugerido. Idempotente; con sudo y sin las validaciones de usuario (es un ajuste técnico)."""
+        dominio = [('salary_rule_id.l10n_co_ne_ajustable', '=', False)]
+        if reglas:
+            dominio.append(('salary_rule_id', 'in', reglas.ids))
+        buscados = self.sudo().with_context(active_test=False).search(dominio)
+        por_recibo = {}
+        for ajuste in buscados:
+            recibo = ajuste.slip_id
+            if recibo.state not in ('draft', 'verify') or recibo._ne_estado_documento_ajuste() in ESTADOS_DOCUMENTO_QUE_BLOQUEAN:
+                continue
+            por_recibo[recibo] = por_recibo.get(recibo, buscados.browse()) | ajuste
+        for recibo, ajustes in por_recibo.items():
+            for ajuste in ajustes:
+                recibo.message_post(
+                    body=_('Se retiró el ajuste de la empresa sobre «%(regla)s» (%(codigo)s): esta regla ya no admite ajustes porque su valor sale de la ley '
+                           'o del cálculo (riesgo de inexactitud ante la UGPP). Ajustado: %(ajustado)s. Sugerido: %(sugerido)s. El recibo se recalcula con el '
+                           'valor sugerido.', regla=ajuste.salary_rule_id.name, codigo=ajuste.salary_rule_id.code, ajustado=ajuste._monto(ajuste.total),
+                           sugerido=ajuste._monto(ajuste.sugerido_total) if ajuste.con_sugerido else _('(sin calcular)')),
+                    message_type='notification', subtype_xmlid='mail.mt_note')
+            ajustes.with_context(ne_registro_sugeridos=True).unlink()
+            recibo.compute_sheet()
 
     # ── crear, cambiar, borrar (con rastro en el chatter del recibo) ──────────────────────────────────────────────────────────────
     @api.model_create_multi

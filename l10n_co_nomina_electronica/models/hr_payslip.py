@@ -702,7 +702,7 @@ class HrPayslip(models.Model):
     # E11 pieza 4a (.294, doc 74 §3): «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría); se regenera junto a los conceptos.
     l10n_co_calculo_ids = fields.One2many(
         'l10n.co.payslip.calculo', 'slip_id', string='Cálculo del salario', copy=False,
-        help='Vista de solo lectura de lo calculado (sueldo, devengos, bases de cotización, deducciones, aportes de la empresa y provisiones). Se '
+        help='Vista de solo lectura de lo calculado que no está en «Conceptos de pago»: bases de cotización, aportes de la empresa y provisiones. Se '
              'regenera al final de cada cálculo. No se copia a otro recibo.')
     l10n_co_total_devengado = fields.Float(string='Total devengado', digits='Payroll', compute='_compute_l10n_co_totales')
     l10n_co_total_deducciones = fields.Float(string='Total deducciones', digits='Payroll', compute='_compute_l10n_co_totales')
@@ -823,6 +823,9 @@ class HrPayslip(models.Model):
         sin_calculo = self.sudo().with_context(active_test=False).search([
             ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_calculo_ids', '=', False)])
         self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(sin_calculo)
+        # .298: los ajustes que quedaron sobre reglas que ya no son ajustables (la decisión de David del 21-nov por el riesgo UGPP): se retiran en los recibos
+        # en borrador o en espera, con nota; los de recibos confirmados no se tocan. Corre DESPUÉS de cargar las reglas con su valor sembrado (manifest).
+        self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables()
         return True
 
     @api.model

@@ -115,41 +115,40 @@ class TestAjusteConceptoRecibo(TransactionCase):
             self.assertEqual(con_gancho, self._lineas(recibo), 'La estructura %s cambió con el gancho' % estructura.name)
 
     # ── 2. valor exacto del ajuste ─────────────────────────────────────────────────────────────────────────────────────────────
-    def test_02_ajustar_la_salud_a_cero_deja_la_linea_en_cero_y_el_neto_sube_exactamente(self):
+    def test_02_ajustar_el_auxilio_a_cero_deja_la_linea_en_cero_y_el_neto_baja_exactamente(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_SALUD_EMP')
-        self.assertLess(sugerido, 0.0, 'Premisa: la deducción de salud es negativa')
+        sugerido = self._total(recibo, 'CO_AUX_TRANS')
+        self.assertGreater(sugerido, 0.0, 'Premisa: con 3.000.000 hay auxilio de transporte (.298: la salud ya no es ajustable)')
         neto0, retencion0 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01, msg='Al crear, lo sugerido es la línea que ya traía el recibo')
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
         neto1, retencion1 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
-        # neto = suma de las líneas: la salud deja de restar |sugerido| y la retención se mueve por la cascada.
+        # neto = suma de las líneas: el auxilio deja de sumar |sugerido| y la retención se mueve por la cascada.
         self.assertAlmostEqual(neto1 - neto0, (0.0 - sugerido) + (retencion1 - retencion0), delta=0.01)
         self.assertEqual((ajuste.estado, ajuste.user_id, ajuste.con_sugerido), ('aplicado', self.env.user, True))
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
 
     # ── 3. (TL b) cascada igual que un cálculo manual equivalente ──────────────────────────────────────────────────────────────
     def test_03_la_cascada_del_ajuste_es_igual_a_la_de_un_calculo_manual_equivalente(self):
-        """El ajuste baja la deducción de salud a la mitad. El oráculo es OTRO recibo idéntico, sin ajuste, con la fórmula de la regla fijada al
-        mismo valor: todas las líneas (neto, IBC, bases y retención) deben coincidir EXACTAMENTE."""
+        """El ajuste baja el importe diario del sueldo básico a la mitad (.298: la salud ya no es ajustable; el sueldo mueve el IBC, la salud, la pensión y la
+        retención). El oráculo es OTRO recibo idéntico, sin ajuste, con la fórmula de la regla fijada al mismo valor: todas las líneas (neto, IBC, bases y
+        retención) deben coincidir EXACTAMENTE."""
         recibo = self._recibo()
-        linea = self._linea(recibo, 'CO_SALUD_EMP')
-        sugerido_total = linea.total
+        linea = self._linea(recibo, 'CO_BASICO')
         # ``compute_sheet`` borra las líneas del recibo y crea otras (nativo ``hr_payslip.py:600``): se leen ANTES de calcular, porque ``linea``
         # ya no existe después (N2 «co» de .289: MissingError en la línea 59140).
         cantidad, porcentaje = linea.quantity, linea.rate
-        neto0, retencion0 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
+        neto0 = recibo._ne_pdf_neto()
         nuevo_importe = round(linea.amount / 2.0, 2)          # a la precisión con que se guarda el importe del ajuste
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=nuevo_importe)
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=nuevo_importe)
         recibo.compute_sheet()
         total_ajustado = nuevo_importe * cantidad * porcentaje / 100.0
-        self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), total_ajustado, delta=0.01)
-        neto1, retencion1 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
-        self.assertAlmostEqual(neto1 - neto0, (total_ajustado - sugerido_total) + (retencion1 - retencion0), delta=0.01)
+        self.assertAlmostEqual(self._total(recibo, 'CO_BASICO'), total_ajustado, delta=0.01)
+        self.assertNotAlmostEqual(recibo._ne_pdf_neto(), neto0, places=2, msg='El neto se movió con el sueldo ajustado')
         oraculo = self._recibo()
-        regla = self._regla('CO_SALUD_EMP')
+        regla = self._regla('CO_BASICO')
         regla.amount_python_compute = 'result = %r\nresult_qty = %r\nresult_rate = %r' % (nuevo_importe, cantidad, porcentaje)
         oraculo.compute_sheet()
         self.assertFalse(oraculo.l10n_co_ajuste_ids, 'El oráculo no lleva ajuste')
@@ -162,13 +161,13 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 4. sobrevive al recálculo ──────────────────────────────────────────────────────────────────────────────────────────────
     def test_04_el_ajuste_sobrevive_a_calcular_la_hoja_al_refrescar_y_a_una_novedad_del_formulario(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Calcular hoja')
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Calcular hoja')
         recibo.action_refresh_from_work_entries()
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Refrescar desde las entradas de trabajo')
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Refrescar desde las entradas de trabajo')
         # .286: el formulario recalcula la hoja. La estructura general oculta la página nativa de novedades (``views/hr_payslip_conceptos_views.xml:13-15``,
         # ``odoo/tests/form.py:855``): la novedad se agrega como fila de «Conceptos de pago» (``l10n_co_concepto_ids``), lo que ve el usuario.
         with Form(recibo) as formulario:
@@ -176,18 +175,18 @@ class TestAjusteConceptoRecibo(TransactionCase):
                 fila.input_type_id = self.tipo_bonif_nosal
                 fila.amount = 100000.0
         self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 100000.0)
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Novedad guardada desde el formulario')
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Novedad guardada desde el formulario')
 
     # ── 5. volver al sugerido ──────────────────────────────────────────────────────────────────────────────────────────────────
     def test_05_volver_al_valor_sugerido_borra_el_ajuste_y_deja_nota(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_SALUD_EMP')
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        sugerido = self._total(recibo, 'CO_AUX_TRANS')
+        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         recibo.compute_sheet()
         ajuste.write({'amount': ajuste.sugerido_amount, 'quantity': ajuste.sugerido_quantity, 'rate': ajuste.sugerido_rate})
         recibo.compute_sheet()
         self.assertFalse(ajuste.exists(), 'El ajuste igual al sugerido se borra solo')
-        self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), sugerido, delta=0.01)
+        self.assertAlmostEqual(self._total(recibo, 'CO_AUX_TRANS'), sugerido, delta=0.01)
         self.assertIn('quedó igual al valor sugerido', self._notas(recibo))
 
     # ── 6. la condición de la regla deja de cumplirse ──────────────────────────────────────────────────────────────────────────
@@ -206,13 +205,13 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 7. cambia lo sugerido (Q2 de TL) ───────────────────────────────────────────────────────────────────────────────────────
     def test_07_si_cambia_el_sugerido_se_conserva_lo_ajustado_y_hay_nota(self):
         recibo = self._recibo()
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         recibo.compute_sheet()
         sugerido_antes = ajuste.sugerido_total
         recibo.contract_id.wage = 3500000.0
         recibo.compute_sheet()
         self.assertNotAlmostEqual(ajuste.sugerido_total, sugerido_antes, places=2, msg='Premisa: el sugerido cambió con el sueldo')
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0, 'Se conserva el valor ajustado')
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0, 'Se conserva el valor ajustado')
         self.assertIn('cambió de', self._notas(recibo))
         recibo.compute_sheet()                                               # sin cambio de sugerido: no repite la nota
         self.assertEqual(self._notas(recibo).count('cambió de'), 1)
@@ -220,7 +219,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 8. bloqueos (Q6 de TL) ─────────────────────────────────────────────────────────────────────────────────────────────────
     def test_08_un_recibo_hecho_o_con_documento_enviado_incierto_o_aceptado_no_admite_ajustes(self):
         recibo = self._recibo()
-        regla = self._regla('CO_SALUD_EMP')
+        regla = self._regla('CO_AUX_TRANS')
         valores = {'slip_id': recibo.id, 'salary_rule_id': regla.id, 'amount': 0.0}
         for estado in ('sent', 'uncertain', 'accepted'):
             with patch.object(type(recibo), '_ne_estado_documento_ajuste', return_value=estado):
@@ -236,7 +235,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
         with self.assertRaises(UserError):
             ajuste.unlink()
         with self.assertRaises(UserError):
-            self.Ajuste.create(dict(valores, salary_rule_id=self._regla('CO_PENSION_EMP').id))
+            self.Ajuste.create(dict(valores, salary_rule_id=self._regla('CO_BASICO').id))
         self.assertTrue(ajuste.exists(), 'Un recibo hecho conserva sus ajustes como rastro')
 
     # ── 9. permisos ────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -245,14 +244,14 @@ class TestAjusteConceptoRecibo(TransactionCase):
         gerente = self._usuario('gerente_ajustes', (_G_MANAGER, 'base.group_user'), self.company)
         oficial = self._usuario('oficial_ajustes', (_G_USER, 'base.group_user'), self.company)
         otro = self._usuario('otro_ajustes', ('base.group_user',), self.company)
-        regla = self._regla('CO_SALUD_EMP')
+        regla = self._regla('CO_AUX_TRANS')
         ajuste = self.Ajuste.with_user(gerente).create({'slip_id': recibo.id, 'salary_rule_id': regla.id, 'amount': 0.0})
         ajuste.with_user(gerente).write({'amount': 1.0})
         self.assertEqual(self.Ajuste.with_user(oficial).search([('id', '=', ajuste.id)]), ajuste, 'El oficial lee')
         with self.assertRaises(AccessError):
             ajuste.with_user(oficial).write({'amount': 2.0})
         with self.assertRaises(AccessError):
-            self.Ajuste.with_user(oficial).create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_PENSION_EMP').id, 'amount': 0.0})
+            self.Ajuste.with_user(oficial).create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_BASICO').id, 'amount': 0.0})
         with self.assertRaises(AccessError):
             ajuste.with_user(oficial).unlink()
         with self.assertRaises(AccessError):
@@ -265,6 +264,13 @@ class TestAjusteConceptoRecibo(TransactionCase):
         recibo = self._recibo()
         with self.assertRaises(ValidationError):                              # NETO es derivado: no es ajustable
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_NETO').id, 'amount': 1.0})
+        # .298 (decisión de David, 21-nov, riesgo UGPP): lo que sale de la ley o del cálculo NO se ajusta, con un error que dice por qué.
+        for codigo in ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEFUENTE', 'CO_EMBARGO', 'CO_SALUD_CIA', 'CO_PROV_PRIMA', 'CO_IBC_SP', 'CO_VAC'):
+            with self.assertRaisesRegex(ValidationError, 'UGPP', msg=codigo):
+                self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla(codigo).id, 'amount': 1.0})
+        # ... y los conceptos de pago y las deducciones voluntarias o pactadas sí.
+        for codigo in ('CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_AUX_ALIM', 'CO_HED', 'CO_LIBRANZAS', 'CO_COOPERATIVA', 'CO_SINDICATO'):
+            self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla(codigo).id, 'amount': 1.0}).unlink()
         with self.assertRaises(ValidationError):                              # regla de la estructura de prima
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_PRIMA_VALOR', self.prima).id, 'amount': 1.0})
         for monto in (100000.0, 50000.0):
@@ -276,20 +282,20 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 11. copia ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
     def test_11_la_copia_del_recibo_no_copia_los_ajustes(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         self.assertFalse(self.env['hr.payslip']._fields['l10n_co_ajuste_ids'].copy)
         self.assertNotIn('l10n_co_ajuste_ids', recibo.copy_data()[0])
 
     # ── 12. rastro en el chatter ───────────────────────────────────────────────────────────────────────────────────────────────
     def test_12_el_chatter_trae_regla_sugerido_anterior_nuevo_y_usuario(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_SALUD_EMP')
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        sugerido = self._total(recibo, 'CO_AUX_TRANS')
+        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         moneda = recibo.company_id.currency_id
         # El chatter guarda el HTML con el espacio de no separación del formato monetario como ``&nbsp;``: se compara el texto ya decodificado.
         notas = unescape(self._notas(recibo))
         self.assertIn('Ajuste creado', notas)
-        self.assertIn('CO_SALUD_EMP', notas)
+        self.assertIn('CO_AUX_TRANS', notas)
         # .293: los importes salen con el formato monetario de la compañía (símbolo, separadores y decimales de la moneda), como en pantalla.
         self.assertIn('Sugerido: %s' % moneda.format(sugerido), notas)
         self.assertIn('Nuevo: %s' % moneda.format(0.0), notas)
@@ -304,7 +310,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 13. (TL a) aislamiento por compañía ────────────────────────────────────────────────────────────────────────────────────
     def test_13_el_ajuste_de_un_recibo_de_la_compania_a_es_invisible_e_inaplicable_desde_la_compania_b(self):
         recibo = self._recibo()
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         usuario_b = self._usuario('gerente_ajustes_b', (_G_MANAGER, 'base.group_user'), self.company_b)
         usuario_ab = self._usuario('gerente_ajustes_ab', (_G_MANAGER, 'base.group_user'), self.company | self.company_b)
         self.assertFalse(self.Ajuste.with_user(usuario_b).search([('id', '=', ajuste.id)]), 'Invisible desde la compañía B')
@@ -314,7 +320,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
         with self.assertRaises(AccessError):
             ajuste.with_user(usuario_b).write({'amount': 5.0})
         with self.assertRaises(AccessError):                                  # ni crear uno en un recibo de la compañía A
-            self.Ajuste.with_user(usuario_b).create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_PENSION_EMP').id, 'amount': 0.0})
+            self.Ajuste.with_user(usuario_b).create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_BASICO').id, 'amount': 0.0})
         con_ambas = self.Ajuste.with_user(usuario_ab).with_context(allowed_company_ids=[self.company.id, self.company_b.id])
         self.assertEqual(con_ambas.search([('id', '=', ajuste.id)]), ajuste, 'Con acceso a la compañía A sí se ve')
         solo_b = self.Ajuste.with_user(usuario_ab).with_context(allowed_company_ids=[self.company_b.id])
@@ -324,9 +330,9 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 14. un ajuste por regla y recibo (Q7 de TL) ────────────────────────────────────────────────────────────────────────────
     def test_14_solo_un_ajuste_por_regla_y_recibo(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'), self.cr.savepoint():
-            self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_SALUD_EMP').id, 'amount': 1.0})
+            self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_AUX_TRANS').id, 'amount': 1.0})
 
     # ── 15. dos cálculos en la misma transacción (N2 «co» de .289: test_02 y test_03 caían en el cálculo siguiente al ajuste) ────
     def test_15_el_sugerido_se_registra_en_cada_calculo_aunque_ya_exista_un_entorno_con_el_mismo_contexto(self):
@@ -337,16 +343,42 @@ class TestAjusteConceptoRecibo(TransactionCase):
         a propósito un entorno con el contexto que dejaba el cálculo anterior (``with_company`` + ``ne_sugeridos={}``): así la prueba no depende de
         cuándo el recolector de basura suelte el entorno viejo."""
         recibo = self._recibo()                                  # cálculo 1, sin ajuste: su diccionario de sugeridos quedaba vacío
-        sugerido = self._total(recibo, 'CO_SALUD_EMP')
+        sugerido = self._total(recibo, 'CO_AUX_TRANS')
         previo = recibo.with_company(recibo.company_id).with_context(ne_sugeridos={})
-        ajuste = self._ajustar(recibo, 'CO_SALUD_EMP', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
         recibo.compute_sheet()                                   # cálculo 2: el primero que ve el ajuste
         self.assertEqual(ajuste.estado, 'aplicado', 'El gancho vio el ajuste y el registro halló lo sugerido')
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
         self.assertFalse(previo.env.context['ne_sugeridos'], 'El diccionario del entorno viejo no se usó')
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
         recibo.compute_sheet()                                   # cálculos 3 y 4, seguidos
         recibo.compute_sheet()
         self.assertEqual(ajuste.estado, 'aplicado')
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
         self.assertNotIn('no se aplicó en este cálculo', self._notas(recibo))
+
+    # ── 16. (.298) una regla que deja de ser ajustable ─────────────────────────────────────────────────────────────────────────
+    def test_16_si_la_regla_deja_de_ser_ajustable_el_ajuste_de_un_borrador_se_retira_con_nota_y_el_de_un_recibo_hecho_no_se_toca(self):
+        """Decisión de David (21-nov, riesgo UGPP): un ajuste existente sobre una regla que deja de ser ajustable se BORRA en los recibos en borrador (con una
+        nota en el chatter que lo explica y el recibo recalculado con el valor sugerido) y NO se toca en los recibos confirmados (quedan como se pagaron)."""
+        borrador, hecho = self._recibo(), self._recibo()
+        ajuste_borrador = self._ajustar(borrador, 'CO_AUX_TRANS', amount=0.0)
+        ajuste_hecho = self._ajustar(hecho, 'CO_AUX_TRANS', amount=0.0)
+        borrador.compute_sheet()
+        hecho.compute_sheet()
+        sugerido = ajuste_borrador.sugerido_total
+        self.assertGreater(sugerido, 0.0, 'Premisa: el auxilio sugerido es positivo')
+        self.assertEqual(self._total(borrador, 'CO_AUX_TRANS'), 0.0)
+        hecho.write({'state': 'done'})
+        self._regla('CO_AUX_TRANS').l10n_co_ne_ajustable = False                  # la regla deja de ser ajustable
+        self.assertFalse(ajuste_borrador.exists(), 'Borrador: el ajuste se retira')
+        self.assertTrue(ajuste_hecho.exists(), 'Recibo hecho: no se toca')
+        self.assertAlmostEqual(self._total(borrador, 'CO_AUX_TRANS'), sugerido, delta=0.01, msg='El borrador se recalcula con el valor sugerido')
+        notas = unescape(self._notas(borrador))
+        for texto in ('Se retiró el ajuste de la empresa', 'CO_AUX_TRANS', 'UGPP'):
+            self.assertIn(texto, notas)
+        self.assertNotIn('Se retiró', self._notas(hecho))
+        self.Ajuste._retirar_de_reglas_no_ajustables()                              # la función de datos de cada -u: idempotente
+        self.assertTrue(ajuste_hecho.exists())
+        self.assertEqual(self._notas(borrador).count('Se retiró el ajuste'), 1, 'No repite la nota')
+

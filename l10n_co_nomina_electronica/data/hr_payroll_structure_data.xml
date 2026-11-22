@@ -159,6 +159,7 @@
         <record id="hr_salary_rule_co_basico" model="hr.salary.rule">
             <field name="name">Sueldo Básico</field>
             <field name="code">CO_BASICO</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">10</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -184,6 +185,7 @@ result_qty = dias_pagables
         <record id="hr_salary_rule_co_aux_transporte" model="hr.salary.rule">
             <field name="name">Auxilio de Transporte</field>
             <field name="code">CO_AUX_TRANS</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">15</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -213,6 +215,7 @@ result_qty = dias_pagables
         <record id="hr_salary_rule_co_hed" model="hr.salary.rule">
             <field name="name">Hora Extra Diurna (HED)</field>
             <field name="code">CO_HED</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">20</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -234,6 +237,7 @@ result_qty = inputs['CO_HED'].amount
         <record id="hr_salary_rule_co_hen" model="hr.salary.rule">
             <field name="name">Hora Extra Nocturna (HEN)</field>
             <field name="code">CO_HEN</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">21</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -255,6 +259,7 @@ result_qty = inputs['CO_HEN'].amount
         <record id="hr_salary_rule_co_hrn" model="hr.salary.rule">
             <field name="name">Recargo Nocturno (HRN)</field>
             <field name="code">CO_HRN</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">22</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -276,6 +281,7 @@ result_qty = inputs['CO_HRN'].amount
         <record id="hr_salary_rule_co_heddf" model="hr.salary.rule">
             <field name="name">Hora Extra Diurna Dom/Festivo (HEDDF)</field>
             <field name="code">CO_HEDDF</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">23</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -297,6 +303,7 @@ result_qty = inputs['CO_HEDDF'].amount
         <record id="hr_salary_rule_co_hendf" model="hr.salary.rule">
             <field name="name">Hora Extra Nocturna Dom/Festivo (HENDF)</field>
             <field name="code">CO_HENDF</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">24</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -318,6 +325,7 @@ result_qty = inputs['CO_HENDF'].amount
         <record id="hr_salary_rule_co_hrddf" model="hr.salary.rule">
             <field name="name">Recargo Diurno Dom/Festivo (HRDDF)</field>
             <field name="code">CO_HRDDF</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">25</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -339,6 +347,7 @@ result_qty = inputs['CO_HRDDF'].amount
         <record id="hr_salary_rule_co_hrndf" model="hr.salary.rule">
             <field name="name">Recargo Nocturno Dom/Festivo (HRNDF)</field>
             <field name="code">CO_HRNDF</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">26</field>
             <field name="category_id" ref="hr_salary_rule_category_horas_extra"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -361,6 +370,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_comisiones" model="hr.salary.rule">
             <field name="name">Comisiones</field>
             <field name="code">CO_COMISIONES</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">30</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -377,6 +387,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_bonif_salarial" model="hr.salary.rule">
             <field name="name">Bonificación Salarial</field>
             <field name="code">CO_BONIF_SAL</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">35</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -392,6 +403,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_bonif_no_salarial" model="hr.salary.rule">
             <field name="name">Bonificación No Salarial</field>
             <field name="code">CO_BONIF_NOSAL</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">36</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -409,6 +421,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_aux_alimentacion" model="hr.salary.rule">
             <field name="name">Auxilio de Alimentación</field>
             <field name="code">CO_AUX_ALIM</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">37</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -426,6 +439,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_viaticos_sal" model="hr.salary.rule">
             <field name="name">Viáticos Salariales</field>
             <field name="code">CO_VIATICOS_SAL</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">38</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -441,6 +455,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_viaticos_nosal" model="hr.salary.rule">
             <field name="name">Viáticos No Salariales</field>
             <field name="code">CO_VIATICOS_NOSAL</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">39</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -458,6 +473,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_dotacion" model="hr.salary.rule">
             <field name="name">Dotación</field>
             <field name="code">CO_DOTACION</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">40</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -475,6 +491,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_teletrabajo" model="hr.salary.rule">
             <field name="name">Auxilio Conectividad / Teletrabajo</field>
             <field name="code">CO_TELETRABAJO</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">41</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -494,6 +511,7 @@ result_qty = inputs['CO_HRNDF'].amount
         <record id="hr_salary_rule_co_incapacidad_comun" model="hr.salary.rule">
             <field name="name">Incapacidad Enfermedad General</field>
             <field name="code">CO_INC_COMUN</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">50</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -531,6 +549,7 @@ result = _pago / dias if dias else 0.0
         <record id="hr_salary_rule_co_incapacidad_laboral" model="hr.salary.rule">
             <field name="name">Incapacidad Accidente de Trabajo</field>
             <field name="code">CO_INC_LABORAL</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">51</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -557,6 +576,7 @@ result = _pago / dias if dias else 0.0
         <record id="hr_salary_rule_co_licencia_maternidad" model="hr.salary.rule">
             <field name="name">Licencia de Maternidad</field>
             <field name="code">CO_LIC_MAT</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">55</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -584,6 +604,7 @@ result = _pago / dias if dias else 0.0
         <record id="hr_salary_rule_co_licencia_paternidad" model="hr.salary.rule">
             <field name="name">Licencia de Paternidad</field>
             <field name="code">CO_LIC_PAT</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">56</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -611,6 +632,7 @@ result = _pago / dias if dias else 0.0
         <record id="hr_salary_rule_co_licencia_remunerada" model="hr.salary.rule">
             <field name="name">Licencia Remunerada</field>
             <field name="code">CO_LIC_REM</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">57</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -636,6 +658,7 @@ result_qty = dias
         <record id="hr_salary_rule_co_licencia_no_remunerada" model="hr.salary.rule">
             <field name="name">Licencia No Remunerada</field>
             <field name="code">CO_LIC_NR</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">58</field>
             <field name="category_id" ref="hr_salary_rule_category_incapacidades"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -657,6 +680,7 @@ result = _dias_aus > 0 or _dias_inp > 0
         <record id="hr_salary_rule_co_vacaciones" model="hr.salary.rule">
             <field name="name">Vacaciones Disfrutadas</field>
             <field name="code">CO_VAC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">60</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -685,6 +709,7 @@ result_qty = dias
         <record id="hr_salary_rule_co_vacaciones_compensadas" model="hr.salary.rule">
             <field name="name">Vacaciones Compensadas en Dinero</field>
             <field name="code">CO_VAC_COMP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">61</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -703,6 +728,7 @@ result_qty = dias
         <record id="hr_salary_rule_co_prima_servicios" model="hr.salary.rule">
             <field name="name">Prima de Servicios</field>
             <field name="code">CO_PRIMA</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">70</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -723,6 +749,7 @@ result = inputs['CO_PRIMA'].amount
         <record id="hr_salary_rule_co_cesantias" model="hr.salary.rule">
             <field name="name">Cesantías</field>
             <field name="code">CO_CESANTIAS</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">71</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -744,6 +771,7 @@ result = inputs['CO_CESANTIAS'].amount
         <record id="hr_salary_rule_co_int_cesantias" model="hr.salary.rule">
             <field name="name">Intereses sobre Cesantías</field>
             <field name="code">CO_INT_CES</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">72</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -765,6 +793,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_apoyo_sost" model="hr.salary.rule">
             <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
             <field name="code">CO_APOYO_SOST</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">80</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -780,6 +809,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_bonif_retiro" model="hr.salary.rule">
             <field name="name">Bonificación de Retiro</field>
             <field name="code">CO_BONIF_RET</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">85</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -796,6 +826,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_indemnizacion" model="hr.salary.rule">
             <field name="name">Indemnización</field>
             <field name="code">CO_INDEMNIZ</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -815,6 +846,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_bruto" model="hr.salary.rule">
             <field name="name">Total Devengados</field>
             <field name="code">CO_BRUTO</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">99</field>
             <!-- Bug critico corregido: categoria propia era DEV (la misma que
                  lee en amount_python_compute), y CO_NETO (seq 200) volvia a
@@ -842,6 +874,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_salud_emp" model="hr.salary.rule">
             <field name="name">Aporte Salud Empleado (4%)</field>
             <field name="code">CO_SALUD_EMP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">100</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -865,6 +898,7 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
         <record id="hr_salary_rule_co_pension_emp" model="hr.salary.rule">
             <field name="name">Aporte Pensión Empleado (4%)</field>
             <field name="code">CO_PENSION_EMP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">101</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -887,6 +921,7 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
         <record id="hr_salary_rule_co_fsp" model="hr.salary.rule">
             <field name="name">Fondo de Solidaridad Pensional</field>
             <field name="code">CO_FSP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">102</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -942,6 +977,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_sln" model="hr.salary.rule">
             <field name="name">IBC Suspension / Licencia No Remunerada</field>
             <field name="code">CO_IBC_SLN</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -955,6 +991,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_dias_sp" model="hr.salary.rule">
             <field name="name">Dias Cotizados Salud y Pension</field>
             <field name="code">CO_DIAS_SP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">87</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -968,6 +1005,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_dias_arl" model="hr.salary.rule">
             <field name="name">Dias Cotizados ARL</field>
             <field name="code">CO_DIAS_ARL</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">88</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -981,6 +1019,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_dias_paraf" model="hr.salary.rule">
             <field name="name">Dias Cotizados Parafiscales</field>
             <field name="code">CO_DIAS_PARAF</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">89</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -994,6 +1033,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_salarial" model="hr.salary.rule">
             <field name="name">IBC Salarial</field>
             <field name="code">CO_IBC_SALARIAL</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">90</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1007,6 +1047,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_incap" model="hr.salary.rule">
             <field name="name">IBC Maternidad/Paternidad</field>
             <field name="code">CO_IBC_INCAP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">91</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1020,6 +1061,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_remuneracion" model="hr.salary.rule">
             <field name="name">IBC Remuneracion Base 40%</field>
             <field name="code">CO_IBC_REMUN</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">92</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1033,6 +1075,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_pactados" model="hr.salary.rule">
             <field name="name">IBC Pactados No Salariales</field>
             <field name="code">CO_IBC_PACTADOS</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">93</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1046,6 +1089,7 @@ result_rate = pct * 100
         <record id="hr_salary_rule_co_ibc_sp" model="hr.salary.rule">
             <field name="name">IBC Salud y Pension</field>
             <field name="code">CO_IBC_SP</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">94</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1064,6 +1108,7 @@ result = payslip._ne_ibc_limites(
         <record id="hr_salary_rule_co_ibc_arl" model="hr.salary.rule">
             <field name="name">IBC ARL</field>
             <field name="code">CO_IBC_ARL</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">95</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1082,6 +1127,7 @@ result = payslip._ne_ibc_limites(
         <record id="hr_salary_rule_co_ibc_paraf" model="hr.salary.rule">
             <field name="name">IBC Parafiscales</field>
             <field name="code">CO_IBC_PARAF</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">96</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1100,6 +1146,7 @@ result = payslip._ne_ibc_limites(
         <record id="hr_salary_rule_co_ss_base_ibc" model="hr.salary.rule">
             <field name="name">Base IBC Seguridad Social</field>
             <field name="code">CO_SS_BASE_IBC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">103</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1124,6 +1171,7 @@ recibo ni afecta el neto.</field>
         <record id="hr_salary_rule_co_retefuente" model="hr.salary.rule">
             <field name="name">Retención en la Fuente</field>
             <field name="code">CO_RETEFUENTE</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">110</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1167,6 +1215,7 @@ La depuracion incluye: aportes obligatorios, voluntarios, AFC, dependientes, ren
         <record id="hr_salary_rule_co_exento_pension_afc" model="hr.salary.rule">
             <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
             <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">111</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1211,6 +1260,7 @@ en meses futuros via payslip._sum().</field>
         <record id="hr_salary_rule_co_retefuente_base_gross" model="hr.salary.rule">
             <field name="name">Retención Fuente - Base Bruto</field>
             <field name="code">CO_RETEFUENTE_BASE_GROSS</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">112</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1240,6 +1290,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_retefuente_base_ibc" model="hr.salary.rule">
             <field name="name">Retención Fuente - Base IBC</field>
             <field name="code">CO_RETEFUENTE_BASE_IBC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">113</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1269,6 +1320,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">
             <field name="name">Cuota Sindical</field>
             <field name="code">CO_SINDICATO</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">121</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1283,6 +1335,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_afc" model="hr.salary.rule">
             <field name="name">AFC - Ahorro Fomento Construcción</field>
             <field name="code">CO_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">122</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1297,6 +1350,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_pension_vol" model="hr.salary.rule">
             <field name="name">Pensión Voluntaria</field>
             <field name="code">CO_PENSION_VOL</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">123</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1311,6 +1365,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_cooperativa" model="hr.salary.rule">
             <field name="name">Cooperativa</field>
             <field name="code">CO_COOPERATIVA</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">124</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1325,6 +1380,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
         <record id="hr_salary_rule_co_embargo" model="hr.salary.rule">
             <field name="name">Embargo Fiscal</field>
             <field name="code">CO_EMBARGO</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">118</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1354,6 +1410,7 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
         <record id="hr_salary_rule_co_plan_complementario" model="hr.salary.rule">
             <field name="name">Plan Complementario de Salud</field>
             <field name="code">CO_PLAN_COMP</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">126</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1368,6 +1425,7 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
         <record id="hr_salary_rule_co_educacion" model="hr.salary.rule">
             <field name="name">Educación</field>
             <field name="code">CO_EDUCACION</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">127</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1382,6 +1440,7 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
         <record id="hr_salary_rule_co_otras_ded" model="hr.salary.rule">
             <field name="name">Otras Deducciones</field>
             <field name="code">CO_OTRAS_DED</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">130</field>
             <field name="category_id" ref="hr_salary_rule_category_deducciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1399,6 +1458,7 @@ result = -payslip._ne_embargos_calcular(_salario_neto, _smmlv, _manual)
         <record id="hr_salary_rule_co_neto" model="hr.salary.rule">
             <field name="name">Neto a Pagar</field>
             <field name="code">CO_NETO</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">200</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1419,6 +1479,7 @@ result = payslip._ne_neto_redondeado(result_rules, 'DEV')</field>
         <record id="hr_salary_rule_co_salud_cia" model="hr.salary.rule">
             <field name="name">Aporte Salud Empresa (8.5%)</field>
             <field name="code">CO_SALUD_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">300</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1448,6 +1509,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.da
         <record id="hr_salary_rule_co_pension_cia" model="hr.salary.rule">
             <field name="name">Aporte Pensión Empresa (12%)</field>
             <field name="code">CO_PENSION_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">301</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1468,6 +1530,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_pension_empleador', payslip.
         <record id="hr_salary_rule_co_arl_cia" model="hr.salary.rule">
             <field name="name">Aporte ARL Empresa</field>
             <field name="code">CO_ARL_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">302</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1487,6 +1550,7 @@ result = ibc * payslip._ne_pct_arl() / 100
         <record id="hr_salary_rule_co_ccf_cia" model="hr.salary.rule">
             <field name="name">Aporte CCF Empresa (4%)</field>
             <field name="code">CO_CCF_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">303</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1502,6 +1566,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_ccf', payslip.date_from) / 1
         <record id="hr_salary_rule_co_sena_cia" model="hr.salary.rule">
             <field name="name">Aporte SENA Empresa (2%)</field>
             <field name="code">CO_SENA_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">304</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1526,6 +1591,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_sena', payslip.date_from) / 
         <record id="hr_salary_rule_co_icbf_cia" model="hr.salary.rule">
             <field name="name">Aporte ICBF Empresa (3%)</field>
             <field name="code">CO_ICBF_CIA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">305</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_cia"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1558,6 +1624,7 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
         <record id="hr_salary_rule_co_prov_prima" model="hr.salary.rule">
             <field name="name">Provisión Prima de Servicios</field>
             <field name="code">CO_PROV_PRIMA</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">310</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1584,6 +1651,7 @@ result = (base / 12.0) * payslip._ne_factor_provision_periodo()
         <record id="hr_salary_rule_co_prov_cesantias" model="hr.salary.rule">
             <field name="name">Provisión Cesantías</field>
             <field name="code">CO_PROV_CESANTIAS</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">311</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1609,6 +1677,7 @@ result = (base / 12.0) * payslip._ne_factor_provision_periodo()
         <record id="hr_salary_rule_co_prov_int_cesantias" model="hr.salary.rule">
             <field name="name">Provisión Intereses sobre Cesantías</field>
             <field name="code">CO_PROV_INT_CES</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">312</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -1637,6 +1706,7 @@ result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
         <record id="hr_salary_rule_co_prov_vacaciones" model="hr.salary.rule">
             <field name="name">Provisión Vacaciones</field>
             <field name="code">CO_PROV_VACACIONES</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">313</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>

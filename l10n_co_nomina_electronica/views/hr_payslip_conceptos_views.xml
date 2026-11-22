@@ -37,9 +37,10 @@
                             <field name="edita_porcentaje" column_invisible="True"/>
                             <field name="edita_importe" column_invisible="True"/>
                             <field name="name" widget="section_and_note_text" readonly="origen in ('calculado', 'dias')"/>
-                            <!-- .297: el tipo solo lo llevan las filas de novedad (en las calculadas sale vacío): columna OPCIONAL oculta por defecto, el patrón nativo de las listas de
-                                 Ventas (``optional="hide"``). Para «Agregar concepto» hay que activarla en el menú de columnas opcionales de la lista. -->
-                            <field name="input_type_id" optional="hide" readonly="id" options="{'no_create': True, 'no_open': True}"/>
+                            <!-- .298: el tipo solo lo llevan las filas de novedad (en las calculadas sale vacío) pero en «Agregar concepto» es OBLIGATORIO y aquí se elige:
+                                 columna OPCIONAL visible por defecto (``optional="show"``, el patrón nativo de las listas de Ventas); el usuario puede ocultarla. En .297 salía
+                                 oculta (``hide``) y el usuario no veía dónde elegir el tipo. -->
+                            <field name="input_type_id" optional="show" readonly="id" options="{'no_create': True, 'no_open': True}"/>
                             <field name="quantity" readonly="not edita_cantidad"/>
                             <field name="unidad" readonly="1"/>
                             <!-- .297: el % se muestra SOLO si es distinto de 100 y con 2 decimales (la misma regla de la colilla). Atributo nativo ``digits`` del campo
@@ -57,7 +58,6 @@
                             <field name="l10n_co_total_devengado"/>
                             <field name="l10n_co_total_deducciones"/>
                             <field name="net_wage" string="Neto a pagar" class="oe_subtotal_footer_separator"/>
-                            <field name="l10n_co_costo_empresa"/>
                         </group>
                     </group>
                 </page>

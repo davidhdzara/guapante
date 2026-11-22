@@ -161,7 +161,7 @@ class TestColillaConceptos(TransactionCase):
         # La general con una novedad y un ajuste: cubre el enlace a la novedad, la nota del ajuste y las filas de días.
         self.env['hr.payslip.input'].create({
             'payslip_id': general.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 300000.0})
-        linea = general.line_ids.filtered(lambda l: l.code == 'CO_SALUD_EMP')
+        linea = general.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS')      # .298: la salud ya no se ajusta; el auxilio sí
         self.env['l10n.co.payslip.ajuste'].create({
             'slip_id': general.id, 'salary_rule_id': linea.salary_rule_id.id, 'quantity': linea.quantity, 'rate': linea.rate, 'amount': 0.0})
         general.compute_sheet()
@@ -274,18 +274,18 @@ class TestColillaConceptos(TransactionCase):
     def test_10_no_imprime_observaciones_ni_el_ajuste_ni_el_costo_de_la_empresa_ni_nada_de_la_dian(self):
         recibo = self._recibo(self.general)
         recibo.note = 'NOTA INTERNA DE PRUEBA'
-        linea = recibo.line_ids.filtered(lambda l: l.code == 'CO_SALUD_EMP')
+        linea = recibo.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS')       # .298: la salud ya no se ajusta; el auxilio sí
         ajuste = self.env['l10n.co.payslip.ajuste'].create({
             'slip_id': recibo.id, 'salary_rule_id': linea.salary_rule_id.id, 'quantity': linea.quantity, 'rate': linea.rate, 'amount': 0.0})
         recibo.compute_sheet()
-        self.assertTrue(ajuste.exists() and ajuste.estado == 'aplicado', 'Premisa: la salud quedó ajustada a 0')
+        self.assertTrue(ajuste.exists() and ajuste.estado == 'aplicado', 'Premisa: el auxilio quedó ajustado a 0')
         cuerpo = self._cuerpo(recibo)
         for texto in ('Observaciones', 'NOTA INTERNA DE PRUEBA', 'Ajustado', 'Sugerido', 'Costo empresa', 'Costo de la empresa') + PROHIBIDOS:
             self.assertNotIn(texto, cuerpo, '"%s" no debe aparecer en la colilla' % texto)
         self.assertNotIn('<img', cuerpo)
-        salud = next(f for f in recibo._ne_filas_de_concepto() if f['regla'].code == 'CO_SALUD_EMP')
-        self.assertEqual(salud['total'], 0.0, 'Lo ajustado se imprime con su valor: la fila de salud sigue visible en 0')
-        self.assertIn(salud['nombre'], cuerpo)
+        auxilio = next(f for f in recibo._ne_filas_de_concepto() if f['regla'].code == 'CO_AUX_TRANS')
+        self.assertEqual(auxilio['total'], 0.0, 'Lo ajustado se imprime con su valor: la fila del auxilio sigue visible en 0')
+        self.assertIn(auxilio['nombre'], cuerpo)
 
     # ── cuadra con el neto y con el desglose ────────────────────────────────────────────────────────────────────────────────────────
     def test_11_la_tabla_cuadra_con_el_neto_y_con_el_desglose_en_las_cuatro_estructuras(self):

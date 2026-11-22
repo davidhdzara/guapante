@@ -2,6 +2,10 @@
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """Filas de «Cálculo del salario» del recibo (E11 pieza 4a, .294, doc 74 §3): soporte de auditoría (UGPP), de SOLO LECTURA.
 
+.298 (decisión de David, 22-nov): la pestaña lleva SOLO lo que no está en «Conceptos de pago»: las BASES de cotización, los APORTES DE LA EMPRESA y las
+PROVISIONES (con el total «Costo empresa» al pie). Los conceptos (sueldo, devengos y deducciones) se ven y se editan en «Conceptos de pago»: se MUEVEN
+allí y este cálculo los sigue, de manera informativa.
+
 Igual que «Conceptos de pago» (``l10n.co.payslip.concepto``), es una VISTA de lo ya calculado y no una fuente de datos: se regenera al final de cada
 ``compute_sheet`` a partir de ``hr.payslip.line`` y nada la lee para calcular. ``hr.payslip.line`` no tiene ``display_type`` (``hr_payroll/models/
 hr_payslip_line.py:8-39``), así que las secciones necesitan filas propias para usar el widget nativo ``section_and_note_one2many``.
@@ -14,8 +18,8 @@ from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
 # Secciones de categoría que muestra esta pestaña (``hr.salary.rule.category.l10n_co_ne_seccion_concepto``). ``costo_empresa`` entra con una sección
-# POR CATEGORÍA (aportes de la empresa, provisiones), titulada con el nombre de la categoría.
-SECCIONES_DE_CATEGORIA = ('devengados', 'deducciones', 'costo_empresa', 'bases')
+# POR CATEGORÍA (aportes de la empresa, provisiones), titulada con el nombre de la categoría. Los devengados y las deducciones NO: van en «Conceptos de pago».
+SECCIONES_DE_CATEGORIA = ('bases', 'costo_empresa')
 
 
 class L10nCoPayslipCalculo(models.Model):
@@ -70,24 +74,17 @@ class L10nCoPayslipCalculo(models.Model):
 
     @api.model
     def _secciones_del_recibo(self, recibo, lineas):
-        """``[(titulo, [líneas])]`` en el orden de la pestaña: Básico, Devengos, Bases, Deducciones y, después, una sección por categoría de «Costo
-        empresa» (aportes de la empresa, provisiones; en el orden de su primera línea). Sin líneas, la sección no sale.
+        """``[(titulo, [líneas])]`` en el orden de la pestaña: Bases y, después, una sección por categoría de «Costo empresa» (aportes de la empresa,
+        provisiones; en el orden de su primera línea). Sin líneas, la sección no sale.
 
-        Se decide por configuración, sin códigos de regla: la sección de la categoría de la línea y, para separar el sueldo del resto de los
-        devengados, el concepto DIAN de la regla (``l10n_co_ne_dian_concept == 'Sueldo'``, el mismo criterio que usa «Conceptos de pago» para
-        poner los días bajo el sueldo)."""
-        fijas = {'basico': (0, _('Básico')), 'devengos': (1, _('Devengos')), 'bases': (2, _('Bases')), 'deducciones': (3, _('Deducciones'))}
+        Se decide por configuración, sin códigos de regla: la sección de la categoría de la línea (.298: ya no hay Básico, Devengos ni Deducciones)."""
+        fijas = {'bases': (0, _('Bases'))}
         grupos = {}
         for linea in lineas:
             seccion = linea.category_id.l10n_co_ne_seccion_concepto
-            if seccion == 'devengados':
-                clave = 'basico' if linea.salary_rule_id.l10n_co_ne_dian_concept == 'Sueldo' else 'devengos'
-            elif seccion in ('bases', 'deducciones'):
-                clave = seccion
-            else:
-                clave = 'costo_%s' % linea.category_id.id
+            clave = seccion if seccion == 'bases' else 'costo_%s' % linea.category_id.id
             if clave not in grupos:
-                orden, titulo = fijas.get(clave) or (4, linea.category_id.name)
+                orden, titulo = fijas.get(clave) or (1, linea.category_id.name)
                 grupos[clave] = {'orden': orden, 'primera': (linea.sequence, linea.id), 'titulo': titulo, 'lineas': []}
             grupos[clave]['lineas'].append(linea)
         return [(g['titulo'], g['lineas']) for g in sorted(grupos.values(), key=lambda g: (g['orden'], g['primera']))]
@@ -95,9 +92,10 @@ class L10nCoPayslipCalculo(models.Model):
     @api.model
     def _valores_del_recibo(self, recibo):
         """Filas (lista de diccionarios) del recibo: cada sección con su título y sus conceptos; tras un concepto ajustado, una fila de nota con su
-        valor sugerido (soporte de auditoría: la colilla NO la lleva). Solo líneas con valor (o ajustadas): sin ceros, y sin las líneas nativas
-        BASIC/GROSS/NET ni los totales, porque sus categorías no tienen sección. Los días cotizados son acumuladores cuyo importe ES un número de días:
-        se muestran como cualquier otra fila (en la columna Total, que no lleva símbolo de moneda)."""
+        valor sugerido (soporte de auditoría: la colilla NO la lleva; hoy ninguna regla de estas secciones es ajustable, la nota queda por si una empresa
+        marca alguna). Solo líneas con valor (o ajustadas): sin ceros, y sin las líneas nativas BASIC/GROSS/NET ni los totales, porque sus categorías no
+        tienen sección. Los días cotizados son acumuladores cuyo importe ES un número de días: se muestran como cualquier otra fila (en la columna Total,
+        que no lleva símbolo de moneda)."""
         ajustes = {a.salary_rule_id.id: a for a in recibo.l10n_co_ajuste_ids}
         lineas = recibo.line_ids.filtered(
             lambda l: l.category_id.l10n_co_ne_seccion_concepto in SECCIONES_DE_CATEGORIA

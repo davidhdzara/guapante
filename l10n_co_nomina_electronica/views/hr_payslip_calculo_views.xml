@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- E11 pieza 4a (.294, doc 74 §3): pestaña «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría UGPP). Solo para las estructuras con el
+    <!-- E11 pieza 4a (.294, doc 74 §3): pestaña «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría UGPP). .298 (David, 22-nov): SOLO
+         Bases, Aportes de la empresa y Provisiones, con el total «Costo empresa» al pie; lo demás está en «Conceptos de pago». Solo para las estructuras con el
          interruptor l10n_co_ne_conceptos_de_pago; en las demás la pestaña nativa «Salary Computation» (hr_payroll/views/hr_payslip_views.xml:193 en v18,
          :226 en v19) queda igual. Selectores por @name (nunca por @string), sin colores ni íconos propios. El campo es de solo lectura: sin «Agregar», sin
          papelera, sin edición; la lista usa el widget nativo section_and_note_one2many del módulo account (secciones y notas como una orden de venta). -->
@@ -30,9 +31,7 @@
                     <group col="12">
                         <group colspan="7" name="calculo_nota"/>
                         <group class="oe_subtotal_footer" colspan="5" name="calculo_totales">
-                            <field name="l10n_co_total_devengado"/>
-                            <field name="l10n_co_total_deducciones"/>
-                            <field name="net_wage" string="Neto a pagar" class="oe_subtotal_footer_separator"/>
+                            <field name="l10n_co_costo_empresa" class="oe_subtotal_footer_separator"/>
                         </group>
                     </group>
                 </page>

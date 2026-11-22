@@ -2,8 +2,9 @@
 """E11 pieza 2a (.287, doc 71c §2, §4 y §7): configuración de «Conceptos de pago» sembrada en el XML, sin código fijo y SIN cambios en dinero.
 
 - ``hr.salary.rule.category.l10n_co_ne_seccion_concepto``: sección (devengados / deducciones / costo_empresa) de cada categoría del módulo.
-- ``hr.salary.rule.l10n_co_ne_ajustable``: qué reglas admiten el ajuste de la empresa. Por defecto, toda regla de una estructura con «Usa Conceptos de pago»
-  (hoy solo la general) cuya categoría tenga sección devengados o deducciones; editable por regla (campo calculado y editable).
+- ``hr.salary.rule.l10n_co_ne_ajustable``: qué reglas admiten el ajuste de la empresa. .298 (decisión de David, 21-nov, riesgo UGPP): es un dato PLANO de cada
+  regla, sembrado explícito en el XML (ajustables solo los conceptos de pago y las deducciones voluntarias o pactadas), ``False`` por defecto en una regla nueva
+  y editable por regla; ya no se calcula por la sección de la categoría.
 - ``hr.salary.rule.l10n_co_ne_unidad`` y ``hr.payslip.input.type.l10n_co_ne_unidad``: unidad (días u horas) de la cantidad.
 
 Las tablas de abajo son el CONTRATO de la siembra (lo aprobado por TL): una categoría o regla nueva sin decisión hace fallar la prueba.
@@ -25,9 +26,15 @@ _SECCIONES = {
 # Sin sección a propósito: la raíz «Devengados» (trae la línea del neto) y los totales de solo display.
 _SIN_SECCION = ('devengados', 'totales_display')
 # Ejemplos de lo que TL pidió (no es la regla, solo una red de seguridad legible): ajustables / derivados que NO lo son.
-_EJEMPLOS_AJUSTABLES = ('CO_BASICO', 'CO_AUX_TRANS', 'CO_INC_COMUN', 'CO_LIC_MAT', 'CO_HED', 'CO_HRNDF', 'CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP',
-                        'CO_RETEFUENTE', 'CO_SINDICATO', 'CO_EMBARGO')
-_EJEMPLOS_DERIVADOS = ('CO_NETO', 'CO_BRUTO', 'CO_SALUD_CIA', 'CO_PROV_PRIMA', 'CO_IBC_SP', 'CO_RETEFUENTE_BASE_GROSS')
+# .298: conceptos de pago y deducciones voluntarias o pactadas (ajustables) frente a lo que sale de la ley o del cálculo (NO ajustable: riesgo UGPP).
+_EJEMPLOS_AJUSTABLES = ('CO_BASICO', 'CO_AUX_TRANS', 'CO_HED', 'CO_HRNDF', 'CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_AUX_ALIM', 'CO_COMISIONES',
+                        'CO_LIBRANZAS', 'CO_COOPERATIVA', 'CO_AFC', 'CO_PENSION_VOL', 'CO_SINDICATO', 'CO_OTRAS_DED')
+_EJEMPLOS_NO_AJUSTABLES = ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEFUENTE', 'CO_EMBARGO',                                  # ley y orden judicial
+                           'CO_SALUD_CIA', 'CO_PENSION_CIA', 'CO_ARL_CIA', 'CO_CCF_CIA', 'CO_SENA_CIA', 'CO_ICBF_CIA',                  # aportes de la empresa
+                           'CO_PROV_PRIMA', 'CO_PROV_CESANTIAS', 'CO_PROV_INT_CES', 'CO_PROV_VACACIONES',                             # provisiones
+                           'CO_IBC_SALARIAL', 'CO_IBC_SP', 'CO_DIAS_SP', 'CO_SS_BASE_IBC', 'CO_RETEFUENTE_BASE_GROSS',                 # bases y acumuladores
+                           'CO_INC_COMUN', 'CO_LIC_MAT', 'CO_VAC',                                                                     # con efecto directo en el IBC
+                           'CO_NETO', 'CO_BRUTO')                                                                                     # totales
 _UNIDAD_REGLAS = {
     'CO_BASICO': 'dias', 'CO_AUX_TRANS': 'dias', 'CO_INC_COMUN': 'dias', 'CO_INC_LABORAL': 'dias', 'CO_LIC_MAT': 'dias',
     'CO_LIC_PAT': 'dias', 'CO_LIC_REM': 'dias', 'CO_VAC': 'dias',
@@ -73,49 +80,60 @@ class TestE11Pieza2a(TransactionCase):
         self.assertEqual(neto.category_id, raiz, 'Premisa: CO_NETO cuelga de la raíz')
 
     # ── reglas: ajustable y unidad ───────────────────────────────────────────────────────────────────────────────────────────────
-    def test_la_regla_es_ajustable_por_defecto_segun_su_estructura_y_la_seccion_de_su_categoria(self):
-        """La REGLA de siembra (no una lista): estructura con «Usa Conceptos de pago» y categoría con sección devengados o deducciones."""
+    def test_la_regla_ajustable_es_un_dato_sembrado_y_ninguna_regla_derivada_lo_es(self):
+        """.298: ninguna regla de una categoría SIN sección devengados/deducciones es ajustable (bases, costo de la empresa, totales, neto), y las que lo son
+        están en una estructura que usa «Conceptos de pago» (hoy la general)."""
         reglas = self._del_modulo('hr.salary.rule')
         self.assertTrue(reglas)
-        for regla in reglas:
-            seccion = regla.category_id.l10n_co_ne_seccion_concepto
-            esperado = bool(regla.struct_id.l10n_co_ne_conceptos_de_pago and seccion in ('devengados', 'deducciones'))
-            self.assertEqual(regla.l10n_co_ne_ajustable, esperado, '%s (%s)' % (regla.code, regla.struct_id.name))
+        for regla in reglas.filtered('l10n_co_ne_ajustable'):
+            self.assertIn(regla.category_id.l10n_co_ne_seccion_concepto, ('devengados', 'deducciones'), '%s es derivada: no puede ser ajustable' % regla.code)
+            self.assertTrue(regla.struct_id.l10n_co_ne_conceptos_de_pago, '%s (%s)' % (regla.code, regla.struct_id.name))
 
-    def test_los_ejemplos_de_tl_en_la_estructura_general(self):
+    def test_los_ejemplos_de_la_decision_de_david_en_la_estructura_general(self):
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         reglas = self._del_modulo('hr.salary.rule').filtered(lambda r: r.struct_id == general)
         for codigo in _EJEMPLOS_AJUSTABLES:
             esas = reglas.filtered(lambda r: r.code == codigo)
             self.assertTrue(esas, codigo)
-            self.assertTrue(all(esas.mapped('l10n_co_ne_ajustable')), '%s debe ser ajustable' % codigo)
-        for codigo in _EJEMPLOS_DERIVADOS:
+            self.assertTrue(all(esas.mapped('l10n_co_ne_ajustable')), '%s es un concepto de pago o una deducción voluntaria: debe ser ajustable' % codigo)
+        for codigo in _EJEMPLOS_NO_AJUSTABLES:
             esas = reglas.filtered(lambda r: r.code == codigo)
             self.assertTrue(esas, codigo)
-            self.assertFalse(any(esas.mapped('l10n_co_ne_ajustable')), '%s es derivado: no es ajustable' % codigo)
+            self.assertFalse(any(esas.mapped('l10n_co_ne_ajustable')), '%s sale de la ley o del cálculo: NO es ajustable (riesgo UGPP)' % codigo)
+
+    def test_toda_regla_de_la_estructura_general_trae_su_valor_sembrado(self):
+        """Ningún valor sale de un cálculo ni de un defecto: el XML de cada regla de la general trae ``l10n_co_ne_ajustable`` (True o False) explícito."""
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        ids = self.env['ir.model.data'].search([('module', '=', 'l10n_co_nomina_electronica'), ('model', '=', 'hr.salary.rule')])
+        reglas = self.env['hr.salary.rule'].browse(ids.mapped('res_id')).exists().filtered(lambda r: r.struct_id == general)
+        self.assertTrue(reglas)
+        campo = self.env['hr.salary.rule']._fields['l10n_co_ne_ajustable']
+        self.assertFalse(campo.compute, 'Dato plano: un campo calculado pisaría la decisión en cada actualización')
+        self.assertFalse(self.env['hr.salary.rule'].default_get(['l10n_co_ne_ajustable']).get('l10n_co_ne_ajustable'),
+                         'Una regla nueva NO es ajustable hasta que se marque')
 
     def test_solo_la_estructura_general_usa_conceptos_de_pago(self):
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         for estructura in self._del_modulo('hr.payroll.structure'):
             self.assertEqual(estructura.l10n_co_ne_conceptos_de_pago, estructura == general, estructura.name)
 
-    def test_el_valor_por_defecto_sigue_a_la_categoria_y_la_decision_manual_se_conserva(self):
-        """Campo calculado y editable: cambia al cambiar la categoría o el interruptor de la estructura, no por otras escrituras."""
+    def test_la_decision_manual_se_conserva_y_no_cambia_con_la_categoria_ni_con_el_interruptor_de_la_estructura(self):
+        """.298: dato plano. Cambiar la categoría o el interruptor de la estructura NO recalcula ni pisa lo que se sembró o decidió."""
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         regla = self._del_modulo('hr.salary.rule').filtered(lambda r: r.code == 'CO_OTRAS_DED' and r.struct_id == general)[:1]
         self.assertTrue(regla.l10n_co_ne_ajustable)
         sin_seccion = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_totales_display')
         con_seccion = regla.category_id
         regla.category_id = sin_seccion
-        self.assertFalse(regla.l10n_co_ne_ajustable, 'Una categoría sin sección no se ajusta')
+        self.assertTrue(regla.l10n_co_ne_ajustable, 'Cambiar la categoría no cambia la decisión')
         regla.category_id = con_seccion
-        self.assertTrue(regla.l10n_co_ne_ajustable)
         regla.l10n_co_ne_ajustable = False                      # decisión de la empresa
-        regla.sequence = regla.sequence + 1                     # otra escritura: no cambia ninguna dependencia
-        self.assertFalse(regla.l10n_co_ne_ajustable, 'La decisión manual se conserva')
+        regla.sequence = regla.sequence + 1
         general.l10n_co_ne_conceptos_de_pago = False
-        self.assertFalse(any(self._del_modulo('hr.salary.rule').filtered(lambda r: r.struct_id == general).mapped('l10n_co_ne_ajustable')),
-                         'Sin el interruptor de la estructura ninguna regla se ajusta')
+        general.l10n_co_ne_conceptos_de_pago = True
+        self.assertFalse(regla.l10n_co_ne_ajustable, 'La decisión manual se conserva')
+        otra = self._del_modulo('hr.salary.rule').filtered(lambda r: r.code == 'CO_BONIF_SAL' and r.struct_id == general)[:1]
+        self.assertTrue(otra.l10n_co_ne_ajustable, 'Apagar y prender el interruptor de la estructura no cambia las demás reglas')
 
     def test_la_unidad_de_las_reglas_de_la_estructura_general(self):
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
@@ -192,7 +210,7 @@ class TestE11Pieza2a(TransactionCase):
         regla = self._del_modulo('hr.salary.rule').filtered(lambda r: r.code == 'CO_OTRAS_DED' and r.struct_id == general)[:1]
         self.assertTrue(regla)
         with Form(regla) as formulario:
-            formulario.l10n_co_ne_ajustable = False             # editable aunque tenga valor por defecto
+            formulario.l10n_co_ne_ajustable = False             # editable aunque venga sembrado
             formulario.l10n_co_ne_unidad = 'dias'
         self.assertEqual((regla.l10n_co_ne_ajustable, regla.l10n_co_ne_unidad), (False, 'dias'))
 
@@ -207,4 +225,4 @@ class TestE11Pieza2a(TransactionCase):
         reglas = self._del_modulo('hr.salary.rule').filtered(lambda r: r.struct_id == estructura and r.category_id == categoria_dev)
         self.assertTrue(reglas, 'Premisa: la liquidación tiene reglas de incapacidades')
         for regla in reglas:
-            self.assertTrue(regla.l10n_co_ne_ajustable, 'Al activar la estructura sus reglas con sección pasan a ser ajustables por defecto')
+            self.assertFalse(regla.l10n_co_ne_ajustable, '.298: activar la estructura NO vuelve ajustables sus reglas; quien configura las marca una por una')

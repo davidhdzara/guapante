@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """E11 pieza 4a (.294, doc 74 §3): pestaña «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría UGPP).
 
-Qué se prueba: la vista (página por @name, solo para estructuras con el interruptor, sin estilos propios y de solo lectura); las secciones en su orden
-(Básico, Devengos, Bases, Deducciones y una por categoría de costo de la empresa); lo que NO aparece (BASIC/GROSS/NET, totales y filas en cero); la nota
-del ajuste con su sugerido; los días cotizados como número; que las filas se actualizan solas (al ajustar un concepto) y nunca cambian el cálculo; que nadie
-las escribe (ni un gerente: solo la regeneración); la visibilidad por compañía; la función de datos para los recibos que ya existen; y los datos nuevos
-(sección «bases» de los acumuladores, nombres sin «(interno)»). NO EJECUTADAS en Odoo al escribirlas."""
+.298 (decisión de David, 22-nov): la pestaña lleva SOLO Bases, Aportes de la empresa y Provisiones, con el total «Costo empresa» al pie; el sueldo, los
+devengos y las deducciones están en «Conceptos de pago». Regla de David: los conceptos se MUEVEN (se agrega una bonificación, se ajusta un devengado) y el
+cálculo es informativo: lo sigue. La prueba 14 lo verifica con las cifras de un cálculo manual.
+
+Qué se prueba: la vista (página por @name, solo para estructuras con el interruptor, sin estilos propios, de solo lectura y con el costo de la empresa al
+pie); las secciones y su orden; lo que NO aparece (BASIC/GROSS/NET, los conceptos, totales y filas en cero); los días cotizados como número; que las filas se
+actualizan solas y nunca cambian el cálculo; que nadie las escribe (ni un gerente: solo la regeneración); la visibilidad por compañía; la función de datos
+para los recibos que ya existen; los datos nuevos (sección «bases» de los acumuladores, nombres sin «(interno)»); y que la colilla sigue la estructura de
+«Conceptos de pago» sin bases ni costo de la empresa. NO EJECUTADAS en Odoo al escribirlas."""
 
 from datetime import date
 
@@ -89,6 +93,9 @@ class TestCalculoDelSalario(TransactionCase):
         texto = etree.tostring(pagina, encoding='unicode')
         for prohibido in ('text-muted', 'decoration-', 'fa fa-'):
             self.assertNotIn(prohibido, texto)
+        # .298: el pie lleva SOLO el total «Costo empresa» (los totales de devengado, deducciones y neto son de «Conceptos de pago»)
+        pie = [c.get('name') for c in pagina.xpath(".//group[@name='calculo_totales']/field")]
+        self.assertEqual(pie, ['l10n_co_costo_empresa'])
 
     def test_02_la_vista_heredada_no_selecciona_por_string(self):
         arch = etree.fromstring(self.env.ref('l10n_co_nomina_electronica.view_payslip_form_ne_calculo').arch_db.encode('utf-8'))
@@ -107,25 +114,23 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertTrue(prima.l10n_co_calculo_ids, 'Al activar el interruptor de la estructura, el siguiente cálculo genera las filas')
 
     # ── las filas ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    def test_04_secciones_en_orden_y_sin_las_nativas_ni_los_totales(self):
+    def test_04_solo_bases_aportes_de_la_empresa_y_provisiones_sin_las_nativas_ni_los_totales(self):
         recibo = self._recibo()
         filas = self._filas(recibo)
         titulos = [f.name for f in filas if f.display_type == 'line_section']
-        canonico = ['Básico', 'Devengos', 'Bases', 'Deducciones']
-        self.assertEqual([t for t in titulos if t in canonico], [t for t in canonico if t in titulos], 'Orden: Básico, Devengos, Bases, Deducciones')
-        for obligatoria in ('Básico', 'Bases', 'Deducciones'):
-            self.assertIn(obligatoria, titulos)
-        costo = [t for t in titulos if t not in canonico]
+        self.assertEqual(titulos[0], 'Bases', 'Las bases van primero')
+        for fuera in ('Básico', 'Devengos', 'Deducciones'):
+            self.assertNotIn(fuera, titulos, '.298: %s ya no está aquí: es de «Conceptos de pago»' % fuera)
+        costo = titulos[1:]
         self.assertTrue(costo, 'Los aportes de la empresa y las provisiones salen cada uno en su sección (el nombre de su categoría)')
-        self.assertEqual(titulos.index(costo[0]), len([t for t in canonico if t in titulos]),
-                         'Las secciones de costo de la empresa van DESPUÉS de las deducciones')
         codigos = set(filas.filtered('line_id').mapped('line_id.code'))
-        for ausente in ('BASIC', 'GROSS', 'NET', 'CO_BRUTO', 'CO_NETO'):
-            self.assertNotIn(ausente, codigos, '%s no se muestra (su categoría no tiene sección)' % ausente)
-        self.assertIn('CO_BASICO', codigos)
+        for ausente in ('BASIC', 'GROSS', 'NET', 'CO_BRUTO', 'CO_NETO', 'CO_BASICO', 'CO_AUX_TRANS', 'CO_SALUD_EMP', 'CO_PENSION_EMP'):
+            self.assertNotIn(ausente, codigos, '%s no se muestra (es de «Conceptos de pago» o su categoría no tiene sección)' % ausente)
         self.assertIn('CO_IBC_SP', codigos, 'Las bases (acumuladores) sí se muestran')
+        for linea in filas.filtered('line_id').mapped('line_id'):
+            self.assertIn(linea.category_id.l10n_co_ne_seccion_concepto, ('bases', 'costo_empresa'), linea.code)
 
-    def test_05_el_sueldo_va_solo_en_basico_y_los_aportes_de_la_empresa_y_provisiones_en_su_categoria(self):
+    def test_05_las_bases_los_aportes_de_la_empresa_y_las_provisiones_van_en_su_seccion(self):
         recibo = self._recibo()
         filas = self._filas(recibo)
         seccion_de = {}
@@ -135,9 +140,6 @@ class TestCalculoDelSalario(TransactionCase):
                 titulo = fila.name
             elif fila.line_id:
                 seccion_de[fila.line_id.code] = titulo
-        self.assertEqual(seccion_de['CO_BASICO'], 'Básico')
-        self.assertEqual(seccion_de.get('CO_AUX_TRANS'), 'Devengos')
-        self.assertEqual(seccion_de['CO_SALUD_EMP'], 'Deducciones')
         self.assertEqual(seccion_de['CO_IBC_SALARIAL'], 'Bases')
         categoria_aportes = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_seguridad_social_cia')
         categoria_provisiones = self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_provisiones')
@@ -163,22 +165,14 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertFalse(fila.unidad, 'No se cambia la fórmula de los acumuladores ni se les pone unidad: el número de días va en el Total')
         self.assertNotIn('(interno)', fila.name)
 
-    def test_08_se_actualiza_al_ajustar_un_concepto_desde_conceptos_de_pago_y_muestra_el_sugerido(self):
+    def test_08_las_filas_guardadas_son_lo_que_arma_el_modelo_despues_de_ajustar_un_concepto(self):
         recibo = self._recibo()
-        fila_concepto = recibo.l10n_co_concepto_ids.filtered(lambda f: not f.display_type and f.salary_rule_id.code == 'CO_SALUD_EMP')
-        sugerido = fila_concepto.total
-        self.assertLess(sugerido, 0.0, 'Premisa: la deducción de salud es negativa')
+        fila_concepto = recibo.l10n_co_concepto_ids.filtered(lambda f: not f.display_type and f.salary_rule_id.code == 'CO_BASICO')
         indice = recibo.l10n_co_concepto_ids.ids.index(fila_concepto.id)
         with Form(recibo) as formulario:
             with formulario.l10n_co_concepto_ids.edit(indice) as editada:
-                editada.amount = 0.0
-        salud = self._filas(recibo).filtered(lambda f: f.line_id.code == 'CO_SALUD_EMP')
-        self.assertEqual((salud.total, salud.ajustado), (0.0, True), 'La línea ajustada a 0 sigue visible y marcada')
+                editada.amount = fila_concepto.amount + 1000.0
         filas = self._filas(recibo)
-        siguiente = filas[list(filas.ids).index(salud.id) + 1]
-        self.assertEqual(siguiente.display_type, 'line_note')
-        self.assertTrue(siguiente.name.startswith('Ajustado por la empresa. Sugerido:'))
-        # las filas guardadas son exactamente lo que genera el armado sobre las líneas actuales
         esperado = self.Calculo._valores_del_recibo(recibo)
         guardado = [(f.display_type, f.name, f.line_id.id, f.total) for f in filas]
         self.assertEqual(guardado, [(v.get('display_type', False), v['name'], v.get('line_id', False), v.get('total', 0.0)) for v in esperado])
@@ -247,3 +241,103 @@ class TestCalculoDelSalario(TransactionCase):
             self.assertNotIn('(acumulador interno)', regla.name, regla.code)
         self.assertFalse(reglas.filtered(lambda r: r.category_id == acumuladores).filtered('l10n_co_ne_ajustable'),
                          'Las bases no son ajustables: solo devengados y deducciones')
+
+    # ── .298: los conceptos se MUEVEN y el cálculo es informativo (regla de David) ─────────────────────────────────────────────
+    def test_14_los_conceptos_se_mueven_y_el_calculo_los_sigue_con_las_cifras_de_un_calculo_manual(self):
+        """Regla de David (22-nov): se agrega una bonificación SALARIAL y se ajusta un devengado desde «Conceptos de pago»; en «Cálculo del salario» cambian el
+        IBC y los aportes de la empresa, y las cifras coinciden con las de un cálculo manual equivalente (mes completo de septiembre: 30 días de 30, sin
+        ausencias; sueldo 3.000.000 → 100.000 por día).
+
+        Las PROVISIONES se comparan también con el cálculo manual, pero HOY no se mueven: las reglas CO_PROV_* se calculan sobre el sueldo y el auxilio del
+        CONTRATO, no sobre lo pagado. Si deben seguir una bonificación o un ajuste (base prestacional con salario variable) es una decisión normativa que
+        cambia esas reglas, no esta pestaña."""
+        ref = self.env.ref
+        recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
+        fecha = recibo.date_from
+        contrato = recibo.contract_id
+
+        def parametro(codigo):
+            return recibo._rule_parameter(codigo, fecha)
+
+        def en_calculo():
+            return {f.line_id.code: f.total for f in self._filas(recibo) if f.line_id}
+
+        antes = en_calculo()
+        self.assertAlmostEqual(antes['CO_IBC_SALARIAL'], contrato.wage, delta=0.01, msg='Premisa: sin movimientos el IBC es el sueldo')
+
+        # 1. Bonificación salarial: fila nueva en «Conceptos de pago» con su tipo de novedad.
+        bonificacion = 500000.0
+        with Form(recibo) as formulario:
+            with formulario.l10n_co_concepto_ids.new() as fila:
+                fila.input_type_id = ref('l10n_co_nomina_electronica.input_co_bonif_sal')
+                fila.amount = bonificacion
+        # 2. Ajustar un devengado: el importe diario del sueldo básico pasa de 100.000 a 110.000.
+        basico = recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id.code == 'CO_BASICO')
+        self.assertEqual(len(basico), 1)
+        indice = recibo.l10n_co_concepto_ids.ids.index(basico.id)
+        with Form(recibo) as formulario:
+            with formulario.l10n_co_concepto_ids.edit(indice) as fila:
+                fila.amount = 110000.0
+        basico = recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id.code == 'CO_BASICO')
+        basico_nuevo = basico.quantity * 110000.0
+        self.assertAlmostEqual(basico.total, basico_nuevo, delta=0.01)
+        self.assertAlmostEqual(
+            sum(recibo.l10n_co_concepto_ids.filtered(lambda f: f.salary_rule_id.code == 'CO_BONIF_SAL').mapped('total')), bonificacion, delta=0.01)
+
+        despues = en_calculo()
+        # Los conceptos NO se repiten aquí: se ven y se editan en «Conceptos de pago».
+        for codigo in ('CO_BASICO', 'CO_BONIF_SAL'):
+            self.assertNotIn(codigo, despues)
+
+        # Cálculo manual. IBC = sueldo ajustado + bonificación salarial (sin ausencias, sin pagos no salariales pactados: no hay excedente del 40 %).
+        ibc = basico_nuevo + bonificacion
+        self.assertAlmostEqual(despues['CO_IBC_SALARIAL'], ibc, delta=0.01)
+        self.assertAlmostEqual(despues['CO_IBC_SP'], ibc, delta=0.01)
+        self.assertGreater(despues['CO_IBC_SP'], antes['CO_IBC_SP'], 'El IBC se movió con los conceptos')
+        # Aportes de la empresa: IBC x porcentaje del parámetro.
+        esperados = {
+            'CO_PENSION_CIA': ibc * parametro('l10n_co_pct_pension_empleador') / 100.0,
+            'CO_ARL_CIA': ibc * recibo._ne_pct_arl() / 100.0,
+            'CO_CCF_CIA': ibc * parametro('l10n_co_pct_ccf') / 100.0}
+        exonerado = recibo.company_id._is_exonerado_parafiscales(ibc, fecha)
+        for codigo, pct in (('CO_SALUD_CIA', 'l10n_co_pct_salud_empleador'), ('CO_SENA_CIA', 'l10n_co_pct_sena'), ('CO_ICBF_CIA', 'l10n_co_pct_icbf')):
+            if exonerado:
+                self.assertNotIn(codigo, despues, '%s: exonerado (Ley 1607/2012)' % codigo)
+            else:
+                esperados[codigo] = ibc * parametro(pct) / 100.0
+        for codigo, esperado in esperados.items():
+            self.assertAlmostEqual(despues[codigo], esperado, delta=0.01, msg=codigo)
+        for codigo in ('CO_PENSION_CIA', 'CO_ARL_CIA', 'CO_CCF_CIA'):
+            self.assertGreater(despues[codigo], antes[codigo], '%s se movió con los conceptos' % codigo)
+        # Provisiones: cálculo manual sobre el sueldo y el auxilio del contrato (un mes completo: factor 1). Hoy no se mueven.
+        sueldo = contrato.wage
+        auxilio = parametro('l10n_co_aux_transporte') if sueldo <= parametro('l10n_co_smmlv') * parametro('l10n_co_aux_transporte_tope_smmlv') else 0.0
+        base = sueldo + auxilio
+        cesantias = base / 12.0
+        provisiones = {
+            'CO_PROV_PRIMA': base / 12.0, 'CO_PROV_CESANTIAS': cesantias,
+            'CO_PROV_INT_CES': cesantias * parametro('l10n_co_pct_intereses_cesantias') / 100.0,
+            'CO_PROV_VACACIONES': sueldo * parametro('l10n_co_dias_mes_comercial') / parametro('l10n_co_divisor_vacaciones')}
+        for codigo, esperado in provisiones.items():
+            self.assertAlmostEqual(despues[codigo], esperado, delta=0.01, msg=codigo)
+            self.assertAlmostEqual(despues[codigo], antes[codigo], delta=0.01, msg='%s hoy no depende de lo pagado' % codigo)
+        # El total «Costo empresa» del pie es la suma de los aportes y las provisiones que muestra la pestaña.
+        costo = sum(f.total for f in self._filas(recibo) if f.line_id and f.line_id.category_id.l10n_co_ne_seccion_concepto == 'costo_empresa')
+        self.assertAlmostEqual(recibo.l10n_co_costo_empresa, costo, delta=0.01)
+        self.assertGreater(costo, 0.0)
+
+    def test_15_la_colilla_sigue_la_estructura_de_conceptos_de_pago_sin_bases_ni_costo_de_la_empresa(self):
+        """Regla de David: la colilla tiene la MISMA estructura que «Conceptos de pago» (devengados y deducciones, con los totales y el neto): sin las
+        bases ni el costo de la empresa, que son de «Cálculo del salario»."""
+        recibo = self._recibo()
+        colilla = recibo._ne_colilla()
+        self.assertEqual([s['seccion'] for s in colilla['secciones']], ['devengados', 'deducciones'])
+        filas = recibo._ne_filas_de_concepto()
+        for fila in filas:
+            self.assertIn(fila['linea'].category_id.l10n_co_ne_seccion_concepto, ('devengados', 'deducciones'), fila['linea'].code)
+        self.assertEqual(sum(len(s['filas']) for s in colilla['secciones']), len(filas), 'Las mismas filas que «Conceptos de pago»')
+        self.assertAlmostEqual(colilla['total_devengado'], recibo.l10n_co_total_devengado, delta=0.01)
+        self.assertAlmostEqual(colilla['total_deducciones'], recibo.l10n_co_total_deducciones, delta=0.01)
+        self.assertAlmostEqual(colilla['neto'], recibo.net_wage, delta=0.01)
+        calculo = set(self._filas(recibo).filtered('line_id').mapped('line_id'))
+        self.assertFalse(calculo & set(f['linea'] for f in filas), 'Ninguna línea está en la colilla y en «Cálculo del salario» a la vez')

@@ -138,12 +138,21 @@ class TestConceptosDePago(TransactionCase):
         self.assertEqual(self.env['l10n.co.payslip.concepto']._fields['rate']._digits, 'Payroll Rate',
                          'El campo del modelo conserva su precisión: el cambio es solo de presentación')
 
-    def test_el_tipo_de_novedad_es_una_columna_opcional_oculta_por_defecto(self):
-        """.297: en las filas calculadas el tipo sale vacío; pasa a columna opcional (patrón nativo de las listas de Ventas, ``optional="hide"``)."""
+    def test_el_tipo_de_novedad_es_una_columna_opcional_visible_por_defecto(self):
+        """.298: en las filas calculadas el tipo sale vacío, pero en «Agregar concepto» es OBLIGATORIO y ahí se elige: columna opcional VISIBLE por defecto (patrón
+        nativo de las listas de Ventas, ``optional="show"``; en .297 salía ``hide`` y el usuario no veía dónde elegirlo)."""
         columna = self._columna('input_type_id')
-        self.assertEqual(columna.get('optional'), 'hide')
-        self.assertFalse(columna.get('column_invisible'), 'Sigue disponible en el menú de columnas opcionales')
+        self.assertEqual(columna.get('optional'), 'show')
+        self.assertFalse(columna.get('column_invisible'))
         self.assertEqual(self._columna('name').get('optional'), None, 'Solo el tipo es opcional')
+
+    def test_el_pie_de_conceptos_de_pago_no_lleva_el_costo_de_la_empresa(self):
+        """.298 (David): el «Costo empresa» pasa al pie de «Cálculo del salario»; aquí quedan Total devengado, Total deducciones y Neto."""
+        vista = self.env['hr.payslip'].get_view(view_type='form')
+        arch = etree.fromstring(vista['arch'].encode('utf-8') if isinstance(vista['arch'], str) else vista['arch'])
+        pagina = arch.xpath("//page[@name='conceptos_de_pago']")[0]
+        pie = [c.get('name') for c in pagina.xpath(".//group[@name='conceptos_totales']/field")]
+        self.assertEqual(pie, ['l10n_co_total_devengado', 'l10n_co_total_deducciones', 'net_wage'])
 
     # ── estructuras con y sin el interruptor ──────────────────────────────────────────────────────────────────────────────────
     def test_03_solo_las_estructuras_con_el_interruptor_tienen_filas(self):
@@ -222,7 +231,7 @@ class TestConceptosDePago(TransactionCase):
     # ── editar con Form (el mismo camino del cliente web) ──────────────────────────────────────────────────────────────────────
     def test_08_editar_el_importe_de_una_fila_ajustable_crea_el_ajuste_y_recalcula_una_vez(self):
         recibo = self._recibo()
-        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        fila = self._fila(recibo, 'CO_AUX_TRANS')
         self.assertTrue(fila.edita_importe and fila.edita_cantidad and fila.edita_porcentaje, 'Gerente: la fila ajustable se edita')
         sugerido, neto0 = fila.total, recibo._ne_pdf_neto()
         espia, llamadas = self._contando_calculos(recibo)
@@ -232,10 +241,10 @@ class TestConceptosDePago(TransactionCase):
                     editada.amount = 0.0
         self.assertEqual(llamadas, [recibo.ids], 'UN recálculo por guardado')
         ajuste = recibo.l10n_co_ajuste_ids
-        self.assertEqual((len(ajuste), ajuste.salary_rule_id.code, ajuste.amount, ajuste.estado), (1, 'CO_SALUD_EMP', 0.0, 'aplicado'))
+        self.assertEqual((len(ajuste), ajuste.salary_rule_id.code, ajuste.amount, ajuste.estado), (1, 'CO_AUX_TRANS', 0.0, 'aplicado'))
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
-        self.assertEqual(self._total(recibo, 'CO_SALUD_EMP'), 0.0)
-        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
+        fila = self._fila(recibo, 'CO_AUX_TRANS')
         self.assertEqual((fila.total, fila.ajustado), (0.0, True), 'La fila se regeneró con el valor ajustado')
         siguiente = recibo.l10n_co_concepto_ids[self._indice(recibo, fila) + 1]
         self.assertEqual(siguiente.display_type, 'line_note', 'La nota va como fila nativa line_note, justo debajo')
@@ -312,20 +321,31 @@ class TestConceptosDePago(TransactionCase):
             self.Concepto.create({'slip_id': recibo.id, 'amount': 5.0})   # sin tipo de novedad
 
     def test_12_una_regla_no_ajustable_deja_su_fila_de_solo_lectura(self):
+        """.298: se desmarca una regla que venía ajustable (el auxilio): su fila queda de solo lectura. La salud ya viene así sembrada (siguiente prueba)."""
         recibo = self._recibo()
-        regla = self._fila(recibo, 'CO_SALUD_EMP').salary_rule_id
+        regla = self._fila(recibo, 'CO_AUX_TRANS').salary_rule_id
         regla.l10n_co_ne_ajustable = False
         recibo.compute_sheet()
-        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        fila = self._fila(recibo, 'CO_AUX_TRANS')
         self.assertEqual((fila.edita_cantidad, fila.edita_porcentaje, fila.edita_importe), (False, False, False))
         with self.assertRaises(AssertionError):
             with Form(recibo) as formulario:
                 with formulario.l10n_co_concepto_ids.edit(self._indice(recibo, fila)) as editada:
                     editada.amount = 0.0
 
+    def test_12b_las_filas_de_ley_y_de_cuenta_de_la_empresa_vienen_de_solo_lectura_por_decision_de_david(self):
+        """.298 (21-nov, riesgo UGPP): salud, pensión, FSP, retención y embargos del empleado no se ajustan, aunque el usuario sea gerente. Depende del XML sembrado
+        (necesita ``-u``)."""
+        recibo = self._recibo()
+        for codigo in ('CO_SALUD_EMP', 'CO_PENSION_EMP'):
+            fila = self._fila(recibo, codigo)
+            self.assertTrue(fila, codigo)
+            self.assertEqual((fila.edita_cantidad, fila.edita_porcentaje, fila.edita_importe), (False, False, False), codigo)
+        self.assertTrue(self._fila(recibo, 'CO_BASICO').edita_importe, 'El sueldo sí se ajusta')
+
     def test_13_un_recibo_hecho_conserva_sus_filas_y_no_las_deja_editar(self):
         recibo = self._recibo()
-        fila = self._fila(recibo, 'CO_SALUD_EMP')
+        fila = self._fila(recibo, 'CO_AUX_TRANS')
         cantidad = len(recibo.l10n_co_concepto_ids)
         recibo.write({'state': 'done'})
         self.assertEqual(len(recibo.l10n_co_concepto_ids), cantidad)
@@ -341,13 +361,13 @@ class TestConceptosDePago(TransactionCase):
             'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 100000.0})
         gerente = self._usuario('gerente_conceptos', (_G_MANAGER, 'base.group_user'), self.company)
         oficial = self._usuario('oficial_conceptos', (_G_USER, 'base.group_user'), self.company)
-        salud = self._fila(recibo, 'CO_SALUD_EMP')
+        auxilio = self._fila(recibo, 'CO_AUX_TRANS')
         novedad = self._fila(recibo, 'CO_BONIF_NOSAL')
-        self.assertTrue(salud.with_user(gerente).edita_importe)
-        self.assertFalse(salud.with_user(oficial).edita_importe, 'El oficial no ajusta conceptos calculados')
+        self.assertTrue(auxilio.with_user(gerente).edita_importe)
+        self.assertFalse(auxilio.with_user(oficial).edita_importe, 'El oficial no ajusta conceptos calculados')
         self.assertTrue(novedad.with_user(oficial).edita_importe, 'Pero sí edita novedades')
         with self.assertRaises(AccessError):
-            salud.with_user(oficial).write({'amount': 0.0})
+            auxilio.with_user(oficial).write({'amount': 0.0})
         novedad.with_user(oficial).write({'amount': 90000.0})
         self.assertEqual(novedad.input_id.amount, 90000.0)
 
