@@ -3284,25 +3284,36 @@ class HrPayslip(models.Model):
                 l.total for l in concept_lines['ViaticoNS']
             )
 
-    # Porcentaje (tabla 5.5.5 del Anexo) de cada hora extra/recargo, derivado del MISMO factor
-    # hr.rule.parameter con el que se calcula el pago: (factor - 1) x 100 en las extras (el
-    # factor incluye la hora ordinaria) y factor x 100 en el recargo nocturno (solo el recargo).
-    # PENDIENTE (decision de David): los 4 conceptos dominicales/festivos (HEDDF, HRDDF, HENDF,
-    # HRNDF) -- la tabla 5.5.5 y la Ley 2466/2025 no coinciden; mientras tanto conservan line.rate.
+    # Porcentaje (tabla 5.5.5 del Anexo) de cada hora extra/recargo, derivado del MISMO factor hr.rule.parameter con el que se calcula el pago: (factor - 1) x 100 en las extras y en los 4
+    # conceptos dominicales/festivos (el factor incluye la hora ordinaria) y factor x 100 en el recargo nocturno (solo el recargo).
+    # H-F1-05 (decision del TL con la doctrina DIAN): los 4 conceptos dominicales/festivos (HEDDF, HRDDF, HENDF, HRNDF) salian con ``line.rate`` (100). El Concepto DIAN 13840 de 2025 dice que HRDDF
+    # informa el porcentaje de la tabla 5.5.5 (75 %) «que debe leerse en consonancia con la normatividad vigente» -- el 80 % de la Ley 2466/2025 desde 2025-07-01, 90 % desde 2026-07-01, 100 % desde
+    # 2027-07-01 -- y que varios porcentajes en un mismo mes no impiden generar ni validar el documento. Abril 2026: HEDDF 105, HRDDF 80, HENDF 155, HRNDF 115; desde 2026-07-01: 115, 90, 165, 125.
+    # La FECHA es la del pago, no una «fecha del trabajo» (no existe: las horas entran por novedad, sin fecha): las reglas CO_HED...CO_HRNDF leen el factor en ``payslip.date_from`` y el XML usa
+    # exactamente el mismo factor y la misma fecha, asi Porcentaje y Pago nunca difieren. Las vigencias cambian el dia 1 del mes: en recibos quincenales y mensuales no hay cruce. LIMITE CONOCIDO: un
+    # recibo semanal (u otro periodo irregular) que cruce el 1-jul usa el factor del dia de inicio para todas sus horas, en el pago y en el XML por igual (como la jornada del 15-jul, doc 67).
+    # Cambia el XML, NO el pago ni el neto.
     _NE_PORCENTAJE_HORA_FACTOR = {
         'HED': ('l10n_co_factor_hed', -1.0),
         'HEN': ('l10n_co_factor_hen', -1.0),
         'HRN': ('l10n_co_factor_hrn', 0.0),
+        'HEDDF': ('l10n_co_factor_heddf', -1.0),
+        'HRDDF': ('l10n_co_factor_hrddf', -1.0),
+        'HENDF': ('l10n_co_factor_hendf', -1.0),
+        'HRNDF': ('l10n_co_factor_hrndf', -1.0),
     }
 
-    def _ne_porcentaje_hora(self, concepto, line):
+    def _ne_porcentaje_hora_en(self, concepto, fecha):
+        """Porcentaje (tabla 5.5.5) del ``concepto`` de horas extra o recargo (uno de los 7 de ``HORA_EXTRA_CONCEPTS``) con el factor que ``hr.rule.parameter`` tiene en ``fecha``. UNICO lugar
+        del calculo: ``_ne_porcentaje_hora`` lo llama con la fecha del pago (``date_from`` del recibo)."""
         self.ensure_one()
-        parametro = self._NE_PORCENTAJE_HORA_FACTOR.get(concepto)
-        if not parametro:
-            return line.rate or 0.0
-        codigo, ajuste = parametro
-        factor = self._rule_parameter(codigo, self._ne_fecha_parametros())
-        return round((factor + ajuste) * 100.0, 2)
+        codigo, ajuste = self._NE_PORCENTAJE_HORA_FACTOR[concepto]
+        return round((self._rule_parameter(codigo, fecha) + ajuste) * 100.0, 2)
+
+    def _ne_porcentaje_hora(self, concepto, line):
+        """Porcentaje del XML de una linea de horas extra o recargo: el del factor vigente en ``date_from`` del recibo, la misma fecha con que las reglas calculan el pago (ver arriba)."""
+        self.ensure_one()
+        return self._ne_porcentaje_hora_en(concepto, self.date_from)
 
     def _dev_horas_extra(self, concept_lines, devengados):
         """Devengados: horas extras y recargos."""
