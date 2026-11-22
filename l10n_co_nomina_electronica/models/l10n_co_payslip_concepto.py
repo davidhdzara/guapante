@@ -156,7 +156,12 @@ class L10nCoPayslipConcepto(models.Model):
         if self.env.context.get('ne_regenerar_conceptos'):
             return super().unlink()
         for fila in self:
-            if fila.display_type or fila.origen != 'novedad' or not fila.input_id:
+            # QA sobre .298 (pedido del TL): al borrar una sección el mensaje hablaba de «concepto calculado»; las secciones y las notas tienen su propio texto.
+            if fila.display_type == 'line_section':
+                raise UserError(_('Las secciones no se pueden borrar.'))
+            if fila.display_type == 'line_note':
+                raise UserError(_('Las notas no se pueden borrar.'))
+            if fila.origen != 'novedad' or not fila.input_id:
                 raise UserError(_(
                     'Solo se borran las novedades que usted agregó. Para quitar el efecto de un concepto calculado, ajústelo (por ejemplo a 0).'))
             self.env['l10n.co.payslip.ajuste']._validar_recibos_ajustables(fila.slip_id)

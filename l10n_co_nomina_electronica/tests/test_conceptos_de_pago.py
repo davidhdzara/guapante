@@ -313,8 +313,10 @@ class TestConceptosDePago(TransactionCase):
         with self.assertRaises(UserError):
             calculada.write({'name': 'Otro nombre'})
         seccion = recibo.l10n_co_concepto_ids.filtered(lambda f: f.display_type == 'line_section')[:1]
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, 'Las secciones no se pueden borrar'):       # QA sobre .298: sin hablar de «concepto calculado»
             seccion.unlink()
+        with self.assertRaisesRegex(UserError, 'Solo se borran las novedades'):
+            calculada.unlink()
         with self.assertRaises(UserError):
             self.Concepto.create({'slip_id': recibo.id, 'display_type': 'line_note', 'name': 'Nota a mano'})
         with self.assertRaises(UserError):
