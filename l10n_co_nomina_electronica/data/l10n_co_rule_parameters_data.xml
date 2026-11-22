@@ -1568,4 +1568,22 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
         <field name="rule_parameter_id" ref="rule_parameter_divisor_prov_cesantias"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
+
+    <!-- H-F2-02 (decisión del TL del 22-nov): los tipos de cotizante para los que el número de horas laboradas de la PILA (registro tipo 2, campo 96) es obligatorio: sin horario de trabajo en el contrato, error. -->
+    <record id="rule_parameter_pila_horas_laboradas_tipos" model="hr.rule.parameter">
+        <field name="name">Colombia: Tipos de Cotizante que Exigen las Horas Laboradas en la PILA</field>
+        <field name="code">l10n_co_pila_horas_laboradas_tipos</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: una lista con los códigos de tipo de cotizante PILA para los que el campo «Número de horas laboradas» (registro tipo 2, campo 96) es obligatorio, por ejemplo
+<code>['51']</code>. Para los demás tipos el campo es opcional: se envía con las horas semanales del horario de trabajo del contrato, dividido por 7 y por los días cotizados, y vacío si el contrato no tiene horario o es de horas flexibles. Si el tipo
+del contrato está en la lista y no hay horario, el asistente de PILA se detiene con un error que nombra al empleado.</p>
+<h3 class="mt-5">Norma</h3>
+<p>Resolución 980 de 2017, art. 2 (modifica el Anexo Técnico 2 de la Resolución 2388 de 2016): campo 96, tres posiciones, numérico, lo suministra el aportante. <strong>NO VERIFICADO:</strong> qué tipos lo exigen según el texto
+consolidado vigente del Anexo (modificado en 2020, 2022 y 2023); el valor de fábrica (51, tiempo parcial) es la decisión del Tech Lead. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_pila_horas_laboradas_tipos_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">['51']</field>
+        <field name="rule_parameter_id" ref="rule_parameter_pila_horas_laboradas_tipos"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
 </odoo>

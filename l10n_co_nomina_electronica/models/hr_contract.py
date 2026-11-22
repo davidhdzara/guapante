@@ -14,6 +14,7 @@ V1.0, sección 6.2.8, atributos TipoContrato y SalarioIntegral.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_round
 from odoo.tools.misc import format_amount
 
 from .res_company import NE_CLASES_RIESGO
@@ -209,6 +210,42 @@ class HrContract(models.Model):
                 'bloque PILA) la tienen configurada.',
                 employee=self.employee_id.name, company=self.company_id.name))
         return clase
+
+    def _ne_horas_semanales(self):
+        """Horas semanales del HORARIO DE TRABAJO del contrato: la suma de las asistencias de trabajo de UNA semana (``resource.calendar._get_global_attendances``: sin la pausa del almuerzo, sin las secciones y sin las
+        asistencias con fechas propias ni de un recurso); en un horario de dos semanas, la suma de las dos dividida por 2. Cero si el contrato no tiene horario o es de horas flexibles (sin jornada que sumar). Odoo 18 no
+        trae un campo de horas semanales en el calendario (``hours_per_day`` es el promedio por día con jornada y ``full_time_required_hours`` es la jornada completa de la compañía)."""
+        self.ensure_one()
+        calendario = self.resource_calendar_id
+        if not calendario or calendario.flexible_hours:
+            return 0.0
+        horas = sum(asistencia.hour_to - asistencia.hour_from for asistencia in calendario._get_global_attendances())
+        return horas / 2 if calendario.two_weeks_calendar else horas
+
+    def _ne_horas_laboradas_pila(self, dias, fecha):
+        """Número de horas laboradas del registro tipo 2 de la PILA (campo 96; H-F2-02, decisión del TL del 22-nov, corregida por él mismo): UNA sola fuente, sin el 8 fijo de antes. Son las horas SEMANALES del horario de
+        trabajo del contrato (``_ne_horas_semanales``) / 7 por los días cotizados ``dias`` (los de CCF/SENA/ICBF, ``CO_DIAS_PARAF``), redondeado a entero: la misma jornada de 42 h da 180 en 30 días trabaje 5 o 6 días a la
+        semana (una fórmula de horas por día × días cotizados cuenta como trabajados los días de descanso). Sin horario, o con horario de horas flexibles, el campo va VACÍO: es opcional para la mayoría de los tipos
+        de cotizante y no se inventa un valor. Si el tipo de cotizante del contrato es de los que lo exigen (parámetro ``l10n_co_pila_horas_laboradas_tipos``, p. ej. el 51 de tiempo parcial) y no hay de dónde sacarlo, error
+        claro que nombra al empleado y qué completar. Devuelve un entero o ``''``. NO VERIFICADO: la lista de tipos que lo exigen (Resolución 980 de 2017, art. 2; texto consolidado del Anexo Técnico 2 sin leer) y
+        qué espera el operador PILA en el campo."""
+        self.ensure_one()
+        semanales = self._ne_horas_semanales()
+        if semanales > 0:
+            return int(float_round(semanales / 7 * dias, precision_digits=0))
+        try:
+            exigidos = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_pila_horas_laboradas_tipos', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Tipos de Cotizante que Exigen las Horas Laboradas en la PILA» (código l10n_co_pila_horas_laboradas_tipos) para el %(fecha)s, que se necesita para '
+                'armar el campo de horas laboradas de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
+                fecha=fecha, empleado=self.employee_id.name)) from None
+        if self.l10n_co_pila_tipo_cotizante in exigidos:
+            raise UserError(_(
+                'El tipo de cotizante %(tipo)s de %(empleado)s exige el número de horas laboradas en la PILA (campo 96) y el contrato %(contrato)s no tiene un horario de trabajo con jornada: no hay horario '
+                'o es de horas flexibles. Asigne al contrato un horario de trabajo con sus horas de la semana (no flexible).',
+                tipo=self.l10n_co_pila_tipo_cotizante, empleado=self.employee_id.name, contrato=self.name))
+        return ''
 
     def _ne_centro_trabajo(self):
         """Centro de trabajo ARL efectivo (contrato -> empresa). Sin ninguno: UserError."""

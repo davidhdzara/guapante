@@ -958,7 +958,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
 
             # Campos finales
             'ibc_otros_parafiscales': ibc_paraf,
-            'horas_laboradas': dias_paraf * 8,
+            'horas_laboradas': contract._ne_horas_laboradas_pila(dias_paraf, payslip.date_from),      # H-F2-02: del horario del contrato; vacio si no hay (opcional)
             'fecha_radicacion_exterior': str(
                 getattr(employee, 'l10n_co_pila_fecha_radicacion_ext', '')
                 or '') if getattr(
