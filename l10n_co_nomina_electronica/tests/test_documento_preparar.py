@@ -307,6 +307,7 @@ class TestDocumentoPreparar(TransactionCase):
     def test_sin_el_parametro_del_plazo_un_error_que_lo_nombra(self):
         a1, a2, _b1 = self._marzo()
         doc = self._preparar(a1 | a2)['documentos']
-        self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_ne_dias_plazo_transmision')]).unlink()
+        parametro = self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_ne_dias_plazo_transmision')])
+        parametro.parameter_version_ids.unlink()                      # se borran los VALORES (no el parámetro): sin ninguna vigencia no hay valor y el plazo debe dar el error que lo nombra
         with self.assertRaisesRegex(UserError, 'l10n_co_ne_dias_plazo_transmision'):
             self._plazo_virtual(doc, date(2026, 3, 1))

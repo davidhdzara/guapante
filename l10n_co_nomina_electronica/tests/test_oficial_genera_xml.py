@@ -3,17 +3,25 @@
 """H-F2-03 (C4; pedido del TL tras aprobar ``_ne_pin_del_software``; decision posterior del TL, 22-nov): el flujo REAL de generar el XML de un recibo con usuarios que NO son superusuario, de punta a punta:
 validacion de la configuracion (``_l10n_co_ne_validar_config``: software, PIN y certificado), ``SoftwareSC`` del ``ProveedorXML`` y CUNE. Con el fixture de ``test_documento_generar_real`` (recibos calculados por el
 motor, ``_collect_payslip_data``, constructor del XML y CUNE sin parchear) pero SIN parchear ``_get_ne_certificate``: aqui se lee el certificado de la compania con ``certificate.certificate`` de verdad (un registro
-con contenido de relleno: la carga del PEM no falla), y solo se simulan la carga de la llave y la firma (no hay certificado de prueba). Las pruebas con ``_get_ne_certificate`` parcheado (p. ej. el flujo de usuario
+con un X.509 AUTOFIRMADO generado con ``cryptography``, en PEM y sin llave privada), y solo se simulan la carga de la llave y la firma (no hay llave real que firme). Las pruebas con ``_get_ne_certificate`` parcheado (p. ej. el flujo de usuario
 real) ocultaban el defecto previo: ``certificate.certificate`` solo da permiso de acceso a ``base.group_system`` y el certificado se leia sin ``sudo``.
+Por que no un contenido de relleno: desde el commit ``cb27fb63ba`` de la 18.0 (marzo de 2026) el addon ``certificate`` tiene ``_constrains_certificate_loaded``, que lanza ``ValidationError`` al crear un registro con
+``content`` que no se puede cargar; un X.509 valido funciona igual con y sin esa restriccion (sin llave privada: no se crea ``certificate.key`` ni corre la compatibilidad certificado-llave).
 
 Decision del TL: (1) ``_get_ne_certificate`` lee con ``sudo`` (como Facturacion, ``certificates_sudo[-1]``) y el sudo NO abre el modelo; (2) generar o transmitir el XML exige al administrador de nomina en TODOS los modos
 (acciones del recibo y asistente «Enviar y Procesar»): el OFICIAL recibe un error claro, no un AccessError del certificado; el ADMINISTRADOR de nomina que no es del sistema genera el XML completo; el del SISTEMA igual.
 NO ejecutadas."""
 
 import base64
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from unittest.mock import patch
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.x509.oid import NameOID
 from lxml import etree
 
 from odoo.addons.l10n_co_nomina_electronica.services import cune as cune_service, xml_signer
@@ -22,6 +30,20 @@ from odoo.service.model import get_public_method
 from odoo.tests.common import TransactionCase, tagged
 
 from . import test_documento_generar_real as real
+
+NOMBRE_CERTIFICADO = 'Certificado de prueba nomina electronica'
+
+
+@lru_cache(maxsize=1)
+def _certificado_autofirmado_pem():
+    """X.509 autofirmado (RSA 2048, SHA-256, 10 anos) en PEM y SIN la llave privada, para que ``certificate.certificate`` lo cargue de verdad. Se genera una vez por proceso."""
+    llave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nombre = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, NOMBRE_CERTIFICADO)])
+    ahora = datetime.now(timezone.utc)
+    certificado = (x509.CertificateBuilder().subject_name(nombre).issuer_name(nombre).public_key(llave.public_key())
+                   .serial_number(x509.random_serial_number()).not_valid_before(ahora - timedelta(days=1)).not_valid_after(ahora + timedelta(days=3650))
+                   .sign(llave, hashes.SHA256()))
+    return certificado.public_bytes(Encoding.PEM)
 
 
 @tagged('post_install', '-at_install')
@@ -37,7 +59,7 @@ class TestOficialGeneraXml(real.TestDocumentoGenerarReal):
             parche.start()
             self.addCleanup(parche.stop)
         self.certificado = self.env['certificate.certificate'].sudo().create({
-            'name': 'Certificado de relleno', 'company_id': self.company.id, 'content': base64.b64encode(b'no es un certificado: solo ocupa el lugar')})
+            'name': NOMBRE_CERTIFICADO, 'company_id': self.company.id, 'content': base64.b64encode(_certificado_autofirmado_pem())})
 
     def _usuario(self, login, *grupos):
         refs = ('base.group_user',) + grupos
