@@ -186,17 +186,54 @@ class TestConceptosDePago(TransactionCase):
         deducciones = filas[list(filas.ids).index(secciones[1].id) + 1:]
         self.assertTrue(all(f.line_id.category_id.l10n_co_ne_seccion_concepto == 'deducciones' for f in deducciones if f.line_id))
 
-    def test_05_los_dias_trabajados_salen_bajo_el_sueldo_solo_con_cantidad_y_unidad(self):
+    def test_05_los_dias_trabajados_salen_bajo_el_sueldo_en_una_sola_fila_asistencia_solo_con_cantidad_y_unidad(self):
+        """Ajuste de David (22-nov, decisión del TL: opción B): el descanso remunerado NO se desagrega en «Conceptos de pago». Bajo el sueldo sale UNA fila de días,
+        «Asistencia», con la suma de asistencia + festivos trabajados + descansos remunerados + ajuste del mes comercial (los días pagados con el sueldo), solo con cantidad y
+        unidad. El desglose por fecha de E2a sigue en la pestaña de días trabajados."""
         recibo = self._recibo()
         filas = recibo.l10n_co_concepto_ids
         sueldo = self._fila(recibo, 'CO_BASICO')
         siguientes = filas[list(filas.ids).index(sueldo.id) + 1:]
         dias = siguientes.filtered(lambda f: f.origen == 'dias')
         self.assertTrue(dias, 'Premisa: el recibo trae líneas de días trabajados')
-        self.assertEqual(siguientes[0].origen, 'dias', 'Las filas de días van JUSTO bajo el sueldo')
+        self.assertEqual(siguientes[0].origen, 'dias', 'La fila de días va JUSTO bajo el sueldo')
+        tipos = recibo._ne_tipos_dias_de_asistencia()
+        lineas = recibo.worked_days_line_ids.filtered(lambda w: w.work_entry_type_id in tipos and (w.number_of_days or w.number_of_hours))
+        self.assertTrue(lineas, 'Premisa: hay líneas de asistencia')
+        asistencia = dias[0]
+        self.assertEqual(asistencia.quantity, sum(lineas.mapped('number_of_days')), 'La suma de los días pagados con el sueldo')
+        self.assertEqual(asistencia.quantity, sueldo.quantity, 'Es la cantidad del Sueldo Básico: la fila que lo representa')
+        self.assertEqual(asistencia.name, lineas[0].name or lineas[0].work_entry_type_id.name)
+        nombres = [(f.name or '').lower() for f in filas]
+        self.assertFalse([n for n in nombres if 'descanso' in n or 'ajuste mes' in n or 'festivo' in n], 'Sin el desagregado en esta pestaña')
         for fila in dias:
             self.assertEqual((fila.unidad, fila.amount, fila.total, fila.edita_cantidad, fila.edita_importe), ('dias', 0.0, 0.0, False, False))
             self.assertTrue(fila.quantity or fila.worked_day_id.number_of_hours)
+
+    def test_05b_asistencia_y_descansos_remunerados_se_juntan_en_una_fila_y_las_ausencias_siguen_aparte(self):
+        """El caso de la captura de David: «Asistencia 11 días» y «Descansos remunerados 4 días» salían como DOS filas; ahora una sola «Asistencia» con 15. Una línea de
+        vacaciones NO se junta (es otro concepto). La pestaña de días trabajados no cambia."""
+        recibo = self._recibo()
+        ref = self.env.ref
+        asistencia = recibo._ne_tipo_asistencia()
+        descanso = ref('l10n_co_nomina_electronica.hr_work_entry_type_co_descanso_remunerado')
+        vacaciones = self.env['hr.work.entry.type'].search([('code', '=', 'CO_VAC')], limit=1)
+        recibo.worked_days_line_ids.unlink()
+        Dia = self.env['hr.payslip.worked_days']
+        valores = lambda tipo, dias, secuencia: {'payslip_id': recibo.id, 'work_entry_type_id': tipo.id, 'number_of_days': dias, 'number_of_hours': dias * 7.0, 'sequence': secuencia}
+        Dia.create([valores(asistencia, 11.0, 1), valores(descanso, 4.0, 2)] + ([valores(vacaciones, 3.0, 3)] if vacaciones else []))
+        self.Concepto._regenerar_de_recibos(recibo)
+        dias = recibo.l10n_co_concepto_ids.filtered(lambda f: f.origen == 'dias')
+        asistencias = dias.filtered(lambda f: f.quantity == 15.0)
+        self.assertEqual(len(asistencias), 1, 'UNA fila con 15 días: asistencia + descansos remunerados')
+        self.assertEqual(asistencias.name, asistencia.name)
+        self.assertFalse(dias.filtered(lambda f: 'descanso' in (f.name or '').lower()))
+        if vacaciones:
+            self.assertEqual(len(dias), 2, 'Asistencia y las vacaciones, cada una en su fila')
+            self.assertIn(3.0, dias.mapped('quantity'))
+        else:
+            self.assertEqual(len(dias), 1)
+        self.assertEqual(len(recibo.worked_days_line_ids), 2 + (1 if vacaciones else 0), 'La pestaña de días trabajados sigue desglosada')
 
     def test_06_los_totales_del_pie_salen_de_las_lineas_y_coinciden_con_las_filas(self):
         recibo = self._recibo()

@@ -148,9 +148,16 @@ class TestColillaConceptos(TransactionCase):
                 if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
                         and recibo.struct_id.use_worked_day_lines):
                     dias_puestos = True
-                    for dia in recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)):
-                        if not (dia.number_of_days or dia.number_of_hours):
-                            continue
+                    # Ajuste de David (22-nov): UNA fila «Asistencia» con los días pagados con el sueldo; las demás líneas (ausencias), cada una en su fila.
+                    lineas_dias = recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)).filtered(lambda w: w.number_of_days or w.number_of_hours)
+                    tipos_asistencia = recibo._ne_tipos_dias_de_asistencia()
+                    de_asistencia = lineas_dias.filtered(lambda w: w.work_entry_type_id in tipos_asistencia)
+                    if de_asistencia:
+                        valores.append({
+                            'slip_id': recibo.id, 'sequence': siguiente(), 'name': de_asistencia[0].name or de_asistencia[0].work_entry_type_id.name,
+                            'origen': 'dias', 'worked_day_id': de_asistencia[0].id, 'quantity': sum(de_asistencia.mapped('number_of_days')), 'unidad': 'dias',
+                            'rate': 0.0})
+                    for dia in lineas_dias - de_asistencia:
                         valores.append({
                             'slip_id': recibo.id, 'sequence': siguiente(), 'name': dia.name or dia.work_entry_type_id.name, 'origen': 'dias',
                             'worked_day_id': dia.id, 'quantity': dia.number_of_days, 'unidad': 'dias', 'rate': 0.0})

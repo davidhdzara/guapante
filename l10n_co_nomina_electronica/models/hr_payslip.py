@@ -2278,6 +2278,21 @@ class HrPayslip(models.Model):
                 empleado=self.employee_id.name))
         return tipo
 
+    def _ne_tipos_dias_de_asistencia(self):
+        """Ajuste de David a «Conceptos de pago» (22-nov, decisión del TL: opción B): los tipos de las líneas de días que, JUNTAS, son los días PAGADOS con el sueldo
+        (``_ne_desglose_por_fecha``: «Asistencia» (WORK100), «Festivos trabajados», «Descansos remunerados» y «Ajuste mes comercial»; Σ días = ``_ne_dias_pagables``). La pestaña
+        de días trabajados los sigue mostrando por separado; «Conceptos de pago» los junta en UNA fila «Asistencia». Los tipos de ausencia (vacaciones, licencias,
+        incapacidades) NO entran. Sin valores por defecto silenciosos: un tipo que no existe en la base simplemente no suma."""
+        self.ensure_one()
+        tipos = self.env['hr.work.entry.type']
+        try:
+            tipos |= self._ne_tipo_asistencia()
+        except UserError:
+            pass                                   # sin el tipo «Asistencia» no hay desglose por fecha: el error ya sale al calcular los días
+        for xmlid in ('hr_work_entry_type_co_festivo_trabajado', 'hr_work_entry_type_co_descanso_remunerado', 'hr_work_entry_type_co_ajuste_mes_comercial'):
+            tipos |= self.env.ref('l10n_co_nomina_electronica.%s' % xmlid, raise_if_not_found=False) or tipos.browse()
+        return tipos
+
     def _ne_ajustar_dias_por_asistencia(self, valores):
         """Rearma la lista de líneas de días que calculó el nativo (``valores``: diccionarios con ``work_entry_type_id``, ``sequence``,
         ``number_of_days`` y ``number_of_hours``):

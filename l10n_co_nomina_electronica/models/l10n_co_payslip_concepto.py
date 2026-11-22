@@ -180,6 +180,27 @@ class L10nCoPayslipConcepto(models.Model):
                 Concepto.create(valores)
 
     @api.model
+    def _filas_de_dias(self, recibo, siguiente):
+        """Filas de días bajo la del sueldo. Ajuste de David (22-nov, decisión del TL: opción B): el descanso remunerado NO se desagrega aquí: UNA sola fila de días, «Asistencia»,
+        con los días pagados con el sueldo (asistencia + festivos trabajados + descansos remunerados + ajuste del mes comercial: ``_ne_tipos_dias_de_asistencia``), sin importe. Es
+        la cantidad del «Sueldo Básico» (``_ne_dias_pagables``); el desglose por fecha de E2a sigue en la pestaña de días trabajados. Las demás líneas de días (ausencias) salen
+        como antes, cada una en su fila. Las filas de días no se editan: «sin mecanismo nuevo»."""
+        lineas = recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)).filtered(lambda w: w.number_of_days or w.number_of_hours)
+        tipos = recibo._ne_tipos_dias_de_asistencia()
+        de_asistencia = lineas.filtered(lambda w: w.work_entry_type_id in tipos)
+        filas = []
+        if de_asistencia:
+            principal = de_asistencia[0]                      # la primera: «Asistencia» (WORK100) va primero en el desglose
+            filas.append({
+                'slip_id': recibo.id, 'sequence': siguiente(), 'name': principal.name or principal.work_entry_type_id.name, 'origen': 'dias',
+                'worked_day_id': principal.id, 'quantity': sum(de_asistencia.mapped('number_of_days')), 'unidad': 'dias', 'rate': 0.0})
+        for dia in lineas - de_asistencia:
+            filas.append({
+                'slip_id': recibo.id, 'sequence': siguiente(), 'name': dia.name or dia.work_entry_type_id.name, 'origen': 'dias',
+                'worked_day_id': dia.id, 'quantity': dia.number_of_days, 'unidad': 'dias', 'rate': 0.0})
+        return filas
+
+    @api.model
     def _valores_del_recibo(self, recibo):
         """Filas (lista de diccionarios) del recibo: sección «Devengados», sus conceptos con los días trabajados bajo el sueldo, sección
         «Deducciones» y sus conceptos; tras un concepto ajustado, una fila de nota con su valor sugerido.
@@ -215,10 +236,5 @@ class L10nCoPayslipConcepto(models.Model):
             if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
                     and recibo.struct_id.use_worked_day_lines):
                 dias_puestos = True
-                for dia in recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)):
-                    if not (dia.number_of_days or dia.number_of_hours):
-                        continue
-                    valores.append({
-                        'slip_id': recibo.id, 'sequence': siguiente(), 'name': dia.name or dia.work_entry_type_id.name, 'origen': 'dias',
-                        'worked_day_id': dia.id, 'quantity': dia.number_of_days, 'unidad': 'dias', 'rate': 0.0})
+                valores.extend(self._filas_de_dias(recibo, siguiente))
         return valores
