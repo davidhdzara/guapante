@@ -978,7 +978,11 @@ result = inputs['CO_INT_CES'].amount
             <field name="sequence">100</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: el aprendiz en etapa LECTIVA no paga salud: la cotizacion es de la empresa en su integridad (Ley 2466/2025 art. 21; Decreto 223/2026 art. 2.2.6.3.3.6)
+result = payslip._ne_regimen_cotizante()['etapa'] != 'lectiva'
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # H-017a (2026-10-11, decision David + Tech Lead): IBC incluye vacaciones y
@@ -1277,7 +1281,7 @@ result = payslip._ne_ibc_limites(
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # .299 (decisión del TL, 22-nov): el IBC de parafiscales es SOLO lo salarial: sin el 40 %, sin piso y sin techo (Ley 21/1982 art. 17; Ley 344/1996 art. 17).
-result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
+result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'], result_rules['CO_DIAS_PARAF']['total'])      # H-F1-09: el aprendiz en practica cotiza sobre 1 SMMLV
             </field>
             <field name="appears_on_payslip" eval="False"/>
             <field name="note">IBC de CCF, SENA e ICBF del recibo: solo lo salarial (sin el excedente del 40 %, sin piso ni techo; sin maternidad/paternidad).</field>
@@ -1696,12 +1700,20 @@ result = payslip._ne_neto_redondeado(result_rules, 'DEV')</field>
 # SLN": exonerado + SLN => la tarifa de salud a reportar es cero, tanto en dias laborados como SLN.
 ibc_sp = result_rules['CO_IBC_SP']['total']
 ibc_sln = result_rules['CO_IBC_SLN']['total']
-result = not employee.company_id._is_exonerado_parafiscales(max(0.0, ibc_sp - ibc_sln), payslip.date_from)
+# H-F1-09: el aprendiz en etapa LECTIVA no tiene exoneracion del 114-1: la salud es de la empresa en su integridad (decision del TL del 22-nov, NO VERIFICADO el 114-1 en la lectiva)
+if payslip._ne_regimen_cotizante()['etapa'] == 'lectiva':
+    result = True
+else:
+    result = not employee.company_id._is_exonerado_parafiscales(max(0.0, ibc_sp - ibc_sln), payslip.date_from)
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 ibc = result_rules['CO_IBC_SP']['total']
-result = ibc * payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.date_from) / 100
+_pct = payslip._rule_parameter('l10n_co_pct_salud_empleador', payslip.date_from)
+# H-F1-09: en la lectiva la empresa paga ademas la parte que en un dependiente descuenta al empleado: 12,5 % completo sobre 1 SMMLV, sin descuento al aprendiz (Ley 2466/2025 art. 21)
+if payslip._ne_regimen_cotizante()['etapa'] == 'lectiva':
+    _pct += payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date_from)
+result = ibc * _pct / 100
             </field>
             <field name="appears_on_payslip" eval="False"/>
         </record>

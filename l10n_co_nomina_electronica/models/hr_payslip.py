@@ -3370,13 +3370,25 @@ class HrPayslip(models.Model):
         pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
         return max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
 
-    def _ne_ibc_parafiscales(self, salarial):
+    def _ne_ibc_minimo(self, dias):
+        """Piso del IBC (``l10n_co_ibc_min_smmlv`` x SMMLV, prorrateado por ``dias`` del mes comercial). Lo usan ``_ne_ibc_limites`` y la base de parafiscales del aprendiz en la fase práctica (H-F1-09)."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        return (self._rule_parameter('l10n_co_ibc_min_smmlv', fecha) * self._rule_parameter('l10n_co_smmlv', fecha)
+                / self._rule_parameter('l10n_co_dias_mes_comercial', fecha) * dias)
+
+    def _ne_ibc_parafiscales(self, salarial, dias=0):
         """IBC de CCF, SENA e ICBF (.299, decisión del TL del 22-nov): SOLO lo salarial. Sin el excedente del 40%, sin el piso de 1 SMMLV y sin el techo
         de 25 SMMLV. Ley 21/1982 art. 17 («nómina mensual de salarios»: los pagos por los elementos integrantes del salario, más los descansos
         remunerados) y Ley 344/1996 art. 17 (los acuerdos sobre pagos que no constituyen salario, CST art. 128, y el auxilio de transporte no hacen parte de
         la base de SENA, ICBF, ESAP y subsidio familiar, sin tope porcentual). El 40% del art. 30 de la Ley 1393/2010 es de salud, pensión y riesgos
-        laborales (``_ne_ibc_limites``), no de parafiscales. El salario integral entra por ``salarial`` con su 70% (``_ne_ibc_salarial``)."""
+        laborales (``_ne_ibc_limites``), no de parafiscales. El salario integral entra por ``salarial`` con su 70% (``_ne_ibc_salarial``).
+        H-F1-09 (decisión del TL del 22-nov): el aprendiz en FASE PRÁCTICA cotiza como dependiente sobre un IBC de 1 SMMLV (Decreto 223/2026, art. 2.2.6.3.3.4 par. 2) y paga parafiscales sobre ese IBC, con la
+        exoneración del art. 114-1 E.T. (par. 1 del art. 2.2.6.3.3.6): su apoyo no es salarial (``salarial`` = 0), así que la base es el piso de ``dias``; es la base que la PILA liquida con el tipo 01. El
+        de la lectiva no paga parafiscales (``salarial`` = 0, sin piso). NO VERIFICADO: ninguna fuente fija esta base; es la decisión del TL."""
         self.ensure_one()
+        if dias > 0 and self._ne_regimen_cotizante()['etapa'] == 'practica':
+            return max(salarial, self._ne_ibc_minimo(dias))
         return salarial
 
     def _ne_ibc_limites(self, salarial, incap, remuneracion, pactados, dias):
@@ -3385,13 +3397,11 @@ class HrPayslip(models.Model):
         ``_ne_ibc_parafiscales`` (.299)."""
         self.ensure_one()
         smmlv = self._rule_parameter('l10n_co_smmlv', self._ne_fecha_parametros())
-        minimo = self._rule_parameter('l10n_co_ibc_min_smmlv', self._ne_fecha_parametros())
         maximo = self._rule_parameter('l10n_co_ibc_max_smmlv', self._ne_fecha_parametros())
-        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
         excedente = self._ne_exceso_no_salarial(remuneracion, pactados)
         ibc = min(salarial + incap + excedente, maximo * smmlv)
         if dias > 0:
-            ibc = max(ibc, minimo * smmlv / dias_mes * dias)
+            ibc = max(ibc, self._ne_ibc_minimo(dias))
         return ibc
 
     def _ne_dias_xml(self, valor):

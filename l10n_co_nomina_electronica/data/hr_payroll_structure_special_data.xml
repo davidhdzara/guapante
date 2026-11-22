@@ -839,7 +839,11 @@ result = payslip._ne_ibc_limites(
             <field name="sequence">100</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: el aprendiz en etapa LECTIVA no paga salud (la paga la empresa en su integridad; Ley 2466/2025 art. 21)
+result = payslip._ne_regimen_cotizante()['etapa'] != 'lectiva'
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento salud sobre IBC (devengados salariales)
