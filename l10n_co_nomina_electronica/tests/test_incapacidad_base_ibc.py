@@ -81,9 +81,10 @@ class TestIncapacidadBaseIbc(base.TestIncapacidadTramoProrroga):
         1-15 de septiembre las posiciones 32-46 se pagan con el IBC de la INICIAL: 15 x 150.000 x 0,6667 = 1.500.075 (con el de agosto serian 2.000.100). Y no hay aviso: el mes anterior a la inicial SI tiene base."""
         empleado, contrato = self._empleado('IncCadena')
         self._julio(empleado, contrato, 4500000.0)
-        crear_recibo_previo(self.env, empleado, contrato, self.nomina, date(2026, 8, 1), date(2026, 8, 31), SUELDO)
         a = self._incapacidad(empleado, date(2026, 8, 1), date(2026, 8, 31))
         self._incapacidad(empleado, date(2026, 9, 1), date(2026, 9, 15), prorroga_de=a)
+        # el recibo confirmado de agosto va DESPUES de validar las ausencias: hr_payroll_holidays marca «blocked» (a diferir) una ausencia que se valida sobre un recibo ya confirmado y bloquea el calculo
+        crear_recibo_previo(self.env, empleado, contrato, self.nomina, date(2026, 8, 1), date(2026, 8, 31), SUELDO)
         recibo = self._recibo_inc(empleado, contrato, date(2026, 9, 1), date(2026, 9, 15))
         self.assertAlmostEqual(self._pago_inc(recibo), 15 * 150000.0 * PCT, delta=0.01)
         self.assertFalse(recibo.l10n_co_ne_aviso_ibc_anterior)

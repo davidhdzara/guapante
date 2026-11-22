@@ -196,7 +196,8 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
         empleado, contrato = self._empleado('SlnMes')
         self._previo(empleado, contrato, SUELDO)
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
-        with mock.patch.object(type(recibo), '_ne_dias_sln', return_value=5):
+        # El mock es SOLO del recibo de septiembre: la base del mes anterior tambien lee los dias SLN de los recibos previos confirmados (el divisor), que no tienen.
+        with mock.patch.object(type(recibo), '_ne_dias_sln', autospec=True, side_effect=lambda rec: 5 if rec.id == recibo.id else 0):
             self.assertAlmostEqual(recibo._ne_ibc_sln(contrato), 1000000.0, delta=0.01)
 
     # ── el aviso ──
