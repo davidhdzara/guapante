@@ -4,7 +4,7 @@
          Comprobante de pago ÚNICO por empleado y fecha de pago (Frente 5, C3).
 
          Comprobante INTERNO: sin QR, CUNE ni referencias a la DIAN. Genérico y multicliente: logo, colores y fuente del
-         diseño de documentos de la compañía (``web.external_layout``), solo clases nativas de Bootstrap, importes con la
+         pie de página de la compañía del recibo (``ne_comprobante_layout``; H-QA-044: ya no el encabezado nativo de ``web.external_layout``), solo clases nativas de Bootstrap, importes con la
          moneda de la compañía, cada sección con el nombre de la estructura salarial del recibo (doc 58 D5-5).
 
          E11 pieza 5b (.292): UNA media página por (empleado, fecha de pago) (doc 58 §5(a) y §9 D5-1, D5-7; doc 53 §5.6), con UNA SECCIÓN POR ORIGEN
@@ -29,7 +29,7 @@
         <field name="binding_type">report</field>
     </record>
 
-    <!-- UNA página por grupo (empleado, fecha de pago): un solo ``web.external_layout`` y un solo ``class="page"``. El encabezado va en modo ``agrupado``
+    <!-- UNA página por grupo (empleado, fecha de pago): un solo ``ne_comprobante_layout`` (H-QA-044: layout propio y compacto, no ``web.external_layout``) y un solo ``class="page"``. El encabezado va en modo ``agrupado``
          (sin «No.», periodo ni días trabajados, que son de cada origen); cada sección lleva el nombre de la estructura salarial del recibo, su periodo
          y, si lo tiene, sus días trabajados, y debajo la tabla compacta de ese recibo con sus subtotales. -->
     <template id="report_comprobante_pago">
@@ -40,7 +40,7 @@
                 <t t-set="fecha_pago" t-value="g['fecha_pago']"/>
                 <t t-set="dias_pagados" t-value="g['dias_pagados']"/>
                 <t t-set="agrupado" t-value="True"/>
-                <t t-call="web.external_layout">
+                <t t-call="l10n_co_nomina_electronica.ne_comprobante_layout">
                     <div class="page">
                         <t t-call="l10n_co_nomina_electronica.ne_comprobante_encabezado"/>
                         <t t-foreach="g['secciones']" t-as="s">

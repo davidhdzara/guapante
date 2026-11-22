@@ -3,7 +3,7 @@
 
 Reglas que se prueban (decisiones de David del 21-nov, vía el Tech Lead):
 - La colilla es SIEMPRE de media página (A5 horizontal; nunca carta completa) y cada recibo va en su propia media página (cada recibo llama a su
-  propio ``web.external_layout``): se afirma sobre el formato de papel y sobre el HTML.
+  propio layout): se afirma sobre el formato de papel y sobre el HTML. H-QA-043/044: layout propio compacto, dos columnas y una sola fila de totales.
 - Tabla COMPACTA: letra menor, solo filas con valor y solo las columnas que alguna fila usa (sin Cantidad y Unidad si ninguna fila lleva unidad,
   sin «%» si todas son 100). Deducciones con su signo, en una sola columna. Con los datos de la empresa (nombre, NIT y dirección). Sin
   «Observaciones» (nota interna), sin ajuste de la empresa ni costo de la empresa, sin nada de la DIAN.
@@ -245,6 +245,81 @@ class TestColillaConceptos(TransactionCase):
         self.assertEqual(self._html(a).count('class="page"'), 1)
         self.assertIn('table table-sm table-bordered small', html, 'Tabla compacta: clase nativa de letra menor')
         self.assertNotIn('style=', self._cuerpo(a), 'Sin estilos en línea')
+
+    # ── H-QA-043 / H-QA-044 (QA sobre .298, regla fija de David): UNA media página, encabezado sin encimarse ──────────────────────────────
+    def _arbol(self, *recibos):
+        """El cuerpo de la colilla como árbol (solo la parte de la página)."""
+        from lxml import html as lxml_html
+        return lxml_html.fromstring('<div>' + self._cuerpo(*recibos) + '</div>')
+
+    def test_07b_layout_propio_sin_el_encabezado_nativo_de_la_compania_y_con_los_margenes_de_una_media_pagina(self):
+        """H-QA-044: el encabezado nativo (logo y 6 líneas, ``web.external_layout``) era más alto que el margen superior de la media página y se encimaba al
+        título. El layout propio no lleva ``header``; el margen superior queda mínimo y el alto es del cuerpo."""
+        a = self._sintetico(self.general, [('CO_BASICO', 3000000.0), ('CO_SALUD_EMP', -120000.0), ('CO_NETO', 2880000.0)])
+        html = self._html(a)
+        self.assertNotIn('class="header', html, 'Sin el encabezado nativo')
+        self.assertNotIn('o_report_layout_standard', html)
+        self.assertEqual(html.count('class="article'), 1)
+        papel = self.env.ref(REPORTE).paperformat_id
+        self.assertLessEqual(papel.margin_top, 10, 'Sin encabezado nativo no se reserva el margen del logo y las 6 líneas')
+        self.assertFalse(papel.header_spacing)
+        self.assertLessEqual(papel.margin_bottom, 15)
+        self.assertEqual((papel.format, papel.orientation), ('A5', 'Landscape'))
+
+    def test_07c_la_empresa_va_en_una_linea_y_el_empleado_en_un_recuadro_de_tres_columnas(self):
+        partner = self.company.partner_id
+        partner.with_context(no_vat_validation=True).write({'vat': '901797249-5', 'street': 'Calle 12 # 34-56', 'city': 'Bogotá'})
+        a = self._sintetico(self.general, [('CO_BASICO', 3000000.0), ('CO_SALUD_EMP', -120000.0), ('CO_NETO', 2880000.0)])
+        arbol = self._arbol(a)
+        empresa = [d for d in arbol.xpath('.//div[contains(@class, "col-9")]') if 'Empleador:' in d.text_content()]
+        self.assertEqual(len(empresa), 1)
+        texto = ' '.join(empresa[0].text_content().split())
+        for fragmento in ('Empleador:', 'Compañía Colilla Conceptos', 'NIT:', '901797249-5', 'Dirección:', 'Calle 12 # 34-56'):
+            self.assertIn(fragmento, texto)
+        self.assertFalse(empresa[0].xpath('.//p'), 'Nombre, NIT y dirección en UNA línea, no un párrafo por dato')
+        recuadro = arbol.xpath('.//div[contains(@class, "border")][contains(@class, "rounded")]')
+        self.assertEqual(len(recuadro), 1)
+        self.assertEqual(len(recuadro[0].xpath('./div[contains(@class, "col-4")]')), 3)
+        self.assertLessEqual(len(recuadro[0].xpath('.//p')), 9, 'Tres columnas de a lo sumo tres líneas')
+
+    def test_07d_devengados_y_deducciones_van_lado_a_lado_y_los_totales_en_una_sola_fila(self):
+        a = self._recibo(self.general)
+        arbol = self._arbol(a)
+        celdas = arbol.xpath('.//table[contains(@class, "w-100")]//td[contains(@class, "w-50")]')
+        self.assertEqual(len(celdas), 2, 'Una tabla de maquetación de dos celdas: devengados a la izquierda y deducciones a la derecha')
+        self.assertIn('Devengados', celdas[0].text_content())
+        self.assertNotIn('Deducciones', celdas[0].text_content())
+        self.assertIn('Deducciones', celdas[1].text_content())
+        self.assertNotIn('Devengados', celdas[1].text_content())
+        self.assertEqual(len(celdas[0].xpath('.//table')), 1)
+        self.assertEqual(len(celdas[1].xpath('.//table')), 1)
+        filas = [fila for fila in arbol.xpath('.//tr') if 'Total devengado' in fila.text_content()]
+        self.assertEqual(len(filas), 1)
+        for texto in ('Total deducciones', 'Neto a pagar'):
+            self.assertIn(texto, filas[0].text_content(), 'Los totales y el neto, en la MISMA fila')
+        # el neto sale después de las dos mitades (al pie)
+        html = self._cuerpo(a)
+        self.assertGreater(html.index('Neto a pagar'), html.index('Deducciones'))
+
+    def test_07e_una_colilla_de_11_conceptos_cabe_en_una_media_pagina_por_el_conteo_de_filas(self):
+        """H-QA-043: PROXY del alto, no el PDF (``wkhtmltopdf`` baja los estilos por HTTP: en una N1 sin servidor no es medible; el PDF lo mide QA). Media página A5 horizontal:
+        148 mm - 8 de margen superior - 12 inferior = 128 mm; el encabezado (una línea, el recuadro de 3 líneas y sus separaciones) ~ 27 mm y cada fila de la tabla con letra
+        pequeña ~ 3,9 mm: caben ~ 25 filas contando los dos títulos y los totales. Con dos columnas las filas de la colilla son las de la mitad MÁS larga."""
+        devengados = [('CO_BASICO', 3000000.0), ('CO_HED', 100000.0), ('CO_HEN', 80000.0), ('CO_HRN', 60000.0), ('CO_COMISIONES', 200000.0),
+                      ('CO_BONIF_SAL', 150000.0), ('CO_AUX_TRANS', 249095.0)]
+        deducciones = [('CO_SALUD_EMP', -150000.0), ('CO_PENSION_EMP', -150000.0), ('CO_FSP', -30000.0), ('CO_RETEFUENTE', -50000.0)]
+        a = self._sintetico(self.general, devengados + deducciones + [('CO_NETO', 3500000.0)])
+        colilla = a._ne_colilla()
+        filas = {s['seccion']: len(s['filas']) for s in colilla['secciones']}
+        self.assertGreaterEqual(sum(filas.values()), 9, 'Premisa: la colilla trae casi todos los conceptos del recibo de prueba (11 con valor)')
+        alto_en_filas = 2 + max(filas.values()) + 1        # título y encabezado de columnas + la mitad más larga + la fila de totales
+        self.assertLessEqual(alto_en_filas, 25)
+        arbol = self._arbol(a)
+        mitades = arbol.xpath('.//table[contains(@class, "w-100")]//td[contains(@class, "w-50")]//table')
+        self.assertEqual(len(mitades), 2)
+        self.assertEqual(max(len(m.xpath('.//tbody/tr')) for m in mitades), max(filas.values()))
+        # una sola tabla de totales y ninguna fila de más: la fila de la tabla de maquetación, los dos encabezados de cada mitad, cada concepto UNA vez y la fila de totales
+        self.assertEqual(len(arbol.xpath('.//tr')), 1 + 2 * 2 + sum(filas.values()) + 1)
 
     def test_08_solo_filas_con_valor(self):
         recibo = self._sintetico(self.liquidacion, [

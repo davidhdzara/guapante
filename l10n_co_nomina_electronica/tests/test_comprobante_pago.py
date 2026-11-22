@@ -107,7 +107,24 @@ class TestComprobantePago(TransactionCase):
         self.assertEqual(html.count('Fecha de pago:'), 1)
         self.assertNotIn('No.:', html)
         self.assertNotIn('Periodo:', html)
-        self.assertEqual(html.count('table table-sm table-bordered small'), 3, 'Dos tablas compactas (una por origen) y la del neto total')
+        # H-QA-043: cada origen son DOS tablas lado a lado (devengados y deducciones) y una de totales; más la del neto total pagado
+        self.assertEqual(html.count('table table-sm table-bordered small'), 7, 'Por origen: devengados, deducciones y totales (3 x 2) y la del neto total')
+
+    def test_quincena_y_prima_del_mismo_dia_caben_en_una_media_pagina_por_el_conteo_de_filas(self):
+        """H-QA-043 (QA: «quincena + prima» daba 2 páginas, la segunda solo con el neto): PROXY del alto, no el PDF (``wkhtmltopdf`` baja los estilos por HTTP: en una N1
+        sin servidor no es medible; el PDF lo mide QA). Media página A5 horizontal = 148 - 8 - 12 = 128 mm; el encabezado ~ 27 mm y cada fila con letra pequeña ~ 3,9 mm: caben
+        ~ 25 filas. Cada origen son su título, las dos mitades lado a lado (la más larga manda, más dos filas de encabezado) y la fila de totales; al pie, el neto total."""
+        q, p = self._quincena(), self._prima()
+        filas = 0
+        for recibo in (q, p):
+            secciones = recibo._ne_colilla()['secciones']
+            mas_larga = max((len(s['filas']) for s in secciones), default=0)
+            filas += 1 + 2 + mas_larga + 1                # título del origen + encabezados de las dos mitades + la mitad más larga + totales
+        filas += 1                                         # neto total pagado
+        self.assertLessEqual(filas, 25, 'Quincena y prima del mismo día deben caber en UNA media página')
+        html = self._html(q, p)
+        self.assertEqual(html.count('class="page"'), 1)
+        self.assertEqual(html.count('class="article'), 1, 'Un solo bloque de página para el grupo: una media página')
 
     def test_un_grupo_de_un_solo_recibo_trae_su_seccion_y_el_neto_total(self):
         html = self._html(self._quincena())
