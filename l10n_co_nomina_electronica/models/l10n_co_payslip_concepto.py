@@ -141,7 +141,7 @@ class L10nCoPayslipConcepto(models.Model):
             entrada = self.env['hr.payslip.input'].with_context(ne_sin_recalculo_hoja=True).create({
                 'payslip_id': recibo.id, 'input_type_id': tipo.id, 'amount': valor or 0.0, 'name': vals.get('name') or tipo.name})
             # El orden de las filas lo fija el sistema (se regenera en cada cálculo): una fila nueva va al final, sin importar la secuencia que mande el cliente.
-            vals.update({'origen': 'novedad', 'input_id': entrada.id, 'sequence': SECUENCIA_DE_FILA_NUEVA})
+            vals.update({'origen': 'novedad', 'input_id': entrada.id, 'input_type_id': tipo.id, 'sequence': SECUENCIA_DE_FILA_NUEVA})
         return super().create(vals_list)
 
     def write(self, vals):
