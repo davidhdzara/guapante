@@ -35,7 +35,7 @@ from lxml import etree as _etree
 from odoo import Command, api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_is_zero, float_round
-from odoo.tools.misc import format_date
+from odoo.tools.misc import format_amount, format_date
 
 from .hr_employee import NE_EMPLEADO_GRUPO_AFILIACION, NE_EMPLEADO_PESTANA, NE_UBICACION_AJUSTES_PILA
 
@@ -272,6 +272,31 @@ class HrPayslip(models.Model):
                 recibo.l10n_co_ne_aviso_afiliacion = error.args[0]
                 continue
             recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
+
+    # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN).
+    _NE_CODIGOS_BASE_IBC_MES_ANTERIOR = ('CO_VAC', 'CO_LIC_REM', 'CO_LIQ_VAC_DISFRUTADAS', 'CO_LIQ_LIC_REM', 'CO_IBC_SLN')
+
+    l10n_co_ne_aviso_ibc_anterior = fields.Char(
+        string='Aviso de IBC del mes anterior', compute='_compute_ne_aviso_ibc_anterior',
+        help='Solo para las vistas: aviso (no bloquea) cuando el recibo trae vacaciones, licencia remunerada o días de suspensión y el empleado no tiene IBC consolidado del mes anterior: '
+             'la base es el sueldo de la ficha del empleado.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id', 'line_ids.code', 'line_ids.total')
+    def _compute_ne_aviso_ibc_anterior(self):
+        """H-F1-11 (doc 89, D-89-3): sin IBC consolidado del mes anterior la base de vacaciones, licencia remunerada y SLN es el sueldo de la ficha del empleado, y eso se AVISA (nunca en silencio).
+        Solo en el recibo en borrador o en espera y solo si ya se calculó con alguna de esas líneas: el aviso refleja lo que el cálculo usó."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_ibc_anterior = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            if not any(linea.code in self._NE_CODIGOS_BASE_IBC_MES_ANTERIOR and linea.total for linea in recibo.line_ids):
+                continue
+            ibc, mes, con_consolidado = recibo._ne_ibc_mes_anterior_datos(recibo.contract_id, antes_de=recibo._ne_tramo_pagable_periodo()[0])
+            if not con_consolidado:
+                recibo.l10n_co_ne_aviso_ibc_anterior = _(
+                    'No hay IBC consolidado de %(mes)s para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada o días de suspensión en este recibo es el sueldo '
+                    'de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
+                    mes=mes.strftime('%Y-%m'), empleado=recibo.employee_id.name, sueldo=format_amount(self.env, ibc, recibo.company_id.currency_id))
 
     def _ne_afiliaciones_faltantes(self):
         """``[(etiqueta, nivel)]`` de lo que falta de la afiliación del empleado de este recibo (ver ``HrEmployee._ne_afiliaciones_faltantes``), con el tipo y el subtipo de cotizante del contrato y la fecha con que se resuelven los parámetros."""
@@ -3059,34 +3084,37 @@ class HrPayslip(models.Model):
         dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
         return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
 
-    def _ne_ultimo_ibc_anterior(self, contract, estructura=None, antes_de=None):
-        """Último IBC de seguridad social confirmado antes de esta nómina (H-017a,
-        2026-10-11, punto a del diseño -- decisión de David + Tech Lead).
-
-        Mismo patrón que Procedure2.action_calculate_retention_procedure2()
-        (hr_contract_retefuente.py): última nómina 'done' del mismo contrato y
-        estructura, antes del date_from de esta nómina, leyendo su línea
-        invisible CO_SS_BASE_IBC. Sin historial (primera nómina del contrato):
-        fallback a contract.wage -- confirmado el caso real de los 18 empleados
-        de Guapante hoy (ninguno tiene nómina previa).
-
-        Lectura literal (Tech Lead, 2026-10-11): si hubo un cambio de salario
-        entre el mes anterior y el de la novedad, se usa el IBC real del mes
-        anterior tal cual, NUNCA un valor prorrateado al salario nuevo.
-        """
+    def _ne_sueldo_de_respaldo(self, contrato, fecha=None):
+        """Sueldo MENSUAL con el que se reemplaza el IBC del mes anterior cuando el empleado no tiene IBC consolidado de ese mes (primer mes de contrato, base nueva o mes sin recibos confirmados).
+        UNA sola funcion (consultor v19, doc 89): en v18 el sueldo vive en el contrato y ``fecha`` se ignora; en v19 sera el de la version vigente en esa fecha. Salario integral: el factor
+        (``l10n_co_factor_integral_salary``, 70 %) del sueldo, como en ``_ne_ibc_salarial``. Quien lo use debe AVISAR (``_ne_aviso_ibc_mes_anterior``): nunca en silencio."""
         self.ensure_one()
-        # estructura / antes_de (opcionales): la liquidacion no tiene historial propio; su "ultimo
-        # IBC anterior" es el de la nomina general del contrato antes del tramo.
-        payslip_anterior = self.env['hr.payslip'].search([
-            ('contract_id', '=', contract.id),
-            ('struct_id', '=', (estructura or self.struct_id).id),
-            ('state', '=', 'done'),
-            ('date_from', '<', antes_de or self.date_from),
-        ], order='date_from desc', limit=1)
-        if not payslip_anterior:
-            return contract.wage
-        linea_ibc = payslip_anterior.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
-        return linea_ibc.total if linea_ibc else contract.wage
+        if contrato.l10n_co_ne_integral_salary:
+            return contrato.wage * self._rule_parameter('l10n_co_factor_integral_salary', self._ne_fecha_parametros())
+        return contrato.wage
+
+    def _ne_ibc_mes_anterior_datos(self, contract, antes_de=None):
+        """(ibc, mes, con_consolidado): IBC de salud y pension del MES calendario anterior al mes de ``antes_de`` (por omision, el inicio de este recibo) -- H-F1-11, doc 89.
+        Reemplaza a ``_ne_ultimo_ibc_anterior`` (H-017a), que leia la linea CO_SS_BASE_IBC de UN solo recibo: con nomina quincenal era medio mes y con semanal una semana, y la base de
+        vacaciones, licencia remunerada y dias SLN salia de la mitad o menos. La fuente es el IBC CONSOLIDADO del empleado y el mes (``l10n.co.ibc.mensual``): suma todos los recibos
+        confirmados del mes, aplica el escalado semanal y es lo mismo que reporta PILA. Mes incompleto (0 < dias < dias del mes comercial, p. ej. ingreso a mitad de mes): se normaliza a
+        mes completo. Sin consolidado: el sueldo de respaldo y ``con_consolidado`` en falso (el recibo muestra el aviso)."""
+        self.ensure_one()
+        referencia = antes_de or self.date_from
+        mes = (referencia.replace(day=1) - timedelta(days=1)).replace(day=1)
+        consolidado = self.env['l10n.co.ibc.mensual'].sudo().search([
+            ('company_id', '=', self.company_id.id), ('employee_id', '=', self.employee_id.id), ('period', '=', mes)], limit=1)
+        if consolidado and consolidado.ibc_sp > 0 and consolidado.dias_sp > 0:
+            dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+            ibc = consolidado.ibc_sp
+            if consolidado.dias_sp < dias_mes:
+                ibc = ibc * dias_mes / consolidado.dias_sp
+            return ibc, mes, True
+        return self._ne_sueldo_de_respaldo(contract, mes), mes, False
+
+    def _ne_ibc_mes_anterior(self, contract, antes_de=None):
+        """El IBC del mes anterior (ver ``_ne_ibc_mes_anterior_datos``): base de los dias de vacaciones, licencia remunerada y SLN (H-017a)."""
+        return self._ne_ibc_mes_anterior_datos(contract, antes_de=antes_de)[0]
 
     def _ne_factor_dias_integral(self):
         """Fraccion del mes comercial que cubre este recibo, para prorratear el salario
@@ -3098,7 +3126,7 @@ class HrPayslip(models.Model):
 
     def _ne_ibc_salarial(self, categories, contract, inputs, worked_days):
         """Parte SALARIAL del IBC (H-017a): DEV_SAL + vacaciones y licencia remunerada
-        (base = ultimo IBC anterior, prorrateado por dias). Salario integral:
+        (base = IBC del mes anterior, prorrateado por dias). Salario integral:
         factor (70%) x salario. Ver _ne_ibc_seguridad_social para el alcance H-017a."""
         self.ensure_one()
         if contract.l10n_co_ne_integral_salary:
@@ -3113,7 +3141,7 @@ class HrPayslip(models.Model):
             dias = dias_ausencia or dias_input
             if dias > 0:
                 if ultimo_ibc is None:
-                    ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
+                    ultimo_ibc = self._ne_ibc_mes_anterior(contract)
                 ibc += (ultimo_ibc / dias_mes_comercial) * dias
         return ibc
 
@@ -3135,8 +3163,8 @@ class HrPayslip(models.Model):
         return sum(self._ne_total_regla(result_rules, codigo) for codigo in sorted(codigos))
 
     def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
-        """Base que guarda CO_SS_BASE_IBC y que _ne_ultimo_ibc_anterior() lee el mes
-        siguiente para prorratear vacaciones/licencia remunerada/SLN (H-017a): salario
+        """Base que guarda CO_SS_BASE_IBC (visible en «Calculo del salario»; hasta .305 la leia
+        el «ultimo IBC anterior» de vacaciones/licencia remunerada/SLN, hoy el consolidado mensual, H-F1-11): salario
         ordinario + maternidad/paternidad, SIN el auxilio de incapacidad (IGE/IRL), que no
         es salario (CST Art. 192; decision de David, 2026-11-10). El IBC de APORTES vive
         en CO_IBC_SP y si incluye la incapacidad."""
@@ -3164,11 +3192,7 @@ class HrPayslip(models.Model):
             dias = self._ne_ausencia_habil_tramo(work_entry_code)[0]
             if dias > 0:
                 if ultimo_ibc is None:
-                    ultimo_ibc = self._ne_ultimo_ibc_anterior(
-                        contract,
-                        estructura=self.env.ref(
-                            'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
-                        antes_de=tramo_ini)
+                    ultimo_ibc = self._ne_ibc_mes_anterior(contract, antes_de=tramo_ini)
                 ibc += (ultimo_ibc / dias_mes) * dias
         return ibc
 
@@ -3237,17 +3261,10 @@ class HrPayslip(models.Model):
         if dias <= 0:
             return 0.0
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        # La liquidacion (H-168) no tiene historial propio: la base es el IBC del mes anterior al inicio del tramo (el mismo criterio que sus vacaciones); en la nomina general el tramo empieza
+        # con el recibo.
         tramo_ini = self._ne_tramo_pagable_periodo()[0]
-        if tramo_ini != self.date_from:
-            # Liquidacion (H-168): no tiene historial propio; la base es el ultimo IBC de la
-            # nomina general del contrato antes del tramo (mismo criterio que sus vacaciones).
-            ultimo_ibc = self._ne_ultimo_ibc_anterior(
-                contract,
-                estructura=self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
-                antes_de=tramo_ini)
-        else:
-            ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
-        return ultimo_ibc / dias_mes * dias
+        return self._ne_ibc_mes_anterior(contract, antes_de=tramo_ini) / dias_mes * dias
 
     def _ne_exceso_no_salarial(self, remuneracion, pactados):
         """Exceso del 40% (Ley 1393/2010 Art. 30; SU 25185/2021): la parte de los pagos no salariales POR PACTO (``pactados``) que supera el porcentaje del

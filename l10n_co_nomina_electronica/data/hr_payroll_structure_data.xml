@@ -1295,17 +1295,18 @@ result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# H-017a (2026-10-11): guarda el IBC de seguridad social del mes (misma fuente
-# que ya usaron CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP arriba) para que
-# _ne_ultimo_ibc_anterior() lo lea el mes siguiente al calcular la base de una
-# novedad de vacaciones/licencia remunerada (punto a del diseño). Mismo patron
-# que CO_RETEFUENTE_BASE_IBC (doc 08).
+# H-017a (2026-10-11): guarda el IBC de seguridad social del recibo (misma fuente
+# que ya usaron CO_SALUD_EMP/CO_PENSION_EMP/CO_FSP arriba). Hasta .305 lo leia
+# _ne_ultimo_ibc_anterior() el mes siguiente; desde .306 (H-F1-11) la base de
+# vacaciones/licencia remunerada/SLN es el IBC consolidado del mes anterior
+# (_ne_ibc_mes_anterior) y este acumulador solo se muestra en «Calculo del salario».
+# Mismo patron que CO_RETEFUENTE_BASE_IBC (doc 08).
 result = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
             </field>
             <field name="appears_on_payslip" eval="False"/>
             <field name="note">Acumulador interno (H-017a): guarda la base SALARIAL del mes (salario ordinario y maternidad/paternidad; sin el exceso
-del 40 %, sin incapacidades, sin piso ni techo) para que la siguiente nomina del mismo contrato pueda leer el "ultimo IBC anterior"
-exigido por la regla de base especial de vacaciones/licencia remunerada. NO es el IBC de los aportes: ese es «IBC Salud y Pension»
+del 40 %, sin incapacidades, sin piso ni techo) que se muestra en «Calculo del salario». Hasta .305 la siguiente nomina del contrato lo leia como «ultimo IBC anterior» de vacaciones/licencia
+remunerada/SLN; desde .306 esa base es el IBC consolidado del mes anterior (H-F1-11). NO es el IBC de los aportes: ese es «IBC Salud y Pension»
 (CO_IBC_SP), que suma el exceso del 40 % y aplica piso y techo (H-QA-042, QA sobre .298: dos «IBC» sin explicacion). No aparece en el
 recibo ni afecta el neto.</field>
         </record>
