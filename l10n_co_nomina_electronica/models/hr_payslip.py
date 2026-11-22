@@ -273,30 +273,54 @@ class HrPayslip(models.Model):
                 continue
             recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
 
-    # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN).
+    # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN); y la
+    # incapacidad comun (H-F1-08), cuyo valor del dia sale del IBC del mes anterior al inicio de la inicial de su cadena.
     _NE_CODIGOS_BASE_IBC_MES_ANTERIOR = ('CO_VAC', 'CO_LIC_REM', 'CO_LIQ_VAC_DISFRUTADAS', 'CO_LIQ_LIC_REM', 'CO_IBC_SLN')
+    _NE_CODIGO_INCAPACIDAD_COMUN = 'CO_INC_COMUN'
 
     l10n_co_ne_aviso_ibc_anterior = fields.Char(
         string='Aviso de IBC del mes anterior', compute='_compute_ne_aviso_ibc_anterior',
         help='Solo para las vistas: aviso (no bloquea) cuando el recibo trae vacaciones, licencia remunerada o días de suspensión y el empleado no tiene IBC del mes anterior (recibos confirmados): '
              'la base es el sueldo de la ficha del empleado.')
 
+    def _ne_fechas_base_ibc_mes_anterior(self):
+        """Fechas ``antes_de`` con las que este recibo consulta el IBC del mes anterior segun las lineas que trae (H-F1-11, H-F1-08): el inicio del tramo si paga vacaciones, licencia remunerada o SLN, y
+        el inicio de la INICIAL de cada cadena de incapacidad comun (que puede ser de un mes anterior al del recibo)."""
+        self.ensure_one()
+        con_valor = {linea.code for linea in self.line_ids if linea.total}
+        fechas = set()
+        if con_valor & set(self._NE_CODIGOS_BASE_IBC_MES_ANTERIOR):
+            fechas.add(self._ne_tramo_pagable_periodo()[0])
+        if self._NE_CODIGO_INCAPACIDAD_COMUN in con_valor:
+            # Sin cadenas (p. ej. una incapacidad por novedad manual, sin ausencia) el pago cuenta desde el inicio del recibo: la misma fecha que usa _ne_pago_ausencia_calendario.
+            fechas.update(inicio for _previos, _dias, inicio in self._ne_incapacidad_cadenas() or [(0, 0, self._ne_tramo_pagable_periodo()[0])])
+        return sorted(fechas)
+
     @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id', 'line_ids.code', 'line_ids.total')
     def _compute_ne_aviso_ibc_anterior(self):
-        """H-F1-11 (doc 89, D-89-3): sin IBC del mes anterior la base de vacaciones, licencia remunerada y SLN es el sueldo de la ficha del empleado, y eso se AVISA (nunca en silencio).
-        Solo en el recibo en borrador o en espera y solo si ya se calculó con alguna de esas líneas: el aviso refleja lo que el cálculo usó."""
+        """H-F1-11 (doc 89, D-89-3): sin IBC del mes anterior la base de vacaciones, licencia remunerada, SLN e incapacidad comun (H-F1-08) es el sueldo de la ficha del empleado, y eso se AVISA (nunca
+        en silencio). Solo en el recibo en borrador o en espera y solo si ya se calculo con alguna de esas lineas: el aviso refleja lo que el calculo uso. Una cadena de incapacidad con una anterior no
+        aprobada no rompe el formulario: el aviso dice el error."""
         for recibo in self:
             recibo.l10n_co_ne_aviso_ibc_anterior = False
             if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
                 continue
-            if not any(linea.code in self._NE_CODIGOS_BASE_IBC_MES_ANTERIOR and linea.total for linea in recibo.line_ids):
+            try:
+                fechas = recibo._ne_fechas_base_ibc_mes_anterior()
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_ibc_anterior = error.args[0]
                 continue
-            ibc, mes, con_base = recibo._ne_ibc_mes_anterior_datos(recibo.contract_id, antes_de=recibo._ne_tramo_pagable_periodo()[0])
-            if not con_base:
+            sin_base = {}
+            for fecha in fechas:
+                ibc, mes, con_base = recibo._ne_ibc_mes_anterior_datos(recibo.contract_id, antes_de=fecha)
+                if not con_base:
+                    sin_base[mes] = ibc
+            if sin_base:
                 recibo.l10n_co_ne_aviso_ibc_anterior = _(
-                    'No hay IBC del mes anterior (%(mes)s) para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada o días de suspensión en este recibo es el sueldo '
-                    'de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
-                    mes=mes.strftime('%Y-%m'), empleado=recibo.employee_id.name, sueldo=format_amount(self.env, ibc, recibo.company_id.currency_id))
+                    'No hay IBC del mes anterior (%(meses)s) para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada, días de suspensión o incapacidad en este recibo es el '
+                    'sueldo de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
+                    meses=', '.join(mes.strftime('%Y-%m') for mes in sorted(sin_base)), empleado=recibo.employee_id.name,
+                    sueldo=format_amount(self.env, sin_base[min(sin_base)], recibo.company_id.currency_id))
 
     def _ne_afiliaciones_faltantes(self):
         """``[(etiqueta, nivel)]`` de lo que falta de la afiliación del empleado de este recibo (ver ``HrEmployee._ne_afiliaciones_faltantes``), con el tipo y el subtipo de cotizante del contrato y la fecha con que se resuelven los parámetros."""
@@ -2683,6 +2707,10 @@ class HrPayslip(models.Model):
         - CO_INC_COMUN (Decreto 780/2016 Art. 3.2.1.10 par. 1; H-013 paso 3): por tramos --
           los primeros dias_incapacidad_empleador al pct_incapacidad_empleador (66,67 %); hasta
           el limite 3-90 el pct_incapacidad_3_90 (EPS); mas alla el pct_incapacidad_91_mas.
+          H-F1-08 (doc 84/89; Decreto 1427 de 2022, art. 2.2.3.3.1): el valor del dia sale del IBC del
+          MES ANTERIOR al inicio de la incapacidad INICIAL de la cadena (``_ne_ibc_mes_anterior``), el
+          mismo en todas sus prorrogas, NO del sueldo actual en cada recibo; sin IBC de ese mes, el
+          sueldo (con aviso en el recibo).
         - CO_INC_LABORAL: ARL al 100 % desde el primer dia. CO_LIC_MAT y CO_LIC_PAT: 100 % del
           salario, a cargo de la EPS (H-014, CST Art. 236 mod. Ley 2114/2021).
         Parametros normativos desde hr.rule.parameter a la fecha de _ne_fecha_parametros().
@@ -2698,9 +2726,8 @@ class HrPayslip(models.Model):
             return 0.0
         fecha = self._ne_fecha_parametros()
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', fecha)
-        valor_dia = self.contract_id.wage / dias_mes
         if codigo != 'CO_INC_COMUN':
-            return valor_dia * dias
+            return self.contract_id.wage / dias_mes * dias
         dias_emp = self._rule_parameter('l10n_co_dias_incapacidad_empleador', fecha)
         pct_emp = self._rule_parameter('l10n_co_pct_incapacidad_empleador', fecha) / 100
         pct_3_90 = self._rule_parameter('l10n_co_pct_incapacidad_3_90', fecha) / 100
@@ -2713,30 +2740,35 @@ class HrPayslip(models.Model):
         # del 100 % de su sueldo; no ocurre en Guapante y no se modela (decision pendiente).
         smmlv_dia = self._rule_parameter('l10n_co_smmlv', fecha) / dias_mes
 
-        def _por_dia(pct):
+        def _por_dia(valor_dia, pct):
             return max(valor_dia * pct, smmlv_dia)
 
-        def _pago_posiciones(previos, cantidad):
+        def _pago_posiciones(previos, cantidad, inicio):
             """Pago de los dias que ocupan las posiciones previos+1 .. previos+cantidad DENTRO de
-            la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo."""
+            la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo. El valor
+            del dia es el del IBC del mes anterior a ``inicio`` (la fecha de inicio de la INICIAL
+            de la cadena; H-F1-08)."""
+            valor_dia = self._ne_ibc_mes_anterior(self.contract_id, antes_de=inicio) / dias_mes
             ini, fin = previos, previos + cantidad
 
             def _solape(a, b):
                 return max(0, min(fin, b) - max(ini, a))
-            return (_solape(0, dias_emp) * _por_dia(pct_emp)
-                    + _solape(dias_emp, limite_3_90) * _por_dia(pct_3_90)
-                    + max(0, fin - max(ini, limite_3_90)) * _por_dia(pct_91_mas))
+            return (_solape(0, dias_emp) * _por_dia(valor_dia, pct_emp)
+                    + _solape(dias_emp, limite_3_90) * _por_dia(valor_dia, pct_3_90)
+                    + max(0, fin - max(ini, limite_3_90)) * _por_dia(valor_dia, pct_91_mas))
 
+        inicio_recibo = self._ne_tramo_pagable_periodo()[0]
         if previos is not None:
-            return _pago_posiciones(previos, dias)
+            return _pago_posiciones(previos, dias, inicio_recibo)
         cadenas = self._ne_incapacidad_cadenas()
-        if not cadenas or sum(en_periodo for _previos, en_periodo in cadenas) != dias:
+        if not cadenas or sum(en_periodo for _previos, en_periodo, _inicio in cadenas) != dias:
             # Sin ausencias que lo respalden (p. ej. input manual): la incapacidad empieza aqui.
-            cadenas = [(0, dias)]
-        return sum(_pago_posiciones(prev, en_periodo) for prev, en_periodo in cadenas)
+            cadenas = [(0, dias, inicio_recibo)]
+        return sum(_pago_posiciones(prev, en_periodo, inicio) for prev, en_periodo, inicio in cadenas)
 
     def _ne_incapacidad_cadenas(self):
-        """[(dias_previos, dias_en_periodo)] de cada incapacidad comun -- con sus prorrogas -- que cae en el periodo del recibo (H-170; H-F1-01, doc 84).
+        """[(dias_previos, dias_en_periodo, inicio_de_la_inicial)] de cada incapacidad comun -- con sus prorrogas -- que cae en el periodo del recibo (H-170; H-F1-01, doc 84; el inicio de la
+        inicial es la fecha con la que se busca el IBC del mes anterior, H-F1-08).
         La cadena sale del vinculo EXPLICITO ``Prórroga de`` (``hr.leave.l10n_co_ne_prorroga_de_id``) que marca quien registra la incapacidad con el certificado de la EPS: ya NO se encadena por
         fechas, porque que dos incapacidades sean «la misma enfermedad o una relacionada» (Decreto 1427 de 2022, art. 2.2.3.3.2, par. 1) es un juicio medico que el modulo no puede hacer.
         Una incapacidad sin vinculo es la inicial de su propia cadena. dias_previos = dias CALENDARIO reales de la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones
@@ -2748,7 +2780,7 @@ class HrPayslip(models.Model):
         periodo_ini = self._ne_tramo_pagable_periodo()[0]
         tramo_ini = max(periodo_ini, self.contract_id.date_start)
         en_periodo = {leave.id: dias for leave, dias, _ini, _fin in detalle}
-        cadenas = {}                # id de la inicial -> {'miembros': {id: leave}} (la cadena es una lista: la inicial es el ultimo de la subida)
+        cadenas = {}                # id de la inicial -> {'miembros': {id: leave}, 'inicial': leave} (la cadena es una lista: la inicial es el ultimo de la subida)
         for leave, _dias_leave, _ini, _fin in detalle:
             miembros, actual = [leave], leave
             while actual.l10n_co_ne_prorroga_de_id:
@@ -2762,7 +2794,7 @@ class HrPayslip(models.Model):
                         a_desde=actual.request_date_from, a_hasta=actual.request_date_to,
                         estado=dict(actual._fields['state']._description_selection(self.env)).get(actual.state, actual.state)))
                 miembros.append(actual)
-            cadena = cadenas.setdefault(miembros[-1].id, {'miembros': {}})
+            cadena = cadenas.setdefault(miembros[-1].id, {'miembros': {}, 'inicial': miembros[-1]})
             for miembro in miembros:
                 cadena['miembros'][miembro.id] = miembro
         resultado = []
@@ -2773,7 +2805,7 @@ class HrPayslip(models.Model):
                 fin = min(leave.request_date_to, tramo_ini - timedelta(days=1))
                 if fin >= leave.request_date_from:
                     previos += (fin - leave.request_date_from).days + 1
-            resultado.append((previos, dias_periodo))
+            resultado.append((previos, dias_periodo, cadena['inicial'].request_date_from))
         return resultado
 
     def _ne_ausencia_calendario(self, work_entry_code):
