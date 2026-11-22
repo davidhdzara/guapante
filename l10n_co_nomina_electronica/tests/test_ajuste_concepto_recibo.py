@@ -10,6 +10,7 @@ from datetime import date
 from html import unescape
 from unittest.mock import patch
 
+from lxml import etree
 from psycopg2 import IntegrityError
 
 from odoo.addons.hr_payroll.models.hr_salary_rule import HrSalaryRule as ReglaNativa
@@ -405,6 +406,11 @@ class TestAjusteConceptoRecibo(TransactionCase):
                 'category_id': regla.category_id.id, 'l10n_co_ne_ajustable': True})
         regla.with_user(administrador).write({'l10n_co_ne_ajustable': False})
         self.assertFalse(regla.l10n_co_ne_ajustable, 'El administrador sí')
-        arch = self.env['hr.salary.rule'].get_view(view_type='form')['arch']
-        self.assertIn('base.group_system', arch if isinstance(arch, str) else arch.decode())
+        # La vista: Odoo QUITA el atributo ``groups`` al procesar el arch (la N2 «cr» de 4bf07d3 falló con ``assertIn('base.group_system', arch)``): lo que se ve es que
+        # el campo NO está para el gerente de nómina y SÍ para el administrador del sistema.
+        def campo_en_la_vista(usuario):
+            arch = self.env['hr.salary.rule'].with_user(usuario).get_view(view_type='form')['arch']
+            return etree.fromstring(arch.encode('utf-8') if isinstance(arch, str) else arch).xpath("//field[@name='l10n_co_ne_ajustable']")
+        self.assertFalse(campo_en_la_vista(gerente), 'El gerente de nómina no ve la bandera en el formulario de la regla')
+        self.assertTrue(campo_en_la_vista(administrador), 'El administrador del sistema sí')
 
