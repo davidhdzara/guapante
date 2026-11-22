@@ -22,7 +22,7 @@ import logging
 from datetime import timedelta
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -114,6 +114,30 @@ class L10nCoRetefuenteUvt(models.Model):
             'Ya existe una configuración de UVT para este año y compañía.',
         ),
     ]
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-F2-03 (G1): las filas compartidas (sin compañía) solo las toca el administrador del sistema
+    # ──────────────────────────────────────────────────────────────────
+    def _ne_exigir_sistema_si_comparte(self, toca_compartidas):
+        """Las filas SIN compañía rigen para TODAS las compañías (de ellas depende la retención de cada una): las crea, edita y borra solo el administrador del sistema (o el sistema al cargar datos con
+        ``-u``). La regla de registro (``security/l10n_co_company_security.xml``) ya lo impide; este aviso lo dice con claro quién puede hacerlo, en vez del mensaje genérico de Odoo."""
+        if toca_compartidas and not self.env.is_system():
+            raise AccessError(_(
+                'La configuración de retención sin compañía rige para TODAS las compañías: solo la crea, edita o borra el administrador del sistema (permiso «Administración: Ajustes»). '
+                'El administrador de nómina edita únicamente la de su compañía; los valores legales (UVT, tabla del art. 383) los carga la actualización del módulo.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        self._ne_exigir_sistema_si_comparte(any('company_id' in vals and not vals['company_id'] for vals in vals_list))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        self._ne_exigir_sistema_si_comparte(any(not fila.company_id for fila in self) or ('company_id' in vals and not vals['company_id']))
+        return super().write(vals)
+
+    def unlink(self):
+        self._ne_exigir_sistema_si_comparte(any(not fila.company_id for fila in self))
+        return super().unlink()
 
     # ──────────────────────────────────────────────────────────────────
     # Validaciones
