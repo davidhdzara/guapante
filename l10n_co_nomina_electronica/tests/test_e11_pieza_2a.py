@@ -27,13 +27,14 @@ _SECCIONES = {
 _SIN_SECCION = ('devengados', 'totales_display')
 # Ejemplos de lo que TL pidió (no es la regla, solo una red de seguridad legible): ajustables / derivados que NO lo son.
 # .298: conceptos de pago y deducciones voluntarias o pactadas (ajustables) frente a lo que sale de la ley o del cálculo (NO ajustable: riesgo UGPP).
-_EJEMPLOS_AJUSTABLES = ('CO_BASICO', 'CO_AUX_TRANS', 'CO_HED', 'CO_HRNDF', 'CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_AUX_ALIM', 'CO_COMISIONES',
+_EJEMPLOS_AJUSTABLES = ('CO_BASICO', 'CO_HED', 'CO_HRNDF', 'CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_BONIF_RET', 'CO_AUX_ALIM', 'CO_COMISIONES',
                         'CO_LIBRANZAS', 'CO_COOPERATIVA', 'CO_AFC', 'CO_PENSION_VOL', 'CO_SINDICATO', 'CO_OTRAS_DED')
 _EJEMPLOS_NO_AJUSTABLES = ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEFUENTE', 'CO_EMBARGO',                                  # ley y orden judicial
                            'CO_SALUD_CIA', 'CO_PENSION_CIA', 'CO_ARL_CIA', 'CO_CCF_CIA', 'CO_SENA_CIA', 'CO_ICBF_CIA',                  # aportes de la empresa
                            'CO_PROV_PRIMA', 'CO_PROV_CESANTIAS', 'CO_PROV_INT_CES', 'CO_PROV_VACACIONES',                             # provisiones
                            'CO_IBC_SALARIAL', 'CO_IBC_SP', 'CO_DIAS_SP', 'CO_SS_BASE_IBC', 'CO_RETEFUENTE_BASE_GROSS',                 # bases y acumuladores
                            'CO_INC_COMUN', 'CO_LIC_MAT', 'CO_VAC',                                                                     # con efecto directo en el IBC
+                           'CO_AUX_TRANS', 'CO_PRIMA', 'CO_CESANTIAS', 'CO_INT_CES', 'CO_INDEMNIZ', 'CO_APOYO_SOST',                  # los calcula una fórmula de ley: a la baja es pagar de menos
                            'CO_NETO', 'CO_BRUTO')                                                                                     # totales
 _UNIDAD_REGLAS = {
     'CO_BASICO': 'dias', 'CO_AUX_TRANS': 'dias', 'CO_INC_COMUN': 'dias', 'CO_INC_LABORAL': 'dias', 'CO_LIC_MAT': 'dias',

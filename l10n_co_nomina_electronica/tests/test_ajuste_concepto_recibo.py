@@ -115,17 +115,20 @@ class TestAjusteConceptoRecibo(TransactionCase):
             self.assertEqual(con_gancho, self._lineas(recibo), 'La estructura %s cambió con el gancho' % estructura.name)
 
     # ── 2. valor exacto del ajuste ─────────────────────────────────────────────────────────────────────────────────────────────
-    def test_02_ajustar_el_auxilio_a_cero_deja_la_linea_en_cero_y_el_neto_baja_exactamente(self):
+    def test_02_ajustar_una_bonificacion_a_cero_deja_la_linea_en_cero_y_el_neto_baja_exactamente(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_AUX_TRANS')
-        self.assertGreater(sugerido, 0.0, 'Premisa: con 3.000.000 hay auxilio de transporte (.298: la salud ya no es ajustable)')
+        self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 300000.0})
+        recibo.compute_sheet()
+        sugerido = self._total(recibo, 'CO_BONIF_NOSAL')
+        self.assertEqual(sugerido, 300000.0, 'Premisa: la novedad de 300.000 es una línea (.298: el auxilio y la salud ya no se ajustan)')
         neto0, retencion0 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_BONIF_NOSAL', amount=0.0)
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01, msg='Al crear, lo sugerido es la línea que ya traía el recibo')
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 0.0)
         neto1, retencion1 = recibo._ne_pdf_neto(), self._total(recibo, 'CO_RETEFUENTE')
-        # neto = suma de las líneas: el auxilio deja de sumar |sugerido| y la retención se mueve por la cascada.
+        # neto = suma de las líneas: la bonificación deja de sumar |sugerido| y la retención se mueve por la cascada.
         self.assertAlmostEqual(neto1 - neto0, (0.0 - sugerido) + (retencion1 - retencion0), delta=0.01)
         self.assertEqual((ajuste.estado, ajuste.user_id, ajuste.con_sugerido), ('aplicado', self.env.user, True))
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
@@ -161,13 +164,13 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 4. sobrevive al recálculo ──────────────────────────────────────────────────────────────────────────────────────────────
     def test_04_el_ajuste_sobrevive_a_calcular_la_hoja_al_refrescar_y_a_una_novedad_del_formulario(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0)
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Calcular hoja')
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0, 'Calcular hoja')
         recibo.action_refresh_from_work_entries()
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Refrescar desde las entradas de trabajo')
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0, 'Refrescar desde las entradas de trabajo')
         # .286: el formulario recalcula la hoja. La estructura general oculta la página nativa de novedades (``views/hr_payslip_conceptos_views.xml:13-15``,
         # ``odoo/tests/form.py:855``): la novedad se agrega como fila de «Conceptos de pago» (``l10n_co_concepto_ids``), lo que ve el usuario.
         with Form(recibo) as formulario:
@@ -175,30 +178,33 @@ class TestAjusteConceptoRecibo(TransactionCase):
                 fila.input_type_id = self.tipo_bonif_nosal
                 fila.amount = 100000.0
         self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 100000.0)
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0, 'Novedad guardada desde el formulario')
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0, 'Novedad guardada desde el formulario')
 
     # ── 5. volver al sugerido ──────────────────────────────────────────────────────────────────────────────────────────────────
     def test_05_volver_al_valor_sugerido_borra_el_ajuste_y_deja_nota(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_AUX_TRANS')
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        sugerido = self._total(recibo, 'CO_BASICO')
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         recibo.compute_sheet()
         ajuste.write({'amount': ajuste.sugerido_amount, 'quantity': ajuste.sugerido_quantity, 'rate': ajuste.sugerido_rate})
         recibo.compute_sheet()
         self.assertFalse(ajuste.exists(), 'El ajuste igual al sugerido se borra solo')
-        self.assertAlmostEqual(self._total(recibo, 'CO_AUX_TRANS'), sugerido, delta=0.01)
+        self.assertAlmostEqual(self._total(recibo, 'CO_BASICO'), sugerido, delta=0.01)
         self.assertIn('quedó igual al valor sugerido', self._notas(recibo))
 
     # ── 6. la condición de la regla deja de cumplirse ──────────────────────────────────────────────────────────────────────────
     def test_06_si_la_regla_deja_de_generar_linea_el_ajuste_queda_sin_linea_y_avisa(self):
         recibo = self._recibo()
-        self.assertTrue(self._linea(recibo, 'CO_AUX_TRANS'), 'Premisa: con 3.000.000 hay auxilio de transporte')
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=5000.0, quantity=15.0)
+        entrada = self.env['hr.payslip.input'].create({
+            'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 100000.0})
         recibo.compute_sheet()
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 75000.0)
-        recibo.contract_id.wage = 9000000.0                                  # por encima de 2 SMMLV: la regla ya no paga auxilio
+        self.assertTrue(self._linea(recibo, 'CO_BONIF_NOSAL'), 'Premisa: la novedad genera la línea')
+        ajuste = self._ajustar(recibo, 'CO_BONIF_NOSAL', amount=5000.0, quantity=15.0)
         recibo.compute_sheet()
-        self.assertFalse(self._linea(recibo, 'CO_AUX_TRANS'))
+        self.assertEqual(self._total(recibo, 'CO_BONIF_NOSAL'), 75000.0)
+        entrada.unlink()                                                     # sin la novedad la regla ya no genera línea (.298: antes se subía el sueldo)
+        recibo.compute_sheet()
+        self.assertFalse(self._linea(recibo, 'CO_BONIF_NOSAL'))
         self.assertEqual(ajuste.estado, 'sin_linea')
         self.assertIn('no se aplicó en este cálculo', self._notas(recibo))
 
@@ -219,7 +225,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 8. bloqueos (Q6 de TL) ─────────────────────────────────────────────────────────────────────────────────────────────────
     def test_08_un_recibo_hecho_o_con_documento_enviado_incierto_o_aceptado_no_admite_ajustes(self):
         recibo = self._recibo()
-        regla = self._regla('CO_AUX_TRANS')
+        regla = self._regla('CO_BASICO')
         valores = {'slip_id': recibo.id, 'salary_rule_id': regla.id, 'amount': 0.0}
         for estado in ('sent', 'uncertain', 'accepted'):
             with patch.object(type(recibo), '_ne_estado_documento_ajuste', return_value=estado):
@@ -244,7 +250,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
         gerente = self._usuario('gerente_ajustes', (_G_MANAGER, 'base.group_user'), self.company)
         oficial = self._usuario('oficial_ajustes', (_G_USER, 'base.group_user'), self.company)
         otro = self._usuario('otro_ajustes', ('base.group_user',), self.company)
-        regla = self._regla('CO_AUX_TRANS')
+        regla = self._regla('CO_BASICO')
         ajuste = self.Ajuste.with_user(gerente).create({'slip_id': recibo.id, 'salary_rule_id': regla.id, 'amount': 0.0})
         ajuste.with_user(gerente).write({'amount': 1.0})
         self.assertEqual(self.Ajuste.with_user(oficial).search([('id', '=', ajuste.id)]), ajuste, 'El oficial lee')
@@ -265,11 +271,12 @@ class TestAjusteConceptoRecibo(TransactionCase):
         with self.assertRaises(ValidationError):                              # NETO es derivado: no es ajustable
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_NETO').id, 'amount': 1.0})
         # .298 (decisión de David, 21-nov, riesgo UGPP): lo que sale de la ley o del cálculo NO se ajusta, con un error que dice por qué.
-        for codigo in ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEFUENTE', 'CO_EMBARGO', 'CO_SALUD_CIA', 'CO_PROV_PRIMA', 'CO_IBC_SP', 'CO_VAC'):
+        for codigo in ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEFUENTE', 'CO_EMBARGO', 'CO_SALUD_CIA', 'CO_PROV_PRIMA', 'CO_IBC_SP', 'CO_VAC',
+                       'CO_AUX_TRANS', 'CO_PRIMA', 'CO_CESANTIAS', 'CO_INT_CES', 'CO_INDEMNIZ', 'CO_APOYO_SOST'):   # fórmulas de ley: ajustar a la baja es pagar de menos
             with self.assertRaisesRegex(ValidationError, 'UGPP', msg=codigo):
                 self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla(codigo).id, 'amount': 1.0})
         # ... y los conceptos de pago y las deducciones voluntarias o pactadas sí.
-        for codigo in ('CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_AUX_ALIM', 'CO_HED', 'CO_LIBRANZAS', 'CO_COOPERATIVA', 'CO_SINDICATO'):
+        for codigo in ('CO_BASICO', 'CO_BONIF_SAL', 'CO_BONIF_NOSAL', 'CO_BONIF_RET', 'CO_AUX_ALIM', 'CO_HED', 'CO_LIBRANZAS', 'CO_COOPERATIVA', 'CO_SINDICATO'):
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla(codigo).id, 'amount': 1.0}).unlink()
         with self.assertRaises(ValidationError):                              # regla de la estructura de prima
             self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_PRIMA_VALOR', self.prima).id, 'amount': 1.0})
@@ -282,20 +289,20 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 11. copia ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
     def test_11_la_copia_del_recibo_no_copia_los_ajustes(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         self.assertFalse(self.env['hr.payslip']._fields['l10n_co_ajuste_ids'].copy)
         self.assertNotIn('l10n_co_ajuste_ids', recibo.copy_data()[0])
 
     # ── 12. rastro en el chatter ───────────────────────────────────────────────────────────────────────────────────────────────
     def test_12_el_chatter_trae_regla_sugerido_anterior_nuevo_y_usuario(self):
         recibo = self._recibo()
-        sugerido = self._total(recibo, 'CO_AUX_TRANS')
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        sugerido = self._total(recibo, 'CO_BASICO')
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         moneda = recibo.company_id.currency_id
         # El chatter guarda el HTML con el espacio de no separación del formato monetario como ``&nbsp;``: se compara el texto ya decodificado.
         notas = unescape(self._notas(recibo))
         self.assertIn('Ajuste creado', notas)
-        self.assertIn('CO_AUX_TRANS', notas)
+        self.assertIn('CO_BASICO', notas)
         # .293: los importes salen con el formato monetario de la compañía (símbolo, separadores y decimales de la moneda), como en pantalla.
         self.assertIn('Sugerido: %s' % moneda.format(sugerido), notas)
         self.assertIn('Nuevo: %s' % moneda.format(0.0), notas)
@@ -310,7 +317,7 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 13. (TL a) aislamiento por compañía ────────────────────────────────────────────────────────────────────────────────────
     def test_13_el_ajuste_de_un_recibo_de_la_compania_a_es_invisible_e_inaplicable_desde_la_compania_b(self):
         recibo = self._recibo()
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         usuario_b = self._usuario('gerente_ajustes_b', (_G_MANAGER, 'base.group_user'), self.company_b)
         usuario_ab = self._usuario('gerente_ajustes_ab', (_G_MANAGER, 'base.group_user'), self.company | self.company_b)
         self.assertFalse(self.Ajuste.with_user(usuario_b).search([('id', '=', ajuste.id)]), 'Invisible desde la compañía B')
@@ -330,9 +337,9 @@ class TestAjusteConceptoRecibo(TransactionCase):
     # ── 14. un ajuste por regla y recibo (Q7 de TL) ────────────────────────────────────────────────────────────────────────────
     def test_14_solo_un_ajuste_por_regla_y_recibo(self):
         recibo = self._recibo()
-        self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'), self.cr.savepoint():
-            self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_AUX_TRANS').id, 'amount': 1.0})
+            self.Ajuste.create({'slip_id': recibo.id, 'salary_rule_id': self._regla('CO_BASICO').id, 'amount': 1.0})
 
     # ── 15. dos cálculos en la misma transacción (N2 «co» de .289: test_02 y test_03 caían en el cálculo siguiente al ajuste) ────
     def test_15_el_sugerido_se_registra_en_cada_calculo_aunque_ya_exista_un_entorno_con_el_mismo_contexto(self):
@@ -343,14 +350,14 @@ class TestAjusteConceptoRecibo(TransactionCase):
         a propósito un entorno con el contexto que dejaba el cálculo anterior (``with_company`` + ``ne_sugeridos={}``): así la prueba no depende de
         cuándo el recolector de basura suelte el entorno viejo."""
         recibo = self._recibo()                                  # cálculo 1, sin ajuste: su diccionario de sugeridos quedaba vacío
-        sugerido = self._total(recibo, 'CO_AUX_TRANS')
+        sugerido = self._total(recibo, 'CO_BASICO')
         previo = recibo.with_company(recibo.company_id).with_context(ne_sugeridos={})
-        ajuste = self._ajustar(recibo, 'CO_AUX_TRANS', amount=0.0)
+        ajuste = self._ajustar(recibo, 'CO_BASICO', amount=0.0)
         recibo.compute_sheet()                                   # cálculo 2: el primero que ve el ajuste
         self.assertEqual(ajuste.estado, 'aplicado', 'El gancho vio el ajuste y el registro halló lo sugerido')
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
         self.assertFalse(previo.env.context['ne_sugeridos'], 'El diccionario del entorno viejo no se usó')
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0)
         recibo.compute_sheet()                                   # cálculos 3 y 4, seguidos
         recibo.compute_sheet()
         self.assertEqual(ajuste.estado, 'aplicado')
@@ -362,23 +369,42 @@ class TestAjusteConceptoRecibo(TransactionCase):
         """Decisión de David (21-nov, riesgo UGPP): un ajuste existente sobre una regla que deja de ser ajustable se BORRA en los recibos en borrador (con una
         nota en el chatter que lo explica y el recibo recalculado con el valor sugerido) y NO se toca en los recibos confirmados (quedan como se pagaron)."""
         borrador, hecho = self._recibo(), self._recibo()
-        ajuste_borrador = self._ajustar(borrador, 'CO_AUX_TRANS', amount=0.0)
-        ajuste_hecho = self._ajustar(hecho, 'CO_AUX_TRANS', amount=0.0)
+        ajuste_borrador = self._ajustar(borrador, 'CO_BASICO', amount=0.0)
+        ajuste_hecho = self._ajustar(hecho, 'CO_BASICO', amount=0.0)
         borrador.compute_sheet()
         hecho.compute_sheet()
         sugerido = ajuste_borrador.sugerido_total
         self.assertGreater(sugerido, 0.0, 'Premisa: el auxilio sugerido es positivo')
-        self.assertEqual(self._total(borrador, 'CO_AUX_TRANS'), 0.0)
+        self.assertEqual(self._total(borrador, 'CO_BASICO'), 0.0)
         hecho.write({'state': 'done'})
-        self._regla('CO_AUX_TRANS').l10n_co_ne_ajustable = False                  # la regla deja de ser ajustable
+        self._regla('CO_BASICO').l10n_co_ne_ajustable = False                  # la regla deja de ser ajustable
         self.assertFalse(ajuste_borrador.exists(), 'Borrador: el ajuste se retira')
         self.assertTrue(ajuste_hecho.exists(), 'Recibo hecho: no se toca')
-        self.assertAlmostEqual(self._total(borrador, 'CO_AUX_TRANS'), sugerido, delta=0.01, msg='El borrador se recalcula con el valor sugerido')
+        self.assertAlmostEqual(self._total(borrador, 'CO_BASICO'), sugerido, delta=0.01, msg='El borrador se recalcula con el valor sugerido')
         notas = unescape(self._notas(borrador))
-        for texto in ('Se retiró el ajuste de la empresa', 'CO_AUX_TRANS', 'UGPP'):
+        for texto in ('Se retiró el ajuste de la empresa', 'CO_BASICO', 'UGPP'):
             self.assertIn(texto, notas)
         self.assertNotIn('Se retiró', self._notas(hecho))
         self.Ajuste._retirar_de_reglas_no_ajustables()                              # la función de datos de cada -u: idempotente
         self.assertTrue(ajuste_hecho.exists())
         self.assertEqual(self._notas(borrador).count('Se retiró el ajuste'), 1, 'No repite la nota')
+
+    # ── 17. (.298) quién marca o desmarca «ajustable» ───────────────────────────────────────────────────────────────────────────
+    def test_17_solo_el_administrador_del_sistema_marca_o_desmarca_ajustable_el_gerente_de_nomina_no(self):
+        """Decisión de David (21-nov): la bandera la cambia SOLO ``base.group_system`` (en la vista con ``groups`` y en ``write``/``create``)."""
+        regla = self._regla('CO_BONIF_NOSAL')
+        self.assertTrue(regla.l10n_co_ne_ajustable, 'Premisa: la bonificación es ajustable')
+        gerente = self._usuario('gerente_flag', (_G_MANAGER, 'base.group_user'), self.company)
+        administrador = self._usuario('administrador_flag', (_G_MANAGER, 'base.group_system', 'base.group_user'), self.company)
+        with self.assertRaisesRegex(AccessError, 'administrador del sistema'):
+            regla.with_user(gerente).write({'l10n_co_ne_ajustable': False})
+        self.assertTrue(regla.l10n_co_ne_ajustable)
+        with self.assertRaisesRegex(AccessError, 'administrador del sistema'):
+            self.env['hr.salary.rule'].with_user(gerente).create({
+                'name': 'Regla de prueba', 'code': 'CO_PRUEBA_FLAG', 'sequence': 999, 'struct_id': regla.struct_id.id,
+                'category_id': regla.category_id.id, 'l10n_co_ne_ajustable': True})
+        regla.with_user(administrador).write({'l10n_co_ne_ajustable': False})
+        self.assertFalse(regla.l10n_co_ne_ajustable, 'El administrador sí')
+        arch = self.env['hr.salary.rule'].get_view(view_type='form')['arch']
+        self.assertIn('base.group_system', arch if isinstance(arch, str) else arch.decode())
 

@@ -185,7 +185,7 @@ result_qty = dias_pagables
         <record id="hr_salary_rule_co_aux_transporte" model="hr.salary.rule">
             <field name="name">Auxilio de Transporte</field>
             <field name="code">CO_AUX_TRANS</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">15</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -728,7 +728,7 @@ result_qty = dias
         <record id="hr_salary_rule_co_prima_servicios" model="hr.salary.rule">
             <field name="name">Prima de Servicios</field>
             <field name="code">CO_PRIMA</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">70</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -749,7 +749,7 @@ result = inputs['CO_PRIMA'].amount
         <record id="hr_salary_rule_co_cesantias" model="hr.salary.rule">
             <field name="name">Cesantías</field>
             <field name="code">CO_CESANTIAS</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">71</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -771,7 +771,7 @@ result = inputs['CO_CESANTIAS'].amount
         <record id="hr_salary_rule_co_int_cesantias" model="hr.salary.rule">
             <field name="name">Intereses sobre Cesantías</field>
             <field name="code">CO_INT_CES</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">72</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -793,7 +793,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_apoyo_sost" model="hr.salary.rule">
             <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
             <field name="code">CO_APOYO_SOST</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">80</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
@@ -826,7 +826,7 @@ result = inputs['CO_INT_CES'].amount
         <record id="hr_salary_rule_co_indemnizacion" model="hr.salary.rule">
             <field name="name">Indemnización</field>
             <field name="code">CO_INDEMNIZ</field>
-            <field name="l10n_co_ne_ajustable" eval="True"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="sequence">86</field>
             <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>

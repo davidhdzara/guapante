@@ -18,7 +18,7 @@ Referencia: Anexo Técnico V1.0, secciones 6.2.12 (Devengados) y 6.2.13
 """
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, ValidationError
 
 # ──────────────────────────────────────────────────────────────────────────
 # Constantes: conceptos de deducción según el XML DIAN
@@ -241,8 +241,8 @@ class HrSalaryRule(models.Model):
              'pactadas (libranzas, cooperativa, AFC, pensión voluntaria, sindicato). NO se marcan los aportes de salud, pensión y FSP del '
              'empleado, la retención en la fuente, los embargos, los aportes de la empresa, las provisiones, las bases, las incapacidades, '
              'las licencias ni las vacaciones: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
-             'UGPP. Si se desmarca una regla, los ajustes que tenía en recibos en borrador o en espera se retiran (con una nota en el '
-             'recibo); los de recibos confirmados no se tocan.')
+             'UGPP. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
+             'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan.')
     l10n_co_ne_unidad = fields.Selection(
         selection=[('dias', 'Días'), ('horas', 'Horas')],
         string='Unidad de la cantidad',
@@ -269,7 +269,24 @@ class HrSalaryRule(models.Model):
             sugeridos[(recibo.id, self.id)] = tuple(resultado)
         return ajuste.amount, ajuste.quantity, ajuste.rate
 
+    def _ne_exigir_administrador_para_ajustable(self):
+        """Decisión de David (21-nov, riesgo UGPP): marcar o desmarcar «Permite ajuste de la empresa» es del administrador del sistema (``base.group_system``), no del
+        gerente de nómina. El superusuario (carga de datos del módulo, ``-u``) no pasa por aquí. El campo NO usa ``groups=`` a nivel de modelo: el cálculo y las
+        filas de «Conceptos de pago» lo leen con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar «Permite ajuste de la empresa» en una regla salarial: decide qué conceptos '
+                'puede cambiar a mano la empresa y un cambio expone la nómina a inexactitud ante la UGPP.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any(vals.get('l10n_co_ne_ajustable') for vals in vals_list):
+            self._ne_exigir_administrador_para_ajustable()
+        return super().create(vals_list)
+
     def write(self, vals):
+        if 'l10n_co_ne_ajustable' in vals:
+            self._ne_exigir_administrador_para_ajustable()
         res = super().write(vals)
         if 'l10n_co_ne_ajustable' in vals and not vals['l10n_co_ne_ajustable']:
             self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables(self)

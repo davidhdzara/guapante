@@ -231,7 +231,7 @@ class TestConceptosDePago(TransactionCase):
     # ── editar con Form (el mismo camino del cliente web) ──────────────────────────────────────────────────────────────────────
     def test_08_editar_el_importe_de_una_fila_ajustable_crea_el_ajuste_y_recalcula_una_vez(self):
         recibo = self._recibo()
-        fila = self._fila(recibo, 'CO_AUX_TRANS')
+        fila = self._fila(recibo, 'CO_BASICO')
         self.assertTrue(fila.edita_importe and fila.edita_cantidad and fila.edita_porcentaje, 'Gerente: la fila ajustable se edita')
         sugerido, neto0 = fila.total, recibo._ne_pdf_neto()
         espia, llamadas = self._contando_calculos(recibo)
@@ -241,10 +241,10 @@ class TestConceptosDePago(TransactionCase):
                     editada.amount = 0.0
         self.assertEqual(llamadas, [recibo.ids], 'UN recálculo por guardado')
         ajuste = recibo.l10n_co_ajuste_ids
-        self.assertEqual((len(ajuste), ajuste.salary_rule_id.code, ajuste.amount, ajuste.estado), (1, 'CO_AUX_TRANS', 0.0, 'aplicado'))
+        self.assertEqual((len(ajuste), ajuste.salary_rule_id.code, ajuste.amount, ajuste.estado), (1, 'CO_BASICO', 0.0, 'aplicado'))
         self.assertAlmostEqual(ajuste.sugerido_total, sugerido, delta=0.01)
-        self.assertEqual(self._total(recibo, 'CO_AUX_TRANS'), 0.0)
-        fila = self._fila(recibo, 'CO_AUX_TRANS')
+        self.assertEqual(self._total(recibo, 'CO_BASICO'), 0.0)
+        fila = self._fila(recibo, 'CO_BASICO')
         self.assertEqual((fila.total, fila.ajustado), (0.0, True), 'La fila se regeneró con el valor ajustado')
         siguiente = recibo.l10n_co_concepto_ids[self._indice(recibo, fila) + 1]
         self.assertEqual(siguiente.display_type, 'line_note', 'La nota va como fila nativa line_note, justo debajo')
@@ -321,12 +321,12 @@ class TestConceptosDePago(TransactionCase):
             self.Concepto.create({'slip_id': recibo.id, 'amount': 5.0})   # sin tipo de novedad
 
     def test_12_una_regla_no_ajustable_deja_su_fila_de_solo_lectura(self):
-        """.298: se desmarca una regla que venía ajustable (el auxilio): su fila queda de solo lectura. La salud ya viene así sembrada (siguiente prueba)."""
+        """.298: se desmarca una regla que venía ajustable (el sueldo): su fila queda de solo lectura. La salud ya viene así sembrada (siguiente prueba)."""
         recibo = self._recibo()
-        regla = self._fila(recibo, 'CO_AUX_TRANS').salary_rule_id
+        regla = self._fila(recibo, 'CO_BASICO').salary_rule_id
         regla.l10n_co_ne_ajustable = False
         recibo.compute_sheet()
-        fila = self._fila(recibo, 'CO_AUX_TRANS')
+        fila = self._fila(recibo, 'CO_BASICO')
         self.assertEqual((fila.edita_cantidad, fila.edita_porcentaje, fila.edita_importe), (False, False, False))
         with self.assertRaises(AssertionError):
             with Form(recibo) as formulario:
@@ -345,7 +345,7 @@ class TestConceptosDePago(TransactionCase):
 
     def test_13_un_recibo_hecho_conserva_sus_filas_y_no_las_deja_editar(self):
         recibo = self._recibo()
-        fila = self._fila(recibo, 'CO_AUX_TRANS')
+        fila = self._fila(recibo, 'CO_BASICO')
         cantidad = len(recibo.l10n_co_concepto_ids)
         recibo.write({'state': 'done'})
         self.assertEqual(len(recibo.l10n_co_concepto_ids), cantidad)
@@ -361,13 +361,13 @@ class TestConceptosDePago(TransactionCase):
             'payslip_id': recibo.id, 'input_type_id': self.tipo_bonif_nosal.id, 'code': 'CO_BONIF_NOSAL', 'amount': 100000.0})
         gerente = self._usuario('gerente_conceptos', (_G_MANAGER, 'base.group_user'), self.company)
         oficial = self._usuario('oficial_conceptos', (_G_USER, 'base.group_user'), self.company)
-        auxilio = self._fila(recibo, 'CO_AUX_TRANS')
+        sueldo = self._fila(recibo, 'CO_BASICO')
         novedad = self._fila(recibo, 'CO_BONIF_NOSAL')
-        self.assertTrue(auxilio.with_user(gerente).edita_importe)
-        self.assertFalse(auxilio.with_user(oficial).edita_importe, 'El oficial no ajusta conceptos calculados')
+        self.assertTrue(sueldo.with_user(gerente).edita_importe)
+        self.assertFalse(sueldo.with_user(oficial).edita_importe, 'El oficial no ajusta conceptos calculados')
         self.assertTrue(novedad.with_user(oficial).edita_importe, 'Pero sí edita novedades')
         with self.assertRaises(AccessError):
-            auxilio.with_user(oficial).write({'amount': 0.0})
+            sueldo.with_user(oficial).write({'amount': 0.0})
         novedad.with_user(oficial).write({'amount': 90000.0})
         self.assertEqual(novedad.input_id.amount, 90000.0)
 
