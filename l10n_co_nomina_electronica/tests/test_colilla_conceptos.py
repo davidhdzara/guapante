@@ -139,7 +139,7 @@ class TestColillaConceptos(TransactionCase):
                     'slip_id': recibo.id, 'sequence': siguiente(), 'name': linea.name, 'origen': origen, 'line_id': linea.id,
                     'salary_rule_id': regla.id, 'input_id': entrada.id if entrada else False, 'input_type_id': tipo.id if tipo else False,
                     'quantity': linea.quantity, 'rate': linea.rate, 'amount': linea.amount, 'total': linea.total, 'unidad': unidad,
-                    'ajustado': bool(ajuste)})
+                    'ajustado': bool(ajuste), 'cuenta': regla._ne_cuenta_contable(linea.total, recibo.company_id)})     # «cuenta»: columna agregada el 22-nov (ajuste de David)
                 if ajuste:
                     texto = _('Ajustado por la empresa.')
                     if ajuste.con_sugerido:
@@ -154,7 +154,7 @@ class TestColillaConceptos(TransactionCase):
                     de_asistencia = lineas_dias.filtered(lambda w: w.work_entry_type_id in tipos_asistencia)
                     if de_asistencia:
                         valores.append({
-                            'slip_id': recibo.id, 'sequence': siguiente(), 'name': de_asistencia[0].name or de_asistencia[0].work_entry_type_id.name,
+                            'slip_id': recibo.id, 'sequence': siguiente(), 'name': recibo._ne_tipo_asistencia().name,
                             'origen': 'dias', 'worked_day_id': de_asistencia[0].id, 'quantity': sum(de_asistencia.mapped('number_of_days')), 'unidad': 'dias',
                             'rate': 0.0})
                     for dia in lineas_dias - de_asistencia:
@@ -315,8 +315,11 @@ class TestColillaConceptos(TransactionCase):
         devengados = [('CO_BASICO', 3000000.0), ('CO_HED', 100000.0), ('CO_HEN', 80000.0), ('CO_HRN', 60000.0), ('CO_COMISIONES', 200000.0),
                       ('CO_BONIF_SAL', 150000.0), ('CO_AUX_TRANS', 249095.0)]
         deducciones = [('CO_SALUD_EMP', -150000.0), ('CO_PENSION_EMP', -150000.0), ('CO_FSP', -30000.0), ('CO_RETEFUENTE', -50000.0)]
-        a = self._sintetico(self.general, devengados + deducciones + [('CO_NETO', 3500000.0)])
+        # El neto es COHERENTE con las dos columnas (7 devengados 3.839.095 - 4 deducciones 380.000 = 3.459.095): con otro neto la colilla imprime la fila «Diferencia sin clasificar»
+        # (criterio del Frente 5) y el conteo tendría una fila de más (N2 «cu»: 18 != 17; el defecto era del dato de prueba, no de la plantilla).
+        a = self._sintetico(self.general, devengados + deducciones + [('CO_NETO', 3459095.0)])
         colilla = a._ne_colilla()
+        self.assertFalse(colilla['diferencia'], 'Premisa: la tabla cuadra con el neto, así que no hay fila de diferencia')
         filas = {s['seccion']: len(s['filas']) for s in colilla['secciones']}
         self.assertGreaterEqual(sum(filas.values()), 9, 'Premisa: la colilla trae casi todos los conceptos del recibo de prueba (11 con valor)')
         alto_en_filas = 2 + max(filas.values()) + 1        # título y encabezado de columnas + la mitad más larga + la fila de totales

@@ -495,16 +495,22 @@ class TestDiasPorAsistencia(TransactionCase):
         resultado = recibo._ne_ajustar_dias_por_asistencia(valores)
         self.assertEqual(resultado[-1], valores[1], 'La línea de incapacidad queda al final, tal como la entrega el nativo')
 
-    def test_un_tipo_marcado_sin_sueldo_no_se_reemplaza(self):
-        """Guarda: el código de un tipo ``unpaid`` SÍ lo lee ``_ne_dias_habiles_excluidos`` de la línea; reemplazar sus días movería el pago.
-        Sin la marca, la línea muestra los 4 días calendario; con la marca queda igual que la entrega el nativo."""
+    def test_un_tipo_marcado_sin_sueldo_no_pasa_a_dias_calendario_sino_a_dias_por_fecha(self):
+        """Guarda: el código de un tipo ``unpaid`` SÍ lo lee ``_ne_dias_habiles_excluidos`` de la línea; pasar sus días a CALENDARIO movería el pago. Sin la marca, la línea muestra
+        los 4 días calendario. Con la marca, desde .300 (E2b, doc 72 §3: «tipos sin sueldo» cuentan por FECHA con entrada, igual que vacaciones y licencias) la línea trae los días
+        por fecha (``_ne_ausencia_habil_tramo``) y el nombre del tipo; las horas no se tocan. (Antes de .300 quedaba idéntica a la del nativo: N2 «cu» mostró la premisa vieja.)"""
         recibo = self._recibo_con_ausencia(self.leave_inc_comun, date(2026, 9, 11), date(2026, 9, 14))
         asistencia = recibo._ne_tipo_asistencia()
         valores = self._valores(recibo, (asistencia, 22.0, 176.0), (self.tipo_inc_comun, 2.0, 16.0))
         self.assertEqual(recibo._ne_ajustar_dias_por_asistencia(valores)[-1]['number_of_days'], 4.0)
         self.leave_inc_comun.unpaid = True
         self.assertIn('CO_INC_COMUN', recibo._ne_codigos_tipos_no_remunerados())
-        self.assertEqual(recibo._ne_ajustar_dias_por_asistencia(valores)[-1], valores[1])
+        dias_por_fecha, detalle = recibo._ne_ausencia_habil_tramo('CO_INC_COMUN')
+        self.assertTrue(detalle, 'Premisa: la ausencia validada respalda la línea')
+        resultado = recibo._ne_ajustar_dias_por_asistencia(valores)[-1]
+        self.assertEqual(resultado, dict(valores[1], number_of_days=dias_por_fecha, name=self.tipo_inc_comun.name))
+        self.assertLess(resultado['number_of_days'], 4.0, 'Por fecha, no los 4 días calendario')
+        self.assertEqual(resultado['number_of_hours'], 16.0, 'Las horas no se tocan')
 
     def test_los_tipos_de_ausencia_de_dias_calendario_no_son_sin_sueldo_de_fabrica(self):
         """Premisa de la guarda: solo la licencia no remunerada trae ``unpaid`` (data/l10n_co_ausencias_data.xml)."""
