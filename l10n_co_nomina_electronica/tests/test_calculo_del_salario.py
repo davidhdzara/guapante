@@ -266,6 +266,27 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertFalse(reglas.filtered(lambda r: r.category_id == acumuladores).filtered('l10n_co_ne_ajustable'),
                          'Las bases no son ajustables: solo devengados y deducciones')
 
+    def test_13b_las_bases_salariales_no_se_llaman_ibc_de_seguridad_social_junto_al_ibc_de_los_aportes(self):
+        """H-QA-042 (QA sobre .298): «Base IBC Seguridad Social» (875.452,50) y «Retención Fuente - Base IBC» se veían junto a «IBC Salud y Pensión» (945.271,50): un
+        auditor no debe ver dos IBC de seguridad social distintos sin explicación. Son bases SALARIALES (antes del exceso del 40 %, que la fila de .299-1 explica) y se
+        llaman así; el único «IBC Salud y Pensión» es el de los aportes."""
+        regla = self.env['hr.salary.rule']
+        ss = regla.search([('code', '=', 'CO_SS_BASE_IBC')], limit=1)
+        rete = regla.search([('code', '=', 'CO_RETEFUENTE_BASE_IBC')], limit=1)
+        aportes = regla.search([('code', '=', 'CO_IBC_SP')], limit=1)
+        self.assertIn('Base salarial', ss.name)
+        self.assertIn('40 %', ss.name)
+        self.assertIn('Base salarial', rete.name)
+        for r in (ss, rete):
+            self.assertNotIn('IBC', r.name, 'Sin la palabra IBC: la ve el auditor junto al IBC de los aportes')
+            self.assertIn('CO_IBC_SP', r.note, 'La nota dice cuál es el IBC de los aportes')
+        self.assertEqual(aportes.name, 'IBC Salud y Pension')
+        recibo = self._recibo()
+        nombres = [f.name for f in self._filas(recibo) if f.line_id]
+        self.assertNotIn('Base IBC Seguridad Social', nombres)
+        self.assertNotIn('Retención Fuente - Base IBC', nombres)
+        self.assertEqual([n for n in nombres if 'IBC Salud' in n], [aportes.name], 'Un solo IBC de seguridad social en la pestaña')
+
     # ── .298: los conceptos se MUEVEN y el cálculo es informativo (regla de David) ─────────────────────────────────────────────
     def test_14_los_conceptos_se_mueven_y_el_calculo_los_sigue_con_las_cifras_de_un_calculo_manual(self):
         """Regla de David (22-nov): se agrega una bonificación SALARIAL y se ajusta un devengado desde «Conceptos de pago»; en «Cálculo del salario» cambian el

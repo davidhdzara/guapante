@@ -1280,7 +1280,7 @@ result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
         </record>
 
         <record id="hr_salary_rule_co_ss_base_ibc" model="hr.salary.rule">
-            <field name="name">Base IBC Seguridad Social</field>
+            <field name="name">Base salarial del mes (antes del exceso del 40 %)</field>
             <field name="code">CO_SS_BASE_IBC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
@@ -1300,9 +1300,10 @@ result = payslip._ne_ibc_parafiscales(result_rules['CO_IBC_SALARIAL']['total'])
 result = payslip._ne_ibc_seguridad_social(categories, contract, inputs, worked_days, result_rules)
             </field>
             <field name="appears_on_payslip" eval="False"/>
-            <field name="note">Acumulador interno (H-017a): guarda el IBC mensual de seguridad
-social para que la siguiente nomina del mismo contrato pueda leer el "ultimo IBC anterior"
-exigido por la regla de base especial de vacaciones/licencia remunerada. No aparece en el
+            <field name="note">Acumulador interno (H-017a): guarda la base SALARIAL del mes (salario ordinario y maternidad/paternidad; sin el exceso
+del 40 %, sin incapacidades, sin piso ni techo) para que la siguiente nomina del mismo contrato pueda leer el "ultimo IBC anterior"
+exigido por la regla de base especial de vacaciones/licencia remunerada. NO es el IBC de los aportes: ese es «IBC Salud y Pension»
+(CO_IBC_SP), que suma el exceso del 40 % y aplica piso y techo (H-QA-042, QA sobre .298: dos «IBC» sin explicacion). No aparece en el
 recibo ni afecta el neto.</field>
         </record>
 
@@ -1436,7 +1437,7 @@ fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto
 
         <!-- ==================== RETEFUENTE BASE IBC (invisible, acumulador doc 08) ==================== -->
         <record id="hr_salary_rule_co_retefuente_base_ibc" model="hr.salary.rule">
-            <field name="name">Retención Fuente - Base IBC</field>
+            <field name="name">Retención Fuente - Base salarial del mes</field>
             <field name="code">CO_RETEFUENTE_BASE_IBC</field>
             <field name="l10n_co_ne_ajustable" eval="False"/>
             <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
@@ -1463,9 +1464,9 @@ if contract.l10n_co_ne_integral_salary:
 result = _ibc_pension
             </field>
             <field name="appears_on_payslip" eval="False"/>
-            <field name="note">Acumulador interno (doc 08): guarda el IBC mensual para que
-action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el %
-fijo de Procedimiento 2 (Art. 384 ET). No aparece en el recibo ni afecta el neto.</field>
+            <field name="note">Acumulador interno (doc 08): guarda la base salarial mensual (el salario devengado, o el integral por su factor) para que
+action_calculate_retention_procedure2() promedie los ultimos 12 meses reales al calcular el % fijo de Procedimiento 2 (Art. 384 ET).
+NO es el IBC de los aportes («IBC Salud y Pension», CO_IBC_SP; H-QA-042). No aparece en el recibo ni afecta el neto.</field>
         </record>
 
         <record id="hr_salary_rule_co_sindicato" model="hr.salary.rule">
