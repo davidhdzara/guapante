@@ -143,10 +143,18 @@ class TestAusenciaPorFecha(TestDiasPorAsistencia):
         self.assertEqual(recibo._ne_ausencia_habil('CO_VAC')[0], 4)
         entradas = self._entradas_del_dia(recibo, date(2026, 9, 9)).filtered('leave_id')
         self.assertTrue(entradas)
-        entradas.write({'state': 'cancelled'})
-        self.assertEqual(recibo._ne_ausencia_habil('CO_VAC')[0], 3)
-        entradas.write({'state': 'conflict'})
-        self.assertEqual(recibo._ne_ausencia_habil('CO_VAC')[0], 3)
+        # N1 sobre staging_dev (22-nov): ``entradas.write({'state': 'cancelled'})`` por el ORM cancela la AUSENCIA entera (``hr_work_entry_holidays`` borra su
+        # ``resource.calendar.leaves`` y las entradas): daba 0 días, no 3. Para probar qué cuenta ``_ne_ausencia_habil`` según el estado de la entrada se escribe el
+        # estado directo en la base, sin los ganchos del ORM.
+        for estado in ('cancelled', 'conflict'):
+            self.env.flush_all()
+            self.env.cr.execute('UPDATE hr_work_entry SET state = %s WHERE id IN %s', (estado, tuple(entradas.ids)))
+            entradas.invalidate_recordset(['state'])
+            self.assertEqual(recibo._ne_ausencia_habil('CO_VAC')[0], 3, estado)
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE hr_work_entry SET state = 'validated' WHERE id IN %s", (tuple(entradas.ids),))
+        entradas.invalidate_recordset(['state'])
+        self.assertEqual(recibo._ne_ausencia_habil('CO_VAC')[0], 4, 'Validada otra vez: vuelve a contar')
 
     def test_07_una_entrada_nocturna_cuenta_el_dia_local_y_no_el_de_utc(self):
         """Una entrada de 20:00 a 23:00 (Bogotá) del viernes 11 se guarda como 01:00 a 04:00 UTC del sábado 12: es del viernes, que ya cuenta (4 fechas). Con la
