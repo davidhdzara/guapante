@@ -244,6 +244,10 @@ class L10nCoRetefuenteUvt(models.Model):
                     'deduccion_dependientes': float,
                     'subtotal_depurado': float,
                     'renta_exenta_25': float,
+                    'base_limite_global': float,  (ingreso - salud - pension)
+                    'limite_global': float,       (min(40 % de la base, 1.340/12 UVT))
+                    'beneficios_antes_del_limite': float,
+                    'exceso_limite_global': float, (lo que el limite no deja deducir)
                     'base_gravable': float,
                     'base_uvt': float,
                     'retencion_uvt': float,
@@ -368,8 +372,26 @@ class L10nCoRetefuenteUvt(models.Model):
             subtotal * _p('l10n_co_pct_renta_exenta') / 100,
             _p('l10n_co_max_renta_exenta_uvt_anual') / 12.0 * uvt)
 
+        # ── 7b. Límite global de rentas exentas y deducciones (H-F1-02, doc 90) ──
+        #     Art. 336 num. 3 ET (Ley 2277/2022 art. 7) y Decreto 1625/2016 art. 1.2.4.1.6 par. 3 (Decreto 2231/2023 art. 9): las rentas exentas y deducciones
+        #     (aqui: aporte voluntario a pension, AFC, dependientes y el 25 %) no pueden superar el 40 % de «ingreso menos ingresos no constitutivos de renta»
+        #     (aqui: salud y pension obligatorias) ni 1.340 UVT ANUALES; en la retencion, que se depura por mes, 1.340 / 12 UVT -- sin acumulado anual y sin
+        #     prorrateo por quincena (el limite se calcula sobre la base MENSUAL). Un exceso no es deducible. Los 72 UVT por dependiente del art. 336 son de la
+        #     declaracion anual, no de la retencion mensual (decision del TL, doc 90 D-02-2). Los numerales 6-9 del art. 206 y el 206-1, excluidos del limite,
+        #     no existen en el modulo.
+        base_limite_global = max(ingreso_bruto - aporte_salud - aporte_pension, 0.0)
+        beneficios = aporte_vol_pension + afc + deduccion_dep + renta_exenta_25
+        limite_global = min(
+            base_limite_global * _p('l10n_co_limite_global_pct') / 100.0,
+            _p('l10n_co_limite_global_uvt_anual') / 12.0 * uvt)
+        exceso_limite_global = max(beneficios - limite_global, 0.0)
+
         # ── 8. Base gravable ─────────────────────────────────────────
-        base_gravable = max(subtotal - renta_exenta_25, 0.0)
+        #     Sin exceso es exactamente la depuracion de siempre (subtotal - 25 %); con exceso, el ingreso depurado menos lo PERMITIDO (el limite).
+        if exceso_limite_global:
+            base_gravable = max(base_limite_global - limite_global, 0.0)
+        else:
+            base_gravable = max(subtotal - renta_exenta_25, 0.0)
 
         # ── 9. Conversión a UVT ──────────────────────────────────────
         base_uvt = base_gravable / uvt
@@ -429,6 +451,10 @@ class L10nCoRetefuenteUvt(models.Model):
             'deduccion_dependientes': deduccion_dep,
             'subtotal_depurado': subtotal,
             'renta_exenta_25': renta_exenta_25,
+            'base_limite_global': base_limite_global,
+            'limite_global': limite_global,
+            'beneficios_antes_del_limite': beneficios,
+            'exceso_limite_global': exceso_limite_global,
             'base_gravable': base_gravable,
             'base_uvt': round(base_uvt, 4),
             'retencion_uvt': round(retencion_uvt, 4),

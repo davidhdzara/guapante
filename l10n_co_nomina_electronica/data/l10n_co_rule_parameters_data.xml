@@ -724,6 +724,41 @@ escriba <strong>790</strong> para "790 UVT anuales". Valor vigente desde 2023: <
         <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
     </record>
 
+    <record id="rule_parameter_limite_global_pct" model="hr.rule.parameter">
+        <field name="name">Colombia: Límite Global de Rentas Exentas y Deducciones (%)</field>
+        <field name="code">l10n_co_limite_global_pct</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Porcentaje máximo de las rentas exentas y deducciones de la cédula general sobre el ingreso menos los
+ingresos no constitutivos de renta (Art. 336 num. 3 ET, sustituido por el Art. 7 de la Ley 2277 de 2022; Decreto 1625 de 2016 Art. 1.2.1.20.4, modificado por el
+Art. 5 del Decreto 2231 de 2023). En la retención en la fuente lo aplica el parágrafo 3 del Art. 1.2.4.1.6 del Decreto 1625 de 2016 (Art. 9 del Decreto 2231 de 2023):
+«las rentas exentas y deducciones no pueden superar los límites particulares de cada beneficio, ni el límite del cuarenta por ciento (40%) y el valor absoluto de mil
+trescientas cuarenta (1.340) UVT anuales». No aplica a los numerales 6, 7, 8 y 9 del Art. 206 ET, ni a la prima especial ni a la prima de costo de vida (Art. 206-1).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el porcentaje: escriba <strong>40</strong> para el 40 %. Valor vigente desde 2023: <strong>40</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_limite_global_pct_2023" model="hr.rule.parameter.value">
+        <field name="parameter_value">40.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_limite_global_pct"/>
+        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_limite_global_uvt_anual" model="hr.rule.parameter">
+        <field name="name">Colombia: Límite Global de Rentas Exentas y Deducciones (UVT/año)</field>
+        <field name="code">l10n_co_limite_global_uvt_anual</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Valor absoluto ANUAL, en UVT, del límite global de las rentas exentas y deducciones de la cédula general (Art. 336 num. 3 ET, Ley 2277
+de 2022; Decreto 1625 de 2016 Art. 1.2.4.1.6 par. 3, Decreto 2231 de 2023 Art. 9). En la retención en la fuente, que se depura por mes, el tope mensual es este valor dividido en 12
+(como el 790 del 25 %): sin acumulado anual ni prorrateo por quincena (decisión del TL, doc 90).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número de UVT <strong>por año</strong>, <strong>NO</strong> un valor en pesos ni mensual: escriba <strong>1340</strong> para "1.340 UVT anuales".
+Valor vigente desde 2023: <strong>1340</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_limite_global_uvt_anual_2023" model="hr.rule.parameter.value">
+        <field name="parameter_value">1340.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_limite_global_uvt_anual"/>
+        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_pct_deduccion_dependientes" model="hr.rule.parameter">
         <field name="name">Colombia: % Deducción por Dependientes</field>
         <field name="code">l10n_co_pct_deduccion_dependientes</field>
