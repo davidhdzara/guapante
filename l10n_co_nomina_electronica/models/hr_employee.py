@@ -20,11 +20,19 @@ Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica
 V1.0, secciones 6.2.8 (Trabajador) y 6.2.9 (Pago).
 """
 
-from odoo import api, fields, models, _
+from odoo import api, fields, models, _, _lt
 from odoo.exceptions import UserError, ValidationError
 
 from ..services import dian_utils
 from .res_company import NE_MEDIOS_PAGO
+
+# H-F1-06 (doc 87): DÓNDE se completan las afiliaciones, en UN solo sitio (el consultor v19 lo porta sin rediseño). ``NE_EMPLEADO_PAGINA`` es el ``name`` de la página nativa de Nómina en la
+# vista del empleado (v18: ``hr_payroll`` de ``hr_payroll``; lo usa el xpath de ``views/hr_employee_views.xml`` y una prueba compara los dos); ``NE_EMPLEADO_PESTANA`` y
+# ``NE_EMPLEADO_GRUPO_AFILIACION`` son los textos que ve el usuario (el grupo es el ``string`` de esa vista; la misma prueba lo compara).
+NE_EMPLEADO_PAGINA = 'hr_payroll'
+NE_EMPLEADO_PESTANA = _lt('Nómina')                                       # traducibles en el momento de usarse (``_lt``: los mensajes los arman con ``%(...)s``)
+NE_EMPLEADO_GRUPO_AFILIACION = _lt('PILA - Administradoras')
+NE_UBICACION_AJUSTES_PILA = _lt('Nómina > Configuración > Ajustes, bloque PILA')
 
 
 class HrEmployee(models.Model):
@@ -146,17 +154,56 @@ class HrEmployee(models.Model):
             if not self.l10n_co_pila_ccf_id:
                 raise UserError(_(
                     'El empleado %(employee)s no tiene Caja de Compensación y la empresa '
-                    '%(company)s maneja la caja por empleado. Complétela en la pestaña '
-                    'Nómina Colombia del empleado.',
-                    employee=self.name, company=company.name))
+                    '%(company)s maneja la caja por empleado. Complétela en la ficha del empleado, '
+                    'pestaña %(pestana)s, grupo «%(grupo)s».',
+                    employee=self.name, company=company.name, pestana=NE_EMPLEADO_PESTANA, grupo=NE_EMPLEADO_GRUPO_AFILIACION))
             return self.l10n_co_pila_ccf_id
         if not company.l10n_co_pila_ccf_id:
             raise UserError(_(
-                'La empresa %(company)s no tiene Caja de Compensación general (Nómina > '
-                'Configuración > Ajustes, bloque PILA). Se necesita para el empleado '
-                '%(employee)s.',
-                company=company.name, employee=self.name))
+                'La empresa %(company)s no tiene Caja de Compensación general (%(ubicacion)s). '
+                'Se necesita para el empleado %(employee)s.',
+                company=company.name, employee=self.name, ubicacion=NE_UBICACION_AJUSTES_PILA))
         return company.l10n_co_pila_ccf_id
+
+    def _ne_afiliaciones_faltantes(self, contrato, fecha):
+        """H-F1-06 (doc 87): LO QUE FALTA de la afiliación a la seguridad social del empleado, como ``[(etiqueta, nivel)]`` (``nivel`` = ``'empleado'`` o ``'compañía'``); vacío si está completa.
+        FUENTE ÚNICA del aviso del recibo, del error al confirmar y del mensaje del asiento; independiente de que las reglas tengan cuenta contable. Exige EPS y AFP del empleado, la Caja
+        (la del empleado si la empresa la maneja por empleado, si no la general de la empresa) y la ARL de la compañía, SALVO lo que el parámetro versionado ``l10n_co_afiliaciones_no_exigidas``
+        (``hr.rule.parameter``, lista de ``(tipo de cotizante, subtipo, entidad)`` con ``*`` de comodín) exceptúe para el tipo y el subtipo de cotizante del CONTRATO: nada de la norma está
+        en el código. Los empleados de prueba de la habilitación DIAN no tienen afiliación real y no se validan."""
+        self.ensure_one()
+        if self.l10n_co_ne_is_habilitacion_test:
+            return []
+        try:
+            no_exigidas = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_afiliaciones_no_exigidas', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante» (código l10n_co_afiliaciones_no_exigidas) para el %(fecha)s, que se necesita '
+                'para revisar la afiliación a la seguridad social del empleado %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
+                fecha=fecha, empleado=self.name)) from None
+        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
+        subtipo = contrato.l10n_co_pila_subtipo_cotizante or ''
+
+        def _exigida(entidad):
+            return not any(
+                clave_entidad == entidad and clave_tipo in ('*', tipo) and clave_subtipo in ('*', subtipo)
+                for clave_tipo, clave_subtipo, clave_entidad in no_exigidas)
+
+        compania = self.company_id
+        faltan = []
+        if _exigida('eps') and not self.l10n_co_pila_eps_id:
+            faltan.append((self._fields['l10n_co_pila_eps_id'].string, 'empleado'))
+        if _exigida('afp') and not self.l10n_co_pila_afp_id:
+            faltan.append((self._fields['l10n_co_pila_afp_id'].string, 'empleado'))
+        if _exigida('ccf'):
+            if compania.l10n_co_pila_ccf_por_empleado:
+                if not self.l10n_co_pila_ccf_id:
+                    faltan.append((self._fields['l10n_co_pila_ccf_id'].string, 'empleado'))
+            elif not compania.l10n_co_pila_ccf_id:
+                faltan.append((_('Caja de Compensación general de la empresa'), 'compañía'))
+        if _exigida('arl') and not compania.l10n_co_pila_arl_id:
+            faltan.append((compania._fields['l10n_co_pila_arl_id'].string, 'compañía'))
+        return faltan
 
     def _ne_valor_obligatorio(self, campo):
         """Valor de un campo que el empleado debe tener para el XML: sin el, error claro."""
@@ -417,21 +464,22 @@ class HrEmployee(models.Model):
     # ──────────────────────────────────────────────────────────────────
     # PILA — Administradoras de Seguridad Social
     # ──────────────────────────────────────────────────────────────────
+    # H-F1-06 (doc 87): ``tracking=True`` en las tres afiliaciones: el chatter del empleado deja quién cambió cuál y cuándo.
     l10n_co_pila_eps_id = fields.Many2one(
         'res.partner', string='EPS',
-        domain=[('l10n_co_entity_type', '=', 'eps')],
+        domain=[('l10n_co_entity_type', '=', 'eps')], tracking=True,
         help='Contacto de la EPS del empleado. El código PILA se toma del '
              'contacto.',
     )
     l10n_co_pila_afp_id = fields.Many2one(
         'res.partner', string='AFP',
-        domain=[('l10n_co_entity_type', '=', 'afp')],
+        domain=[('l10n_co_entity_type', '=', 'afp')], tracking=True,
         help='Contacto del Fondo de Pensiones del empleado. También es el '
              'tercero del Fondo de Solidaridad Pensional.',
     )
     l10n_co_pila_ccf_id = fields.Many2one(
         'res.partner', string='Caja de Compensación',
-        domain=[('l10n_co_entity_type', '=', 'ccf')],
+        domain=[('l10n_co_entity_type', '=', 'ccf')], tracking=True,
         help='Contacto de la Caja de Compensación Familiar del empleado.',
     )
     l10n_co_pila_ccf_por_empleado = fields.Boolean(

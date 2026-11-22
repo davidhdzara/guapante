@@ -37,6 +37,8 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_is_zero, float_round
 from odoo.tools.misc import format_date
 
+from .hr_employee import NE_EMPLEADO_GRUPO_AFILIACION, NE_EMPLEADO_PESTANA, NE_UBICACION_AJUSTES_PILA
+
 from ..services import (
     cune as cune_service,
     dian_utils,
@@ -244,6 +246,64 @@ class HrPayslip(models.Model):
     def _ne_validar_pacto_no_salarial(self):
         """.302: al confirmar, un pago no salarial por pacto sin pacto del empleado es un error si el interruptor ``l10n_co_exigir_pacto_no_salarial`` vale 1."""
         self.env['l10n.co.employee.pacto']._validar_recibos(self)
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-F1-06 (doc 87): validación EXPLÍCITA de la afiliación (EPS, AFP, Caja, ARL), independiente de la contabilidad
+    # ──────────────────────────────────────────────────────────────────
+    _NE_ESTADOS_AVISO_AFILIACION = ('draft', 'verify')       # estados del recibo en que se avisa (v18); el consultor v19 verifica los estados
+
+    l10n_co_ne_aviso_afiliacion = fields.Char(
+        string='Aviso de afiliación incompleta', compute='_compute_ne_aviso_afiliacion',
+        help='Solo para las vistas: aviso (no bloquea) con lo que falta de la afiliación (EPS, AFP, Caja de Compensación y ARL) del empleado. Al confirmar el recibo es un error.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id',
+                 'employee_id.l10n_co_pila_eps_id', 'employee_id.l10n_co_pila_afp_id', 'employee_id.l10n_co_pila_ccf_id',
+                 'contract_id.l10n_co_pila_tipo_cotizante', 'contract_id.l10n_co_pila_subtipo_cotizante',
+                 'company_id.l10n_co_pila_arl_id', 'company_id.l10n_co_pila_ccf_id', 'company_id.l10n_co_pila_ccf_por_empleado')
+    def _compute_ne_aviso_afiliacion(self):
+        """Aviso en el recibo en borrador o en espera de un empleado de una compañía colombiana. Un parámetro que falta NO se calla ni bloquea el formulario: el aviso dice qué falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_afiliacion = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            try:
+                faltan = recibo._ne_afiliaciones_faltantes()
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_afiliacion = error.args[0]
+                continue
+            recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
+
+    def _ne_afiliaciones_faltantes(self):
+        """``[(etiqueta, nivel)]`` de lo que falta de la afiliación del empleado de este recibo (ver ``HrEmployee._ne_afiliaciones_faltantes``), con el tipo y el subtipo de cotizante del contrato y la fecha con que se resuelven los parámetros."""
+        self.ensure_one()
+        return self.employee_id._ne_afiliaciones_faltantes(self.contract_id, self._ne_fecha_parametros())
+
+    @api.model
+    def _ne_texto_afiliacion(self, por_empleado, separador):
+        """Texto (traducible) de lo que falta: ``por_empleado`` = ``[(nombre, [(etiqueta, nivel)])]``. Una línea por empleado con TODOS sus campos y, al final, DÓNDE completarlos según el nivel
+        de lo que falta (ficha del empleado o ajustes de la compañía). Único texto del aviso, del error al confirmar y del mensaje del asiento."""
+        lineas = [_('%(empleado)s: falta %(campos)s.', empleado=nombre, campos=', '.join(etiqueta for etiqueta, _nivel in faltan)) for nombre, faltan in por_empleado]
+        niveles = {nivel for _nombre, faltan in por_empleado for _etiqueta, nivel in faltan}
+        dondes = []
+        if 'empleado' in niveles:
+            dondes.append(_('Complete lo del empleado en su ficha, pestaña %(pestana)s, grupo «%(grupo)s».', pestana=NE_EMPLEADO_PESTANA, grupo=NE_EMPLEADO_GRUPO_AFILIACION))
+        if 'compañía' in niveles:
+            dondes.append(_('Complete lo de la compañía en %(ubicacion)s.', ubicacion=NE_UBICACION_AJUSTES_PILA))
+        return separador.join([_('Afiliación incompleta a la seguridad social.')] + lineas + dondes)
+
+    def _ne_validar_afiliaciones(self):
+        """Al confirmar: error si a algún empleado de una compañía colombiana le falta algo de la afiliación (aun cuando las reglas no tengan cuenta contable). Un solo error con una línea por
+        empleado (un lote de recibos), con TODOS los campos que faltan y dónde completarlos."""
+        por_empleado, vistos = [], set()
+        for recibo in self._ne_solo_colombia():
+            if recibo.employee_id.id in vistos:
+                continue
+            vistos.add(recibo.employee_id.id)
+            faltan = recibo._ne_afiliaciones_faltantes()
+            if faltan:
+                por_empleado.append((recibo.employee_id.name, faltan))
+        if por_empleado:
+            raise UserError(self._ne_texto_afiliacion(por_empleado, '\n'))
 
     def _ne_meses_habitualidad(self):
         """Parámetro ``l10n_co_no_salarial_meses_habitualidad`` (``hr.rule.parameter``, 3 de fábrica, decisión del TL del 22-nov; 0 apaga el aviso). OBLIGATORIO: si falta hay
@@ -1079,13 +1139,21 @@ class HrPayslip(models.Model):
         modelo, campo = self._NE_TERCERO_ORIGEN_CAMPO[origen]
         partner = self[modelo][campo]
         if not partner:
+            if origen in ('employee_eps', 'employee_afp', 'company_arl'):
+                self._ne_validar_afiliaciones()      # H-F1-06: el MISMO error completo de la afiliación (empleado, TODOS los campos, dónde completarlos)
+            # Si la afiliación está exceptuada o el origen es de otra entidad (contrato, compañía): mensaje en español con «empleado» o «compañía» y el nombre, no el modelo en inglés.
+            if modelo == 'contract_id':
+                donde = _('el contrato del empleado "%s"', self.employee_id.name)
+            elif modelo == 'employee_id':
+                donde = _('la ficha del empleado "%s"', self.employee_id.name)
+            else:
+                donde = _('la compañía "%s"', self.company_id.name)
             raise UserError(_(
                 'No se puede generar el asiento de la nomina "%(nomina)s": '
                 'la regla "%(regla)s" paga a un tercero y falta el campo '
-                '"%(campo)s" en %(donde)s "%(nombre)s".',
+                '"%(campo)s" en %(donde)s.',
                 nomina=self.display_name, regla=line.name,
-                campo=self[modelo]._fields[campo].string,
-                donde=self[modelo]._description, nombre=self[modelo].display_name))
+                campo=self[modelo]._fields[campo].string, donde=donde))
         return [(partner, 1.0)]
 
     def _ne_validar_cuenta_neto(self):
@@ -1169,6 +1237,7 @@ class HrPayslip(models.Model):
         colombia._ne_validar_sin_solape()
         colombia._ne_validar_cuenta_neto()
         colombia._ne_validar_pacto_no_salarial()
+        colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()

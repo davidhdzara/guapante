@@ -399,6 +399,26 @@ fecha de vigencia; no edite el anterior.</p></field>
         <field name="date_from" eval="datetime(2017, 1, 1).date()"/>
     </record>
 
+    <!-- H-F1-06 (doc 87, decisión del TL del 22-nov): qué entidades de la seguridad social NO se exigen según el tipo y el subtipo de cotizante del contrato. Versionado por fecha. -->
+    <record id="rule_parameter_afiliaciones_no_exigidas" model="hr.rule.parameter">
+        <field name="name">Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante</field>
+        <field name="code">l10n_co_afiliaciones_no_exigidas</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Lista de excepciones a la validación de la afiliación del empleado (EPS, AFP, Caja de Compensación y ARL) al calcular y confirmar el recibo:
+tuplas <code>(tipo de cotizante, subtipo de cotizante, entidad)</code> con <code>'*'</code> como comodín y la entidad <code>'eps'</code>, <code>'afp'</code>, <code>'ccf'</code> o <code>'arl'</code>. La
+entidad que aparezca para el tipo y el subtipo del contrato NO se exige.</p>
+<h3 class="mt-5">Valor vigente y norma</h3>
+<p><code>[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>.
+<strong>Pensionado</strong> (subtipo 01 y 02, pensionado por vejez activo): Ley 100 de 1993, art. 17 (modificado por la Ley 797 de 2003, art. 4): «La obligación de cotizar cesa al momento en que el afiliado reúna los requisitos para acceder a la pensión mínima de vejez, o cuando el afiliado se pensione por invalidez o anticipadamente.»
+<strong>Aprendiz en etapa lectiva</strong> (tipo 12): Ley 2466 de 2025, art. 21 (modifica el art. 81 del CST): «Durante la fase lectiva, el aprendiz estará cubierto por el sistema de seguridad social en salud y riesgos laborales, pagado plenamente por la empresa como dependiente.»;
+en la fase práctica o la formación dual SÍ se exige la pensión (EPS, AFP y ARL), así que el tipo de la etapa práctica no aparece aquí. Si la norma o la PILA cambian, cree un valor nuevo con su fecha de vigencia; no edite el anterior.</p></field>
+    </record>
+    <record id="rule_parameter_afiliaciones_no_exigidas_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</field>
+        <field name="rule_parameter_id" ref="rule_parameter_afiliaciones_no_exigidas"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_aviso_anio_siguiente_desde_mes" model="hr.rule.parameter">
         <field name="name">Colombia: Aviso de Parámetros del Año Siguiente (Desde el Mes)</field>
         <field name="code">l10n_co_aviso_anio_siguiente_desde_mes</field>
