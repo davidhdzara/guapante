@@ -407,6 +407,14 @@ class HrEmployee(models.Model):
     # datos.
 
     # ──────────────────────────────────────────────────────────────────
+    # .302 (doc 76 §2.3): pactos de desalarización del empleado (modelo l10n.co.employee.pacto)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_pacto_ids = fields.One2many(
+        'l10n.co.employee.pacto', 'employee_id', string='Pactos de desalarización', copy=False,
+        help='Pactos escritos de desalarización del empleado (art. 128 CST y art. 17 Ley 344/1996): uno por concepto no salarial pactado, con su fecha de firma, fecha de fin '
+             'opcional y el documento firmado. Cubren los recibos cuyo «Hasta» cae entre la firma y el fin, aunque el contrato se renueve.')
+
+    # ──────────────────────────────────────────────────────────────────
     # PILA — Administradoras de Seguridad Social
     # ──────────────────────────────────────────────────────────────────
     l10n_co_pila_eps_id = fields.Many2one(

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- .302 (doc 76 §2.3, decisión del TL del 22-nov): el pacto cuelga del empleado, así que el aislamiento multiempresa va por la compañía del empleado. -->
+    <record id="rule_l10n_co_employee_pacto_company" model="ir.rule">
+        <field name="name">Pactos de desalarización: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_employee_pacto"/>
+        <field name="domain_force">[('employee_id.company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

@@ -225,6 +225,26 @@ class HrPayslip(models.Model):
             except UserError as error:
                 recibo.l10n_co_ne_aviso_no_salarial = error.args[0]
 
+    l10n_co_ne_aviso_pacto = fields.Char(
+        string='Aviso del pacto de desalarización', compute='_compute_ne_aviso_pacto',
+        help='Solo para las vistas: aviso cuando el recibo trae un pago no salarial por pacto de desalarización y el empleado no tiene registrado el pacto.')
+
+    @api.depends('line_ids', 'line_ids.total', 'date_to', 'employee_id', 'employee_id.l10n_co_pacto_ids', 'employee_id.l10n_co_pacto_ids.fecha_firma',
+                 'employee_id.l10n_co_pacto_ids.fecha_fin', 'employee_id.l10n_co_pacto_ids.salary_rule_id')
+    def _compute_ne_aviso_pacto(self):
+        """.302 (doc 76 §2.3): ver ``l10n.co.employee.pacto``. SIEMPRE avisa, aunque el interruptor ``l10n_co_exigir_pacto_no_salarial`` esté en 0: así el dato
+        que falta se ve sin bloquear a nadie. No lee el interruptor."""
+        Pacto = self.env['l10n.co.employee.pacto']
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_pacto = False
+            if not (isinstance(recibo.id, int) and recibo.date_to and recibo.employee_id and recibo.line_ids):
+                continue
+            recibo.l10n_co_ne_aviso_pacto = ' '.join(Pacto._textos_sin_pacto(recibo)) or False
+
+    def _ne_validar_pacto_no_salarial(self):
+        """.302: al confirmar, un pago no salarial por pacto sin pacto del empleado es un error si el interruptor ``l10n_co_exigir_pacto_no_salarial`` vale 1."""
+        self.env['l10n.co.employee.pacto']._validar_recibos(self)
+
     def _ne_meses_habitualidad(self):
         """Parámetro ``l10n_co_no_salarial_meses_habitualidad`` (``hr.rule.parameter``, 3 de fábrica, decisión del TL del 22-nov; 0 apaga el aviso). OBLIGATORIO: si falta hay
         un error claro que dice dónde crearlo; nunca se asume un valor."""
@@ -1131,6 +1151,7 @@ class HrPayslip(models.Model):
         colombia._ne_validar_duracion_periodo()
         colombia._ne_validar_sin_solape()
         colombia._ne_validar_cuenta_neto()
+        colombia._ne_validar_pacto_no_salarial()
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()

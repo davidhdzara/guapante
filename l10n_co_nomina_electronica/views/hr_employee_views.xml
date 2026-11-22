@@ -62,6 +62,27 @@
                            string="Medio de Pago"/>
                 </group>
 
+                <!-- .302 (doc 76 §2.3, decisión del TL): el pacto de desalarización cuelga del empleado (no del contrato, que se renueva y en v19 no existe): lista dentro de
+                     la pestaña nativa Nómina, sin pestaña nueva; el documento firmado se adjunta con el widget nativo en el formulario de la fila. -->
+                <group string="Pactos de desalarización" name="pactos_desalarizacion" invisible="company_country_code != 'CO'" groups="hr_payroll.group_hr_payroll_user">
+                    <field name="l10n_co_pacto_ids" nolabel="1" colspan="2">
+                        <list>
+                            <field name="salary_rule_id"/>
+                            <field name="fecha_firma"/>
+                            <field name="fecha_fin"/>
+                            <field name="attachment_ids" widget="many2many_tags"/>
+                        </list>
+                        <form>
+                            <group>
+                                <field name="salary_rule_id" options="{'no_create': True, 'no_open': True}"/>
+                                <field name="fecha_firma"/>
+                                <field name="fecha_fin"/>
+                            </group>
+                            <field name="attachment_ids" widget="many2many_binary"/>
+                        </form>
+                    </field>
+                </group>
+
                 <group string="PILA - Administradoras" name="pila_administradoras" invisible="company_country_code != 'CO'">
                     <group>
                         <field name="l10n_co_pila_eps_id" options="{'no_create': True}"/>

@@ -25,6 +25,11 @@
                         <strong>Revise los pagos no salariales</strong><br/>
                         <field name="l10n_co_ne_aviso_no_salarial" readonly="1" nolabel="1"/>
                     </div>
+                    <!-- .302 (doc 76 §2.3): siempre avisa el pacto que falta (aunque el interruptor de exigirlo al confirmar esté en 0). -->
+                    <div class="alert alert-warning mb-2" role="alert" invisible="not l10n_co_ne_aviso_pacto">
+                        <strong>Falta el pacto de desalarización</strong><br/>
+                        <field name="l10n_co_ne_aviso_pacto" readonly="1" nolabel="1"/>
+                    </div>
                     <field name="l10n_co_concepto_ids" nolabel="1" mode="list" widget="section_and_note_one2many"
                            readonly="state not in ['draft', 'verify']">
                         <list editable="bottom">

@@ -1439,4 +1439,17 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
         <field name="rule_parameter_id" ref="rule_parameter_no_salarial_meses_habitualidad"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
+    <!-- .302 (doc 76 §2.3, decisión del TL del 22-nov): ¿se exige el pacto escrito de desalarización al CONFIRMAR un recibo con un pago no salarial por pacto? De fábrica 0:
+         hasta que el usuario cargue los pactos (pestaña Nómina del empleado) el recibo solo avisa; con 1 la confirmación se rechaza con un error que dice qué completar. -->
+    <record id="rule_parameter_exigir_pacto_no_salarial" model="hr.rule.parameter">
+        <field name="name">Colombia: Exigir el Pacto de los Pagos No Salariales</field>
+        <field name="code">l10n_co_exigir_pacto_no_salarial</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Formato del dato: escriba 0 para que el recibo solo AVISE cuando trae un pago no salarial por pacto de desalarización (auxilio de alimentación, bonificación no salarial) y el empleado no tiene registrado el pacto, o 1 para EXIGIR el pacto al confirmar el recibo (la confirmación se rechaza con un error que dice qué completar). De fábrica 0: póngalo en 1 cuando ya haya cargado los pactos firmados en la pestaña Nómina de cada empleado. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
+    </record>
+    <record id="rule_parameter_exigir_pacto_no_salarial_v" model="hr.rule.parameter.value">
+        <field name="parameter_value">0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_exigir_pacto_no_salarial"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
 </odoo>

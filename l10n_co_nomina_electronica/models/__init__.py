@@ -42,3 +42,4 @@ from . import hr_payslip_input_type
 from . import l10n_co_payslip_ajuste
 from . import l10n_co_payslip_concepto
 from . import l10n_co_payslip_calculo
+from . import l10n_co_employee_pacto
