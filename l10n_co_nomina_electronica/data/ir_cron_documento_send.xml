@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data noupdate="1">
+        <!-- 22-nov (decisión del TL, igual que v19): una instalación NUEVA nace con este cron INACTIVO (``active`` False): no envía ni consulta nada a la DIAN hasta que un administrador lo
+             active a propósito (Ajustes > Técnico > Acciones planificadas). El archivo es ``noupdate="1"``: una actualización (``-u``) NO cambia el estado de una base que ya lo tiene
+             (producción, con los envíos pausados a mano, queda igual; staging, con el cron activo, también). Con el cron inactivo, ``ir.cron._trigger`` descarta los disparos
+             inmediatos: encolar un envío no lo ejecuta hasta activarlo. -->
         <!-- Cola de envío del documento mensual (doc 53 §23.17, 7b). Se dispara con ``_trigger`` al encolar y, además,
              corre cada 5 minutos para los reintentos. El intervalo es un dato editable en Ajustes > Técnico > Acciones
              planificadas. El cron de reconsulta del RECIBO (ir_cron_ne_dian_status_recheck) no se toca. -->
@@ -11,7 +15,7 @@
             <field name="code">model._cron_enviar_cola()</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
-            <field name="active" eval="True"/>
+            <field name="active" eval="False"/>
         </record>
 
         <!-- Reconsulta del estado de los documentos mensuales pendientes (doc 53 §23.17, 7c): cada 30 minutos (el del
@@ -23,7 +27,7 @@
             <field name="code">model._cron_reconsultar_pendientes()</field>
             <field name="interval_number">30</field>
             <field name="interval_type">minutes</field>
-            <field name="active" eval="True"/>
+            <field name="active" eval="False"/>
         </record>
     </data>
 </odoo>
