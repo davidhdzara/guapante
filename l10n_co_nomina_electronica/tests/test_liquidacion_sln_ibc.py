@@ -6,17 +6,19 @@ Antes la estructura de liquidacion no tenia CO_IBC_SLN y su CO_IBC_SP no sumaba 
 (la nomina general si). Valores a mano: contrato $3.000.000 desde 2026-01-01 (valor dia 100.000),
 retiro 2026-08-15, licencia no remunerada lun 3 a vie 7 de agosto (5 dias habiles):
 - tramo 1-15 de agosto = 15 dias; SLN 5 -> CO_LIQ_SALARIOS = 10 dias = 1.000.000.
-- Sin IBC consolidado del mes anterior (julio), la base es el salario (3.000.000):
+- Sin recibos confirmados del mes anterior (julio), la base es el salario (3.000.000):
   CO_IBC_SLN = 3.000.000 / 30 x 5 = 500.000.
 - CO_IBC_SP = salarial 1.000.000 + SLN 500.000 = 1.500.000 (piso 1 SMMLV x 15/30 = 875.452,5 no aplica).
 - Descuentos salud y pension: 4 % de (1.500.000 - 500.000) = 40.000 c/u (en SLN el trabajador no
   paga su cuota ni nadie la asume).
-- Con el IBC consolidado de julio (mes anterior al tramo; H-F1-11) de 2.400.000: CO_IBC_SLN = 2.400.000 / 30 x 5 = 400.000;
+- Con la base CO_SS_BASE_IBC de julio (mes anterior al tramo; H-F1-11) de 2.400.000 en 30 dias: CO_IBC_SLN = 2.400.000 / 30 x 5 = 400.000;
   CO_IBC_SP = 1.400.000; descuentos 40.000."""
 
 from datetime import date
 
 from odoo.tests.common import TransactionCase, tagged
+
+from .ibc_previo import crear_recibo_previo
 
 RETIRO = date(2026, 8, 15)
 
@@ -78,10 +80,9 @@ class TestLiquidacionSlnIbc(TransactionCase):
         self.assertAlmostEqual(self._total(slip, 'CO_LIQ_SALUD'), -40000.0, delta=0.01)
         self.assertAlmostEqual(self._total(slip, 'CO_LIQ_PENSION'), -40000.0, delta=0.01)
 
-    def test_la_base_sln_es_el_ibc_consolidado_del_mes_anterior_al_tramo(self):
+    def test_la_base_sln_es_el_ibc_del_mes_anterior_al_tramo(self):
         employee, contract = self._contrato('SlnHistorial')
-        self.env['l10n.co.ibc.mensual'].create({
-            'company_id': self.company.id, 'employee_id': employee.id, 'period': date(2026, 7, 1), 'ibc_sp': 2400000.0, 'dias_sp': 30})
+        crear_recibo_previo(self.env, employee, contract, self.nomina, date(2026, 7, 1), date(2026, 7, 31), 2400000.0)
         self._licencia(employee, date(2026, 8, 3), date(2026, 8, 7))
         slip = self._liquidacion(employee, contract)
         self.assertAlmostEqual(self._total(slip, 'CO_IBC_SLN'), 400000.0, delta=0.01)

@@ -1037,8 +1037,8 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(round(abs(pension), 2), 72000.0)
 
     def test_ibc_ss_usa_el_ibc_del_mes_anterior_no_salario_actual(self):
-        """Punto (a) del diseño: con historial, la base es el IBC CONSOLIDADO del mes anterior (H-F1-11; hasta .305 era CO_SS_BASE_IBC de la
-        última nómina 'done'), NO el salario actual -- lectura literal de la regla de David, confirmada por Tech Lead incluso con cambio
+        """Punto (a) del diseño: con historial, la base es el IBC del mes anterior (H-F1-11: la suma de CO_SS_BASE_IBC de los recibos 'done' de ese
+        mes, escalada a 30 días; hasta .305 era la del último recibo), NO el salario actual -- lectura literal de la regla de David, confirmada por Tech Lead incluso con cambio
         salarial reciente entre el mes anterior y el de la novedad."""
         employee, contract = self._make_contract(
             'IbcHistorial', wage=2500000.0, date_start=date(2024, 1, 1))
@@ -1047,7 +1047,6 @@ class TestAusenciasNomina(TransactionCase):
             employee, contract, date(2026, 8, 1), date(2026, 8, 31))
         payslip_anterior.compute_sheet()
         payslip_anterior.write({'state': 'done'})
-        self.env['l10n.co.ibc.mensual']._refrescar(payslip_anterior.company_id, employee, date(2026, 8, 1))     # el consolidado lo arma la confirmacion; aqui se escribe el estado directo
         linea_ibc_anterior = payslip_anterior.line_ids.filtered(
             lambda l: l.code == 'CO_SS_BASE_IBC')
         self.assertTrue(linea_ibc_anterior)

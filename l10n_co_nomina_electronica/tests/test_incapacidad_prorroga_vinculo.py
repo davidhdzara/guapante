@@ -122,6 +122,30 @@ class TestIncapacidadProrrogaVinculo(base.TestIncapacidadTramoProrroga):
             c.l10n_co_ne_prorroga_de_id = a
         self.assertIn('ya tiene una prórroga', str(exc.exception))
 
+    def _usuario_de_ausencias(self):
+        """Usuario con el grupo de Ausencias (oficial) y SIN ningun grupo de nomina: quien registra las incapacidades en una empresa pequena."""
+        return self.env['res.users'].with_context(no_reset_password=True).create({
+            'name': 'Oficial de Ausencias', 'login': 'ausencias_sin_nomina_h_f1_01', 'company_id': self.company.id, 'company_ids': [(6, 0, [self.company.id])],
+            'groups_id': [(6, 0, [self.env.ref('base.group_user').id, self.env.ref('hr_holidays.group_hr_holidays_user').id])]})
+
+    def test_un_usuario_de_ausencias_sin_nomina_lee_el_tope_y_marca_la_prorroga(self):
+        """Sin sudo() sobre el parametro, un usuario de Ausencias sin grupo de nomina recibia un AccessError que el except convertia en «Falta el parametro...» (falso). Con sudo(): lee el tope (30),
+        marca la prorroga y la unicidad de la sucesora se comprueba contra TODAS las ausencias."""
+        usuario = self._usuario_de_ausencias()
+        employee, _contract = self._empleado('SinNomina')
+        a = self._cruda(employee, date(2026, 3, 1), date(2026, 3, 10))
+        a.action_validate()
+        b = self._cruda(employee, date(2026, 3, 20), date(2026, 3, 25))
+        c = self._cruda(employee, date(2026, 3, 28), date(2026, 3, 30))
+        self.assertEqual(self.env['hr.leave'].with_user(usuario)._ne_interrupcion_maxima_prorroga(date(2026, 3, 1)), 30)
+        aviso = b.with_user(usuario).l10n_co_ne_prorroga_aviso
+        self.assertIn('¿Es prórroga de', aviso)
+        self.assertNotIn('Falta el parámetro', aviso)
+        b.with_user(usuario).l10n_co_ne_prorroga_de_id = a
+        self.assertEqual(b.l10n_co_ne_prorroga_de_id, a)
+        with self.assertRaises(ValidationError):                                    # la unicidad ve la sucesora aunque sea de otro autor
+            c.with_user(usuario).l10n_co_ne_prorroga_de_id = a
+
     def test_el_vinculo_se_registra_en_el_chatter(self):
         """El cambio del vinculo queda con rastro: el campo tiene tracking (en TransactionCase el rastreo de mail esta apagado: se comprueba el atributo)."""
         self.assertTrue(self.env['hr.leave']._fields['l10n_co_ne_prorroga_de_id'].tracking)

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
-"""H-F1-11 (doc 89, aprobado por el TL): la base «IBC del mes anterior» de las vacaciones, la licencia remunerada y los dias de suspension (SLN) sale del IBC CONSOLIDADO del empleado y el
-mes (``l10n.co.ibc.mensual``), no de UN solo recibo (``_ne_ultimo_ibc_anterior``, que con nomina quincenal era medio mes y con semanal una semana).
+"""H-F1-11 (doc 89 + decision del TL del 22-nov): la base «IBC del mes anterior» de las vacaciones, la licencia remunerada y los dias de suspension (SLN) es la SUMA de CO_SS_BASE_IBC de los recibos
+confirmados del mes calendario anterior, escalada a 30 dias: ibc = suma x 30 / dias, donde dias = CO_DIAS_SP - SLN - incapacidad comun y laboral (que no entran a CO_SS_BASE_IBC). Antes
+(``_ne_ultimo_ibc_anterior``) era la de UN solo recibo: con nomina quincenal, medio mes. No es ``ibc_sp`` del consolidado: ese suma el valor pagado de la incapacidad (66,67 %). Se conserva la
+decision de David del 10-nov: la incapacidad no es salario (CST art. 192).
 
-Valores a mano: sueldo 6.000.000 (valor dia 200.000, mes comercial de 30). Agosto-2026 en dos quincenas (1-15 y 16-30), cada una con IBC 3.000.000 -> consolidado 6.000.000 y 30 dias.
-Vacaciones lun 21 a vie 25 de septiembre. En la quincena 16-30 de septiembre el basico paga (15 - d) dias y el IBC de los d dias de vacacion es base / 30 x d: con la base del mes
-(6.000.000) el IBC salarial del recibo es el sueldo de la quincena, 3.000.000; con la base de UNA quincena (3.000.000, antes de H-F1-11) eran 2.500.000 en el caso de 5 dias. El caso semanal lo
-cubre el escalado de test_periodos_ibc_semanal (el consolidado ya suma las semanas del mes)."""
+Valores a mano: sueldo 6.000.000 (valor dia 200.000, mes comercial de 30). Agosto-2026 en dos quincenas (1-15 y 16-30), cada una con CO_SS_BASE_IBC 3.000.000 y 15 dias -> 6.000.000.
+Vacaciones lun 21 a vie 25 de septiembre. En la quincena 16-30 de septiembre el basico paga (15 - d) dias y el IBC de los d dias de vacacion es base / 30 x d: con la base del mes (6.000.000) el IBC
+salarial del recibo es el sueldo de la quincena, 3.000.000; con la base de UNA quincena (3.000.000, antes de H-F1-11) eran 2.500.000 en el caso de 5 dias. Con 10 dias de incapacidad en agosto:
+base 4.000.000 en 20 dias -> 4.000.000 x 30 / 20 = 6.000.000 (con ibc_sp serian 5.333.400)."""
 
 from datetime import date
 from unittest import mock
@@ -14,6 +16,7 @@ from unittest import mock
 from odoo.tests.common import tagged
 
 from . import test_incapacidad_tramo_prorroga as base
+from .ibc_previo import crear_recibo_previo
 
 SUELDO = 6000000.0
 
@@ -34,9 +37,9 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
     def _linea(self, recibo, codigo):
         return sum(recibo.line_ids.filtered(lambda l: l.code == codigo).mapped('total'))
 
-    def _consolidado(self, empleado, mes, ibc_sp, dias_sp):
-        return self.env['l10n.co.ibc.mensual'].create({
-            'company_id': self.company.id, 'employee_id': empleado.id, 'period': mes, 'ibc_sp': ibc_sp, 'dias_sp': dias_sp})
+    def _previo(self, empleado, contrato, base, dias=30.0, mes=date(2026, 8, 1)):
+        """Recibo confirmado del mes con SOLO CO_SS_BASE_IBC y CO_DIAS_SP (ver tests/ibc_previo.py)."""
+        return crear_recibo_previo(self.env, empleado, contrato, self.nomina, mes, date(mes.year, mes.month, 28), base, dias)
 
     def _vacaciones(self, empleado, contrato, desde, hasta):
         contrato.generate_work_entries(date(2026, 1, 1), date(2026, 9, 30))
@@ -51,15 +54,11 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
         contrato.generate_work_entries(date(2026, 1, 1), date(2026, 9, 30))
         for desde, hasta in ((date(2026, 8, 1), date(2026, 8, 15)), (date(2026, 8, 16), date(2026, 8, 30))):
             self._recibo(empleado, contrato, desde, hasta, confirmar=True)
-        self.env['l10n.co.ibc.mensual']._refrescar(self.company, empleado, date(2026, 8, 1))
         return empleado, contrato
 
     # ── el defecto: un solo recibo ──
     def test_quincenal_la_base_es_el_mes_completo_y_no_la_quincena(self):
         empleado, contrato = self._con_agosto_en_dos_quincenas('QuincenalMes')
-        consolidado = self.env['l10n.co.ibc.mensual'].search([('employee_id', '=', empleado.id), ('period', '=', date(2026, 8, 1))])
-        self.assertAlmostEqual(consolidado.ibc_sp, SUELDO, delta=0.01)
-        self.assertEqual(consolidado.dias_sp, 30)
         self._vacaciones(empleado, contrato, date(2026, 9, 21), date(2026, 9, 25))
         recibo = self._recibo(empleado, contrato, date(2026, 9, 16), date(2026, 9, 30))
         self.assertAlmostEqual(recibo._ne_ibc_mes_anterior(contrato), SUELDO, delta=0.01)             # antes: 3.000.000 (la ultima quincena)
@@ -69,7 +68,6 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
         empleado, contrato = self._empleado('MensualMes')
         contrato.generate_work_entries(date(2026, 1, 1), date(2026, 9, 30))
         self._recibo(empleado, contrato, date(2026, 8, 1), date(2026, 8, 31), confirmar=True)
-        self.env['l10n.co.ibc.mensual']._refrescar(self.company, empleado, date(2026, 8, 1))
         self._vacaciones(empleado, contrato, date(2026, 9, 21), date(2026, 9, 25))
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
         self.assertAlmostEqual(recibo._ne_ibc_mes_anterior(contrato), SUELDO, delta=0.01)
@@ -83,27 +81,59 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
 
     # ── casos de la base ──
     def test_mes_anterior_incompleto_se_normaliza_a_mes_completo(self):
-        """Ingreso a mitad de mes: IBC 4.000.000 en 20 dias -> 4.000.000 x 30 / 20 = 6.000.000."""
+        """Ingreso a mitad de mes: base 4.000.000 en 20 dias -> 4.000.000 x 30 / 20 = 6.000.000."""
         empleado, contrato = self._empleado('MesIncompleto')
-        self._consolidado(empleado, date(2026, 8, 1), 4000000.0, 20)
+        self._previo(empleado, contrato, 4000000.0, dias=20.0)
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 15))
         self.assertAlmostEqual(recibo._ne_ibc_mes_anterior(contrato), SUELDO, delta=0.01)
 
-    def test_el_consolidado_de_otro_empleado_no_se_usa(self):
-        empleado, contrato = self._empleado('ConConsolidado')
-        otro, contrato_otro = self._empleado('SinConsolidado')
-        self._consolidado(empleado, date(2026, 8, 1), 9000000.0, 30)
+    def test_los_recibos_de_otro_empleado_no_se_usan(self):
+        empleado, contrato = self._empleado('ConBase')
+        otro, contrato_otro = self._empleado('SinBase')
+        self._previo(empleado, contrato, 9000000.0)
         recibo = self._recibo(otro, contrato_otro, date(2026, 9, 1), date(2026, 9, 15))
-        ibc, mes, con_consolidado = recibo._ne_ibc_mes_anterior_datos(contrato_otro)
-        self.assertFalse(con_consolidado)
+        ibc, mes, con_base = recibo._ne_ibc_mes_anterior_datos(contrato_otro)
+        self.assertFalse(con_base)
         self.assertEqual(mes, date(2026, 8, 1))
         self.assertAlmostEqual(ibc, SUELDO, delta=0.01)
 
-    def test_un_consolidado_en_cero_cuenta_como_sin_consolidado(self):
-        empleado, contrato = self._empleado('ConsolidadoCero')
-        self._consolidado(empleado, date(2026, 8, 1), 0.0, 0)
+    def test_una_base_en_cero_cuenta_como_sin_base(self):
+        empleado, contrato = self._empleado('BaseCero')
+        self._previo(empleado, contrato, 0.0, dias=0.0)
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 15))
         self.assertFalse(recibo._ne_ibc_mes_anterior_datos(contrato)[2])
+
+    def _agosto_con_ausencia(self, nombre, tipo, desde, hasta, **extra):
+        """Un recibo mensual de agosto con una ausencia validada, confirmado; devuelve el recibo de septiembre para consultar la base."""
+        empleado, contrato = self._empleado(nombre)
+        if extra:
+            contrato.write(extra)
+        contrato.generate_work_entries(date(2026, 1, 1), date(2026, 9, 30))
+        leave = self.env['hr.leave'].create({
+            'employee_id': empleado.id, 'holiday_status_id': self.env.ref(tipo).id, 'request_date_from': desde, 'request_date_to': hasta})
+        leave.action_validate()
+        self._recibo(empleado, contrato, date(2026, 8, 1), date(2026, 8, 31), confirmar=True)
+        return empleado, contrato, self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
+
+    def test_un_mes_anterior_con_incapacidad_da_el_equivalente_al_salario(self):
+        """Decision del TL: la incapacidad no es salario. Agosto con 10 dias de incapacidad comun (10 a 19): CO_SS_BASE_IBC = 20 dias x 200.000 = 4.000.000, CO_DIAS_SP = 30, dias de incapacidad 10:
+        dias que sustentan la base = 20 -> 4.000.000 x 30 / 20 = 6.000.000 (el sueldo), no el 66,67 % de esos 10 dias (con ibc_sp: 4.000.000 + 10 x 200.000 x 0,6667 = 5.333.400)."""
+        _empleado, contrato, septiembre = self._agosto_con_ausencia(
+            'MesConIncapacidad', 'l10n_co_nomina_electronica.hr_leave_type_co_inc_comun', date(2026, 8, 10), date(2026, 8, 19))
+        self.assertAlmostEqual(septiembre._ne_ibc_mes_anterior(contrato), SUELDO, delta=0.01)
+
+    def test_un_mes_anterior_con_suspension_da_el_equivalente_al_salario(self):
+        """Agosto con 5 dias de licencia no remunerada (SLN, lun 10 a vie 14): CO_SS_BASE_IBC = 25 dias x 200.000 = 5.000.000, dias que sustentan la base 30 - 5 = 25 -> 5.000.000 x 30 / 25 = 6.000.000."""
+        _empleado, contrato, septiembre = self._agosto_con_ausencia(
+            'MesConSln', 'l10n_co_nomina_electronica.hr_leave_type_co_lic_nr', date(2026, 8, 10), date(2026, 8, 14))
+        self.assertAlmostEqual(septiembre._ne_ibc_mes_anterior(contrato), SUELDO, delta=0.01)
+
+    def test_el_salario_integral_no_resta_los_dias_de_incapacidad(self):
+        """El integral cotiza 70 % del sueldo completo aunque haya incapacidad (CO_SS_BASE_IBC no la excluye): con 10 dias de incapacidad la base sigue siendo 25.000.000 x 70 % = 17.500.000, sin escalar por 20 dias."""
+        _empleado, contrato, septiembre = self._agosto_con_ausencia(
+            'MesIntegralConIncapacidad', 'l10n_co_nomina_electronica.hr_leave_type_co_inc_comun', date(2026, 8, 10), date(2026, 8, 19),
+            wage=25000000.0, l10n_co_ne_integral_salary=True)
+        self.assertAlmostEqual(septiembre._ne_ibc_mes_anterior(contrato), 17500000.0, delta=0.01)
 
     def test_el_sueldo_de_respaldo_en_v18_ignora_la_fecha(self):
         """UNA funcion (consultor v19): en v18 la fecha no cambia el resultado; en v19 sera el sueldo de la version vigente en ella."""
@@ -119,27 +149,27 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
         self.assertAlmostEqual(recibo._ne_sueldo_de_respaldo(contrato), 17500000.0, delta=0.01)       # 70 %
 
     def test_sln_usa_la_misma_base(self):
-        """Los 5 dias SLN con el consolidado de agosto de 6.000.000: 6.000.000 / 30 x 5 = 1.000.000."""
+        """Los 5 dias SLN con la base de agosto de 6.000.000: 6.000.000 / 30 x 5 = 1.000.000."""
         empleado, contrato = self._empleado('SlnMes')
-        self._consolidado(empleado, date(2026, 8, 1), SUELDO, 30)
+        self._previo(empleado, contrato, SUELDO)
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
         with mock.patch.object(type(recibo), '_ne_dias_sln', return_value=5):
             self.assertAlmostEqual(recibo._ne_ibc_sln(contrato), 1000000.0, delta=0.01)
 
     # ── el aviso ──
-    def test_sin_consolidado_con_vacaciones_avisa_con_empleado_y_ficha_del_empleado(self):
+    def test_sin_base_con_vacaciones_avisa_con_empleado_y_ficha_del_empleado(self):
         empleado, contrato = self._empleado('AvisoSinBase')
         self._vacaciones(empleado, contrato, date(2026, 9, 21), date(2026, 9, 25))
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
         aviso = recibo.l10n_co_ne_aviso_ibc_anterior
-        self.assertIn('No hay IBC consolidado de 2026-08', aviso)
+        self.assertIn('No hay IBC del mes anterior (2026-08)', aviso)
         self.assertIn('AvisoSinBase', aviso)
         self.assertIn('ficha del empleado', aviso)
         self.assertNotIn('contrato', aviso)                               # una sola redaccion para v18 y v19 (el sueldo vive en la version, no en el contrato)
 
-    def test_con_consolidado_no_avisa(self):
+    def test_con_base_no_avisa(self):
         empleado, contrato = self._empleado('AvisoConBase')
-        self._consolidado(empleado, date(2026, 8, 1), SUELDO, 30)
+        self._previo(empleado, contrato, SUELDO)
         self._vacaciones(empleado, contrato, date(2026, 9, 21), date(2026, 9, 25))
         recibo = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 30))
         self.assertFalse(recibo.l10n_co_ne_aviso_ibc_anterior)

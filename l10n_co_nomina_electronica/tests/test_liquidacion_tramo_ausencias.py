@@ -17,6 +17,8 @@ from datetime import date
 
 from odoo.tests.common import TransactionCase, tagged
 
+from .ibc_previo import crear_recibo_previo
+
 RETIRO = date(2026, 8, 15)
 
 
@@ -177,8 +179,8 @@ class TestLiquidacionTramoAusencias(TransactionCase):
             'IbcVac', [(self.leave_type_vac, date(2026, 8, 3), date(2026, 8, 7))])
         self.assertAlmostEqual(self._linea(slip, 'CO_IBC_SALARIAL').total, 900000.0, places=2)
 
-    def test_ibc_usa_el_ibc_consolidado_del_mes_anterior_al_tramo(self):
-        """Con el IBC consolidado de julio (2.100.000), mes anterior al tramo (H-F1-11): 600.000 + 2.100.000/30 x 5
+    def test_ibc_usa_el_ibc_del_mes_anterior_al_tramo(self):
+        """Con la base CO_SS_BASE_IBC de julio (2.100.000 en 30 dias), mes anterior al tramo (H-F1-11): 600.000 + 2.100.000/30 x 5
         = 950.000."""
         employee = self.env['hr.employee'].create({'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 
             'name': 'IbcPrevio', 'company_id': self.company.id,
@@ -187,8 +189,8 @@ class TestLiquidacionTramoAusencias(TransactionCase):
             'name': 'Contrato IbcPrevio', 'employee_id': employee.id,
             'company_id': self.company.id, 'structure_type_id': self.structure_type.id,
             'wage': 1800000.0, 'date_start': date(2026, 1, 1), 'state': 'open'})
-        self.env['l10n.co.ibc.mensual'].create({
-            'company_id': self.company.id, 'employee_id': employee.id, 'period': date(2026, 7, 1), 'ibc_sp': 2100000.0, 'dias_sp': 30})
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        crear_recibo_previo(self.env, employee, contract, general, date(2026, 7, 1), date(2026, 7, 31), 2100000.0)
         contract.generate_work_entries(date(2026, 1, 1), RETIRO)
         leave = self.env['hr.leave'].create({
             'employee_id': employee.id, 'holiday_status_id': self.leave_type_vac.id,

@@ -52,7 +52,9 @@ class HrLeave(models.Model):
     def _ne_interrupcion_maxima_prorroga(self, fecha):
         """Días calendario de interrupción que admite la prórroga a la ``fecha`` (parámetro ``l10n_co_dias_interrupcion_prorroga``, 30). OBLIGATORIO: sin el parámetro, un error claro que lo nombra."""
         try:
-            valor = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_dias_interrupcion_prorroga', fecha)
+            # sudo(): quien registra la ausencia (grupo de Ausencias) puede no tener acceso al modelo de parametros de nomina; sin sudo el AccessError (subclase de UserError) caeria en el except y el
+            # mensaje diria «Falta el parametro», que seria falso. Es una lectura de un tope legal, no de datos de nadie.
+            valor = self.env['hr.rule.parameter'].sudo()._get_parameter_from_code('l10n_co_dias_interrupcion_prorroga', fecha)
         except UserError:                     # el nativo lanza UserError si no hay valor a esa fecha: se reemplaza por un mensaje que nombra el parametro y dice que hacer
             valor = None
         if valor is None:
@@ -115,7 +117,7 @@ class HrLeave(models.Model):
                     '(parámetro l10n_co_dias_interrupcion_prorroga; Decreto 1427 de 2022, art. 2.2.3.3.2, parágrafo 1). Son incapacidades distintas: quite el vínculo.',
                     hasta=anterior.request_date_to, desde=leave.request_date_from, libres=libres, maxima=maxima))
             # Una incapacidad tiene A LO SUMO una prorroga siguiente (la cadena es una lista, no un arbol): si no, las posiciones de los tramos se contarian dos veces.
-            otras = self.search_count([('l10n_co_ne_prorroga_de_id', '=', anterior.id), ('id', '!=', leave.id)])
+            otras = self.sudo().search_count([('l10n_co_ne_prorroga_de_id', '=', anterior.id), ('id', '!=', leave.id)])      # sudo(): la unicidad se comprueba contra TODAS las ausencias, no solo las que ve quien edita
             if otras:
                 raise ValidationError(_(
                     '«%(anterior)s» ya tiene una prórroga. Una incapacidad solo puede tener una prórroga siguiente: la cadena de prórrogas es una lista.', anterior=anterior.display_name))
