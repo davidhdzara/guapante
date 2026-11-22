@@ -12,7 +12,7 @@ False: si alguien borra el vat del contacto, el número del empleado (del que
 depende NumeroDocumento del XML) no debe desaparecer con él.
 """
 
-from odoo import fields, models
+from odoo import SUPERUSER_ID, fields, models
 
 
 class ResPartner(models.Model):
@@ -47,9 +47,12 @@ class ResPartner(models.Model):
         res = super().write(vals)
         if 'vat' in vals:
             # active_test=False (E-6): un empleado ARCHIVADO (retiro registrado, liquidacion pendiente) tambien sigue a su contacto.
-            empleados = self.env['hr.employee'].sudo().with_context(active_test=False).search([
-                ('work_contact_id', 'in', self.ids),
-            ])
+            # H-F2-03 (G6): con sudo para que quien edita el contacto (un contador, sin permisos de empleados) sincronice el número, pero SOLO los empleados de las compañías del usuario: un contacto
+            # editado desde la compañía A no escribe (con sudo) el número de un empleado de la B. El superusuario (datos, migraciones) sigue sincronizando todos.
+            dominio = [('work_contact_id', 'in', self.ids)]
+            if self.env.uid != SUPERUSER_ID:
+                dominio.append(('company_id', 'in', self.env.user.company_ids.ids))
+            empleados = self.env['hr.employee'].sudo().with_context(active_test=False).search(dominio)
             for empleado in empleados._ne_solo_colombia():
                 partner_vat = empleado.work_contact_id.vat
                 if partner_vat and empleado.identification_id != partner_vat:
