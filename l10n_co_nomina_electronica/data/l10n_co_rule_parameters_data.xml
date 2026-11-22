@@ -917,6 +917,27 @@ Valor vigente: <strong>1.0</strong>.</p></field>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+    <!-- H-F3-04 (decisión del TL del 22-nov): la parte de SOLIDARIDAD del aporte al FSP, para dividir el total por tramo en las dos parejas del nodo FondoSP del XML (Ley 797/2003 art. 8). -->
+    <record id="rule_parameter_fsp_pct_solidaridad" model="hr.rule.parameter">
+        <field name="name">Colombia: FSP - % Subcuenta de Solidaridad</field>
+        <field name="code">l10n_co_fsp_pct_solidaridad</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Parte del aporte al FSP que va a la subcuenta de SOLIDARIDAD (el resto del total por tramo va a la de subsistencia). Solo divide el nodo
+<code>FondoSP</code> del XML de nómina electrónica en sus dos parejas (<code>Porcentaje</code>/<code>DeduccionSP</code> = solidaridad; <code>PorcentajeSub</code>/<code>DeduccionSub</code> = subsistencia): el valor que se
+descuenta lo siguen fijando <code>FSP - % Base</code> y los tramos.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción decimal equivalente: escriba <strong>0.5</strong> para representar 0,5 % (no 0.005). Valor vigente: <strong>0.5</strong>.</p>
+<h3 class="mt-5">Norma</h3>
+<p>Ley 797 de 2003, art. 8 (subroga el art. 27 de la Ley 100 de 1993; texto leído en la Secretaría del Senado): la subcuenta de solidaridad recibe «el cincuenta por ciento (50%) de la cotización adicional del 1% sobre
+la base de cotización» de los afiliados con IBC igual o superior a 4 SMMLV (0,5 % del IBC) y la de subsistencia el otro 50 % más 0,2 / 0,4 / 0,6 / 0,8 / 1,0 % desde 16 SMMLV. <strong>NO VERIFICADO:</strong> qué espera la
+DIAN en <code>Porcentaje</code> (Anexo NIE167: «porcentaje de deducción de fondo de seguridad pensional»); la decisión del Tech Lead es que lleve el de la solidaridad, en pareja con <code>DeduccionSP</code>.</p></field>
+    </record>
+    <record id="rule_parameter_fsp_pct_solidaridad_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">0.5</field>
+        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_solidaridad"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_fsp_umbral_tier1" model="hr.rule.parameter">
         <field name="name">Colombia: FSP - Umbral Tramo 1 (SMMLV)</field>
         <field name="code">l10n_co_fsp_umbral_tier1</field>

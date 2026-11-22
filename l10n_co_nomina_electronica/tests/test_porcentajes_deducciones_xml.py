@@ -4,9 +4,12 @@
 fija con el MISMO parametro con que calcula (``l10n_co_pct_salud_empleado``, ``l10n_co_pct_pension_empleado`` y el tramo del FSP por el IBC). Sin linea (la regla no se calculo: aprendiz lectivo, pensionado) no hay
 nodo y el constructor escribe 0 en Salud y FondoPension, que el XSD v1.0.6 exige (``minOccurs=1``) y cuyo porcentaje es un ``xsd:decimal`` sin minimo; FondoSP es opcional y se omite.
 
-Valores a mano (marzo de 2026, SMMLV 1.750.905): sueldo 10.000.000 (5,7 SMMLV) -> 4 / 4 / 1,00; 30.000.000 (17,1 SMMLV, desde 17) -> FSP 1,40; 40.000.000 (22,8 SMMLV, desde 20) -> FSP 2,00."""
+Valores a mano (marzo de 2026, SMMLV 1.750.905): sueldo 10.000.000 (5,7 SMMLV) -> 4 / 4 / FSP total 1,00 = 0,5 solidaridad + 0,5 subsistencia; 30.000.000 (17,1 SMMLV, desde 17) -> total 1,40 = 0,5 + 0,9;
+40.000.000 (22,8 SMMLV, desde 20) -> total 2,00 = 0,5 + 1,5 (Ley 797/2003 art. 8: la solidaridad es el 50 % del 1 %; la subsistencia, el otro 50 % mas el adicional del tramo). Cada deduccion es el IBC por su
+porcentaje y la suma de las dos es EXACTAMENTE la linea CO_FSP (el centavo de redondeo va a la subsistencia)."""
 
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from odoo.addons.l10n_co_nomina_electronica.services import documento_merge, nomina_xml_builder
 from odoo.tests.common import BaseCase, tagged
@@ -40,13 +43,14 @@ class TestPorcentajesDeduccionesXml(aprendiz.TestAprendizAportes):
         return {clave: {atributo: (float(valor) if valor is not None else None) for atributo, valor in nodo[clave].items()} for clave in ('Salud', 'FondoPension', 'FondoSP')}
 
     # ── normal: los mismos valores de antes, ahora derivados ──
-    def test_un_empleado_normal_reporta_4_4_y_1_y_la_deduccion_de_las_lineas(self):
+    def test_un_empleado_normal_reporta_4_4_y_el_fsp_en_solidaridad_y_subsistencia(self):
         recibo = self._normal('Normal Porcentajes')
         deducciones = self._deducciones(recibo)
-        self.assertEqual((deducciones['Salud']['Porcentaje'], deducciones['FondoPension']['Porcentaje'], deducciones['FondoSP']['Porcentaje']), ('4.00', '4.00', '1.00'))
+        fsp = deducciones['FondoSP']
+        self.assertEqual((deducciones['Salud']['Porcentaje'], deducciones['FondoPension']['Porcentaje'], fsp['Porcentaje'], fsp['PorcentajeSub']), ('4.00', '4.00', '0.50', '0.50'))
         self.assertAlmostEqual(float(deducciones['Salud']['Deduccion']), -self._total(recibo, 'CO_SALUD_EMP'), delta=0.01)
         self.assertAlmostEqual(float(deducciones['FondoPension']['Deduccion']), -self._total(recibo, 'CO_PENSION_EMP'), delta=0.01)
-        self.assertAlmostEqual(float(deducciones['FondoSP']['DeduccionSP']), -self._total(recibo, 'CO_FSP'), delta=0.01)
+        self.assertEqual((fsp['DeduccionSP'], fsp['DeduccionSub']), ('50000.00', '50000.00'))              # 0,5 % y 0,5 % de 10.000.000
 
     def test_el_porcentaje_sigue_al_parametro_y_no_a_un_literal(self):
         """Un valor nuevo del parametro con vigencia desde el 1-mar-2026 (5 % de salud y 6 % de pension del trabajador) cambia el porcentaje del XML y la deduccion que lo acompana."""
@@ -59,13 +63,38 @@ class TestPorcentajesDeduccionesXml(aprendiz.TestAprendizAportes):
         self.assertAlmostEqual(float(deducciones['Salud']['Deduccion']), 0.05 * 10000000.0, delta=0.01)
         self.assertAlmostEqual(float(deducciones['FondoPension']['Deduccion']), 0.06 * 10000000.0, delta=0.01)
 
-    # ── FSP segun el IBC ──
-    def test_el_porcentaje_del_fsp_es_el_tramo_del_ibc(self):
-        for sueldo, esperado in ((10000000.0, '1.00'), (30000000.0, '1.40'), (40000000.0, '2.00')):
+    # ── FSP segun el IBC: solidaridad y subsistencia ──
+    def _fsp(self, recibo):
+        """(nodo del XML, linea CO_FSP) de un recibo."""
+        return self._deducciones(recibo)['FondoSP'], self.env['hr.payslip.line'].search([('slip_id', '=', recibo.id), ('code', '=', 'CO_FSP')])
+
+    def test_el_fsp_se_divide_en_solidaridad_y_subsistencia_segun_el_tramo_del_ibc(self):
+        casos = (
+            # (sueldo, % solidaridad, % subsistencia, deduccion solidaridad, deduccion subsistencia)
+            (10000000.0, '0.50', '0.50', '50000.00', '50000.00'),
+            (30000000.0, '0.50', '0.90', '150000.00', '270000.00'),
+            (40000000.0, '0.50', '1.50', '200000.00', '600000.00'))
+        for sueldo, pct_sp, pct_sub, ded_sp, ded_sub in casos:
             with self.subTest(sueldo=sueldo):
-                recibo = self._normal('Fsp %s' % int(sueldo), sueldo)
-                self.assertEqual(self._deducciones(recibo)['FondoSP']['Porcentaje'], esperado)
-                self.assertAlmostEqual(self.env['hr.payslip.line'].search([('slip_id', '=', recibo.id), ('code', '=', 'CO_FSP')]).rate, float(esperado), places=4)
+                fsp, linea = self._fsp(self._normal('Fsp %s' % int(sueldo), sueldo))
+                self.assertEqual((fsp['Porcentaje'], fsp['PorcentajeSub'], fsp['DeduccionSP'], fsp['DeduccionSub']), (pct_sp, pct_sub, ded_sp, ded_sub))
+                self.assertAlmostEqual(float(pct_sp) + float(pct_sub), linea.rate, places=4)                       # el total del tramo es la rate de la regla
+                self.assertEqual(Decimal(fsp['DeduccionSP']) + Decimal(fsp['DeduccionSub']), Decimal('%.2f' % -linea.total), 'La suma es exactamente la linea CO_FSP')
+
+    def test_el_centavo_de_redondeo_del_fsp_va_a_la_subsistencia(self):
+        """Sueldo 10.000.333: el 1 % (100.003,33) se reparte en proporcion 0,5 / 0,5: la solidaridad es 50.001,665 -> 50.001,67 (medio arriba) y la subsistencia lo que falta: 50.001,66."""
+        fsp, linea = self._fsp(self._normal('Fsp Centavo', 10000333.0))
+        total = Decimal('%.2f' % -linea.total)
+        solidaridad = (total * Decimal('0.5') / Decimal('1.00')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        self.assertEqual((Decimal(fsp['DeduccionSP']), Decimal(fsp['DeduccionSub'])), (solidaridad, total - solidaridad))
+        self.assertEqual(Decimal(fsp['DeduccionSP']) + Decimal(fsp['DeduccionSub']), total)
+
+    def test_la_solidaridad_sigue_al_parametro(self):
+        """Un valor nuevo de ``l10n_co_fsp_pct_solidaridad`` (0,4 desde el 1-mar-2026) da 0,40 de solidaridad y 0,60 de subsistencia sobre el mismo 1 % del tramo."""
+        parametro = self.env['hr.rule.parameter'].search([('code', '=', 'l10n_co_fsp_pct_solidaridad')])
+        self.env['hr.rule.parameter.value'].create({'rule_parameter_id': parametro.id, 'date_from': FECHA, 'parameter_value': '0.4'})
+        fsp, _linea = self._fsp(self._normal('Fsp Parametro'))
+        self.assertEqual((fsp['Porcentaje'], fsp['PorcentajeSub'], fsp['DeduccionSP'], fsp['DeduccionSub']), ('0.40', '0.60', '40000.00', '60000.00'))
 
     # ── sin linea: 0 en lo obligatorio, sin nodo en lo opcional ──
     def test_el_pensionado_reporta_pension_en_0_con_deduccion_0_y_sin_fsp(self):
@@ -119,27 +148,29 @@ class TestPorcentajesDeduccionesXml(aprendiz.TestAprendizAportes):
 
 @tagged('post_install', '-at_install')
 class TestFusionDelFondoSp(BaseCase):
-    """La fusion mensual con los porcentajes ya derivados: el tramo del FSP puede cambiar entre recibos del mes (no detiene el documento); Salud y FondoPension siguen exigiendo el mismo porcentaje."""
+    """La fusion mensual con los porcentajes ya derivados: el tramo del FSP puede cambiar entre recibos del mes (no detiene el documento) y se pondera cada porcentaje por la deduccion de SU pareja; Salud y FondoPension
+    siguen exigiendo el mismo porcentaje."""
 
     @staticmethod
     def _recibo(salud='4.00', fsp=None):
+        """``fsp`` = (Porcentaje, DeduccionSP, PorcentajeSub, DeduccionSub)."""
         deducciones = {'Salud': {'Porcentaje': salud, 'Deduccion': '100000.00'}, 'FondoPension': {'Porcentaje': '4.00', 'Deduccion': '100000.00'}}
         if fsp:
-            deducciones['FondoSP'] = {'Porcentaje': fsp[0], 'DeduccionSP': fsp[1], 'PorcentajeSub': '0.00', 'DeduccionSub': '0.00'}
+            deducciones['FondoSP'] = dict(zip(('Porcentaje', 'DeduccionSP', 'PorcentajeSub', 'DeduccionSub'), fsp))
         return {'deducciones': deducciones}
 
-    def test_el_mismo_tramo_se_conserva(self):
-        fusion = documento_merge.fusionar_deducciones([self._recibo(fsp=('1.00', '50000.00')), self._recibo(fsp=('1.00', '70000.00'))])
-        self.assertEqual((fusion['FondoSP']['Porcentaje'], fusion['FondoSP']['DeduccionSP']), ('1.00', '120000.00'))
+    def test_el_mismo_tramo_se_conserva_y_las_deducciones_se_suman(self):
+        fusion = documento_merge.fusionar_deducciones([self._recibo(fsp=('0.50', '50000.00', '0.50', '50000.00')), self._recibo(fsp=('0.50', '70000.00', '0.50', '70000.00'))])
+        self.assertEqual(fusion['FondoSP'], {'Porcentaje': '0.50', 'DeduccionSP': '120000.00', 'PorcentajeSub': '0.50', 'DeduccionSub': '120000.00'})
 
-    def test_tramos_distintos_se_ponderan_por_lo_deducido_y_no_detienen_el_documento(self):
-        """1,00 % sobre 100.000 y 1,40 % sobre 300.000 -> (1,0 x 100.000 + 1,4 x 300.000) / 400.000 = 1,30."""
-        fusion = documento_merge.fusionar_deducciones([self._recibo(fsp=('1.00', '100000.00')), self._recibo(fsp=('1.40', '300000.00'))])
-        self.assertEqual((fusion['FondoSP']['Porcentaje'], fusion['FondoSP']['DeduccionSP']), ('1.30', '400000.00'))
+    def test_tramos_distintos_se_ponderan_cada_uno_por_su_pareja_y_no_detienen_el_documento(self):
+        """Subsistencia 0,50 % sobre 50.000 y 0,90 % sobre 180.000 -> (0,5 x 50.000 + 0,9 x 180.000) / 230.000 = 0,81; la solidaridad (0,50 en los dos) se conserva."""
+        fusion = documento_merge.fusionar_deducciones([self._recibo(fsp=('0.50', '50000.00', '0.50', '50000.00')), self._recibo(fsp=('0.50', '100000.00', '0.90', '180000.00'))])
+        self.assertEqual(fusion['FondoSP'], {'Porcentaje': '0.50', 'DeduccionSP': '150000.00', 'PorcentajeSub': '0.81', 'DeduccionSub': '230000.00'})
 
     def test_un_recibo_sin_fsp_no_cambia_el_del_otro(self):
-        fusion = documento_merge.fusionar_deducciones([self._recibo(), self._recibo(fsp=('1.20', '80000.00'))])
-        self.assertEqual((fusion['FondoSP']['Porcentaje'], fusion['FondoSP']['DeduccionSP']), ('1.20', '80000.00'))
+        fusion = documento_merge.fusionar_deducciones([self._recibo(), self._recibo(fsp=('0.50', '80000.00', '0.70', '112000.00'))])
+        self.assertEqual(fusion['FondoSP'], {'Porcentaje': '0.50', 'DeduccionSP': '80000.00', 'PorcentajeSub': '0.70', 'DeduccionSub': '112000.00'})
 
     def test_salud_con_porcentaje_distinto_sigue_deteniendo_el_documento(self):
         with self.assertRaises(documento_merge.ErrorFusion):

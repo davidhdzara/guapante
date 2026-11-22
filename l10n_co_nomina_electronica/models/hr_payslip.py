@@ -28,6 +28,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
@@ -4001,6 +4002,22 @@ class HrPayslip(models.Model):
             return '0.00'
         return '%.2f' % (sum(abs(linea.total) * linea.rate for linea in lineas) / total)
 
+    def _ne_fondo_sp_xml(self, lineas):
+        """Nodo ``Deducciones/FondoSP`` en sus dos parejas (Anexo NIE167 a NIE170; H-F3-04, decisión del TL del 22-nov): ``Porcentaje`` y ``DeduccionSP`` son la SOLIDARIDAD; ``PorcentajeSub`` y ``DeduccionSub``,
+        la SUBSISTENCIA. Ley 797 de 2003, art. 8 (subroga el art. 27 de la Ley 100; texto leído en la Secretaría del Senado): la subcuenta de solidaridad recibe «el cincuenta por ciento (50%) de la cotización adicional
+        del 1%» y la de subsistencia el otro 50 % más 0,2 / 0,4 / 0,6 / 0,8 / 1,0 % desde 16 SMMLV. El porcentaje TOTAL es el de la regla (``rate`` de la línea: el tramo del IBC, ``l10n_co_fsp_pct_*``); el de la
+        solidaridad es el parámetro ``l10n_co_fsp_pct_solidaridad`` (0,5) y el de la subsistencia, el total menos la solidaridad. Las deducciones se reparten EN PROPORCIÓN a los porcentajes y su suma es exactamente lo
+        descontado (la línea ``CO_FSP``): el centavo de redondeo va a la subsistencia. Así cada deducción es el IBC por su porcentaje. NO VERIFICADO: qué espera la DIAN en ``Porcentaje`` (NIE167 dice solo «porcentaje
+        de deducción de fondo de seguridad pensional»; la decisión del TL es que lleve el de la solidaridad, en pareja con ``DeduccionSP``) y si valida esa aritmética."""
+        total_pct = Decimal(self._ne_porcentaje_de_lineas(lineas))
+        total_ded = Decimal('%.2f' % abs(sum(linea.total for linea in lineas)))
+        solidaridad = min(Decimal(str(self._rule_parameter('l10n_co_fsp_pct_solidaridad', self._ne_fecha_parametros()))), total_pct)
+        centavo = Decimal('0.01')
+        ded_sp = (total_ded * solidaridad / total_pct).quantize(centavo, rounding=ROUND_HALF_UP) if total_pct else Decimal('0.00')
+        return {
+            'Porcentaje': '%.2f' % solidaridad, 'DeduccionSP': str(ded_sp),
+            'PorcentajeSub': '%.2f' % (total_pct - solidaridad), 'DeduccionSub': str(total_ded - ded_sp)}
+
     def _build_deducciones(self, concept_lines):
         """Construye el dict <Deducciones> del XML a partir de concept_lines."""
         deducciones = {}
@@ -4022,19 +4039,9 @@ class HrPayslip(models.Model):
                 )),
             }
 
-        # Fondo de Solidaridad Pensional. NO VERIFICADO / sin derivar (H-F3-04, decisión del TL del 22-nov): ``PorcentajeSub`` y ``DeduccionSub`` (subsistencia) siguen en 0.00 y todo lo descontado va en
-        # ``DeduccionSP`` con el porcentaje TOTAL de la regla. Los parámetros ``l10n_co_fsp_pct_*`` son el total por tramo (1,0 a 2,0) y NO distinguen la solidaridad de la subsistencia; la ley sí las
-        # distingue (Ley 797 de 2003, art. 8, que subroga el art. 27 de la Ley 100: el 50 % de la cotización adicional del 1 % va a la subcuenta de solidaridad y el otro 50 % a la de subsistencia, más
-        # 0,2/0,4/0,6/0,8/1,0 % a subsistencia desde 16 SMMLV), pero la división no está en los datos del módulo y no se inventa aquí.
+        # Fondo de Solidaridad Pensional: dos parejas, solidaridad y subsistencia (H-F3-04, decisión del TL del 22-nov; ver ``_ne_fondo_sp_xml``)
         if 'FondoSP' in concept_lines:
-            deducciones['FondoSP'] = {
-                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['FondoSP']),
-                'DeduccionSP': '%.2f' % abs(sum(
-                    l.total for l in concept_lines['FondoSP']
-                )),
-                'PorcentajeSub': '0.00',
-                'DeduccionSub': '0.00',
-            }
+            deducciones['FondoSP'] = self._ne_fondo_sp_xml(concept_lines['FondoSP'])
 
         # Sindicatos
         if 'Sindicato' in concept_lines:

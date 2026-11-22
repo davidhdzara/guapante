@@ -172,23 +172,28 @@ def fusionar_devengados(recibos):
 
 
 def _fusionar_fondo_sp(recibos):
-    """``FondoSP`` del mes. Su ``Porcentaje`` es el TRAMO del IBC de cada recibo (H-F3-04: sale de ``rate`` de la regla, ya no un literal) y es informativo (el Anexo no lo valida contra la deduccion; en el XSD es
-    opcional): dos recibos del mes pueden caer en tramos distintos (p. ej. una quincena con una bonificacion), y detenerse ahi bloquearia un documento legitimo. Si coinciden, ese valor; si no, el promedio
-    ponderado por lo deducido (``DeduccionSP``). Los demas campos del nodo se suman como siempre."""
+    """``FondoSP`` del mes, en sus dos parejas (H-F3-04): ``Porcentaje``/``DeduccionSP`` (solidaridad) y ``PorcentajeSub``/``DeduccionSub`` (subsistencia). Los porcentajes salen de ``rate`` de la regla y de
+    ``l10n_co_fsp_pct_solidaridad``: el de la subsistencia es el TRAMO del IBC de cada recibo menos la solidaridad, e informativo (el Anexo no lo valida contra la deduccion; en el XSD es opcional): dos recibos
+    del mes pueden caer en tramos distintos (p. ej. una quincena con una bonificacion) y detenerse ahi bloquearia un documento legitimo. Si coinciden, ese valor; si no, el promedio ponderado por lo deducido de
+    SU pareja (``DeduccionSP`` para ``Porcentaje``, ``DeduccionSub`` para ``PorcentajeSub``). Las deducciones se suman como siempre."""
     nodos = [d.get('deducciones', {}).get('FondoSP') for d in recibos if d.get('deducciones', {}).get('FondoSP')]
     if not nodos:
         return None
+    parejas = (('Porcentaje', 'DeduccionSP'), ('PorcentajeSub', 'DeduccionSub'))
+    porcentajes = {porcentaje for porcentaje, _deduccion in parejas}
     acum = None
     for nodo in nodos:
-        acum = _sumar_nodo('FondoSP', acum, {campo: valor for campo, valor in nodo.items() if campo != 'Porcentaje'})
-    porcentajes = [(nodo.get('Porcentaje'), _dec(nodo.get('DeduccionSP'))) for nodo in nodos if nodo.get('Porcentaje') not in (None, '')]
-    if porcentajes:
-        distintos = {str(valor) for valor, _peso in porcentajes}
-        total = sum(peso for _valor, peso in porcentajes)
+        acum = _sumar_nodo('FondoSP', acum, {campo: valor for campo, valor in nodo.items() if campo not in porcentajes})
+    for porcentaje, deduccion in parejas:
+        valores = [(nodo.get(porcentaje), _dec(nodo.get(deduccion))) for nodo in nodos if nodo.get(porcentaje) not in (None, '')]
+        if not valores:
+            continue
+        distintos = {str(valor) for valor, _peso in valores}
+        total = sum(peso for _valor, peso in valores)
         if len(distintos) == 1 or not total:
-            acum['Porcentaje'] = porcentajes[0][0]
+            acum[porcentaje] = valores[0][0]
         else:
-            acum['Porcentaje'] = _dinero(sum(_dec(valor) * peso for valor, peso in porcentajes) / total)
+            acum[porcentaje] = _dinero(sum(_dec(valor) * peso for valor, peso in valores) / total)
     return acum
 
 
