@@ -32,12 +32,12 @@ class TestValidacionAfiliacion(TransactionCase):
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({'name': 'Prueba Estructura Afiliación', 'country_id': cls.env.ref('base.co').id})
         cls.nomina = cls.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
 
-    def _empleado_y_recibo(self, nombre, tipo='01', subtipo='00', eps=None, afp=None, ccf=None, desde=date(2026, 3, 1), hasta=date(2026, 3, 15)):
+    def _empleado_y_recibo(self, nombre, tipo='01', subtipo='00', eps=None, afp=None, ccf=None, desde=date(2026, 3, 1), hasta=date(2026, 3, 15), tipo_contrato='2'):
         empleado = self.env['hr.employee'].create({
             'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 'name': nombre, 'company_id': self.company.id, 'l10n_co_ne_payment_method': '10',
             'l10n_co_pila_eps_id': eps.id if eps else False, 'l10n_co_pila_afp_id': afp.id if afp else False, 'l10n_co_pila_ccf_id': ccf.id if ccf else False})
         contrato = self.env['hr.contract'].create({
-            'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': tipo, 'l10n_co_pila_subtipo_cotizante': subtipo, 'name': 'Contrato %s' % nombre,
+            'l10n_co_ne_contract_type': tipo_contrato, 'l10n_co_pila_tipo_cotizante': tipo, 'l10n_co_pila_subtipo_cotizante': subtipo, 'name': 'Contrato %s' % nombre,
             'employee_id': empleado.id, 'company_id': self.company.id, 'structure_type_id': self.structure_type.id, 'wage': 3000000.0, 'date_start': date(2024, 1, 1), 'state': 'open'})
         recibo = self.env['hr.payslip'].create({
             'name': 'Recibo %s' % nombre, 'employee_id': empleado.id, 'contract_id': contrato.id, 'company_id': self.company.id, 'struct_id': self.nomina.id,
@@ -66,16 +66,25 @@ class TestValidacionAfiliacion(TransactionCase):
 
     # ── excepciones desde los datos del contrato y el parametro ───────────────────────────────────────────────────────────────────────────
     def test_el_pensionado_y_el_aprendiz_en_etapa_lectiva_no_exigen_afp_pero_si_eps(self):
-        for nombre, tipo, subtipo in (('Pensionado', '01', '01'), ('Pensionado Independiente', '03', '02'), ('Aprendiz Lectiva', '12', '00')):
+        for nombre, tipo, subtipo in (('Pensionado', '01', '01'), ('Pensionado Independiente', '03', '02'), ('Aprendiz Lectiva', '19', '00')):      # desde el 1-ago-2025 la lectiva se reporta con el tipo 19 (Concepto MinSalud 2025310001925691)
             _empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, subtipo=subtipo, ccf=self.ccf)
             texto = recibo.l10n_co_ne_aviso_afiliacion
             self.assertIn('EPS', texto, nombre)
             self.assertNotIn('AFP', texto, nombre)
 
     def test_el_aprendiz_en_etapa_practica_si_exige_afp(self):
-        """Ley 2466/2025 art. 21: en la fase practica el aprendiz esta afiliado a pensiones y salud como dependiente (tipo de la etapa productiva, 19)."""
-        _empleado, recibo = self._empleado_y_recibo('Aprendiz Practica', tipo='19', ccf=self.ccf)
+        """Ley 2466/2025 art. 21: en la fase practica el aprendiz esta afiliado a pensiones y salud como dependiente. Desde el 1-ago-2025 se reporta con el tipo 01 (dependiente) y el contrato «4 - Aprendizaje»."""
+        _empleado, recibo = self._empleado_y_recibo('Aprendiz Practica', tipo='01', tipo_contrato='4', ccf=self.ccf)
         self.assertIn('AFP', recibo.l10n_co_ne_aviso_afiliacion)
+
+    def test_el_tipo_19_exige_afp_en_julio_de_2025_y_no_desde_agosto_de_2025(self):
+        """El tipo 19 era la etapa PRODUCTIVA (con pension) hasta el 31-jul-2025 y es la LECTIVA (sin pension) desde el 1-ago-2025; el 12, al reves: exceptuado hasta jul-2025 y restringido despues
+        (Concepto MinSalud 2025310001925691 del 22-jul-2025). Todo por la vigencia del parametro."""
+        casos = (('Tipo 19 julio', '19', date(2025, 7, 1), date(2025, 7, 31), True), ('Tipo 19 agosto', '19', date(2025, 8, 1), date(2025, 8, 31), False),
+                 ('Tipo 12 julio', '12', date(2025, 7, 1), date(2025, 7, 31), False), ('Tipo 12 agosto', '12', date(2025, 8, 1), date(2025, 8, 31), True))
+        for nombre, tipo, desde, hasta, exige in casos:
+            _empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, eps=self.eps, ccf=self.ccf, desde=desde, hasta=hasta)
+            self.assertEqual('AFP' in recibo.l10n_co_ne_aviso_afiliacion, exige, nombre)
 
     def test_cambiar_la_vigencia_del_parametro_cambia_el_resultado_sin_tocar_codigo(self):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_afiliaciones_no_exigidas')

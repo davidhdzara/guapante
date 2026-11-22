@@ -408,15 +408,50 @@ fecha de vigencia; no edite el anterior.</p></field>
 tuplas <code>(tipo de cotizante, subtipo de cotizante, entidad)</code> con <code>'*'</code> como comodín y la entidad <code>'eps'</code>, <code>'afp'</code>, <code>'ccf'</code> o <code>'arl'</code>. La
 entidad que aparezca para el tipo y el subtipo del contrato NO se exige.</p>
 <h3 class="mt-5">Valor vigente y norma</h3>
-<p><code>[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>.
+<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>. <strong>Desde el 1-ago-2025</strong> (la lectiva se reporta con el tipo 19, Concepto MinSalud 2025310001925691): <code>[('19', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>.
 <strong>Pensionado</strong> (subtipo 01 y 02, pensionado por vejez activo): Ley 100 de 1993, art. 17 (modificado por la Ley 797 de 2003, art. 4): «La obligación de cotizar cesa al momento en que el afiliado reúna los requisitos para acceder a la pensión mínima de vejez, o cuando el afiliado se pensione por invalidez o anticipadamente.»
-<strong>Aprendiz en etapa lectiva</strong> (tipo 12): Ley 2466 de 2025, art. 21 (modifica el art. 81 del CST): «Durante la fase lectiva, el aprendiz estará cubierto por el sistema de seguridad social en salud y riesgos laborales, pagado plenamente por la empresa como dependiente.»;
+<strong>Aprendiz en etapa lectiva</strong> (tipo 12 hasta jul-2025, tipo 19 desde ago-2025): Ley 2466 de 2025, art. 21 (modifica el art. 81 del CST): «Durante la fase lectiva, el aprendiz estará cubierto por el sistema de seguridad social en salud y riesgos laborales, pagado plenamente por la empresa como dependiente.»;
 en la fase práctica o la formación dual SÍ se exige la pensión (EPS, AFP y ARL), así que el tipo de la etapa práctica no aparece aquí. Si la norma o la PILA cambian, cree un valor nuevo con su fecha de vigencia; no edite el anterior.</p></field>
     </record>
     <record id="rule_parameter_afiliaciones_no_exigidas_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</field>
         <field name="rule_parameter_id" ref="rule_parameter_afiliaciones_no_exigidas"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <!-- H-F1-09 (doc 88; decisión del TL del 22-nov): desde el 1-ago-2025 el aprendiz en etapa LECTIVA se reporta en PILA con el tipo de cotizante 19 y el tipo 12 se restringe (Concepto MinSalud 2025310001925691
+         del 22-jul-2025, que transcribe la Circular MinTrabajo 083 del 18-jul-2025: «el tipo de cotizante “19 - Aprendiz en etapa productiva” en el tipo de planilla “E - empleados”»; «restringir el tipo de
+         cotizante “12- Aprendiz en etapa lectiva”» desde el periodo de salud de agosto de 2025). Antes de esa fecha el 19 era la etapa productiva (con pensión). Esquema PROVISIONAL «mientras el Ministerio de Salud y
+         Protección Social expide el acto administrativo» de ajuste de la PILA: si cambia, se cambia por datos (un valor nuevo con su fecha). -->
+    <record id="rule_parameter_afiliaciones_no_exigidas_2025_08" model="hr.rule.parameter.value">
+        <field name="parameter_value">[('19', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</field>
+        <field name="rule_parameter_id" ref="rule_parameter_afiliaciones_no_exigidas"/>
+        <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
+    </record>
+
+    <!-- H-F1-09 (doc 88): la ETAPA del aprendiz (lectiva / práctica) y el TipoTrabajador de la DIAN que le corresponde, por el tipo de cotizante y el tipo de contrato del contrato del recibo. Versionado por fecha. -->
+    <record id="rule_parameter_aprendiz_etapas" model="hr.rule.parameter">
+        <field name="name">Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato</field>
+        <field name="code">l10n_co_aprendiz_etapas</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Tabla que dice cuándo un contrato es de un aprendiz y en qué etapa está: tuplas <code>(tipo de cotizante PILA, tipo de contrato DIAN, etapa, TipoTrabajador DIAN)</code> con
+<code>'*'</code> como comodín del tipo de contrato; la etapa es <code>'lectiva'</code> o <code>'practica'</code>. Un contrato que no aparece NO es de aprendiz. De ella salen: qué regla del apoyo de sostenimiento
+se calcula (no salarial en la lectiva; base de las prestaciones en la práctica), el TipoTrabajador del XML y el régimen de aportes (lectiva: salud y riesgos pagados por la empresa, sin pensión; práctica: como dependiente
+con IBC de 1 SMMLV).</p>
+<h3 class="mt-5">Valores y norma</h3>
+<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'lectiva', '12'), ('19', '*', 'practica', '19')]</code> (12 = etapa lectiva, 19 = etapa productiva).
+<strong>Desde el 1-ago-2025:</strong> <code>[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19')]</code>: la lectiva se reporta con el tipo 19 y la práctica o la formación dual con el tipo 01 (dependiente) y el tipo de
+contrato «4 - Aprendizaje» (Concepto MinSalud 2025310001925691 del 22-jul-2025 y Circular MinTrabajo 083 del 18-jul-2025; Ley 2466 de 2025, art. 21, que modifica el art. 81 del CST; Decreto 223 de 2026, arts. 2.2.6.3.3.4 y 2.2.6.3.3.6).
+Esquema <strong>PROVISIONAL</strong> «mientras el Ministerio de Salud y Protección Social expide el acto administrativo» de ajuste de la PILA: si cambia, cree un valor nuevo con su fecha de vigencia; no edite este.</p></field>
+    </record>
+    <record id="rule_parameter_aprendiz_etapas_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">[('12', '*', 'lectiva', '12'), ('19', '*', 'practica', '19')]</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+    <record id="rule_parameter_aprendiz_etapas_2025_08" model="hr.rule.parameter.value">
+        <field name="parameter_value">[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19')]</field>
+        <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
+        <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
     </record>
 
     <record id="rule_parameter_aviso_anio_siguiente_desde_mes" model="hr.rule.parameter">

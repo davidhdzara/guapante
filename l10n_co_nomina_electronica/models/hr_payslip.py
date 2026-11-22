@@ -332,6 +332,28 @@ class HrPayslip(models.Model):
         self.ensure_one()
         return self.employee_id._ne_afiliaciones_faltantes(self.contract_id, self._ne_fecha_parametros())
 
+    def _ne_regimen_cotizante(self):
+        """Régimen de cotización del empleado de este recibo según el tipo de cotizante y el tipo de contrato del CONTRATO del recibo (H-F1-09, doc 88): UN solo método para el aprendiz. Devuelve
+        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False}``: la tabla es el parámetro versionado ``l10n_co_aprendiz_etapas``, tuplas
+        ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador)`` con ``'*'`` como comodín del tipo de contrato; un contrato que no aparece NO es de aprendiz (``etapa`` falso). Las reglas del apoyo
+        de sostenimiento, la salud y la base de parafiscales del aprendiz y el TipoTrabajador del XML lo consultan: nada de la norma está repartido en las fórmulas. La decisión de qué AFP no se exige vive
+        en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, un error que lo nombra."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        try:
+            tabla = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_aprendiz_etapas', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) para el %(fecha)s, que se necesita para calcular el recibo '
+                'de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.', fecha=fecha, empleado=self.employee_id.name)) from None
+        contrato = self.contract_id
+        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
+        tipo_contrato = contrato.l10n_co_ne_contract_type or ''
+        for clave_tipo, clave_contrato, etapa, tipo_trabajador in tabla:
+            if clave_tipo == tipo and clave_contrato in ('*', tipo_contrato):
+                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador}
+        return {'etapa': False, 'tipo_trabajador': False}
+
     def _ne_no_cotiza_pension(self):
         """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
         subtipo de cotizante de su contrato segun el parametro versionado ``l10n_co_afiliaciones_no_exigidas`` (pensionado: Ley 100/1993 art. 17, mod. Ley 797/2003 art. 4; aprendiz en etapa lectiva: solo
