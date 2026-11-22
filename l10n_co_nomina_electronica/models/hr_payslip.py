@@ -274,6 +274,52 @@ class HrPayslip(models.Model):
                 continue
             recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
 
+    _NE_CODIGOS_RECARGO_DOMINICAL = ('CO_HEDDF', 'CO_HRDDF', 'CO_HENDF', 'CO_HRNDF')
+
+    l10n_co_ne_aviso_descanso = fields.Char(
+        string='Aviso del día de descanso', compute='_compute_ne_aviso_descanso',
+        help='Solo para las vistas: aviso (no bloquea) cuando el día de descanso del empleado (el pactado por escrito o, sin pacto, el domingo) no cuadra con su calendario o con las horas de recargo dominical/festivo del recibo, '
+             'o cuando el pacto está registrado sin el documento firmado.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'line_ids.code', 'line_ids.total', 'contract_id.resource_calendar_id',
+                 'employee_id.l10n_co_descanso_ids', 'employee_id.l10n_co_descanso_ids.dia_semana', 'employee_id.l10n_co_descanso_ids.fecha_firma',
+                 'employee_id.l10n_co_descanso_ids.fecha_fin', 'employee_id.l10n_co_descanso_ids.attachment_ids')
+    def _compute_ne_aviso_descanso(self):
+        """H-F1-07 (doc 92; decisión del TL del 22-nov): avisos del día de descanso, sin bloquear. (1) Hay horas de recargo dominical/festivo (HEDDF, HRDDF, HENDF, HRNDF) pero en el periodo no hay ninguna fecha con
+        asistencia que sea festivo o el día de descanso del empleado. (2) El calendario del contrato tiene jornada el día de descanso del empleado (p. ej. Guapante, que descansa el lunes y trabaja el domingo, sin el
+        pacto cargado: se presume domingo). (3) El pacto está registrado sin el documento firmado (no cubre: rige el domingo). El día de descanso lo da ``HrEmployee._ne_dia_de_descanso``; E2c lo reutilizará."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_descanso = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo.date_to and recibo._ne_solo_colombia()):
+                continue
+            empleado, fecha = recibo.employee_id, recibo.date_to
+            nombre_dia = dict(self.env['l10n.co.employee.descanso']._fields['dia_semana'].selection)
+            descanso = empleado._ne_dia_de_descanso(fecha)
+            avisos = []
+            if empleado._ne_descanso_sin_soporte(fecha):
+                avisos.append(_(
+                    'El día de descanso pactado de %(empleado)s está registrado sin el documento firmado (pacto sin soporte): no cubre y se presume el domingo (Ley 2466 de 2025, art. 14, par. 3). '
+                    'Adjunte el contrato u otrosí en la ficha del empleado, pestaña Nómina > Día de descanso pactado.', empleado=empleado.name))
+            calendario = recibo.contract_id.resource_calendar_id or recibo.company_id.resource_calendar_id
+            if calendario and any(int(asistencia.dayofweek) == descanso for asistencia in calendario.attendance_ids if not asistencia.display_type):
+                avisos.append(_(
+                    'El calendario del contrato de %(empleado)s tiene jornada el %(dia)s, que es su día de descanso (%(origen)s). Si descansa otro día, registre el pacto por escrito en la ficha del empleado, '
+                    'pestaña Nómina > Día de descanso pactado (el contrato u otrosí firmado); si no, corrija el calendario.',
+                    empleado=empleado.name, dia=nombre_dia[str(descanso)].lower(),
+                    origen=_('el domingo por presunción de la ley, sin un pacto con documento') if descanso == 6 else _('pactado por escrito')))
+            if any(linea.code in self._NE_CODIGOS_RECARGO_DOMINICAL and linea.total for linea in recibo.line_ids):
+                try:
+                    clasificacion = recibo._ne_clasificar_fechas()
+                except UserError:
+                    clasificacion = None            # una liquidación mal fechada ya da su error al calcular: el aviso no lo repite
+                if clasificacion is not None:
+                    en_descanso = set(clasificacion['festivos_trabajados']) | {f for f in clasificacion['laborados'] if f.weekday() == empleado._ne_dia_de_descanso(f)}
+                    if not en_descanso:
+                        avisos.append(_(
+                            'El recibo de %(empleado)s trae horas de recargo dominical o festivo, pero en el periodo no hay ninguna fecha trabajada que sea festivo ni su día de descanso (%(dia)s). '
+                            'Revise las horas: el recargo es por trabajar en día de descanso obligatorio (Ley 2466 de 2025, art. 14).', empleado=empleado.name, dia=nombre_dia[str(descanso)].lower()))
+            recibo.l10n_co_ne_aviso_descanso = ' '.join(avisos) or False
+
     l10n_co_ne_aviso_tipo_trabajador = fields.Char(
         string='Aviso del tipo de trabajador', compute='_compute_ne_aviso_tipo_trabajador',
         help='Solo para las vistas: aviso (no bloquea) cuando el empleado es un aprendiz y el tipo de trabajador de su ficha no es el que corresponde al tipo de cotizante y de contrato de su contrato: el XML usa el del contrato.')

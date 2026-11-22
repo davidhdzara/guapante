@@ -21,6 +21,7 @@ from odoo.exceptions import UserError, ValidationError
 
 class L10nCoEmployeePacto(models.Model):
     _name = 'l10n.co.employee.pacto'
+    _inherit = ['l10n.co.adjunto.vinculado']      # H-F1-07: la vinculacion del documento firmado es la misma del dia de descanso pactado
     _description = 'Pacto de desalarización del empleado'
     _order = 'employee_id, salary_rule_id, fecha_firma desc, id'
 
@@ -37,30 +38,6 @@ class L10nCoEmployeePacto(models.Model):
         'ir.attachment', 'l10n_co_employee_pacto_attachment_rel', 'pacto_id', 'attachment_id', string='Documento firmado',
         help='El pacto debe estar plenamente probado y la carga de la prueba es del empleador (Consejo de Estado, SU 25185 de 2021): adjunte el documento firmado. Se puede '
              'guardar el pacto sin documento, pero mientras no lo tenga NO cubre ningún recibo (el recibo avisa «pacto sin soporte»).')
-
-    # ── los adjuntos de una fila todavía no guardada ──────────────────────────────────────────────────────────────────────────────
-    @api.model_create_multi
-    def create(self, vals_list):
-        pactos = super().create(vals_list)
-        pactos._vincular_adjuntos()
-        return pactos
-
-    def write(self, vals):
-        res = super().write(vals)
-        if 'attachment_ids' in vals:
-            self._vincular_adjuntos()
-        return res
-
-    def _vincular_adjuntos(self):
-        """Revisión v19 del consultor (22-nov, pedido del TL): el widget ``many2many_binary`` sube el archivo ANTES de guardar la fila, con el ``res_model`` del pacto y
-        ``res_id = 0`` (``web/controllers/binary.py``, ``upload_attachment``). Un ``ir.attachment`` sin ``res_id`` solo lo puede leer quien lo creó o el administrador
-        (``ir.attachment.check``: ``if not res_id and create_uid != uid``): un segundo usuario de nómina no vería el documento firmado, que es la prueba del pacto (SU 25185).
-        Al guardar, los adjuntos sin enlace se vinculan al pacto: desde ahí el acceso sigue el del pacto (lectura del usuario de nómina, regla de compañía). Los que ya
-        cuelgan de otro registro no se mueven. La cobertura no depende de esto (se lee con ``sudo``): solo la visibilidad del documento."""
-        for pacto in self:
-            sin_enlace = pacto.attachment_ids.filtered(lambda adjunto: not adjunto.res_id)
-            if sin_enlace:
-                sin_enlace.sudo().write({'res_model': pacto._name, 'res_id': pacto.id})
 
     @api.constrains('fecha_firma', 'fecha_fin')
     def _check_fechas(self):

@@ -478,6 +478,28 @@ class HrEmployee(models.Model):
              'opcional y el documento firmado. Cubren los recibos cuyo «Hasta» cae entre la firma y el fin, aunque el contrato se renueve.')
 
     # ──────────────────────────────────────────────────────────────────
+    # H-F1-07 (doc 92): día de descanso pactado por escrito (Ley 2466 de 2025, art. 14, par. 3; modelo l10n.co.employee.descanso)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_descanso_ids = fields.One2many(
+        'l10n.co.employee.descanso', 'employee_id', string='Día de descanso pactado', copy=False,
+        help='Pactos por escrito de un día de descanso distinto del domingo (Ley 2466 de 2025, art. 14, par. 3): uno por vigencia, con el documento firmado. Sin un pacto vigente con el documento, el día de '
+             'descanso es el domingo (presunción de la ley).')
+
+    def _ne_dia_de_descanso(self, fecha):
+        """Día de la semana (``date.weekday()``: 0 = lunes ... 6 = domingo) que es el día de descanso obligatorio del empleado en ``fecha``: el del registro ``l10n.co.employee.descanso`` que la cubre CON el
+        documento firmado; sin uno, el DOMINGO por la presunción del par. 3 del art. 14 de la Ley 2466 de 2025 («si no se pacta expresamente en el contrato u otrosí, se presume que es el domingo»), no por un
+        valor por defecto del código. Un festivo también es día de descanso obligatorio (par. 2): este método no lo mira. FUENTE ÚNICA del aviso del recibo y de E2c cuando se codifique."""
+        self.ensure_one()
+        registro = self.env['l10n.co.employee.descanso']._vigente(self, fecha)
+        return int(registro.dia_semana) if registro and registro.attachment_ids else 6
+
+    def _ne_descanso_sin_soporte(self, fecha):
+        """¿Hay un día de descanso pactado que rige ``fecha`` pero sin el documento firmado (pacto sin soporte)? Entonces NO cubre y rige el domingo."""
+        self.ensure_one()
+        registro = self.env['l10n.co.employee.descanso']._vigente(self, fecha)
+        return bool(registro) and not registro.attachment_ids
+
+    # ──────────────────────────────────────────────────────────────────
     # PILA — Administradoras de Seguridad Social
     # ──────────────────────────────────────────────────────────────────
     # H-F1-06 (doc 87): ``tracking=True`` en las tres afiliaciones: el chatter del empleado deja quién cambió cuál y cuándo.

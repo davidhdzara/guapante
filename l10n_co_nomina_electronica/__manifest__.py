@@ -56,6 +56,7 @@ Funcionalidades principales:
         'security/l10n_co_payslip_concepto_security.xml',
         'security/l10n_co_payslip_calculo_security.xml',
         'security/l10n_co_employee_pacto_security.xml',
+        'security/l10n_co_employee_descanso_security.xml',
         'security/l10n_co_ne_consecutivo_security.xml',
         # Data
         'data/ir_sequence_data.xml',
