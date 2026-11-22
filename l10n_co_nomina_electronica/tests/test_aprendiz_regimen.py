@@ -128,3 +128,37 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         recibo.state = 'done'
         consolidado = self.env['l10n.co.ibc.mensual']._refrescar(self.company, recibo.employee_id, date(2026, 3, 1))
         self.assertAlmostEqual(consolidado.ibc_paraf, smmlv, delta=0.01)
+
+    # ── el apoyo de sostenimiento: dos reglas por etapa ──
+    def test_lectiva_el_apoyo_es_no_salarial_y_la_regla_de_la_practica_no_sale(self):
+        recibo, smmlv = self._aprendiz('Lectiva Apoyo', '19', '4', 0.75)
+        self.assertAlmostEqual(self._total(recibo, 'CO_APOYO_SOST'), 0.75 * smmlv, delta=0.01)             # 75 % de 1 SMMLV (Decreto 223/2026 art. 2.2.6.3.3.4)
+        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))
+        self.assertFalse(self._total(recibo, 'CO_IBC_SALARIAL'), 'No salarial: no entra al IBC salarial')
+        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_PROV_PRIMA' and l.total), 'La lectiva no tiene prestaciones: el apoyo no es base de la provision')
+
+    def test_practica_el_apoyo_es_base_de_prestaciones_y_no_del_ibc(self):
+        recibo, smmlv = self._aprendiz('Practica Apoyo', '01', '4', 1.0)
+        self.assertAlmostEqual(self._total(recibo, 'CO_APOYO_SOST_PRAC'), smmlv, delta=0.01)               # 100 % de 1 SMMLV
+        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST'))
+        self.assertFalse(self._total(recibo, 'CO_IBC_SALARIAL'), 'El IBC del aprendiz es 1 SMMLV (el piso), no el apoyo: no entra al IBC salarial')
+        self.assertAlmostEqual(self._total(recibo, 'CO_IBC_SP'), smmlv, delta=0.01)
+        self.assertTrue(self._total(recibo, 'CO_PROV_PRIMA') and self._total(recibo, 'CO_PROV_CESANTIAS'), 'El apoyo de la practica es base de las provisiones de prima y cesantias')
+
+    def test_la_regla_de_la_practica_se_siembra_como_naturaleza_para_el_ibc(self):
+        """Sin la entrada en el mapa por codigo, ``_ne_ibc_pactados`` lanza el UserError de «sin clasificar» (cuidado del consultor v19). Necesita -u (la siembra del origen es una funcion de datos)."""
+        regla = self.env['hr.salary.rule'].search([('code', '=', 'CO_APOYO_SOST_PRAC'), ('struct_id', '=', self.nomina.id)], limit=1)
+        self.assertTrue(regla)
+        self.assertEqual(regla.l10n_co_pila_origen_no_salarial, 'naturaleza')
+        self.assertTrue(regla.l10n_co_ne_base_prima_cesantias and regla.l10n_co_ne_base_vacaciones)
+        self.assertFalse(regla.l10n_co_ne_ajustable or regla.l10n_co_ne_vigilar_habitualidad)
+
+    def test_sin_etapa_el_apoyo_sigue_como_siempre(self):
+        """Un contrato que no esta en la tabla (no es de aprendiz) con la novedad: la regla de siempre (no salarial)."""
+        _empleado, recibo = self._empleado_y_recibo('Sin Etapa Apoyo', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
+        recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
+        self._config_retefuente(2026)
+        recibo.write({'input_line_ids': [(0, 0, {'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_apoyo_sost').id, 'amount': 500000.0})]})
+        recibo.compute_sheet()
+        self.assertAlmostEqual(self._total(recibo, 'CO_APOYO_SOST'), 500000.0, delta=0.01)
+        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))

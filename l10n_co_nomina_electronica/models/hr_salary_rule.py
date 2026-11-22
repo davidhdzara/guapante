@@ -388,6 +388,9 @@ class HrSalaryRule(models.Model):
         # .299 (TL, 22-nov): el apoyo de sostenimiento del aprendiz (Ley 789/2002 art. 30) no es salario ni entra al IBC de esta forma (el aprendiz tiene su
         # propio régimen de cotización): origen «naturaleza» para que el 40 % no lo cuente y ``_ne_ibc_pactados`` no lance el UserError de «sin clasificar».
         'CO_APOYO_SOST': 'naturaleza',
+        # H-F1-09: el apoyo de la fase PRACTICA tambien es «naturaleza» para el IBC: aunque es base de las prestaciones, el IBC del aprendiz es 1 SMMLV (Decreto 223/2026, art. 2.2.6.3.3.4 par. 2) y
+        # ``_ne_ibc_pactados`` no debe lanzar el UserError de «sin clasificar».
+        'CO_APOYO_SOST_PRAC': 'naturaleza',
         'CO_AUX_ALIM': 'pacto', 'CO_BONIF_NOSAL': 'pacto',
     }
 

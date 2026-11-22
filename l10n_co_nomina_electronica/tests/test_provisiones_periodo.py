@@ -34,8 +34,8 @@ _G_MANAGER = 'hr_payroll.group_hr_payroll_manager'
 # La siembra de las dos marcas (decisiones del TL del 22-nov y doc 78 §3).
 _BASE_PRIMA_CESANTIAS = {
     'CO_BASICO', 'CO_COMISIONES', 'CO_BONIF_SAL', 'CO_VIATICOS_SAL', 'CO_HED', 'CO_HEN', 'CO_HRN', 'CO_HEDDF', 'CO_HENDF', 'CO_HRDDF', 'CO_HRNDF', 'CO_AUX_TRANS', 'CO_VAC',
-    'CO_LIC_REM'}
-_BASE_VACACIONES = {'CO_BASICO', 'CO_COMISIONES', 'CO_BONIF_SAL', 'CO_VIATICOS_SAL', 'CO_HRN', 'CO_VAC', 'CO_LIC_REM'}
+    'CO_LIC_REM', 'CO_APOYO_SOST_PRAC'}      # H-F1-09: el apoyo de la fase practica del aprendiz es base de las prestaciones (decision del TL del 22-nov)
+_BASE_VACACIONES = {'CO_BASICO', 'CO_COMISIONES', 'CO_BONIF_SAL', 'CO_VIATICOS_SAL', 'CO_HRN', 'CO_VAC', 'CO_LIC_REM', 'CO_APOYO_SOST_PRAC'}
 
 
 @tagged('post_install', '-at_install')
