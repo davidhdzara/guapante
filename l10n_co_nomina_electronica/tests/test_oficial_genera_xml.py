@@ -11,6 +11,7 @@ Decision del TL: (1) ``_get_ne_certificate`` lee con ``sudo`` (como Facturacion,
 NO ejecutadas."""
 
 import base64
+from datetime import date
 from unittest.mock import patch
 
 from lxml import etree
@@ -83,11 +84,26 @@ class TestOficialGeneraXml(real.TestDocumentoGenerarReal):
         with self.assertRaises(AccessError) as exc:
             asistente.action_send_and_print()
         self.assertIn('administrador de nómina', str(exc.exception))
-        for accion in ('action_generate_ne_xml', 'action_regenerate_ne_xml', 'action_send_ne_dian', 'action_mass_generate_ne_xml', 'action_mass_send_ne_dian'):
+        for accion in ('action_generate_ne_xml', 'action_regenerate_ne_xml', 'action_send_ne_dian', 'action_mass_generate_ne_xml', 'action_mass_send_ne_dian', 'action_check_dian_status', 'action_send_test_set'):
             with self.assertRaises(AccessError, msg=accion) as exc:
                 getattr(recibo.with_user(oficial).with_context(allowed_company_ids=self.company.ids), accion)()
             self.assertIn('administrador de nómina', str(exc.exception), accion)
         self.assertEqual(recibo.l10n_co_ne_state, 'draft')
+
+    def test_el_oficial_tampoco_genera_el_documento_mensual_ni_inicia_la_habilitacion_ni_consulta_por_cune(self):
+        """Regla general del TL: todo metodo publico que llega al certificado exige al administrador de nomina (la prueba ``test_guarda_de_transmision`` las recorre todas; aqui se ejercen las de otros modelos)."""
+        oficial = self._usuario('xml_oficial_documento', 'hr_payroll.group_hr_payroll_user')
+        documento = self.env['l10n.co.ne.documento'].create({'company_id': self.company.id, 'employee_id': self.empleado.id, 'period': date(2026, 3, 1)})
+        con_oficial = {'allowed_company_ids': self.company.ids}
+        with self.assertRaises(AccessError) as exc:
+            documento.with_user(oficial).with_context(**con_oficial).action_generar_xml()
+        self.assertIn('administrador de nómina', str(exc.exception))
+        with self.assertRaises(AccessError) as exc:
+            self.env['l10n.co.ne.habilitacion'].with_user(oficial).with_context(**con_oficial).start(self.company)
+        self.assertIn('administrador de nómina', str(exc.exception))
+        with self.assertRaises(AccessError):                                              # el asistente de consulta por CUNE es solo del administrador de nomina (ACL) y su accion tambien lleva la guarda
+            self.env['l10n.co.ne.status.cune.wizard'].with_user(oficial).with_context(**con_oficial).create({'cune': 'x' * 96}).action_check_status()
+        self.assertFalse(documento.consecutive, 'No se gasto un consecutivo')
 
     def test_el_administrador_de_nomina_que_no_es_del_sistema_genera_el_xml_de_punta_a_punta(self):
         self._afirmar_xml_completo(self._generar_como(self._usuario('xml_admin_nomina', 'hr_payroll.group_hr_payroll_manager')))

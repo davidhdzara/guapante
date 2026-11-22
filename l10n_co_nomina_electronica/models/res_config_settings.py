@@ -177,6 +177,7 @@ class ResConfigSettings(models.TransientModel):
         Reemplaza el flujo del asistente (que enviaba todo en un solo ZIP y dependía de que el
         usuario regenerara a mano); el asistente sigue existiendo y el motor lo reutiliza.
         """
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         return self.env['l10n.co.ne.habilitacion'].start(self.company_id)
 

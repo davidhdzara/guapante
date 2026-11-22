@@ -365,13 +365,15 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     @api.model
     def _ne_exigir_administrador_de_nomina(self):
-        """H-F2-03 (decisión del TL del 22-nov): GENERAR o TRANSMITIR a la DIAN el XML de nómina electrónica de un recibo lo hace el administrador de nómina, en TODOS los modos (habilitación y producción):
-        coherente con los botones «Generar XML», «Regenerar XML», «Enviar a DIAN» y «Enviar y Procesar» del recibo, que son solo suyos. El oficial de nómina calcula y confirma, pero no transmite. Un botón con
-        ``groups`` solo se oculta; esta es la barrera real (la llaman las acciones y el asistente). El superusuario (crons, motor de habilitación y datos) no se restringe."""
-        if self.env.su or self.env.user.has_group('hr_payroll.group_hr_payroll_manager'):
+        """H-F2-03 (decisión del TL del 22-nov): TODO método público que llega al certificado —generar, firmar, transmitir o consultar a la DIAN— lo hace el administrador de nómina (o el del sistema, como
+        ya exigía el motor de habilitación y como lo exige el permiso de ``certificate.certificate``), en TODOS los modos (habilitación y producción): coherente con los botones «Generar XML», «Regenerar XML»,
+        «Enviar a DIAN», «Enviar y Procesar» y «Consultar Estado» del recibo, que son solo suyos. El oficial de nómina calcula y confirma, pero no transmite. Un botón con ``groups`` solo se oculta; esta es la
+        barrera real. La prueba ``test_guarda_de_transmision`` recorre la cadena de llamadas y falla si un método público nuevo llega a ``_get_ne_certificate`` sin llamarla. El superusuario (crons, motor de
+        habilitación y datos) no se restringe."""
+        if self.env.su or self.env.user.has_group('hr_payroll.group_hr_payroll_manager') or self.env.user.has_group('base.group_system'):
             return
         raise AccessError(_(
-            'Solo el administrador de nómina puede generar o transmitir a la DIAN el XML de nómina electrónica (recibos y documentos mensuales), también en habilitación. '
+            'Solo el administrador de nómina (o el del sistema) puede generar, transmitir o consultar a la DIAN el XML de nómina electrónica (recibos y documentos mensuales), también en habilitación. '
             'El oficial de nómina calcula y confirma los recibos, pero no los transmite: pídale el envío al administrador de nómina.'))
 
     def action_generate_ne_xml(self):
@@ -728,6 +730,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         reenviable tal cual, sin regenerar) y las envía como un set de
         pruebas al endpoint de habilitación.
         """
+        self._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self._ne_bloquear_si_va_en_documento()
         records = self.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
@@ -908,6 +911,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_check_dian_status(self):
         """Consulta una vez por ZipKey y distribuye solo resultados inequívocos."""
+        self._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         if not self:
             return True
         self._ne_bloquear_si_va_en_documento(consulta=True)
