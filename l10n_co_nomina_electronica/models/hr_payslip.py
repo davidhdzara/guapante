@@ -316,8 +316,8 @@ class HrPayslip(models.Model):
                     en_descanso = set(clasificacion['festivos_trabajados']) | {f for f in clasificacion['laborados'] if f.weekday() == empleado._ne_dia_de_descanso(f)}
                     if not en_descanso:
                         avisos.append(_(
-                            'El recibo de %(empleado)s trae horas de recargo dominical o festivo, pero en el periodo no hay ninguna fecha trabajada que sea festivo ni su día de descanso (%(dia)s). '
-                            'Revise las horas: el recargo es por trabajar en día de descanso obligatorio (Ley 2466 de 2025, art. 14).', empleado=empleado.name, dia=nombre_dia[str(descanso)].lower()))
+                            'El recibo de %(empleado)s trae horas de recargo dominical o festivo, pero según el calendario y las asistencias del periodo no aparece ninguna fecha trabajada que sea festivo ni su día de descanso (%(dia)s). '
+                            'Verifique las horas y las fechas: el recargo es por trabajar en día de descanso obligatorio (Ley 2466 de 2025, art. 14).', empleado=empleado.name, dia=nombre_dia[str(descanso)].lower()))
             recibo.l10n_co_ne_aviso_descanso = ' '.join(avisos) or False
 
     l10n_co_ne_aviso_tipo_trabajador = fields.Char(
