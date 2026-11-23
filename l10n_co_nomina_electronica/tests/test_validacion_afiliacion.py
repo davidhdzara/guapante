@@ -84,7 +84,7 @@ class TestValidacionAfiliacion(TransactionCase):
                  ('Tipo 12 julio', '12', date(2025, 7, 1), date(2025, 7, 31), False), ('Tipo 12 agosto', '12', date(2025, 8, 1), date(2025, 8, 31), True))
         for nombre, tipo, desde, hasta, exige in casos:
             _empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, eps=self.eps, ccf=self.ccf, desde=desde, hasta=hasta)
-            self.assertEqual('AFP' in recibo.l10n_co_ne_aviso_afiliacion, exige, nombre)
+            self.assertEqual('AFP' in (recibo.l10n_co_ne_aviso_afiliacion or ''), exige, nombre)      # sin nada que avisar el campo es False (N2 «db»: «'AFP' in False»)
 
     def test_cambiar_la_vigencia_del_parametro_cambia_el_resultado_sin_tocar_codigo(self):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_afiliaciones_no_exigidas')

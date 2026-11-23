@@ -219,10 +219,22 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))
 
     # ── TipoTrabajador del XML y la fusion mensual ──
+    def _lugar_de_trabajo_completo(self):
+        """``_ne_trabajador()`` exige pais, departamento y municipio en la Direccion de Trabajo del empleado (H-018; por defecto la de la compañia): sin ellos da un UserError que no es lo que se prueba aqui
+        (N2 «db» del 23-nov). Mismo arreglo que ``test_tipo_documento_dian`` y ``test_ausencias_nomina``."""
+        pais = self.env.ref('base.co')
+        departamento = self.env['res.country.state'].search([('country_id', '=', pais.id)], limit=1) or self.env['res.country.state'].create({
+            'name': 'Departamento Prueba Aprendiz', 'code': 'PA', 'country_id': pais.id})
+        ciudad = self.env['res.city'].create({'name': 'Ciudad Prueba Aprendiz', 'state_id': departamento.id, 'country_id': pais.id})
+        self.company.partner_id.write({'country_id': pais.id, 'state_id': departamento.id, 'city_id': ciudad.id, 'street': 'Calle Prueba Aprendiz # 1-1'})
+
     def test_el_tipo_de_trabajador_del_aprendiz_sale_del_contrato_y_el_de_los_demas_de_la_ficha(self):
-        _e, lectiva = self._empleado_y_recibo('TT Lectiva', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
-        _e, practica = self._empleado_y_recibo('TT Practica', tipo='01', tipo_contrato='4', eps=self.eps, afp=self.afp, ccf=self.ccf)
-        _e, normal = self._empleado_y_recibo('TT Normal', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        self._lugar_de_trabajo_completo()
+        empleado_1, lectiva = self._empleado_y_recibo('TT Lectiva', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
+        empleado_2, practica = self._empleado_y_recibo('TT Practica', tipo='01', tipo_contrato='4', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        empleado_3, normal = self._empleado_y_recibo('TT Normal', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        for empleado in (empleado_1, empleado_2, empleado_3):
+            empleado.l10n_co_ne_identification_type_id = self.env.ref('l10n_co.national_citizen_id')      # _ne_tipo_documento() exige un tipo con equivalente DIAN
         self.assertEqual(lectiva._ne_trabajador()['TipoTrabajador'], '12')                    # la ficha dice 01
         self.assertEqual(practica._ne_trabajador()['TipoTrabajador'], '19')
         self.assertEqual(normal._ne_trabajador()['TipoTrabajador'], '01')                     # la ficha, como siempre

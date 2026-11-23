@@ -241,7 +241,9 @@ class TestCalculoDelSalario(TransactionCase):
         normal = self._recibo()
         self.assertFalse(self._linea(normal, 'CO_RETEFUENTE_EXCESO_LIMITE').total, 'Premisa: con 3.000.000 el limite no recorta nada')
         recibo = self._recibo(desde=date(2026, 9, 1), hasta=date(2026, 9, 30))
-        recibo.contract_id.write({'wage': 30000000.0, 'l10n_co_ne_pension_voluntaria': 3000000.0, 'l10n_co_ne_afc': 2000000.0})
+        entidad = self.env['res.partner'].create({'name': 'Entidad AFC y Pensión Voluntaria de Prueba', 'l10n_co_entity_type': 'other'})      # una deduccion fija calculada exige el contacto de su entidad (N2 «db» del 23-nov)
+        recibo.contract_id.write({'wage': 30000000.0, 'l10n_co_ne_pension_voluntaria': 3000000.0, 'l10n_co_ne_afc': 2000000.0,
+                                  'l10n_co_ne_afc_partner_id': entidad.id, 'l10n_co_ne_pension_voluntaria_partner_id': entidad.id})
         recibo.compute_sheet()
         exceso = self._linea(recibo, 'CO_RETEFUENTE_EXCESO_LIMITE')
         self.assertAlmostEqual(exceso.total, 2599525.0, delta=1.0)

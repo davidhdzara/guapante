@@ -42,10 +42,12 @@ class TestPensionNoExigida(base.TestValidacionAfiliacion):
 
     # ── la excepcion llega a las reglas ──
     def test_el_pensionado_y_el_aprendiz_lectivo_no_calculan_pension_ni_fsp_pero_si_salud(self):
-        for nombre, tipo, subtipo in (('Pensionado Dep', '01', '01'), ('Pensionado Ind', '03', '02'), ('Aprendiz Lectiva', '19', '00')):                                            # la lectiva desde ago-2025 es el tipo 19
+        # (nombre, tipo, subtipo, salud del empleado): la lectiva desde ago-2025 es el tipo 19, y desde H-F1-09 su salud (12,5 %) es COMPLETA de la empresa: sin descuento al aprendiz (Decreto 223/2026
+        # art. 2.2.6.3.3.6 num. 1; doc 88). Los pensionados siguen descontando el 4 %.
+        for nombre, tipo, subtipo, salud_empleado in (('Pensionado Dep', '01', '01', -400000.0), ('Pensionado Ind', '03', '02', -400000.0), ('Aprendiz Lectiva', '19', '00', 0.0)):
             _empleado, recibo = self._calculado(nombre, tipo=tipo, subtipo=subtipo, eps=self.eps, ccf=self.ccf)
             self._sin_lineas_de_pension(recibo, nombre)
-            self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), -400000.0, delta=0.01, msg=nombre)       # la EPS se sigue exigiendo y la salud sigue igual
+            self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), salud_empleado, delta=0.01, msg=nombre)       # la EPS se sigue exigiendo; el pensionado paga su 4 % y la lectiva no
             self.assertAlmostEqual(self._total(recibo, 'CO_IBC_SP'), 10000000.0, delta=0.01, msg=nombre)         # el IBC no cambia
             self.assertFalse(recibo.l10n_co_ne_aviso_afiliacion, nombre)
             recibo._ne_validar_afiliaciones()                                                                    # confirma sin AFP
@@ -95,7 +97,7 @@ class TestPensionNoExigida(base.TestValidacionAfiliacion):
 
     def test_las_seis_reglas_llaman_a_la_funcion_y_no_a_una_lista_propia(self):
         """Una sola decision: ninguna condicion repite la lista ni mira la marca del extranjero por su cuenta."""
-        reglas = self.env['hr.salary.rule'].search([('code', 'in', REGLAS_DE_PENSION)])
+        reglas = self.env['hr.salary.rule'].with_context(active_test=False).search([('code', 'in', REGLAS_DE_PENSION)])      # CO_PRIMA_PENSION esta archivada desde .164 (la prima no cotiza pension)
         self.assertEqual(set(reglas.mapped('code')), set(REGLAS_DE_PENSION))
         for regla in reglas:
             self.assertIn('_ne_no_cotiza_pension', regla.condition_python, regla.code)

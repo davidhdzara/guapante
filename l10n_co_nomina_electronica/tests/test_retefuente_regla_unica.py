@@ -30,6 +30,8 @@ class TestRetefuenteReglaUnica(TransactionCase):
         cls.config = cls.env['l10n.co.retefuente.uvt'].create({'year': '2026', 'company_id': cls.company.id, 'procedure': '1'})
         cls.structure_type = cls.env['hr.payroll.structure.type'].create({'name': 'Prueba Estructura Retención', 'country_id': cls.env.ref('base.co').id})
         cls.nomina = cls.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        # Una deduccion fija calculada exige el contacto de su entidad en el contrato (.118/.285: «Entidad AFC», «Fondo Pensión Voluntaria»); sin el, ``compute_sheet`` da un UserError (N2 «db» del 23-nov).
+        cls.entidad = cls.env['res.partner'].create({'name': 'Entidad AFC y Pensión Voluntaria de Prueba', 'l10n_co_entity_type': 'other'})
 
     def _recibo(self, nombre, sueldo, vol, afc, dependientes):
         empleado = self.env['hr.employee'].create({
@@ -38,7 +40,8 @@ class TestRetefuenteReglaUnica(TransactionCase):
         contrato = self.env['hr.contract'].create({
             'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_pila_subtipo_cotizante': '00', 'name': 'Contrato %s' % nombre,
             'employee_id': empleado.id, 'company_id': self.company.id, 'structure_type_id': self.structure_type.id, 'wage': sueldo, 'date_start': date(2024, 1, 1), 'state': 'open',
-            'l10n_co_ne_pension_voluntaria': vol, 'l10n_co_ne_afc': afc})
+            'l10n_co_ne_pension_voluntaria': vol, 'l10n_co_ne_afc': afc,
+            'l10n_co_ne_afc_partner_id': self.entidad.id, 'l10n_co_ne_pension_voluntaria_partner_id': self.entidad.id})
         contrato.generate_work_entries(date(2026, 9, 1), date(2026, 9, 30))
         recibo = self.env['hr.payslip'].create({
             'name': 'Recibo %s' % nombre, 'employee_id': empleado.id, 'contract_id': contrato.id, 'company_id': self.company.id, 'struct_id': self.nomina.id,
