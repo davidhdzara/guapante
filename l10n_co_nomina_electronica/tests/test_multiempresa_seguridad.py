@@ -152,7 +152,8 @@ class TestMultiempresaSeguridad(TransactionCase):
             def valores(sembrado, periodo):
                 return {
                     'l10n.co.retefuente.uvt': {'year': str(2040 + periodo.month), 'company_id': sembrado.compania.id, 'procedure': '1'},      # un año distinto por intento: la llave unica (año, compañia) no debe tapar la regla
-                    'l10n.co.employee.descanso': {'employee_id': sembrado.empleado.id, 'dia_semana': '1', 'fecha_firma': date(2027, 1, 1)},
+                    # vigencia CERRADA y anterior a la del descanso que siembra la fixture (desde 2026-01-01, sin fin): dos pactos del mismo empleado no pueden regir la misma fecha (``_check_sin_traslape``; N2 «dd»)
+                    'l10n.co.employee.descanso': {'employee_id': sembrado.empleado.id, 'dia_semana': '1', 'fecha_firma': date(2025, 1, 1), 'fecha_fin': date(2025, 12, 31)},
                     'l10n.co.employee.pacto': {'employee_id': sembrado.empleado.id, 'salary_rule_id': self.regla.id, 'fecha_firma': date(2027, 1, 1)},
                     'l10n.co.ibc.mensual': {'company_id': sembrado.compania.id, 'employee_id': sembrado.empleado.id, 'period': periodo},
                     'l10n.co.pila.planilla': {'company_id': sembrado.compania.id, 'period': periodo, 'tipo_planilla': 'E', 'operador_code': 'X'},
