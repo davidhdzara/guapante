@@ -198,8 +198,9 @@ result_qty = dias_pagables
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Aplica si salario &lt;= tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv) y no es salario integral
-result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary
+# Aplica si salario &lt;= tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv), no es salario integral y el regimen del contrato lo paga: el aprendiz en etapa lectiva no recibe auxilio de transporte
+# (Circular MinTrabajo 083 de 2025, num. 4, Cuadro 1), la practica y la formacion dual si. UNA sola decision, ``payslip._ne_regimen_cotizante()`` (tabla l10n_co_aprendiz_etapas, quinta columna).
+result = contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">

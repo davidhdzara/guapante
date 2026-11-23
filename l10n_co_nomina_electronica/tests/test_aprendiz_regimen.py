@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """H-F1-09 (doc 88; decisiones del TL del 22-nov): el aprendiz tiene un regimen propio que sale de UN metodo, ``HrPayslip._ne_regimen_cotizante``, y de una tabla versionada por fecha (parametro
-``l10n_co_aprendiz_etapas``: tipo de cotizante, tipo de contrato, etapa, TipoTrabajador de la DIAN). Esquema PROVISIONAL «mientras el Ministerio de Salud expide el acto administrativo» (Concepto MinSalud
+``l10n_co_aprendiz_etapas``: tipo de cotizante, tipo de contrato, etapa, TipoTrabajador de la DIAN y si paga auxilio de transporte). Esquema PROVISIONAL «mientras el Ministerio de Salud expide el acto administrativo» (Concepto MinSalud
 2025310001925691 y Circular MinTrabajo 083 del 18-jul-2025): hasta el 31-jul-2025 el 12 era la lectiva y el 19 la productiva; desde el 1-ago-2025 la lectiva es el tipo 19 y la practica o dual es el tipo 01 con el contrato
 «4 - Aprendizaje»; el 12 se restringe."""
 
@@ -41,7 +41,7 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
     def test_un_dependiente_normal_no_es_aprendiz(self):
         """Tipo 01 con un contrato que no es de aprendizaje: sin etapa y sin TipoTrabajador derivado (se usa el de la ficha, como siempre)."""
         regimen = self._regimen('Normal', '01', '2')
-        self.assertEqual(regimen, {'etapa': False, 'tipo_trabajador': False})
+        self.assertEqual(regimen, {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True})      # la regla general del auxilio (con su tope) decide
 
     def test_sin_el_parametro_un_error_que_lo_nombra(self):
         _empleado, recibo = self._empleado_y_recibo('Sin Tabla')
@@ -54,9 +54,38 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
         self.env['hr.rule.parameter.value'].create({
             'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1),
-            'parameter_value': "[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19'), ('01', '2', 'practica', '19')]"})
+            'parameter_value': "[('19', '*', 'lectiva', '12', False), ('01', '4', 'practica', '19', True), ('01', '2', 'practica', '19', True)]"})
         self.assertFalse(self._regimen('Marzo', '01', '2', date(2026, 3, 1), date(2026, 3, 31))['etapa'])
         self.assertEqual(self._regimen('Abril', '01', '2', date(2026, 4, 1), date(2026, 4, 30))['etapa'], 'practica')
+
+    def test_la_tabla_dice_si_la_etapa_paga_auxilio_de_transporte(self):
+        """Circular MinTrabajo 083 de 2025, num. 4, Cuadro 1 (decision A del TL, 23-nov): la lectiva no paga auxilio de transporte; la practica y la formacion dual (tipo 01 con contrato «4») si; el que no es
+        aprendiz sigue con la regla general (con su tope). Tambien en el esquema anterior al 1-ago-2025 (tipos 12 y 19)."""
+        casos = (
+            ('19 lectiva 2026', '19', '4', date(2026, 3, 1), date(2026, 3, 31), False),
+            ('01 practica o dual 2026', '01', '4', date(2026, 3, 1), date(2026, 3, 31), True),
+            ('01 dependiente 2026', '01', '2', date(2026, 3, 1), date(2026, 3, 31), True),
+            ('12 lectiva julio 2025', '12', '2', date(2025, 7, 1), date(2025, 7, 31), False),
+            ('19 productiva julio 2025', '19', '2', date(2025, 7, 1), date(2025, 7, 31), True),
+        )
+        for nombre, tipo, tipo_contrato, desde, hasta, paga in casos:
+            self.assertIs(self._regimen(nombre, tipo, tipo_contrato, desde, hasta)['paga_auxilio_transporte'], paga, nombre)
+
+    def test_el_auxilio_de_la_lectiva_se_cambia_con_un_valor_nuevo_sin_tocar_codigo(self):
+        """Un caso que necesite otra cosa (por ejemplo, una formacion dual reportada con el tipo 19) cambia la columna con un valor nuevo y su fecha: el codigo no mira el tipo de cotizante."""
+        parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
+        self.env['hr.rule.parameter.value'].create({
+            'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': "[('19', '*', 'lectiva', '12', True), ('01', '4', 'practica', '19', True)]"})
+        self.assertFalse(self._regimen('Lectiva marzo', '19', '4', date(2026, 3, 1), date(2026, 3, 31))['paga_auxilio_transporte'])
+        self.assertTrue(self._regimen('Lectiva abril', '19', '4', date(2026, 4, 1), date(2026, 4, 30))['paga_auxilio_transporte'])
+
+    def test_una_fila_sin_la_columna_del_auxilio_da_un_error_que_nombra_el_parametro(self):
+        """Sin valor por defecto: una fila de cuatro columnas (el formato anterior) no se interpreta como «sin auxilio»."""
+        parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
+        self.env['hr.rule.parameter.value'].create({
+            'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': "[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19')]"})
+        with self.assertRaisesRegex(UserError, 'l10n_co_aprendiz_etapas'):
+            self._regimen('Fila vieja', '19', '4', date(2026, 4, 1), date(2026, 4, 30))
 
 
 @tagged('post_install', '-at_install')
@@ -191,6 +220,28 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))
         self.assertFalse(self._total(recibo, 'CO_IBC_SALARIAL'), 'No salarial: no entra al IBC salarial')
         self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_PROV_PRIMA' and l.total), 'La lectiva no tiene prestaciones: el apoyo no es base de la provision')
+
+    def test_el_auxilio_de_transporte_sale_en_la_practica_y_no_en_la_lectiva(self):
+        """Decision A del TL (23-nov; Circular MinTrabajo 083 de 2025, num. 4, Cuadro 1). El aprendiz se modela con sueldo de contrato 0 (queda bajo el tope), asi que antes recibia el auxilio tambien en la lectiva
+        y la provision de prima y cesantias lo sumaba (N2 «db»: ``CO_PROV_PRIMA`` con total en la lectiva). Ahora la lectiva no tiene la linea ni las provisiones; la practica si, con el valor de siempre."""
+        lectiva, _smmlv = self._aprendiz('Lectiva Auxilio', '19', '4', 0.75)
+        self.assertFalse(lectiva.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS' and l.total), 'La lectiva no paga auxilio de transporte')
+        for codigo in ('CO_PROV_PRIMA', 'CO_PROV_CESANTIAS'):
+            self.assertFalse(self._total(lectiva, codigo), '%s: sin auxilio ni sueldo no hay base de provision en la lectiva' % codigo)
+        practica, _smmlv = self._aprendiz('Practica Auxilio', '01', '4', 1.0)
+        linea = practica.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS')
+        self.assertTrue(linea.total, 'La practica y la formacion dual si reciben el auxilio')
+        auxilio = practica._rule_parameter('l10n_co_aux_transporte', practica._ne_fecha_parametros())
+        dias_mes = practica._rule_parameter('l10n_co_dias_mes_comercial', practica._ne_fecha_parametros())
+        self.assertAlmostEqual(linea.total, auxilio / dias_mes * linea.quantity, delta=0.05)
+
+    def test_el_dependiente_normal_sigue_recibiendo_el_auxilio_de_transporte(self):
+        _empleado, recibo = self._empleado_y_recibo('Normal Auxilio', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
+        recibo.contract_id.write({'wage': 1800000.0})
+        recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
+        self._config_retefuente(2026)
+        recibo.compute_sheet()
+        self.assertTrue(self._total(recibo, 'CO_AUX_TRANS'), 'Un dependiente normal bajo el tope sigue con su auxilio')
 
     def test_practica_el_apoyo_es_base_de_prestaciones_y_no_del_ibc(self):
         recibo, smmlv = self._aprendiz('Practica Apoyo', '01', '4', 1.0)

@@ -425,10 +425,11 @@ class HrPayslip(models.Model):
 
     def _ne_regimen_cotizante(self):
         """Régimen de cotización del empleado de este recibo según el tipo de cotizante y el tipo de contrato del CONTRATO del recibo (H-F1-09, doc 88): UN solo método para el aprendiz. Devuelve
-        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False}``: la tabla es el parámetro versionado ``l10n_co_aprendiz_etapas``, tuplas
-        ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador)`` con ``'*'`` como comodín del tipo de contrato; un contrato que no aparece NO es de aprendiz (``etapa`` falso). Las reglas del apoyo
-        de sostenimiento, la salud y la base de parafiscales del aprendiz y el TipoTrabajador del XML lo consultan: nada de la norma está repartido en las fórmulas. La decisión de qué AFP no se exige vive
-        en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, un error que lo nombra."""
+        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False, 'paga_auxilio_transporte': bool}``: la tabla es el parámetro versionado
+        ``l10n_co_aprendiz_etapas``, tuplas ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador, paga auxilio de transporte)`` con ``'*'`` como comodín del tipo de contrato; un contrato que no aparece
+        NO es de aprendiz (``etapa`` falso y ``paga_auxilio_transporte`` verdadero: la regla general del auxilio, con su tope, decide). Las reglas del apoyo de sostenimiento, la salud, la base de parafiscales y el
+        auxilio de transporte del aprendiz y el TipoTrabajador del XML lo consultan: nada de la norma está repartido en las fórmulas. La decisión de qué AFP no se exige vive en
+        ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las cinco columnas, un error que lo nombra (sin valor por defecto)."""
         self.ensure_one()
         fecha = self._ne_fecha_parametros()
         try:
@@ -440,10 +441,15 @@ class HrPayslip(models.Model):
         contrato = self.contract_id
         tipo = contrato.l10n_co_pila_tipo_cotizante or ''
         tipo_contrato = contrato.l10n_co_ne_contract_type or ''
-        for clave_tipo, clave_contrato, etapa, tipo_trabajador in tabla:
+        for fila in tabla:
+            if len(fila) != 5:
+                raise UserError(_(
+                    'El parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) tiene una fila que no trae las cinco columnas (tipo de cotizante, '
+                    'tipo de contrato, etapa, TipoTrabajador y si paga auxilio de transporte): %(fila)s. Corrija el valor vigente al %(fecha)s en Nómina > Configuración > Parámetros de reglas.', fila=fila, fecha=fecha))
+            clave_tipo, clave_contrato, etapa, tipo_trabajador, paga_auxilio = fila
             if clave_tipo == tipo and clave_contrato in ('*', tipo_contrato):
-                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador}
-        return {'etapa': False, 'tipo_trabajador': False}
+                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio)}
+        return {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True}
 
     def _ne_no_cotiza_pension(self):
         """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
