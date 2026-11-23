@@ -347,6 +347,24 @@ class HrPayslip(models.Model):
                     'El XML de nómina electrónica usa el del contrato; corrija el de la ficha (pestaña Nómina) para que coincidan.',
                     empleado=recibo.employee_id.name, derivado=etiqueta.get(derivado, derivado), ficha=etiqueta.get(ficha, ficha) if ficha else _('(vacío)'))
 
+    l10n_co_ne_aviso_segmento = fields.Char(
+        string='Aviso del segmento del mes', compute='_compute_ne_aviso_segmento',
+        help='Solo para las vistas: aviso (no bloquea) cuando la compañía separa el mes en documentos por cambio de tipo de trabajador y este recibo no cabe en el documento de su segmento: está en el documento de otro '
+             'segmento, abriría un segmento antes de un documento ya transmitido, o su documento ya fue transmitido (se corrige con una nota de ajuste). H-F3-04, doc 98.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'company_id.l10n_co_ne_segmentar_mes', 'l10n_co_ne_documento_id', 'l10n_co_ne_documento_id.segmento',
+                 'l10n_co_ne_documento_id.state')
+    def _compute_ne_aviso_segmento(self):
+        """H-F3-04 (Q6 del TL, 23-nov): con la separación del mes encendida, el recibo avisa si no cabe en el documento de su segmento. Con la separación apagada (por defecto) no calcula nada."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_segmento = False
+            if not (isinstance(recibo.id, int) and recibo.company_id.l10n_co_ne_segmentar_mes and recibo._ne_solo_colombia()):
+                continue
+            try:
+                recibo.l10n_co_ne_aviso_segmento = self.env['l10n.co.ne.documento']._ne_aviso_de_segmento(recibo)
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_segmento = error.args[0]
+
     # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN); y la
     # incapacidad comun (H-F1-08), cuyo valor del dia sale del IBC del mes anterior al inicio de la inicial de su cadena.
     _NE_CODIGOS_BASE_IBC_MES_ANTERIOR = ('CO_VAC', 'CO_LIC_REM', 'CO_LIQ_VAC_DISFRUTADAS', 'CO_LIQ_LIC_REM', 'CO_IBC_SLN')
@@ -2063,6 +2081,23 @@ class HrPayslip(models.Model):
             'NumeroCuenta': (cuenta.acc_number or '') if cuenta else '',
         }
 
+    def _ne_tipo_trabajador(self):
+        """``TipoTrabajador`` del XML (Anexo NIE041): para el APRENDIZ se deriva del contrato del recibo (``_ne_regimen_cotizante``, H-F1-09); para los demás sale de la ficha del empleado. UNA sola fuente: la
+        usan ``_ne_trabajador`` y la clave del segmento del mes (``_ne_clave_segmento``)."""
+        self.ensure_one()
+        return self._ne_regimen_cotizante()['tipo_trabajador'] or self.employee_id._ne_valor_obligatorio('l10n_co_ne_worker_type')
+
+    def _ne_subtipo_trabajador(self):
+        """``SubTipoTrabajador`` del XML (Anexo NIE042): el de la ficha del empleado. Misma fuente para ``_ne_trabajador`` y la clave del segmento."""
+        self.ensure_one()
+        return self.employee_id._ne_valor_obligatorio('l10n_co_ne_worker_subtype')
+
+    def _ne_clave_segmento(self):
+        """Clave con la que el documento mensual parte el mes de un empleado en segmentos (H-F3-04, opcion A del doc 95; decision del TL del 23-nov, doc 98): ``(TipoTrabajador, SubTipoTrabajador)``. El porcentaje de
+        salud o de pension NO entra: un porcentaje distinto con el mismo tipo sigue deteniendo la fusion (``ErrorFusion``). Si el dato esta incompleto, un ``UserError`` (el que quien llama convierte en «clave sin resolver»)."""
+        self.ensure_one()
+        return (self._ne_tipo_trabajador(), self._ne_subtipo_trabajador())
+
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
@@ -2072,8 +2107,8 @@ class HrPayslip(models.Model):
         return {
             # H-F1-09 (decision del TL del 22-nov): para el APRENDIZ el TipoTrabajador se DERIVA del tipo de cotizante y de contrato del CONTRATO del recibo (tabla ``l10n_co_aprendiz_etapas``: una sola
             # fuente); para los demas sale de la ficha, como siempre. ``l10n_co_ne_aviso_tipo_trabajador`` avisa si la ficha del aprendiz dice otra cosa.
-            'TipoTrabajador': self._ne_regimen_cotizante()['tipo_trabajador'] or employee._ne_valor_obligatorio('l10n_co_ne_worker_type'),
-            'SubTipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_subtype'),
+            'TipoTrabajador': self._ne_tipo_trabajador(),
+            'SubTipoTrabajador': self._ne_subtipo_trabajador(),
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'
             ),

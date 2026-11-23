@@ -290,6 +290,17 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         self.assertEqual(practica._ne_trabajador()['TipoTrabajador'], '19')
         self.assertEqual(normal._ne_trabajador()['TipoTrabajador'], '01')                     # la ficha, como siempre
 
+    def test_la_clave_del_segmento_sale_del_tipo_de_trabajador_del_contrato_y_el_subtipo_de_la_ficha(self):
+        """H-F3-04 (doc 98): la clave con la que el mes se parte en segmentos es la MISMA que escribe el XML: la lectiva (12) y la practica (19) del aprendiz dan claves distintas; el dependiente normal, la de su ficha."""
+        _e, lectiva = self._empleado_y_recibo('Clave Lectiva', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
+        _e, practica = self._empleado_y_recibo('Clave Practica', tipo='01', tipo_contrato='4', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        _e, normal = self._empleado_y_recibo('Clave Normal', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf)
+        self.assertEqual(lectiva._ne_clave_segmento(), ('12', '00'))
+        self.assertEqual(practica._ne_clave_segmento(), ('19', '00'))
+        self.assertEqual(normal._ne_clave_segmento(), ('01', '00'))
+        self.assertNotEqual(lectiva._ne_clave_segmento(), practica._ne_clave_segmento())
+        self.assertEqual(lectiva._ne_tipo_trabajador(), lectiva._ne_clave_segmento()[0])
+
     def test_aviso_si_la_ficha_del_aprendiz_dice_otro_tipo_y_nada_si_coincide(self):
         empleado, recibo = self._empleado_y_recibo('Aviso TT', tipo='19', tipo_contrato='4', eps=self.eps, ccf=self.ccf)
         self.assertIn('Aviso TT', recibo.l10n_co_ne_aviso_tipo_trabajador)

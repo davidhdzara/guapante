@@ -15,7 +15,7 @@ electrónica.
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools import convert
 from odoo.tools.misc import str2bool
 
@@ -797,6 +797,13 @@ class ResCompany(models.Model):
              'Aplica a recargo diurno y nocturno dominical/festivo (HRDDF, HRNDF); las horas EXTRA dominicales (HEDDF, HENDF) no cambian porque el sueldo mensual no las cubre. '
              'Es una decisión de la compañía, sin valor por defecto: sin elegirla, calcular horas de recargo dominical da un error que dice dónde elegirla (Ley 2466 de 2025, art. 14).')
 
+    l10n_co_ne_segmentar_mes = fields.Boolean(
+        string='Separar el mes en documentos por cambio de tipo de trabajador', default=False, copy=False,
+        help='Si el tipo de trabajador de un empleado cambia dentro del mes (por ejemplo un aprendiz que pasa de la etapa lectiva a la práctica), el mes se parte en un documento mensual por cada tramo: el segundo '
+             'y los siguientes llevan «Novedad» con el CUNE del anterior (Resolución DIAN 000013 de 2021, art. 3 y su parágrafo; Anexo Técnico NIE199 y NIE204). APAGADO por defecto y solo lo cambia el administrador '
+             'del sistema: NO VERIFICADO con la DIAN (doc 95 §4: si el cambio de tipo es una «novedad contractual», qué valores y fechas lleva el segundo documento, el orden de envío y si hay una regla de rechazo). '
+             'Apagado, el mes con cambio de tipo se detiene con un error claro, como antes. No cambia nada si ningún empleado cambia de tipo.')
+
     l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
         string='Bloquear envío fuera de plazo', default=False,
         help='Si está marcado, un documento mensual (o nota de ajuste) cuyo plazo de transmisión ya venció no se encola '
@@ -829,6 +836,11 @@ class ResCompany(models.Model):
     )
 
     def write(self, vals):
+        if ('l10n_co_ne_segmentar_mes' in vals and not (self.env.su or self.env.user.has_group('base.group_system'))
+                and any(company.l10n_co_ne_segmentar_mes != bool(vals['l10n_co_ne_segmentar_mes']) for company in self)):      # guardar Ajustes con el mismo valor no es un cambio
+            raise AccessError(_(
+                'Solo el administrador del sistema cambia «Separar el mes en documentos por cambio de tipo de trabajador»: la DIAN todavía no ha verificado cómo recibe el segundo documento del mes '
+                '(doc 95 §4). Pídale que lo active cuando esté verificado.'))
         if 'l10n_co_pila_ccf_por_empleado' in vals and not vals['l10n_co_pila_ccf_por_empleado']:
             for company in self.filtered('l10n_co_pila_ccf_por_empleado'):
                 general = (

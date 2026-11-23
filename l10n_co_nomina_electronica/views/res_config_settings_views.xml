@@ -169,6 +169,9 @@
                         <setting string="Febrero en prestaciones" help="Cómo se cuentan los días de febrero en prima, cesantías, intereses, indemnización y vacaciones de la liquidación. No afecta el sueldo mensual ni los días de PILA.">
                             <field name="l10n_co_ne_febrero_modo"/>
                         </setting>
+                        <setting string="Separar el mes en documentos por cambio de tipo de trabajador" groups="base.group_system" help="Si el tipo de trabajador cambia dentro del mes (por ejemplo un aprendiz de la etapa lectiva a la práctica), el mes se parte en un documento por tramo; el segundo y los siguientes llevan «Novedad» con el CUNE del anterior. Apagado por defecto y solo para el administrador del sistema: NO VERIFICADO con la DIAN (doc 95 §4).">
+                            <field name="l10n_co_ne_segmentar_mes"/>
+                        </setting>
                         <setting string="Fuente de la fecha de pago" help="De dónde sale la fecha de pago que decide el mes del documento de nómina electrónica: los pagos conciliados de Contabilidad o la fecha de pago del recibo (acción Registrar pago).">
                             <field name="l10n_co_ne_fuente_fecha_pago"/>
                         </setting>
