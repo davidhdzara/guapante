@@ -369,12 +369,21 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         ya exigía el motor de habilitación y como lo exige el permiso de ``certificate.certificate``), en TODOS los modos (habilitación y producción): coherente con los botones «Generar XML», «Regenerar XML»,
         «Enviar a DIAN», «Enviar y Procesar» y «Consultar Estado» del recibo, que son solo suyos. El oficial de nómina calcula y confirma, pero no transmite. Un botón con ``groups`` solo se oculta; esta es la
         barrera real. La prueba ``test_guarda_de_transmision`` recorre la cadena de llamadas y falla si un método público nuevo llega a ``_get_ne_certificate`` sin llamarla. El superusuario (crons, motor de
-        habilitación y datos) no se restringe."""
+        habilitación y datos) no se restringe.
+
+        El error nombra el ROL tal como el usuario lo ve en la ficha de usuarios (``full_name`` del grupo, sin el nombre técnico), como lo hacía el motor de habilitación (H-022): el mensaje se arma SOLO aquí. Si el
+        grupo no existe, un error que lo dice (nunca un nombre escrito a mano)."""
         if self.env.su or self.env.user.has_group('hr_payroll.group_hr_payroll_manager') or self.env.user.has_group('base.group_system'):
             return
+        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager', raise_if_not_found=False)
+        if not grupo:
+            raise UserError(_(
+                'Falta el grupo «hr_payroll.group_hr_payroll_manager» (administrador de nómina), que decide quién puede generar o transmitir el XML de nómina electrónica. Actualice el módulo de nómina de Odoo '
+                'o avise al administrador del sistema.'))
         raise AccessError(_(
             'Solo el administrador de nómina (o el del sistema) puede generar, transmitir o consultar a la DIAN el XML de nómina electrónica (recibos y documentos mensuales), también en habilitación. '
-            'El oficial de nómina calcula y confirma los recibos, pero no los transmite: pídale el envío al administrador de nómina.'))
+            'Si necesita hacerlo, solicite que le asignen el rol "%(rol)s" o el de administrador del sistema. '
+            'El oficial de nómina calcula y confirma los recibos, pero no los transmite: pídale el envío al administrador de nómina.', rol=grupo.full_name))
 
     def action_generate_ne_xml(self):
         """

@@ -78,7 +78,8 @@ class TestMultiempresaSeguridad(TransactionCase):
         d.intento = env['l10n.co.ne.documento.intento'].create({'documento_id': d.documento.id, 'state': 'invoice_accepted', 'numero': '%s-INT-1' % CODIGO_NE})
         d.intercambio = env['l10n.co.ne.exchange'].create_exchange(compania, 'send_sync', 'https://dian.example/%s' % clave, {'RawRequest': b'x', 'RawResponse': b'y'}, d.recibo)
         d.manifiesto = env['l10n.co.ne.exchange.document'].create({
-            'exchange_id': d.intercambio.id, 'payslip_id': d.recibo.id, 'file_name': 'ne_900_%s.xml' % clave, 'numero': '%s-MAN-1' % CODIGO_NE, 'ambiente': 'habilitacion'})
+            'exchange_id': d.intercambio.id, 'payslip_id': d.recibo.id, 'file_name': 'ne_900_%s.xml' % clave, 'numero': '%s-MAN-1' % CODIGO_NE, 'ambiente': 'habilitacion',
+            'sha256': 'f' * 64})      # sha256 es obligatorio (evidencia inmutable): N2 «dc», NotNullViolation en setUpClass
         d.calculo = env['l10n.co.payslip.calculo'].with_context(ne_regenerar_calculo=True).create({'slip_id': d.recibo.id})
         d.concepto = env['l10n.co.payslip.concepto'].with_context(ne_regenerar_conceptos=True).create({'slip_id': d.recibo.id})
         d.ajuste = env['l10n.co.payslip.ajuste'].with_context(ne_registro_sugeridos=True).create({'slip_id': d.recibo.id, 'salary_rule_id': cls.regla.id})

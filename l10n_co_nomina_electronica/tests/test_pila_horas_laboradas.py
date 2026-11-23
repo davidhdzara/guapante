@@ -120,12 +120,12 @@ class TestPilaHorasLaboradas(pension.TestPensionNoExigida):
     # ── la lista de tipos es un dato ──
     def test_quitar_el_tipo_del_parametro_deja_el_campo_vacio_y_agregarlo_lo_exige(self):
         contrato_51 = self._contrato('Quitado 51', None, tipo='51')
-        contrato_18 = self._contrato('Agregado 18', None, tipo='18')
-        self.assertEqual(contrato_18._ne_horas_laboradas_pila(30, FECHA), '')                # de fabrica solo el 51
-        self.env.ref(PARAMETRO_VALOR).parameter_value = "['18']"
+        contrato_22 = self._contrato('Agregado 22', None, tipo='22')           # el 18 no es un valor del tipo de cotizante del contrato (N2 «dc»: ``Wrong value for l10n_co_pila_tipo_cotizante: '18'``); el 22 si
+        self.assertEqual(contrato_22._ne_horas_laboradas_pila(30, FECHA), '')                # de fabrica solo el 51
+        self.env.ref(PARAMETRO_VALOR).parameter_value = "['22']"
         self.assertEqual(contrato_51._ne_horas_laboradas_pila(30, FECHA), '')
         with self.assertRaisesRegex(UserError, 'campo 96'):
-            contrato_18._ne_horas_laboradas_pila(30, FECHA)
+            contrato_22._ne_horas_laboradas_pila(30, FECHA)
 
     def test_sin_el_parametro_un_error_que_lo_nombra(self):
         contrato = self._contrato('Sin Parametro', None)
@@ -149,7 +149,8 @@ class TestPilaHorasLaboradas(pension.TestPensionNoExigida):
         confirmado de este fixture (centro de trabajo del contrato, caja por empleado) no pide mas datos."""
         for nombre, calendario, esperado in (('Asistente Con Horario', self.cal_42, 180), ('Asistente Sin Horario', None, '')):
             with self.subTest(nombre):
-                _empleado, recibo = self._calculado(nombre, eps=self.eps, afp=self.afp, ccf=self.ccf)
+                empleado, recibo = self._calculado(nombre, eps=self.eps, afp=self.afp, ccf=self.ccf)
+                empleado.write({'l10n_co_primer_nombre': 'Asistente', 'l10n_co_primer_apellido': 'Horario'})       # un nombre de tres palabras no se parte solo (``_l10n_co_nombre_dian`` los exige)
                 recibo.contract_id.write({'resource_calendar_id': calendario.id if calendario else False, 'l10n_co_pila_centro_trabajo': '1'})
                 recibo.state = 'done'
                 datos = self.env['l10n.co.hr.pila.wizard.v2'].new({'company_id': self.company.id})._build_cotizante_data(recibo, 1)
