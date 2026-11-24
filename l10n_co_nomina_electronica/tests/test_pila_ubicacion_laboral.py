@@ -158,11 +158,15 @@ class TestPilaUbicacionLaboral(pension.TestPensionNoExigida):
         ciudad_sin_codigo = self.env['res.city'].create({
             'name': 'Ciudad sin codigo DANE', 'state_id': self.depto_a.id, 'country_id': self.env.ref('base.co').id,
             'zipcode': dian_utils.get_department_code(self.depto_a) + '001'})        # un codigo postal que EMPIEZA por el departamento: no debe usarse
+        ciudad_codigo_no_valido = self.env['res.city'].create({
+            'name': 'Ciudad con codigo DANE no valido', 'state_id': self.depto_a.id, 'country_id': self.env.ref('base.co').id,
+            'l10n_co_edi_code': 1100100})        # 7 digitos: un codigo DANE de ciudad tiene 5 (ejecuta el cuarto mensaje con **datos, el unico que ademas lleva ``longitud=``)
         casos = (
             ('sin ciudad', direccion_de_trabajo(self.env, 'Sin ciudad', self.depto_a, None)),
             ('sin departamento', direccion_de_trabajo(self.env, 'Sin departamento', None, self.ciudad_a)),
             ('ciudad sin codigo DANE', direccion_de_trabajo(self.env, 'Ciudad sin codigo', self.depto_a, ciudad_sin_codigo)),
             ('ciudad de otro departamento', direccion_de_trabajo(self.env, 'Ciudad ajena', self.depto_a, self.ciudad_b)),
+            ('codigo DANE no valido', direccion_de_trabajo(self.env, 'Codigo no valido', self.depto_a, ciudad_codigo_no_valido)),
         )
         for descripcion, direccion in casos:
             with self.subTest(descripcion):
