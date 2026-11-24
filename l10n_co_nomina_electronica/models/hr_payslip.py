@@ -372,8 +372,8 @@ class HrPayslip(models.Model):
 
     l10n_co_ne_aviso_ibc_anterior = fields.Char(
         string='Aviso de IBC del mes anterior', compute='_compute_ne_aviso_ibc_anterior',
-        help='Solo para las vistas: aviso (no bloquea) cuando el recibo trae vacaciones, licencia remunerada o días de suspensión y el empleado no tiene IBC del mes anterior (recibos confirmados): '
-             'la base es el sueldo de la ficha del empleado.')
+        help='Solo para las vistas: aviso (no bloquea) cuando el recibo trae vacaciones, licencia remunerada, días de suspensión o incapacidad común y el empleado no tiene IBC del mes anterior (recibos confirmados): '
+             'la base es el sueldo de la ficha del empleado; o cuando la incapacidad común se paga sobre el tope del 40 % del promedio de los 12 meses previos (Decreto 780 de 2016, art. 2.2.3.4.5).')
 
     def _ne_fechas_base_ibc_mes_anterior(self):
         """Fechas ``antes_de`` con las que este recibo consulta el IBC del mes anterior segun las lineas que trae (H-F1-11, H-F1-08): el inicio del tramo si paga vacaciones, licencia remunerada o SLN, y
@@ -383,10 +383,17 @@ class HrPayslip(models.Model):
         fechas = set()
         if con_valor & set(self._NE_CODIGOS_BASE_IBC_MES_ANTERIOR):
             fechas.add(self._ne_tramo_pagable_periodo()[0])
-        if self._NE_CODIGO_INCAPACIDAD_COMUN in con_valor:
-            # Sin cadenas (p. ej. una incapacidad por novedad manual, sin ausencia) el pago cuenta desde el inicio del recibo: la misma fecha que usa _ne_pago_ausencia_calendario.
-            fechas.update(inicio for _previos, _dias, inicio in self._ne_incapacidad_cadenas() or [(0, 0, self._ne_tramo_pagable_periodo()[0])])
+        fechas.update(self._ne_fechas_inicio_incapacidad())
         return sorted(fechas)
+
+    def _ne_fechas_inicio_incapacidad(self):
+        """Fechas de inicio de la INICIAL de cada cadena de incapacidad comun que paga este recibo (H-F1-08): con ellas se consulta la base de la incapacidad (``_ne_ibc_incapacidad_datos``). Vacia
+        si el recibo no tiene valor en ``CO_INC_COMUN``."""
+        self.ensure_one()
+        if self._NE_CODIGO_INCAPACIDAD_COMUN not in {linea.code for linea in self.line_ids if linea.total}:
+            return []
+        # Sin cadenas (p. ej. una incapacidad por novedad manual, sin ausencia) el pago cuenta desde el inicio del recibo: la misma fecha que usa _ne_pago_ausencia_calendario.
+        return sorted({inicio for _previos, _dias, inicio in self._ne_incapacidad_cadenas() or [(0, 0, self._ne_tramo_pagable_periodo()[0])]})
 
     @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id', 'line_ids.code', 'line_ids.total')
     def _compute_ne_aviso_ibc_anterior(self):
@@ -411,12 +418,25 @@ class HrPayslip(models.Model):
                 ibc, mes, con_base = recibo._ne_ibc_mes_anterior_datos(recibo.contract_id, antes_de=fecha)
                 if not con_base:
                     sin_base[mes] = ibc
+            avisos = []
+            for fecha in recibo._ne_fechas_inicio_incapacidad():
+                _ibc, mes, _con_base, tope = recibo._ne_ibc_incapacidad_datos(recibo.contract_id, antes_de=fecha)
+                if tope:
+                    porcentaje = recibo._rule_parameter('l10n_co_incapacidad_variacion_pct', recibo._ne_fecha_parametros())
+                    avisos.append(_(
+                        'El IBC del mes anterior (%(mes)s) de %(empleado)s, %(base)s, supera en más del %(pct)s %% el promedio de los %(meses)s meses previos (%(promedio)s): la incapacidad se paga sobre '
+                        'el tope de %(tope)s, no sobre el IBC completo (Decreto 780 de 2016, art. 2.2.3.4.5). Revise que el IBC reportado ese mes sea correcto.',
+                        mes=mes.strftime('%Y-%m'), empleado=recibo.employee_id.name, pct=int(porcentaje) if float(porcentaje).is_integer() else porcentaje,
+                        meses=tope['meses'], base=format_amount(self.env, tope['base'], recibo.company_id.currency_id),
+                        promedio=format_amount(self.env, tope['promedio'], recibo.company_id.currency_id), tope=format_amount(self.env, tope['tope'], recibo.company_id.currency_id)))
             if sin_base:
-                recibo.l10n_co_ne_aviso_ibc_anterior = _(
+                avisos.insert(0, _(
                     'No hay IBC del mes anterior (%(meses)s) para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada, días de suspensión o incapacidad en este recibo es el '
                     'sueldo de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
                     meses=', '.join(mes.strftime('%Y-%m') for mes in sorted(sin_base)), empleado=recibo.employee_id.name,
-                    sueldo=format_amount(self.env, sin_base[min(sin_base)], recibo.company_id.currency_id))
+                    sueldo=format_amount(self.env, sin_base[min(sin_base)], recibo.company_id.currency_id)))
+            if avisos:
+                recibo.l10n_co_ne_aviso_ibc_anterior = ' '.join(avisos)
 
     def _ne_afiliaciones_faltantes(self):
         """``[(etiqueta, nivel)]`` de lo que falta de la afiliación del empleado de este recibo (ver ``HrEmployee._ne_afiliaciones_faltantes``), con el tipo y el subtipo de cotizante del contrato y la fecha con que se resuelven los parámetros."""
@@ -2958,6 +2978,10 @@ class HrPayslip(models.Model):
         - CO_INC_LABORAL: ARL al 100 % desde el primer dia. CO_LIC_MAT y CO_LIC_PAT: 100 % del
           salario, a cargo de la EPS (H-014, CST Art. 236 mod. Ley 2114/2021).
         Parametros normativos desde hr.rule.parameter a la fecha de _ne_fecha_parametros().
+        TOPE de la base de CO_INC_COMUN (H-F1-08 P2, ``_ne_ibc_incapacidad_datos``): Decreto 780/2016, art.
+        2.2.3.4.5 (Decreto 2126 de 2023) -- la variacion del IBC del mes anterior que exceda el 40 % del
+        promedio de los 12 meses anteriores (SIN incluir el mes de referencia) no se toma en la parte que
+        excede (parametros ``l10n_co_incapacidad_variacion_pct`` y ``l10n_co_incapacidad_meses_promedio``).
         CO_INC_COMUN tiene piso de 1 SMMLV por dia (H-163, CST Art. 227): ver abajo. Su tramo se
         cuenta desde el INICIO de la incapacidad y sus prorrogas (H-170): `previos` = dias de la
         misma incapacidad anteriores al periodo; sin darlo, se deduce de Ausencias."""
@@ -2993,7 +3017,7 @@ class HrPayslip(models.Model):
             la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo. El valor
             del dia es el del IBC del mes anterior a ``inicio`` (la fecha de inicio de la INICIAL
             de la cadena; H-F1-08)."""
-            valor_dia = self._ne_ibc_mes_anterior(self.contract_id, antes_de=inicio) / dias_mes
+            valor_dia = self._ne_ibc_incapacidad_datos(self.contract_id, antes_de=inicio)[0] / dias_mes
             ini, fin = previos, previos + cantidad
 
             def _solape(a, b):
@@ -3382,6 +3406,16 @@ class HrPayslip(models.Model):
         self.ensure_one()
         referencia = antes_de or self.date_from
         mes = (referencia.replace(day=1) - timedelta(days=1)).replace(day=1)
+        ibc, con_base = self._ne_ibc_normalizado_de_mes(mes)
+        if con_base:
+            return ibc, mes, True
+        return self._ne_sueldo_de_respaldo(contract, mes), mes, False
+
+    def _ne_ibc_normalizado_de_mes(self, mes):
+        """(ibc, con_base): el IBC de UN mes calendario (``mes`` = su primer dia) del empleado de este recibo, escalado a mes comercial (ver ``_ne_ibc_mes_anterior_datos``, que lo usa para el mes
+        anterior; H-F1-08 P2 lo usa tambien para el promedio de los 12 meses previos). Sin recibos confirmados con ``CO_SS_BASE_IBC`` en ese mes: ``(0.0, False)``; NO cae al sueldo (quien lo
+        necesita decide)."""
+        self.ensure_one()
         siguiente = (mes.replace(day=28) + timedelta(days=4)).replace(day=1)
         recibos = self.env['hr.payslip'].sudo().search([
             ('company_id', '=', self.company_id.id), ('employee_id', '=', self.employee_id.id), ('state', 'in', ('done', 'paid')),
@@ -3401,8 +3435,38 @@ class HrPayslip(models.Model):
                     recibo.line_ids.filtered(lambda l: l.code in _NOVEDAD_INCAPACIDAD_CODES).mapped('quantity'))
             dias += dias_recibo
         if base > 0 and dias > 0:
-            return base * self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros()) / dias, mes, True
-        return self._ne_sueldo_de_respaldo(contract, mes), mes, False
+            return base * self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros()) / dias, True
+        return 0.0, False
+
+    def _ne_ibc_incapacidad_datos(self, contract, antes_de=None):
+        """(ibc, mes, con_base, tope): la base de la incapacidad comun (H-F1-08), es decir, el IBC del mes anterior a ``antes_de`` (``_ne_ibc_mes_anterior_datos``) CON el limite del Decreto 780/2016, art.
+        2.2.3.4.5 (Decreto 2126 de 2023): «las variaciones en el Ingreso Base de Cotizacion [...] del mes anterior al inicio de la incapacidad que excedan el cuarenta por ciento (40%) respecto del
+        promedio de los doce (12) meses inmediatamente anteriores, o su fraccion de meses cuando este tiempo fuere menor, no seran tomadas en consideracion, en la parte que exceda de dicho
+        porcentaje». El promedio es el de los hasta ``l10n_co_incapacidad_meses_promedio`` meses INMEDIATAMENTE ANTERIORES al mes de referencia que tienen IBC (los meses sin recibos confirmados
+        no cuentan: «su fraccion de meses»); el tope es promedio x (1 + ``l10n_co_incapacidad_variacion_pct`` / 100). ``tope`` es ``None`` si no se aplico (sin base, sin meses previos o dentro del
+        limite) o un dict ``{'base', 'promedio', 'tope', 'meses'}`` si recorto la base. NO VERIFICADO: si «los doce meses inmediatamente anteriores» incluyen el mes de referencia (se toman los
+        anteriores a el). Solo la incapacidad comun lo usa; vacaciones, licencia remunerada y SLN siguen con ``_ne_ibc_mes_anterior``."""
+        self.ensure_one()
+        ibc, mes, con_base = self._ne_ibc_mes_anterior_datos(contract, antes_de=antes_de)
+        if not con_base:
+            return ibc, mes, False, None
+        fecha = self._ne_fecha_parametros()
+        porcentaje = self._rule_parameter('l10n_co_incapacidad_variacion_pct', fecha)
+        meses = int(self._rule_parameter('l10n_co_incapacidad_meses_promedio', fecha))
+        previos = []
+        mes_previo = mes
+        for _i in range(meses):
+            mes_previo = (mes_previo - timedelta(days=1)).replace(day=1)
+            base_previa, con_base_previa = self._ne_ibc_normalizado_de_mes(mes_previo)
+            if con_base_previa:
+                previos.append(base_previa)
+        if not previos:
+            return ibc, mes, True, None
+        promedio = sum(previos) / len(previos)
+        tope = promedio * (1 + porcentaje / 100.0)
+        if ibc > tope:
+            return tope, mes, True, {'base': ibc, 'promedio': promedio, 'tope': tope, 'meses': len(previos)}
+        return ibc, mes, True, None
 
     def _ne_ibc_mes_anterior(self, contract, antes_de=None):
         """El IBC del mes anterior (ver ``_ne_ibc_mes_anterior_datos``): base de los dias de vacaciones, licencia remunerada y SLN (H-017a)."""

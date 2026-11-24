@@ -123,6 +123,7 @@ from . import test_tabla_marginal_parametros
 from . import test_incapacidad_misma_enfermedad
 from . import test_incapacidad_prorroga_vinculo
 from . import test_incapacidad_base_ibc
+from . import test_incapacidad_variacion_ibc
 from . import test_constantes_184
 from . import test_ajustes_compania_mexicana
 from . import test_documento_mixin_carga

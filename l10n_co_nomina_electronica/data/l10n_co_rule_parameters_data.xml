@@ -709,6 +709,42 @@ rechaza un vínculo con más días libres (H-F1-01, doc 84).</p>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
+    <record id="rule_parameter_incapacidad_variacion_pct" model="hr.rule.parameter">
+        <field name="name">Colombia: Incapacidad Común, Variación Máxima del IBC del Mes Anterior (%)</field>
+        <field name="code">l10n_co_incapacidad_variacion_pct</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>La base de la incapacidad común es el IBC del mes anterior al inicio de la incapacidad inicial (Decreto 780 de 2016,
+art. 2.2.3.3.1, sustituido por el artículo 1 del Decreto 2126 de 2023). Su art. 2.2.3.4.5 limita esa base: «las variaciones en el Ingreso Base de Cotización [...] del mes
+anterior al inicio de la incapacidad que excedan el cuarenta por ciento (40%) respecto del promedio de los doce (12) meses inmediatamente anteriores, o su fracción de
+meses cuando este tiempo fuere menor, no serán tomadas en consideración, en la parte que exceda de dicho porcentaje». Este parámetro es ese 40 %; los 12 meses están en
+<code>l10n_co_incapacidad_meses_promedio</code>. Solo aplica a la incapacidad común (H-F1-08, doc 106).</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
+decimal equivalente: escriba <strong>40</strong> para representar 40% (no 0.40).
+Valor vigente: <strong>40.0</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_incapacidad_variacion_pct_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">40.0</field>
+        <field name="rule_parameter_id" ref="rule_parameter_incapacidad_variacion_pct"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
+    <record id="rule_parameter_incapacidad_meses_promedio" model="hr.rule.parameter">
+        <field name="name">Colombia: Incapacidad Común, Meses del Promedio del IBC</field>
+        <field name="code">l10n_co_incapacidad_meses_promedio</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Cantidad de meses inmediatamente anteriores al mes de referencia con los que se promedia el IBC para el límite de la incapacidad común
+(Decreto 780 de 2016, art. 2.2.3.4.5, Decreto 2126 de 2023: «el promedio de los doce (12) meses inmediatamente anteriores, o su fracción de meses cuando este tiempo fuere menor»). Se
+promedian los meses que tienen IBC (recibos confirmados). El porcentaje del límite está en <code>l10n_co_incapacidad_variacion_pct</code>.</p>
+<h3 class="mt-5">Cómo ingresar el valor</h3>
+<p>Escriba el número entero de meses. Valor vigente: <strong>12</strong>.</p></field>
+    </record>
+    <record id="rule_parameter_incapacidad_meses_promedio_2024" model="hr.rule.parameter.value">
+        <field name="parameter_value">12</field>
+        <field name="rule_parameter_id" ref="rule_parameter_incapacidad_meses_promedio"/>
+        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_pct_tope_embargo_alimentos" model="hr.rule.parameter">
         <field name="name">Colombia: % Tope Embargo Alimentos/Cooperativa</field>
         <field name="code">l10n_co_pct_tope_embargo_alimentos</field>
