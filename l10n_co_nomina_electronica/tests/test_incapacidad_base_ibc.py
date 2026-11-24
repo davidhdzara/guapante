@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
-"""H-F1-08 (doc 84/89): el valor del dia de la incapacidad comun sale del IBC del MES ANTERIOR al inicio de la incapacidad INICIAL de la cadena (Decreto 1427 de 2022, art. 2.2.3.3.1), el mismo en
+"""H-F1-08 (doc 84/89): el valor del dia de la incapacidad comun sale del IBC del MES ANTERIOR al inicio de la incapacidad INICIAL de la cadena (Decreto 780 de 2016, art. 2.2.3.3.1, sustituido por el art. 1 del Decreto 2126 de 2023), el mismo en
 todas sus prorrogas, no del sueldo actual en cada recibo. Sin IBC de ese mes, el sueldo con aviso. Misma funcion que las vacaciones (H-F1-11): ``_ne_ibc_mes_anterior``.
 
 Valores a mano: sueldo 6.000.000 (valor dia 200.000), tramo del empleador y EPS (dias 1-90) al 66,67 %, piso diario 2026 = 1.750.905 / 30 = 58.363,5. Incapacidad lun 3 a mie 12 de agosto

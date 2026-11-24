@@ -581,7 +581,7 @@ result = _dias_aus > 0 or _dias_inp > 0
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Primeros dias_incapacidad_empleador días: a cargo del empleador al pct_incapacidad_empleador
-# (66.67%; H-013 paso 3, Decreto 780/2016 Art. 3.2.1.10 par. 1 -- antes 100%)
+# (66.67%; H-013 paso 3; quien paga: Decreto 780/2016 Art. 3.2.1.10 par. 1; porcentaje: CST Art. 227 -- antes 100%)
 # Días 3-90: pct_incapacidad_3_90 pagado por EPS
 # Días 91+: pct_incapacidad_91_mas pagado por EPS
 # AUD-DIAN-34 (2026-10-05): el "90" (limite del tramo EPS) era un literal

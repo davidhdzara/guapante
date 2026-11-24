@@ -5,7 +5,7 @@
 
 hr.leave nativo no trae diagnostico ni vinculo entre ausencias (revisado en hr_holidays real de staging; solo `notes`). Se agrega UN dato: de que incapacidad anterior es prorroga esta, y desde
 H-F1-01 ES la marca de «misma enfermedad» que decide que incapacidades forman una cadena: el tramo de pago (2 dias del empleador, 3 a 90, 91 en adelante) se cuenta desde el inicio de la INICIAL.
-Norma de la prorroga: Decreto 1333 de 2018, art. 3 (publicado el 27-jul-2018) y, sustituido ese Titulo, Decreto 1427 de 2022, art. 2.2.3.3.2, paragrafo 1: existe prorroga cuando una nueva
+Norma de la prorroga: Decreto 1333 de 2018, art. 3 (publicado el 27-jul-2018) y, sustituido ese Titulo, Decreto 780 de 2016, art. 2.2.3.3.2, paragrafo 1, sustituido por el art. 1 del Decreto 2126 de 2023: existe prorroga cuando una nueva
 incapacidad se origina por la misma enfermedad o lesion, o por otra que tenga relacion directa con ella, aunque cambie el codigo CIE, siempre que no haya una interrupcion mayor a 30 dias
 calendario. La interrupcion maxima es el parametro ``l10n_co_dias_interrupcion_prorroga`` (30). El CIE no se guarda: la relacion entre enfermedades es un juicio medico que el modulo no valida;
 lo marca quien registra la incapacidad con el certificado de la EPS a la vista."""
@@ -32,7 +32,7 @@ class HrLeave(models.Model):
         domain="[('employee_id', '=', employee_id), ('id', '!=', id),"
                " ('holiday_status_id.work_entry_type_id.code', '=', 'CO_INC_COMUN')]",
         help='Incapacidad común anterior de la que esta es prórroga: la misma enfermedad o una que tenga relación directa con ella, aunque cambie el código CIE, '
-             'con una interrupción de a lo sumo 30 días calendario (Decreto 1427 de 2022, art. 2.2.3.3.2, parágrafo 1; antes Decreto 1333 de 2018, art. 3). '
+             'con una interrupción de a lo sumo 30 días calendario (Decreto 780 de 2016, art. 2.2.3.3.2, parágrafo 1, sustituido por el art. 1 del Decreto 2126 de 2023; antes Decreto 1333 de 2018, art. 3). '
              'Las incapacidades vinculadas forman UNA cadena: el pago por tramos (2 días del empleador, 3 a 90, 91 en adelante) se cuenta desde el inicio de la '
              'inicial. Sin vínculo, cada incapacidad empieza su propio conteo. Márquela con el certificado de la EPS a la vista.',
     )
@@ -114,7 +114,7 @@ class HrLeave(models.Model):
             if libres > maxima:
                 raise ValidationError(_(
                     'Entre la incapacidad anterior (hasta %(hasta)s) y esta (desde %(desde)s) hay %(libres)s días de interrupción, más de los %(maxima)s que admite la prórroga '
-                    '(parámetro l10n_co_dias_interrupcion_prorroga; Decreto 1427 de 2022, art. 2.2.3.3.2, parágrafo 1). Son incapacidades distintas: quite el vínculo.',
+                    '(parámetro l10n_co_dias_interrupcion_prorroga; Decreto 780 de 2016, art. 2.2.3.3.2, parágrafo 1, sustituido por el art. 1 del Decreto 2126 de 2023). Son incapacidades distintas: quite el vínculo.',
                     hasta=anterior.request_date_to, desde=leave.request_date_from, libres=libres, maxima=maxima))
             # Una incapacidad tiene A LO SUMO una prorroga siguiente (la cadena es una lista, no un arbol): si no, las posiciones de los tramos se contarian dos veces.
             otras = self.sudo().search_count([('l10n_co_ne_prorroga_de_id', '=', anterior.id), ('id', '!=', leave.id)])      # sudo(): la unicidad se comprueba contra TODAS las ausencias, no solo las que ve quien edita

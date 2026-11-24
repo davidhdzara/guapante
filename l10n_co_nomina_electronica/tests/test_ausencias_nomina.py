@@ -278,8 +278,8 @@ class TestAusenciasNomina(TransactionCase):
         self.assertLess(round(basico, 2), round(wage, 2))
 
     def test_incapacidad_comun_sin_doble_pago(self):
-        """Incapacidad corta (2 días) -- H-013 paso 3 (2026-11-09, Decreto 780/2016 Art.
-        3.2.1.10 par. 1): los 2 primeros días los paga el empleador al 66.67% (antes 100%).
+        """Incapacidad corta (2 días) -- H-013 paso 3 (2026-11-09; quien paga: Decreto 780/2016
+        Art. 3.2.1.10 par. 1; porcentaje: CST Art. 227): los 2 primeros días los paga el empleador al 66.67% (antes 100%).
         Ya no rige "básico + novedad = sueldo" para este concepto: el 33.33% restante de
         esos días NO se paga. Lo que sí debe seguir cumpliéndose: sin doble pago (el básico
         descuenta exactamente los días de la incapacidad)."""

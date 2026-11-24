@@ -2,7 +2,7 @@
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """H-F1-01 (doc 84, decisiones D-84-1 = B y D-84-3 del TL): la cadena de incapacidades comunes la dan los vinculos EXPLICITOS «Prórroga de», no la contiguidad de las fechas.
 
-Norma: Decreto 1427 de 2022, art. 2.2.3.3.2, par. 1 (antes Decreto 1333 de 2018, art. 3): misma enfermedad o relacionada, con una interrupcion de a lo sumo 30 dias calendario. El modulo no decide
+Norma: Decreto 780 de 2016, art. 2.2.3.3.2, par. 1, sustituido por el art. 1 del Decreto 2126 de 2023 (antes Decreto 1333 de 2018, art. 3): misma enfermedad o relacionada, con una interrupcion de a lo sumo 30 dias calendario. El modulo no decide
 la «misma enfermedad»: lo marca quien registra la ausencia; el parametro ``l10n_co_dias_interrupcion_prorroga`` (30) solo rechaza el vinculo con mas dias libres. Valores a mano con el caso de QA FUN-REG-012:
 salario 6.000.000 (valor dia 200.000), tramos 66,67 % (dias 1-90) y 50 % (91 en adelante)."""
 

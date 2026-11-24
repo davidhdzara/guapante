@@ -620,7 +620,10 @@ en <code>l10n_co_pct_incapacidad_empleador</code>.</p>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario que el empleador paga en los primeros días
 de incapacidad por enfermedad general (los de <code>l10n_co_dias_incapacidad_empleador</code>).
-H-013 paso 3 (2026-11-09, norma confirmada por David): antes se pagaban al 100%.</p>
+H-013 paso 3 (2026-11-09, norma confirmada por David): antes se pagaban al 100%. Fundamento: CST art. 227 («las dos
+terceras (2/3) partes del salario durante los primeros noventa (90) días»). El porcentaje de estos dos días es NO
+VERIFICADO: un concepto de MinSalud (2024424001742752, orientador) dice a la vez 66,6 % y que los asume el
+empleador «en su totalidad»; si la empresa decide pagarlos al 100 %, basta cambiar este valor.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>66.67</strong> para representar 66.67% (no 0.6667).
@@ -637,7 +640,8 @@ Valor vigente: <strong>66.67</strong>.</p></field>
         <field name="code">l10n_co_pct_incapacidad_3_90</field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS entre el día 3 y el día 90 de
-incapacidad por enfermedad general (Decreto 1406/1999, Art. 3).</p>
+incapacidad por enfermedad general (CST art. 227: las dos terceras partes del salario durante los primeros noventa días;
+nunca menos de un salario mínimo, Sentencia C-543/2007). La EPS paga desde el tercer día (Decreto 780 de 2016, art. 3.2.1.10, parágrafo 1).</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>66.67</strong> para representar 66.67% (no 0.6667).
@@ -654,7 +658,8 @@ Valor vigente: <strong>66.67</strong>.</p></field>
         <field name="code">l10n_co_pct_incapacidad_91_mas</field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS a partir del día 91 de
-incapacidad por enfermedad general.</p>
+incapacidad por enfermedad general (CST art. 227: «la mitad del salario por el tiempo restante», hasta 180 días; nunca menos de un
+salario mínimo, Sentencia C-543/2007).</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.50).
@@ -672,7 +677,7 @@ Valor vigente: <strong>50.0</strong>.</p></field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Último día del tramo "3 a 90" de incapacidad por enfermedad general
 pagado por la EPS a l10n_co_pct_incapacidad_3_90% -- a partir del día siguiente aplica
-l10n_co_pct_incapacidad_91_mas% (Decreto 1406/1999, Art. 3). AUD-DIAN-34 (2026-10-05):
+l10n_co_pct_incapacidad_91_mas% (CST art. 227: 2/3 los primeros 90 días y la mitad el tiempo restante, hasta 180 días). AUD-DIAN-34 (2026-10-05):
 antes el "90" estaba escrito dos veces en la fórmula de CO_INC_COMUN; es un umbral legal
 propio, no debe confundirse con ningún otro parámetro de días.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
@@ -691,7 +696,7 @@ propio, no debe confundirse con ningún otro parámetro de días.</p>
         <field name="description" type="html"><p>Días calendario de interrupción máxima entre dos incapacidades por enfermedad general del mismo trabajador
 para que la segunda pueda marcarse como PRÓRROGA de la primera (campo «Prórroga de» de la ausencia): la misma enfermedad o lesión, o una que tenga relación
 directa con ella aunque cambie el código CIE, «siempre que no haya una interrupción mayor a treinta (30) días calendario»
-(Decreto 1427 de 2022, art. 2.2.3.3.2, parágrafo 1; antes Decreto 1333 de 2018, art. 3, publicado el 27-jul-2018). El tramo de pago (2 días del
+(Decreto 780 de 2016, art. 2.2.3.3.2, parágrafo 1, sustituido por el artículo 1 del Decreto 2126 de 2023; antes Decreto 1333 de 2018, art. 3, publicado el 27-jul-2018). El tramo de pago (2 días del
 empleador, 3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la INICIAL de la cadena, no desde cada incapacidad ni cada recibo (H-170). El módulo no
 decide si dos incapacidades son «la misma enfermedad»: lo marca quien registra la ausencia con el certificado de la EPS, y este parámetro solo
 rechaza un vínculo con más días libres (H-F1-01, doc 84).</p>

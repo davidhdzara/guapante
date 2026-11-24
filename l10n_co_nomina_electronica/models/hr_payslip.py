@@ -2942,13 +2942,19 @@ class HrPayslip(models.Model):
         o por terceros: CO_INC_COMUN, CO_INC_LABORAL, CO_LIC_MAT, CO_LIC_PAT. Unico lugar del
         calculo, compartido por las reglas de la nomina general y de la liquidacion.
 
-        - CO_INC_COMUN (Decreto 780/2016 Art. 3.2.1.10 par. 1; H-013 paso 3): por tramos --
-          los primeros dias_incapacidad_empleador al pct_incapacidad_empleador (66,67 %); hasta
-          el limite 3-90 el pct_incapacidad_3_90 (EPS); mas alla el pct_incapacidad_91_mas.
-          H-F1-08 (doc 84/89; Decreto 1427 de 2022, art. 2.2.3.3.1): el valor del dia sale del IBC del
-          MES ANTERIOR al inicio de la incapacidad INICIAL de la cadena (``_ne_ibc_mes_anterior``), el
-          mismo en todas sus prorrogas, NO del sueldo actual en cada recibo; sin IBC de ese mes, el
-          sueldo (con aviso en el recibo).
+        - CO_INC_COMUN, por tramos (doc 106, norma leida verbatim):
+          * PORCENTAJES: CST art. 227 -- las 2/3 partes del salario los primeros 90 dias y la mitad el
+            resto, hasta 180 dias; con piso de 1 SMMLV (ver abajo).
+          * QUIEN PAGA: Decreto 780/2016, art. 3.2.1.10 par. 1 -- el empleador los dos (2) primeros dias
+            (``dias_incapacidad_empleador``, al ``pct_incapacidad_empleador`` = 66,67 %, H-013 paso 3; el
+            porcentaje de esos dos dias es NO VERIFICADO: el unico concepto de MinSalud leido es ambiguo,
+            doc 106 3.6) y la EPS desde el tercero (``pct_incapacidad_3_90`` y ``pct_incapacidad_91_mas``).
+          * BASE (H-F1-08): Decreto 780/2016, art. 2.2.3.3.1, sustituido por el art. 1 del Decreto 2126 de
+            2023 -- «se tomara como Ingreso Base de Cotizacion el reportado en el mes anterior al inicio de
+            la incapacidad, entendiendo por inicio, el reportado en el dia uno (1) de la incapacidad
+            inicial, no el de las prorrogas». El valor del dia sale del IBC del MES ANTERIOR al inicio de la
+            INICIAL de la cadena (``_ne_ibc_mes_anterior``), el mismo en todas sus prorrogas, NO del
+            sueldo actual en cada recibo; sin IBC de ese mes, el sueldo (con aviso en el recibo).
         - CO_INC_LABORAL: ARL al 100 % desde el primer dia. CO_LIC_MAT y CO_LIC_PAT: 100 % del
           salario, a cargo de la EPS (H-014, CST Art. 236 mod. Ley 2114/2021).
         Parametros normativos desde hr.rule.parameter a la fecha de _ne_fecha_parametros().
@@ -2971,9 +2977,10 @@ class HrPayslip(models.Model):
         pct_3_90 = self._rule_parameter('l10n_co_pct_incapacidad_3_90', fecha) / 100
         pct_91_mas = self._rule_parameter('l10n_co_pct_incapacidad_91_mas', fecha) / 100
         limite_3_90 = self._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', fecha)
-        # H-163 (CST art. 227; T-468/2010): los porcentajes aplican "siempre y cuando el valor
-        # liquido a pagar no sea inferior al SMMLV": valor por dia = max(valor_dia x pct del
-        # tramo, SMMLV / dias_mes), en todos los tramos. Con salario de 1 SMMLV se paga el 100 %.
+        # H-163 (CST art. 227; Sentencia C-543/2007, que lo declara exequible «en el entendido que el
+        # auxilio monetario por enfermedad no profesional no podra ser inferior al salario minimo legal
+        # vigente»; T-468/2010): valor por dia = max(valor_dia x pct del tramo, SMMLV / dias_mes), en
+        # todos los tramos. Con salario de 1 SMMLV se paga el 100 %.
         # LIMITE CONOCIDO: con salario MENOR a 1 SMMLV (jornada parcial) el piso diario pagaria mas
         # del 100 % de su sueldo; no ocurre en Guapante y no se modela (decision pendiente).
         smmlv_dia = self._rule_parameter('l10n_co_smmlv', fecha) / dias_mes
@@ -3008,7 +3015,7 @@ class HrPayslip(models.Model):
         """[(dias_previos, dias_en_periodo, inicio_de_la_inicial)] de cada incapacidad comun -- con sus prorrogas -- que cae en el periodo del recibo (H-170; H-F1-01, doc 84; el inicio de la
         inicial es la fecha con la que se busca el IBC del mes anterior, H-F1-08).
         La cadena sale del vinculo EXPLICITO ``Prórroga de`` (``hr.leave.l10n_co_ne_prorroga_de_id``) que marca quien registra la incapacidad con el certificado de la EPS: ya NO se encadena por
-        fechas, porque que dos incapacidades sean «la misma enfermedad o una relacionada» (Decreto 1427 de 2022, art. 2.2.3.3.2, par. 1) es un juicio medico que el modulo no puede hacer.
+        fechas, porque que dos incapacidades sean «la misma enfermedad o una relacionada» (Decreto 780 de 2016, art. 2.2.3.3.2, par. 1, sustituido por el art. 1 del Decreto 2126 de 2023) es un juicio medico que el modulo no puede hacer.
         Una incapacidad sin vinculo es la inicial de su propia cadena. dias_previos = dias CALENDARIO reales de la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones
         1..previos, y los del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar). Una prorroga cuya anterior NO esta aprobada no tiene posicion cierta: error claro."""
         self.ensure_one()
@@ -3432,8 +3439,9 @@ class HrPayslip(models.Model):
 
     def _ne_ibc_incap(self, contract, result_rules, codigos=None):
         """Base de las ausencias de pago por tercero (maternidad/paternidad e
-        incapacidades): el valor del auxilio que la novedad ya pago (Decreto 780/2016
-        Art. 3.2.5.1; decision de David, 2026-11-10). Solo cuenta a salud y pension,
+        incapacidades): el valor del auxilio que la novedad ya pago (Decreto 780/2016,
+        arts. 3.2.1.10 y 3.2.5.1: «se tomara como Ingreso Base de Cotizacion el valor de la
+        incapacidad»; decision de David, 2026-11-10). Solo cuenta a salud y pension,
         no a ARL ni parafiscales; el descuento al empleado es el normal (Art.
         3.2.1.10), a diferencia de SLN. Integral: 0 (como H-017a).
         `codigos` permite acotar; por defecto los 4 de ausencia calendario.
