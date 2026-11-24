@@ -787,13 +787,14 @@ class ResCompany(models.Model):
 
     l10n_co_ne_pago_dominical_mensual = fields.Selection(
         selection=[
-            ('dia_mas_recargo', 'Día ordinario + recargo'),
-            ('solo_recargo', 'Solo el recargo'),
+            ('dia_mas_recargo', 'Valor de la hora + recargo del día de descanso'),
+            ('solo_recargo', 'Solo el recargo del día de descanso'),
         ],
-        string='Pago del dominical con salario mensual', tracking=False,
+        string='Pago del día de descanso obligatorio (dominical) con salario mensual', tracking=False,
         help='Cómo se pagan las horas de la JORNADA ORDINARIA trabajadas en día de descanso obligatorio (dominical o festivo) a quien tiene salario mensual, cuyo sueldo ya cubre el día de descanso. '
-             '«Día ordinario + recargo»: el valor de la hora con el factor total (1,80 / 1,90 / 2,00): la lectura del concepto MinTrabajo 24429 de 2026, adicional a los 30 días de salario (decisión D1 de David, '
-             '17-nov-2026). «Solo el recargo»: el factor menos 1 (0,80 / 0,90 / 1,00): la lectura de la CSJ, SL3567-2019 («la remuneración por trabajar un domingo o festivo está inmersa en el salario ordinario»). '
+             '«Valor de la hora + recargo del día de descanso»: la hora se paga con el factor total (1,80 / 1,90 / 2,00), es decir el valor de la hora trabajada más el recargo: la lectura del concepto MinTrabajo 24429 de 2026, adicional a los 30 días de salario '
+             '(decisión D1 de David, 17-nov-2026). «Solo el recargo del día de descanso»: el factor menos 1 (0,80 / 0,90 / 1,00), es decir el recargo, porque el día de descanso ya está en el sueldo mensual: la lectura de la CSJ, SL3567-2019 («la remuneración '
+             'por trabajar un domingo o festivo está inmersa en el salario ordinario»). En las dos opciones el trabajo en día de descanso obligatorio lleva recargo (CST art. 179 num. 1, Ley 2466 de 2025, art. 14): ninguna lo trata como un día ordinario sin recargo. '
              'Aplica a recargo diurno y nocturno dominical/festivo (HRDDF, HRNDF); las horas EXTRA dominicales (HEDDF, HENDF) no cambian porque el sueldo mensual no las cubre. '
              'Es una decisión de la compañía, sin valor por defecto: sin elegirla, calcular horas de recargo dominical da un error que dice dónde elegirla (Ley 2466 de 2025, art. 14).')
 

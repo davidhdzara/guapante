@@ -163,7 +163,7 @@
                         <setting help="En días de suspensión o licencia no remunerada la pensión patronal es opcional en el sector privado (Concepto Min. Protección Social 134658, CST art. 53).">
                             <field name="l10n_co_ne_pension_patronal_sln"/>
                         </setting>
-                        <setting string="Pago del dominical con salario mensual" help="Cómo se pagan las horas de la jornada ordinaria en día de descanso obligatorio a quien tiene salario mensual: el día ordinario más el recargo (concepto MinTrabajo 24429 de 2026) o solo el recargo (CSJ SL3567-2019). Las horas extra dominicales no cambian. Sin elegir, calcular horas de recargo dominical da un error.">
+                        <setting string="Pago del día de descanso obligatorio (dominical) con salario mensual" help="Cómo se pagan las horas de la jornada ordinaria en día de descanso obligatorio a quien tiene salario mensual: el valor de la hora más el recargo del día de descanso (concepto MinTrabajo 24429 de 2026) o solo el recargo (CSJ SL3567-2019). En las dos el trabajo en día de descanso lleva recargo. Las horas extra dominicales no cambian. Sin elegir, calcular horas de recargo dominical da un error.">
                             <field name="l10n_co_ne_pago_dominical_mensual"/>
                         </setting>
                         <setting string="Febrero en prestaciones" help="Cómo se cuentan los días de febrero en prima, cesantías, intereses, indemnización y vacaciones de la liquidación. No afecta el sueldo mensual ni los días de PILA.">

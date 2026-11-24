@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """H-F1-07 (doc 92; decisiones D-07 del TL del 22-nov): la compañia elige como se pagan las horas de la JORNADA ORDINARIA en dia de descanso obligatorio (recargo dominical/festivo diurno y nocturno) a quien tiene
-salario mensual: «dia ordinario + recargo» (concepto MinTrabajo 24429 de 2026; la decision D1 de David del 17-nov, lo que se pagaba) o «solo el recargo» (CSJ SL3567-2019: el dia de descanso ya esta en el sueldo
+salario mensual: «valor de la hora + recargo del dia de descanso» (concepto MinTrabajo 24429 de 2026; la decision D1 de David del 17-nov, lo que se pagaba) o «solo el recargo del dia de descanso» (CSJ SL3567-2019: el dia de descanso ya esta en el sueldo
 mensual). Una sola decision, ``HrPayslip._ne_factor_dominical``; las horas EXTRA dominicales no cambian; sin elegir, un error que dice donde. La migracion deja las companias colombianas que ya existian en
-«dia ordinario + recargo».
+«valor de la hora + recargo del dia de descanso».
 
 Valores a mano (agosto de 2026): sueldo 3.000.000, divisor 210 (jornada de 42 h desde el 15-jul-2026, Ley 2101/2021) -> valor hora 14.285,71; recargo del 90 % desde el 1-jul-2026 (Ley 2466/2025 art. 14): factores
 HRDDF 1,90 y HRNDF 2,25; ocho horas de cada concepto."""
@@ -86,7 +86,7 @@ class TestPagoDominicalMensual(TransactionCase):
         with self.assertRaises(UserError) as exc:
             recibo.compute_sheet()
         texto = str(exc.exception)
-        for esperado in (self.company.name, 'Pago del dominical con salario mensual', 'Parámetros Nómina Colombia'):
+        for esperado in (self.company.name, 'Pago del día de descanso obligatorio (dominical) con salario mensual', 'Parámetros Nómina Colombia'):
             self.assertIn(esperado, texto)
 
     def test_sin_horas_dominicales_no_se_exige_la_eleccion(self):

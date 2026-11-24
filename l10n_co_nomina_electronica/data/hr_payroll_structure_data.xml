@@ -361,7 +361,7 @@ result_qty = inputs['CO_HENDF'].amount
             <field name="amount_python_compute">
 # HRDDF = valor hora * factor_hrddf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-# H-F1-07: el factor lo decide payslip._ne_factor_dominical (la compañia elige «dia ordinario + recargo» o «solo el recargo»)
+# H-F1-07: el factor lo decide payslip._ne_factor_dominical (la compañia elige «valor de la hora + recargo del dia de descanso» o «solo el recargo del dia de descanso»)
 result = valor_hora * payslip._ne_factor_dominical('CO_HRDDF')
 result_qty = inputs['CO_HRDDF'].amount
             </field>
@@ -387,7 +387,7 @@ result_qty = inputs['CO_HRDDF'].amount
             <field name="amount_python_compute">
 # HRNDF = valor hora * factor_hrndf (jornada/recargos vigentes a la fecha)
 valor_hora = contract.wage / payslip._rule_parameter('l10n_co_horas_mensuales', payslip.date_from)
-# H-F1-07: el factor lo decide payslip._ne_factor_dominical (la compañia elige «dia ordinario + recargo» o «solo el recargo»)
+# H-F1-07: el factor lo decide payslip._ne_factor_dominical (la compañia elige «valor de la hora + recargo del dia de descanso» o «solo el recargo del dia de descanso»)
 result = valor_hora * payslip._ne_factor_dominical('CO_HRNDF')
 result_qty = inputs['CO_HRNDF'].amount
             </field>
