@@ -17,6 +17,7 @@ from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
 from . import test_pension_no_exigida as pension
+from .test_pila_ubicacion_laboral import ubicaciones_de_prueba
 
 FECHA = date(2026, 3, 1)
 PARAMETRO_VALOR = 'l10n_co_nomina_electronica.rule_parameter_pila_horas_laboradas_tipos_v'
@@ -28,6 +29,9 @@ class TestPilaHorasLaboradas(pension.TestPensionNoExigida):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # H-F4-08: el registro tipo 2 ahora exige la Direccion de Trabajo completa (campos 9 y 10 de la PILA; por defecto, la del contacto de la compañia, antes de crear a los empleados).
+        [(departamento, ciudad)] = ubicaciones_de_prueba(cls.env, 1)
+        cls.company.partner_id.write({'country_id': cls.env.ref('base.co').id, 'state_id': departamento.id, 'city_id': ciudad.id, 'street': 'Calle de prueba # 1-1'})
         cls.cal_42 = cls._calendario('42 horas en 6 dias', (0, 1, 2, 3, 4, 5), ((8.0, 12.0), (13.0, 16.0)))                          # 6 dias de 7 h
         cls.cal_42_en_5 = cls._calendario('42 horas en 5 dias', (0, 1, 2, 3, 4), ((8.0, 12.0), (13.0, 17.4)))                       # 5 dias de 8,4 h
         cls.cal_48 = cls._calendario('48 horas en 6 dias', (0, 1, 2, 3, 4, 5), ((8.0, 12.0), (13.0, 17.0)))                         # 6 dias de 8 h

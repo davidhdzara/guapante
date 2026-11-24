@@ -1806,6 +1806,61 @@ class HrPayslip(models.Model):
             ))
         return partner
 
+    def _ne_ubicacion_laboral_pila(self):
+        """``(departamento, municipio)`` de los campos 9 y 10 del registro tipo 2 de la PILA (H-F4-08, doc 99).
+
+        Es la ubicación LABORAL del cotizante, no su domicilio (Anexo Técnico 2 de la Res. 2388/2016, campos 9 y 10: «código del
+        departamento / municipio de la ubicación laboral»). La fuente es la MISMA que usan los 4 atributos ``LugarTrabajo*`` del
+        XML de nómina: la «Dirección de Trabajo» del empleado (``_ne_lugar_trabajo_partner``): PILA y XML no pueden discrepar. Una
+        ciudad o un departamento sin código DANE, o una ciudad que no es del departamento, es un ``UserError`` que nombra al empleado:
+        ya no sale en blanco, sin aviso, para todos (el defecto de origen leía ``address_home_id``, que no existe en Odoo 18).
+
+        - Departamento: ``dian_utils.get_department_code`` (2 dígitos).
+        - Municipio: el código DANE de la ciudad (``l10n_co_edi_code``, se EXIGE: no cae a ``zipcode``) menos el prefijo del
+          departamento (``dian_utils.get_pila_municipality_code``).
+
+        Colombiano en el exterior (campo 8 en «X», ``l10n_co_pila_colombiano_exterior``): los DOS campos van en blanco, sin consultar la
+        Dirección de Trabajo, porque así lo manda el anexo («de lo contrario se deberá dejar en blanco»). **Fuera de alcance, a
+        propósito:** si ese cotizante aporta voluntariamente a una caja de compensación, el anexo pide reportar el departamento y el
+        municipio de ubicación de LA CAJA; el módulo no modela ese aporte. No es una omisión (decisión del TL, 23-nov, Q1).
+
+        No se compara con el departamento de la caja de compensación (el anexo dice que el operador lo valida y el módulo no guarda el
+        departamento de cobertura de la caja; decisión del TL, Q3).
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        if employee.l10n_co_pila_colombiano_exterior:
+            return '', ''
+        partner = self._ne_lugar_trabajo_partner()
+        departamento = dian_utils.get_department_code(partner.state_id)
+        ciudad = partner.city_id
+        try:
+            municipio = dian_utils.get_pila_municipality_code(departamento, getattr(ciudad, 'l10n_co_edi_code', None))
+        except ValueError as motivo:
+            razon = motivo.args[0] if motivo.args else ''
+            datos = {'employee': employee.name, 'ciudad': ciudad.name, 'departamento': partner.state_id.name,
+                     'dep_codigo': departamento or '-', 'ciudad_codigo': getattr(ciudad, 'l10n_co_edi_code', None) or '-'}
+            if razon == 'departamento_sin_codigo':
+                raise UserError(_(
+                    'El departamento "%(departamento)s" de la Dirección de Trabajo de %(employee)s no tiene un código DANE numérico '
+                    '(se encontró "%(dep_codigo)s"). Complételo en la configuración de departamentos: el campo 9 de la PILA '
+                    '(departamento de ubicación laboral) no se deja en blanco ni se inventa.', **datos))
+            if razon == 'ciudad_sin_codigo':
+                raise UserError(_(
+                    'La ciudad "%(ciudad)s" de la Dirección de Trabajo de %(employee)s (departamento "%(departamento)s") no tiene '
+                    'código DANE (campo l10n_co_edi_code de la ciudad). Complete el código o elija otra ciudad: el campo 10 de la '
+                    'PILA (municipio de ubicación laboral) no se deja en blanco ni se toma del código postal.', **datos))
+            if razon == 'ciudad_otro_departamento':
+                raise UserError(_(
+                    'La ciudad "%(ciudad)s" (código DANE %(ciudad_codigo)s) de la Dirección de Trabajo de %(employee)s no pertenece '
+                    'al departamento "%(departamento)s" (código %(dep_codigo)s): su código no empieza por el del departamento. '
+                    'Corrija la ciudad o el departamento antes de generar la planilla PILA.', **datos))
+            raise UserError(_(
+                'El código DANE de la ciudad "%(ciudad)s" de la Dirección de Trabajo de %(employee)s no es válido (se encontró '
+                '"%(ciudad_codigo)s"; debe ser numérico, de máximo %(longitud)s dígitos). Corríjalo antes de generar la planilla PILA.',
+                longitud=dian_utils.DANE_MUNICIPIO_LONGITUD, **datos))
+        return departamento, municipio
+
     def _ne_tipo_documento(self):
         """Código DIAN (TipoDocumento del nodo <Trabajador>) del tipo de identificación
         del empleado (UX-02, 2026-10-11, decisión de David + Tech Lead).
