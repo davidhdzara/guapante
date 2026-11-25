@@ -9,7 +9,7 @@ fechas van en ISO y un vínculo vacío es ``false``. El resultado lleva el prefi
 import hashlib
 import json
 
-VERSION = '1'
+VERSION = '2'
 
 
 def _numero(valor):
@@ -28,7 +28,7 @@ def _ordenadas(filas):
     return sorted(filas, key=json.dumps)
 
 
-def huella(cabecera, salario, entradas, dias, ajustes, ausencias):
+def huella(cabecera, salario, entradas, dias, ajustes, ausencias, mes=None):
     """Texto ``"<versión>:<sha256>"`` de los datos de un recibo.
 
     :param cabecera: (empleado_id, contrato_id, estructura_id, fecha_desde, fecha_hasta)
@@ -37,6 +37,7 @@ def huella(cabecera, salario, entradas, dias, ajustes, ausencias):
     :param dias: iterable de (tipo_de_entrada_de_trabajo_id, número_de_días, número_de_horas)
     :param ajustes: iterable de (regla_id, cantidad, porcentaje, importe)
     :param ausencias: iterable de (ausencia_id, fecha_desde, fecha_hasta, tipo_de_ausencia_id)
+    :param mes: lo que la retención lee del mes (R-2): ``None`` o ``[cierra, [[recibo_id, base, base_salarial, retenido, exento], ...]]``
     """
     empleado, contrato, estructura, desde, hasta = cabecera
     datos = {
@@ -46,6 +47,7 @@ def huella(cabecera, salario, entradas, dias, ajustes, ausencias):
         'dias': _ordenadas([[_vinculo(tipo), _numero(numero), _numero(horas)] for tipo, numero, horas in dias]),
         'ajustes': _ordenadas([[_vinculo(regla), _numero(cantidad), _numero(porcentaje), _numero(importe)] for regla, cantidad, porcentaje, importe in ajustes]),
         'ausencias': _ordenadas([[_vinculo(ausencia), _fecha(inicio), _fecha(fin), _vinculo(tipo)] for ausencia, inicio, fin, tipo in ausencias]),
+        'mes': mes,
     }
     texto = json.dumps(datos, sort_keys=True, separators=(',', ':'))
     return '%s:%s' % (VERSION, hashlib.sha256(texto.encode('utf-8')).hexdigest())

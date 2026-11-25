@@ -1098,6 +1098,8 @@ class HrPayslip(models.Model):
         # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
         # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
         res = True
+        con_huella._ne_rete_validar_pendientes()        # R-2: el recibo que retiene por el mes exige confirmados los que suman antes que él
+        cifras_retencion = {}
         for company in self.company_id:
             recibos = self.filtered(lambda s, c=company: s.company_id == c).with_company(company)
             # E11 pieza 2b (.288): el gancho de ``hr.salary.rule._compute_rule`` anota en este diccionario lo que SUGIRIÓ cada regla ajustada;
@@ -1109,10 +1111,11 @@ class HrPayslip(models.Model):
             # gancho de ``_compute_rule`` escribía lo sugerido allí y ``_ne_registrar_ajustes`` leía este ``sugeridos`` (vacío), así que el ajuste
             # quedaba «sin línea» aunque sí se aplicaba (N2 «co» de .289: test_02 y test_03). Con el token el contexto nunca coincide con el de otro
             # cálculo y el diccionario que lee el gancho es siempre este.
-            res = super(HrPayslip, recibos.with_context(ne_sugeridos=sugeridos, ne_calculo=uuid.uuid4().hex)).compute_sheet()
+            res = super(HrPayslip, recibos.with_context(ne_sugeridos=sugeridos, ne_retencion=cifras_retencion, ne_calculo=uuid.uuid4().hex)).compute_sheet()
             recibos._ne_registrar_ajustes(sugeridos)
             recibos._ne_regenerar_conceptos()
         colombia._ne_validar_terceros_deducciones()
+        con_huella._ne_rete_guardar_cifras(cifras_retencion)
         con_huella._ne_guardar_huella()                 # solo si TODO el calculo termino: un error antes de aqui deja la huella anterior
         return res
 
@@ -1506,8 +1509,8 @@ class HrPayslip(models.Model):
 
     def _ne_huella_calculo(self):
         """La huella de los datos ACTUALES del recibo (``services.huella_calculo``). Datos propios del recibo que el cálculo lee: cabecera, salario del contrato (D1), novedades, días
-        trabajados (las reglas de básico y de ausencias los leen), ajustes de la empresa y las ausencias VALIDADAS del empleado que se cruzan con el periodo (D2; la cadena de prórrogas
-        anterior al periodo no entra). Fuera: parámetros, reglas, datos del empleado, el resto del contrato y recibos anteriores (se resuelven con «Calcular hoja»)."""
+        trabajados (las reglas de básico y de ausencias los leen), ajustes de la empresa, lo que la retención lee del mes (R-2: si cierra y los recibos confirmados) y las ausencias VALIDADAS del empleado que se cruzan con el periodo (D2; la cadena de prórrogas
+        anterior al periodo no entra). Fuera: parámetros, reglas, datos del empleado, el resto del contrato y los demás recibos anteriores (se resuelven con «Calcular hoja»)."""
         self.ensure_one()
         recibo = self.sudo()                 # solo se resumen valores: no depende de las reglas de acceso del usuario que calcula o confirma
         ausencias = self.env['hr.leave'].sudo().search([
@@ -1519,7 +1522,8 @@ class HrPayslip(models.Model):
             entradas=[(e.input_type_id.id, e.amount) for e in recibo.input_line_ids],
             dias=[(d.work_entry_type_id.id, d.number_of_days, d.number_of_hours) for d in recibo.worked_days_line_ids],
             ajustes=[(a.salary_rule_id.id, a.quantity, a.rate, a.amount) for a in recibo.l10n_co_ajuste_ids],
-            ausencias=[(a.id, a.request_date_from, a.request_date_to, a.holiday_status_id.id) for a in ausencias])
+            ausencias=[(a.id, a.request_date_from, a.request_date_to, a.holiday_status_id.id) for a in ausencias],
+            mes=recibo._ne_rete_huella())
 
     def _ne_guardar_huella(self):
         """Guarda la huella de cada recibo. Escribe por debajo de ``HrPayslip.write`` (``super``): así la guarda que rechaza escrituras externas no depende de un contexto que un cliente RPC
@@ -1555,6 +1559,9 @@ class HrPayslip(models.Model):
         colombia._ne_validar_pacto_no_salarial()
         colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
         colombia._ne_validar_hoja_al_dia()        # C-24: despues de las anteriores y antes de crear el asiento o cambiar el estado
+        colombia._ne_validar_retencion_conjunto()  # R-2: la retencion del mes no ve los recibos que se confirman a la vez
+        colombia._ne_validar_retencion_incompleta()
+        colombia._ne_validar_neto_no_negativo()
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()
@@ -2453,19 +2460,6 @@ class HrPayslip(models.Model):
         meses = (fecha_fin.year - fecha_ini.year) * 12 + (fecha_fin.month - fecha_ini.month)
         return (meses * dias_mes + self._ne_dia_comercial(fecha_fin, dias_mes)
                 - self._ne_dia_comercial(fecha_ini, dias_mes) + 1)
-
-    def _ne_resultado_retefuente(self, categories):
-        """Resultado de la depuracion de la retencion en la fuente de la NOMINA GENERAL (el dict de ``l10n.co.retefuente.uvt.compute_retefuente``): UN solo lugar que arma las entradas -- ingreso bruto
-        (categoria GROSS o el sueldo), IBC de pension y salud (DEV_SAL, o el sueldo por el factor del integral) -- y llama a la depuracion. Lo usan las reglas CO_RETEFUENTE, CO_EXENTO_PENSION_AFC y
-        CO_RETEFUENTE_EXCESO_LIMITE (antes cada una copiaba las entradas: H-F1-02). Sin configuracion de retencion del anio, el error de ``_ne_retefuente_config``."""
-        self.ensure_one()
-        contract = self.contract_id
-        gross = categories['GROSS'] if categories.get('GROSS') else contract.wage
-        ibc = categories.get('DEV_SAL', contract.wage)
-        if contract.l10n_co_ne_integral_salary:
-            ibc = contract.wage * self._rule_parameter('l10n_co_factor_integral_salary', self.date_from)
-        return self._ne_retefuente_config().compute_retefuente(
-            self.employee_id, gross, ibc, ibc, self.employee_id.company_id, contract=contract, payslip=self)
 
     def _ne_retefuente_config(self):
         """Configuracion de retencion en la fuente (l10n.co.retefuente.uvt) del anio de la

@@ -468,6 +468,24 @@ Esquema <strong>PROVISIONAL</strong> «mientras el Ministerio de Salud y Protecc
         <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
     </record>
 
+    <!-- R-2 (doc 108 §9; decisión del TL del 25-nov, QA 60q §2): qué entra en la base de la retención en la fuente del mes. Versionado por fecha. -->
+    <record id="rule_parameter_retefuente_base_mes" model="hr.rule.parameter">
+        <field name="name">Colombia: Base de la Retención en la Fuente del Mes</field>
+        <field name="code">l10n_co_retefuente_base_mes</field>
+        <field name="country_id" ref="base.co"/>
+        <field name="description" type="html"><p>Diccionario con tres listas de códigos, las tres obligatorias: <code>categorias</code> (categorías de reglas salariales cuyos valores forman la base, con sus
+subcategorías), <code>reglas_excluidas</code> (reglas de esas categorías que no entran) y <code>reglas_adicionales_liquidacion</code> (reglas de otra categoría que entran solo en la liquidación).</p>
+<p>Los pagos de la relación laboral están gravados salvo exención expresa (E.T. art. 206, inciso 1): por eso entra <code>DEV_NOSAL</code>, incluidos los conceptos que cree la empresa. El auxilio de
+transporte, alimentación, viáticos no salariales, dotación, teletrabajo y la bonificación por retiro y la indemnización de la nómina quedan excluidos porque su tratamiento propio NO está verificado.
+Las cesantías y sus intereses se mantienen en la liquidación mientras no se verifique si llevan retención propia. La prima se retiene aparte.</p>
+<p>Un cambio se registra como un valor nuevo con su fecha de vigencia; no edite uno anterior.</p></field>
+    </record>
+    <record id="rule_parameter_retefuente_base_mes_2023" model="hr.rule.parameter.value">
+        <field name="parameter_value">{'categorias': ['DEV_SAL', 'VAC', 'INC', 'DEV_NOSAL'], 'reglas_excluidas': ['CO_AUX_TRANS', 'CO_AUX_ALIM', 'CO_VIATICOS_NOSAL', 'CO_DOTACION', 'CO_TELETRABAJO', 'CO_BONIF_RET', 'CO_INDEMNIZ'], 'reglas_adicionales_liquidacion': ['CO_LIQ_CESANTIAS', 'CO_LIQ_INT_CES']}</field>
+        <field name="rule_parameter_id" ref="rule_parameter_retefuente_base_mes"/>
+        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
+    </record>
+
     <record id="rule_parameter_aviso_anio_siguiente_desde_mes" model="hr.rule.parameter">
         <field name="name">Colombia: Aviso de Parámetros del Año Siguiente (Desde el Mes)</field>
         <field name="code">l10n_co_aviso_anio_siguiente_desde_mes</field>

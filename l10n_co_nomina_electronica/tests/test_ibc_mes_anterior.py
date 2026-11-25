@@ -75,7 +75,7 @@ class TestIbcMesAnterior(base.TestIncapacidadTramoProrroga):
 
     def test_el_primer_recibo_del_mes_y_el_segundo_usan_el_mismo_mes_anterior(self):
         empleado, contrato = self._con_agosto_en_dos_quincenas('MismoMes')
-        primero = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 15))
+        primero = self._recibo(empleado, contrato, date(2026, 9, 1), date(2026, 9, 15), confirmar=True)      # R-2: el segundo cierra el mes
         segundo = self._recibo(empleado, contrato, date(2026, 9, 16), date(2026, 9, 30))
         self.assertAlmostEqual(primero._ne_ibc_mes_anterior(contrato), segundo._ne_ibc_mes_anterior(contrato), delta=0.01)
 

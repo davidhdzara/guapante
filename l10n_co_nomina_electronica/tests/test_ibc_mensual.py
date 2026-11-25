@@ -60,6 +60,7 @@ class TestIbcMensual(TransactionCase):
     def test_dos_recibos_el_techo_se_aplica_sobre_la_suma(self):
         employee, contract = self._empleado('Dos', 80000000.0)
         a = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
+        a.state = 'done'      # R-2: el segundo cierra el mes y exige el primero confirmado
         b = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
         self._confirmar(a, b)
         cons = self.Consolidado.search([('employee_id', '=', employee.id)])
@@ -73,7 +74,9 @@ class TestIbcMensual(TransactionCase):
     def test_independiente_del_orden_de_confirmacion(self):
         employee, contract = self._empleado('Orden', 80000000.0)
         a = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
+        a.state = 'done'      # R-2: el segundo cierra el mes y exige el primero confirmado
         b = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
+        a.state = 'draft'      # el caso parte con un solo recibo confirmado
         b.state = 'done'
         b._ne_refrescar_ibc_mensual()
         parcial = self.Consolidado.search([('employee_id', '=', employee.id)]).ibc_sp
@@ -123,6 +126,7 @@ class TestIbcMensual(TransactionCase):
         employee, contract = self._empleado('Integral', 20000000.0)
         contract.l10n_co_ne_integral_salary = True
         a = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
+        a.state = 'done'      # R-2: el segundo cierra el mes y exige el primero confirmado
         b = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
         self._confirmar(a, b)
         cons = self.Consolidado.search([('employee_id', '=', employee.id)])
@@ -136,6 +140,7 @@ class TestIbcMensual(TransactionCase):
         con dos recibos de un salario sobre 25 SMMLV la suma NO se topa (la de salud y pensión sí) y la diferencia con los recibos queda en cero."""
         employee, contract = self._empleado('Paraf mensual', 80000000.0)
         a = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
+        a.state = 'done'      # R-2: el segundo cierra el mes y exige el primero confirmado
         b = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
         self._confirmar(a, b)
         cons = self.Consolidado.search([('employee_id', '=', employee.id)])

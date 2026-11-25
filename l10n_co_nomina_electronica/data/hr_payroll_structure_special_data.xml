@@ -196,8 +196,10 @@ _valor_prima = result_rules['CO_PRIMA_VALOR']['total']
 # .164 (CST Art. 307; ET arts. 55-56): la prima no lleva aportes de salud ni pension del
 # empleado, y los aportes obligatorios solo son ingreso no constitutivo cuando se pagan
 # efectivamente -> IBC 0: la base de retencion no resta aportes que no existieron.
+# R-2: la prima se retiene aparte, con el procedimiento y el porcentaje fijo del CONTRATO, sin aportes voluntarios
 _rete_result = _rete_cfg.compute_retefuente(
-    employee, _valor_prima, 0.0, 0.0, employee.company_id
+    employee, _valor_prima, 0.0, 0.0, employee.company_id,
+    contract=contract, payslip=payslip, fecha_mes=payslip.date_to, sin_aportes_voluntarios=True,
 )
 _valor = _rete_result.get('retencion_pesos', 0)
 result = -abs(_valor) if _valor &gt; 0 else 0
@@ -958,29 +960,35 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Configuracion de retencion del ano (error claro si falta, .167)
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-result = bool(_rete_cfg)
+# R-2: la liquidacion siempre cierra el mes
+result = payslip._ne_resultado_retefuente(result_rules)['retiene']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Calculo de retencion en la fuente sobre la liquidacion
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-# Bruto total de la liquidacion
-_gross = categories['DEV'] if categories.get('DEV') else 0
-_ibc = categories.get('DEV_SAL', contract.wage)
-if contract.l10n_co_ne_integral_salary:
-    _ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_to)
-
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _gross, _ibc, _ibc, employee.company_id
-)
-_valor = _rete_result.get('retencion_pesos', 0)
-result = -abs(_valor) if _valor &gt; 0 else 0
+# R-2 (doc 108): retencion del mes (esta liquidacion y los recibos confirmados del mes) menos lo ya retenido, con tope en lo disponible
+_res = payslip._ne_resultado_retefuente(result_rules)
+_valor = payslip._ne_rete_linea(result_rules, _res)
+result = -_valor if _valor &gt; 0 else 0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">RetencionFuente</field>
+        </record>
+
+        <record id="hr_salary_rule_co_liq_exento_pension_afc" model="hr.salary.rule">
+            <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
+            <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="sequence">111</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = payslip._ne_resultado_retefuente(result_rules)['retiene']</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_resultado_retefuente(result_rules)['exento']</field>
+            <field name="appears_on_payslip" eval="False"/>
         </record>
 
         <!-- ==================== CO_LIQ_EMBARGO / CO_LIQ_LIBRANZAS ====================
@@ -1151,26 +1159,34 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Configuracion de retencion del ano (error claro si falta, .167)
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-result = bool(_rete_cfg) and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
+# R-2 (D1): la bonificacion retiene el saldo del mes solo si el cierre ya esta confirmado (Proc. 2: siempre)
+result = result_rules['CO_BON_VALOR']['total'] &gt; 0 and payslip._ne_resultado_retefuente(result_rules)['retiene']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Calculo de retencion en la fuente sobre la bonificacion
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-_valor_bon = result_rules['CO_BON_VALOR']['total']
-_ibc = _valor_bon if payslip.l10n_co_ne_is_salarial else 0
-
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _valor_bon, _ibc, _ibc, employee.company_id
-)
-_valor = _rete_result.get('retencion_pesos', 0)
-result = -abs(_valor) if _valor &gt; 0 else 0
+_res = payslip._ne_resultado_retefuente(result_rules)
+_valor = payslip._ne_rete_linea(result_rules, _res)
+result = -_valor if _valor &gt; 0 else 0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">RetencionFuente</field>
+        </record>
+
+        <record id="hr_salary_rule_co_bon_exento_pension_afc" model="hr.salary.rule">
+            <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
+            <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="sequence">31</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = payslip._ne_resultado_retefuente(result_rules)['retiene']</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_resultado_retefuente(result_rules)['exento']</field>
+            <field name="appears_on_payslip" eval="False"/>
         </record>
 
         <!-- ==================== CO_BON_NETO ==================== -->

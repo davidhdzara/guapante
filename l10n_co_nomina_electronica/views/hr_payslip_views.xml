@@ -140,6 +140,23 @@
                     <br/>
                     Revise los detalles del error en el chatter a continuación. Corrija los datos correspondientes en el empleado, contrato o compañía, y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo (sin desperdiciar números).
                 </div>
+
+                <!-- R-2: la retención en la fuente no cabe en el recibo -->
+                <div class="alert alert-danger mb-0" role="alert" invisible="l10n_co_ne_rete_faltante &lt;= 0">
+                    <strong>La retención en la fuente no cabe en este recibo.</strong>
+                    Por descontar: <field name="l10n_co_ne_rete_a_descontar" class="oe_inline"/>;
+                    disponible: <field name="l10n_co_ne_rete_disponible" class="oe_inline"/>;
+                    sin practicar: <field name="l10n_co_ne_rete_faltante" class="oe_inline"/>.
+                    Para confirmar, el administrador de nómina debe marcar «Autorizo confirmar con retención incompleta».
+                </div>
+                <group invisible="l10n_co_ne_rete_faltante &lt;= 0">
+                    <group>
+                        <field name="l10n_co_ne_rete_autorizada" groups="hr_payroll.group_hr_payroll_manager" readonly="state not in ('draft', 'verify')"/>
+                        <field name="l10n_co_ne_rete_autorizada_por" invisible="not l10n_co_ne_rete_autorizada_por"/>
+                        <field name="l10n_co_ne_rete_autorizada_fecha" invisible="not l10n_co_ne_rete_autorizada_fecha"/>
+                        <field name="currency_id" invisible="1"/>
+                    </group>
+                </group>
             </xpath>
 
             <!-- Notebook page for NE details -->
