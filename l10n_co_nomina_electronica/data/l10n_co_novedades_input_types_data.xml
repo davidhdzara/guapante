@@ -204,4 +204,9 @@
         </record>
 
     </data>
+    <!-- H-F1-09 (doc 88, D2 del TL): el apoyo de sostenimiento del aprendiz es el sueldo del contrato; la novedad deja de ofrecerse. Los registros de arriba son noupdate="1", así que se archiva con
+         una función (el campo ``active`` es nativo: hr_payroll/models/hr_payslip_input_type.py:17, Odoo 18). Los recibos que ya la traen la conservan y su cálculo pide borrarla. -->
+    <data>
+        <function model="hr.payslip.input.type" name="_ne_retirar_tipos_reemplazados"/>
+    </data>
 </odoo>

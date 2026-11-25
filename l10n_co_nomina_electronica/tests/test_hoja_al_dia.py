@@ -137,7 +137,8 @@ class TestHojaAlDia(TransactionCase):
 
     def _no_se_confirma(self, recibos):
         estados = recibos.mapped('state')
-        with self.assertRaisesRegex(UserError, _DESACTUALIZADA) as error:
+        # sin avisos de traduccion («no translation language detected»): el mensaje del bloqueo busca el idioma en el marco que llama a `_()`
+        with self.assertNoLogs('odoo.tools.translate', 'WARNING'), self.assertRaisesRegex(UserError, _DESACTUALIZADA) as error:
             self._confirmar(recibos)
         self.assertEqual(recibos.mapped('state'), estados)
         return str(error.exception)

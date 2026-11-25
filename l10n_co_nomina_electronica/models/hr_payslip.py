@@ -431,6 +431,12 @@ class HrPayslip(models.Model):
                         meses=tope['meses'], base=format_amount(self.env, tope['base'], recibo.company_id.currency_id),
                         promedio=format_amount(self.env, tope['promedio'], recibo.company_id.currency_id), tope=format_amount(self.env, tope['tope'], recibo.company_id.currency_id)))
             if sin_base:
+                try:                      # H-F1-09: el aprendiz cotiza sobre 1 SMMLV y su sueldo es su apoyo: el aviso de la base no le aplica
+                    if recibo._ne_regimen_cotizante()['es_aprendiz']:
+                        sin_base = {}
+                except UserError as error:
+                    avisos.append(error.args[0])
+            if sin_base:
                 avisos.insert(0, _(
                     'No hay IBC del mes anterior (%(meses)s) para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada, días de suspensión o incapacidad en este recibo es el '
                     'sueldo de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
@@ -468,18 +474,22 @@ class HrPayslip(models.Model):
         ``l10n_co_aprendiz_etapas``, tuplas ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador, paga auxilio de transporte, causa prestaciones)`` con ``'*'`` como comodín del tipo de contrato; un
         contrato que no aparece NO es de aprendiz (``etapa`` falso y las dos decisiones verdaderas: las reglas generales, con sus topes, deciden). Las reglas del apoyo de sostenimiento, la salud, la base de
         parafiscales, el auxilio de transporte, las prestaciones de las estructuras de prima y liquidación (H-F1-12: prima, cesantías, intereses y vacaciones) y el TipoTrabajador del XML lo consultan.
-        La decisión de qué AFP no se exige vive en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las seis columnas, un error que lo nombra (sin valor por defecto)."""
+        La decisión de qué AFP no se exige vive en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las seis columnas, un error que lo nombra (sin valor por defecto).
+        ``es_aprendiz`` (H-F1-09): el contrato está en la tabla; su sueldo es el apoyo de sostenimiento."""
         self.ensure_one()
-        fecha = self._ne_fecha_parametros()
+        contrato = self.contract_id
+        return self._ne_regimen_de(contrato.l10n_co_pila_tipo_cotizante or '', contrato.l10n_co_ne_contract_type or '', self._ne_fecha_parametros(), self.employee_id.name)
+
+    @api.model
+    def _ne_regimen_de(self, tipo, tipo_contrato, fecha, empleado):
+        """La tabla ``l10n_co_aprendiz_etapas`` vigente en ``fecha`` para un tipo de cotizante y un tipo de contrato (ver ``_ne_regimen_cotizante``, que es quien la explica). Separada del recibo para que el
+        contrato la consulte al cambiar de etapa (H-F1-09). ``empleado``: nombre para los mensajes."""
         try:
             tabla = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_aprendiz_etapas', fecha)
         except UserError:
             raise UserError(_(
                 'Falta el parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) para el %(fecha)s, que se necesita para calcular el recibo '
-                'de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.', fecha=fecha, empleado=self.employee_id.name)) from None
-        contrato = self.contract_id
-        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
-        tipo_contrato = contrato.l10n_co_ne_contract_type or ''
+                'de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.', fecha=fecha, empleado=empleado)) from None
         for fila in tabla:
             if len(fila) != 6:
                 raise UserError(_(
@@ -488,8 +498,26 @@ class HrPayslip(models.Model):
                     'Configuración > Parámetros de reglas.', fila=fila, fecha=fecha))
             clave_tipo, clave_contrato, etapa, tipo_trabajador, paga_auxilio, causa_prestaciones = fila
             if clave_tipo == tipo and clave_contrato in ('*', tipo_contrato):
-                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio), 'causa_prestaciones': bool(causa_prestaciones)}
-        return {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True}
+                return {'etapa': etapa, 'es_aprendiz': bool(etapa), 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio), 'causa_prestaciones': bool(causa_prestaciones)}
+        return {'etapa': False, 'es_aprendiz': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True}
+
+    def _ne_es_aprendiz_validado(self):
+        """H-F1-09 (doc 88): la llaman las reglas que pagan el sueldo o toman su base (``CO_BASICO``, ``CO_LIQ_SALARIOS``, ``CO_PRIMA_BASE``). Devuelve si el recibo es de un aprendiz. El apoyo de
+        sostenimiento del aprendiz ES el sueldo de su contrato (única fuente): un recibo con la novedad ``CO_APOYO_SOST`` con valor (la forma anterior) es un error, porque se pagaría dos veces; y un contrato de
+        aprendiz con el sueldo en 0 también, porque no hay de dónde calcular. Sin valores por defecto: los dos errores nombran al empleado y dicen qué hacer."""
+        self.ensure_one()
+        novedades = self.input_line_ids.filtered(lambda entrada: entrada.input_type_id.code == 'CO_APOYO_SOST' and entrada.amount)
+        if novedades:
+            raise UserError(_(
+                'El recibo de %(empleado)s trae la novedad «%(novedad)s»: el apoyo de sostenimiento ya no se carga como novedad, es el sueldo del contrato del aprendiz (con la novedad se pagaría dos veces). '
+                'Borre la novedad del recibo. Si es un aprendiz, registre el apoyo mensual como sueldo del contrato «%(contrato)s» y revise su tipo de cotizante y su tipo de contrato.',
+                empleado=self.employee_id.name, novedad=novedades[0].input_type_id.name, contrato=self.contract_id.name))
+        es_aprendiz = self._ne_regimen_cotizante()['es_aprendiz']
+        if es_aprendiz and self.contract_id.wage <= 0:
+            raise UserError(_(
+                'El contrato «%(contrato)s» de %(empleado)s es de un aprendiz (por su tipo de cotizante y su tipo de contrato) y tiene el sueldo en 0: el apoyo de sostenimiento es el sueldo del contrato. '
+                'Registre en el contrato el apoyo mensual de su etapa.', contrato=self.contract_id.name, empleado=self.employee_id.name))
+        return es_aprendiz
 
     def _ne_no_cotiza_pension(self):
         """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
@@ -1506,13 +1534,14 @@ class HrPayslip(models.Model):
         viejos = self.filtered(lambda r: r.state in ('draft', 'verify') and not r.edited and not r.credit_note and r.l10n_co_ne_huella_calculo != r._ne_huella_calculo())
         if not viejos:
             return
-        lineas = '\n'.join(
-            _('- «%(recibo)s» de %(empleado)s (%(desde)s a %(hasta)s)', recibo=r.number or r.name, empleado=r.employee_id.name, desde=r.date_from, hasta=r.date_to) for r in viejos)
+        lineas = []
+        for r in viejos:        # un bucle y no un generador: `_()` busca el idioma en las variables del marco; en un generador sin `self` no lo encuentra, no traduce y avisa en el log
+            lineas.append(_('- «%(recibo)s» de %(empleado)s (%(desde)s a %(hasta)s)', recibo=r.number or r.name, empleado=r.employee_id.name, desde=r.date_from, hasta=r.date_to))
         raise UserError(_(
             'No se puede confirmar: la hoja de cálculo no está al día en %(cantidad)s recibo(s):\n%(recibos)s\n'
             'Cambiaron sus novedades, ajustes, días trabajados, datos del recibo, el salario del contrato o las ausencias del periodo después del último cálculo, o la hoja se calculó antes de '
             'esta versión. Abra cada recibo, pulse «Calcular hoja», revise las líneas y vuelva a confirmar. «Recalcular la hoja entera» además rehace los días trabajados y descarta los que se '
-            'hayan editado a mano.', cantidad=len(viejos), recibos=lineas))
+            'hayan editado a mano.', cantidad=len(viejos), recibos='\n'.join(lineas)))
 
     def action_payslip_done(self):
         """
@@ -3774,8 +3803,12 @@ class HrPayslip(models.Model):
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
         # Sueldo básico
-        if 'Sueldo' in concept_lines:
-            sueldo_lines = concept_lines['Sueldo']
+        sueldo_lines = concept_lines.get('Sueldo', [])
+        # H-F1-09: el sueldo del contrato de un aprendiz es su apoyo (nodo ApoyoSost) y la línea del sueldo queda en 0 (arriba se omite); Basico es obligatorio en el XSD: va con sus días y
+        # SueldoTrabajado 0.00. Solo en los recibos que pagan sueldo (nómina y liquidación): un recibo de prima no suma días.
+        apoyo = (not sueldo_lines and self.line_ids.filtered(lambda l: l.code in self._NE_BASICO_CODES)
+                 and self._ne_regimen_cotizante()['es_aprendiz'])
+        if sueldo_lines or apoyo:
             dias_pagables = self._ne_dias_pagables()
             if dias_pagables <= 0:
                 raise UserError(_(

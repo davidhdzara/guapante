@@ -157,7 +157,30 @@ class HrContract(models.Model):
         contratos._ne_validar_piso_integral()
         return contratos
 
+    def _ne_validar_cambio_de_etapa(self, vals):
+        """H-F1-09 (D3, doc 88; Decreto 223 de 2026, art. 2.2.6.3.3.6, par. 3: solo la fase práctica o la formación dual cuentan como tiempo de servicio). La antigüedad para prima, cesantías y vacaciones sale de la
+        fecha de inicio del contrato: un contrato con recibos confirmados de una etapa de aprendiz SIN prestaciones no puede pasar a una etapa de aprendiz que SÍ las causa. Un contrato por etapa. Se mira ANTES
+        de escribir: la etapa de cada recibo confirmado con los datos actuales del contrato y la nueva con los datos que llegan, hoy."""
+        Recibo = self.env['hr.payslip'].sudo()      # quien edita contratos (Empleados) no tiene por qué leer recibos ni parámetros de nómina: solo se usa para decidir y dar el error
+        for contrato in self.filtered(lambda c: c.company_id._ne_es_colombia()):
+            actual = (contrato.l10n_co_pila_tipo_cotizante or '', contrato.l10n_co_ne_contract_type or '')
+            nuevo = (vals.get('l10n_co_pila_tipo_cotizante', actual[0]) or '', vals.get('l10n_co_ne_contract_type', actual[1]) or '')
+            if nuevo == actual:
+                continue
+            etapa = Recibo._ne_regimen_de(nuevo[0], nuevo[1], fields.Date.context_today(contrato), contrato.employee_id.name)
+            if not (etapa['es_aprendiz'] and etapa['causa_prestaciones']):
+                continue
+            for recibo in Recibo.search([('contract_id', '=', contrato.id), ('state', 'in', ('done', 'paid'))]):
+                anterior = recibo._ne_regimen_cotizante()
+                if anterior['es_aprendiz'] and not anterior['causa_prestaciones']:
+                    raise UserError(_(
+                        'El contrato «%(contrato)s» de %(empleado)s tiene recibos confirmados de la etapa lectiva (por ejemplo «%(recibo)s») y no puede pasar a la etapa práctica: la antigüedad para prima, '
+                        'cesantías y vacaciones sale de la fecha de inicio del contrato y contaría la lectiva (Decreto 223 de 2026, art. 2.2.6.3.3.6, parágrafo 3). Cierre este contrato y cree el de la '
+                        'práctica, con su fecha de inicio y como sueldo el apoyo de esa etapa.', contrato=contrato.name, empleado=contrato.employee_id.name, recibo=recibo.name))
+
     def write(self, vals):
+        if {'l10n_co_pila_tipo_cotizante', 'l10n_co_ne_contract_type'} & set(vals):
+            self._ne_validar_cambio_de_etapa(vals)
         resultado = super().write(vals)
         if {'wage', 'l10n_co_ne_integral_salary', 'date_start'} & set(vals):
             # Un cambio solo de salario se valida con el SMMLV de hoy; si se toca el ingreso o

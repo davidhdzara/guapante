@@ -98,9 +98,10 @@ class TestAprendizPrestaciones(TransactionCase):
         recibo = self._de_liquidacion(*LECTIVA)
         for codigo in PRESTACIONES_DE_LIQUIDACION + ('CO_LIQ_VAC_DISFRUTADAS',):
             self.assertFalse(self._linea(recibo, codigo), codigo)
-        salarios = self._linea(recibo, 'CO_LIQ_SALARIOS')
-        self.assertTrue(salarios.total)
-        self.assertAlmostEqual(self._linea(recibo, 'CO_LIQ_NETO').total, salarios.total, delta=0.01)
+        apoyo = self._linea(recibo, 'CO_APOYO_SOST')                       # H-F1-09: lo pendiente del tramo es el apoyo; CO_LIQ_SALARIOS queda en 0
+        self.assertTrue(apoyo.total)
+        self.assertFalse(self._linea(recibo, 'CO_LIQ_SALARIOS').total)
+        self.assertAlmostEqual(self._linea(recibo, 'CO_LIQ_NETO').total, apoyo.total, delta=0.01)
 
     # ── practica, dual y dependiente: sin cambio ──
     def test_la_practica_y_el_dependiente_siguen_con_la_prima_sobre_sueldo_mas_auxilio(self):
@@ -148,7 +149,7 @@ class TestAprendizPrestaciones(TransactionCase):
     def test_la_lectiva_con_vacaciones_de_un_mes_anterior_no_da_error_ni_linea(self):
         recibo = self._de_liquidacion('Lectiva Vacaciones Marzo', '19', '4', vacaciones=(date(2026, 3, 2), date(2026, 3, 6)))
         self.assertFalse(self._linea(recibo, 'CO_LIQ_VAC_DISFRUTADAS'))
-        self.assertTrue(self._linea(recibo, 'CO_LIQ_SALARIOS').total)
+        self.assertTrue(self._linea(recibo, 'CO_APOYO_SOST').total)
 
     def test_la_practica_con_vacaciones_en_el_ultimo_tramo_las_sigue_pagando(self):
         recibo = self._de_liquidacion('Practica Con Vacaciones', '01', '4', vacaciones=(date(2026, 8, 3), date(2026, 8, 7)))

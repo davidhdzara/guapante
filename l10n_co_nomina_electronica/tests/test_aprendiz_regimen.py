@@ -41,7 +41,7 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
     def test_un_dependiente_normal_no_es_aprendiz(self):
         """Tipo 01 con un contrato que no es de aprendizaje: sin etapa y sin TipoTrabajador derivado (se usa el de la ficha, como siempre)."""
         regimen = self._regimen('Normal', '01', '2')
-        self.assertEqual(regimen, {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True})      # las reglas generales (con sus topes) deciden
+        self.assertEqual(regimen, {'etapa': False, 'es_aprendiz': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True})      # las reglas generales (con sus topes) deciden
 
     def test_sin_el_parametro_un_error_que_lo_nombra(self):
         _empleado, recibo = self._empleado_y_recibo('Sin Tabla')
@@ -110,16 +110,14 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
     """Aportes del aprendiz (decision del TL del 22-nov, H-F1-09): IBC = 1 SMMLV en las dos fases (Decreto 223/2026 art. 2.2.6.3.3.4 par. 2: el piso ya existente es el correcto).
     LECTIVA (tipo 19; «pagado plenamente por la empresa», art. 2.2.6.3.3.6): salud del 12,5 % COMPLETO a cargo de la empresa (sin descuento al aprendiz, sin exoneracion del 114-1) y ARL sobre 1 SMMLV; sin pension, sin FSP y
     sin parafiscales. PRACTICA (tipo 01 con contrato 4): como dependiente, con IBC de 1 SMMLV: salud 4 % + 8,5 %, pension 4 % + 12 %, ARL y parafiscales sobre ese IBC, con la exoneracion del 114-1 de la compania
-    (SENA, ICBF y salud patronal) y la CCF siempre al 4 %. Un mes de 30 dias, sueldo del contrato 0 y apoyo como novedad: todo sale del piso. NO VERIFICADO: el 12,5 % de la lectiva y la base de los parafiscales de la practica."""
+    (SENA, ICBF y salud patronal) y la CCF siempre al 4 %. Un mes de 30 dias y el apoyo como sueldo del contrato (H-F1-09): los aportes salen del piso. NO VERIFICADO: el 12,5 % de la lectiva y la base de los parafiscales de la practica."""
 
     def _aprendiz(self, nombre, tipo, tipo_contrato, factor_apoyo, desde=date(2026, 3, 1), hasta=date(2026, 3, 31)):
         empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, tipo_contrato=tipo_contrato, eps=self.eps, afp=self.afp, ccf=self.ccf, desde=desde, hasta=hasta)
-        recibo.contract_id.write({'wage': 0.0})
+        smmlv = recibo._rule_parameter('l10n_co_smmlv', recibo._ne_fecha_parametros())
+        recibo.contract_id.write({'wage': factor_apoyo * smmlv})         # H-F1-09: el apoyo de sostenimiento es el sueldo del contrato
         recibo.contract_id.generate_work_entries(desde, hasta)
         self._config_retefuente(desde.year)
-        smmlv = recibo._rule_parameter('l10n_co_smmlv', recibo._ne_fecha_parametros())
-        recibo.write({'input_line_ids': [(0, 0, {
-            'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_apoyo_sost').id, 'amount': factor_apoyo * smmlv})]})
         recibo.compute_sheet()
         return recibo, smmlv
 
@@ -179,15 +177,14 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
     def _segundo_recibo(self, primero, tipo, factor_apoyo, desde, hasta):
         """Otrosi de cambio de etapa dentro del mes: el contrato del primer recibo termina el dia anterior y empieza otro del MISMO empleado, de aprendizaje, con otro tipo de cotizante, y su recibo."""
         primero.contract_id.write({'date_end': desde - timedelta(days=1)})
+        smmlv = primero._rule_parameter('l10n_co_smmlv', primero._ne_fecha_parametros())
         contrato = self.env['hr.contract'].create({
             'name': 'Contrato 2 %s' % primero.employee_id.name, 'employee_id': primero.employee_id.id, 'company_id': self.company.id, 'structure_type_id': self.structure_type.id,
-            'l10n_co_ne_contract_type': '4', 'l10n_co_pila_tipo_cotizante': tipo, 'l10n_co_pila_subtipo_cotizante': '00', 'wage': 0.0, 'date_start': desde, 'state': 'open'})
+            'l10n_co_ne_contract_type': '4', 'l10n_co_pila_tipo_cotizante': tipo, 'l10n_co_pila_subtipo_cotizante': '00', 'wage': factor_apoyo * smmlv, 'date_start': desde, 'state': 'open'})
         contrato.generate_work_entries(desde, hasta)
-        smmlv = primero._rule_parameter('l10n_co_smmlv', primero._ne_fecha_parametros())
         recibo = self.env['hr.payslip'].create({
             'name': 'Recibo 2 %s' % primero.employee_id.name, 'employee_id': primero.employee_id.id, 'contract_id': contrato.id, 'company_id': self.company.id, 'struct_id': self.nomina.id,
-            'date_from': desde, 'date_to': hasta,
-            'input_line_ids': [(0, 0, {'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_apoyo_sost').id, 'amount': factor_apoyo * smmlv})]})
+            'date_from': desde, 'date_to': hasta})
         recibo.compute_sheet()
         return recibo
 
@@ -239,8 +236,8 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_PROV_PRIMA' and l.total), 'La lectiva no tiene prestaciones: el apoyo no es base de la provision')
 
     def test_el_auxilio_de_transporte_sale_en_la_practica_y_no_en_la_lectiva(self):
-        """Decision A del TL (23-nov; Circular MinTrabajo 083 de 2025, num. 4, Cuadro 1). El aprendiz se modela con sueldo de contrato 0 (queda bajo el tope), asi que antes recibia el auxilio tambien en la lectiva
-        y la provision de prima y cesantias lo sumaba (N2 «db»: ``CO_PROV_PRIMA`` con total en la lectiva). Ahora la lectiva no tiene la linea ni las provisiones; la practica si, con el valor de siempre."""
+        """Decision A del TL (23-nov; Circular MinTrabajo 083 de 2025, num. 4, Cuadro 1). El apoyo (sueldo del contrato) queda bajo el tope, asi que antes recibia el auxilio tambien en la lectiva y la provision de
+        prima y cesantias lo sumaba (N2 «db»: ``CO_PROV_PRIMA`` con total en la lectiva). Ahora la lectiva no tiene la linea ni las provisiones; la practica si, con el valor de siempre."""
         lectiva, _smmlv = self._aprendiz('Lectiva Auxilio', '19', '4', 0.75)
         self.assertFalse(lectiva.line_ids.filtered(lambda l: l.code == 'CO_AUX_TRANS' and l.total), 'La lectiva no paga auxilio de transporte')
         for codigo in ('CO_PROV_PRIMA', 'CO_PROV_CESANTIAS'):
@@ -276,15 +273,16 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         self.assertTrue(regla.l10n_co_ne_base_prima_cesantias and regla.l10n_co_ne_base_vacaciones)
         self.assertFalse(regla.l10n_co_ne_ajustable or regla.l10n_co_ne_vigilar_habitualidad)
 
-    def test_sin_etapa_el_apoyo_sigue_como_siempre(self):
-        """Un contrato que no esta en la tabla (no es de aprendiz) con la novedad: la regla de siempre (no salarial)."""
-        _empleado, recibo = self._empleado_y_recibo('Sin Etapa Apoyo', tipo='01', tipo_contrato='2', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
-        recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
-        self._config_retefuente(2026)
-        recibo.write({'input_line_ids': [(0, 0, {'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_apoyo_sost').id, 'amount': 500000.0})]})
-        recibo.compute_sheet()
-        self.assertAlmostEqual(self._total(recibo, 'CO_APOYO_SOST'), 500000.0, delta=0.01)
-        self.assertFalse(recibo.line_ids.filtered(lambda l: l.code == 'CO_APOYO_SOST_PRAC'))
+    def test_la_novedad_antigua_del_apoyo_da_error_a_cualquiera_para_no_pagar_dos_veces(self):
+        """H-F1-09 (D2): el apoyo es el sueldo del contrato. Un recibo con la novedad (la forma anterior), sea o no de un aprendiz, no se calcula: el error nombra al empleado y la novedad."""
+        for nombre, tipo, tipo_contrato in (('Novedad En Aprendiz', '01', '4'), ('Novedad En Dependiente', '01', '2')):
+            _empleado, recibo = self._empleado_y_recibo(nombre, tipo=tipo, tipo_contrato=tipo_contrato, eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
+            recibo.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
+            self._config_retefuente(2026)
+            recibo.write({'input_line_ids': [(0, 0, {'input_type_id': self.env.ref('l10n_co_nomina_electronica.input_co_apoyo_sost').id, 'amount': 500000.0})]})
+            with self.assertRaisesRegex(UserError, 'se pagaría dos veces') as caso:
+                recibo.compute_sheet()
+            self.assertIn(nombre, str(caso.exception))
 
     # ── TipoTrabajador del XML y la fusion mensual ──
     def _lugar_de_trabajo_completo(self):

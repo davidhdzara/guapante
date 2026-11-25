@@ -38,7 +38,7 @@ _EJEMPLOS_NO_AJUSTABLES = ('CO_SALUD_EMP', 'CO_PENSION_EMP', 'CO_FSP', 'CO_RETEF
                            'CO_NETO', 'CO_BRUTO')                                                                                     # totales
 _UNIDAD_REGLAS = {
     'CO_BASICO': 'dias', 'CO_AUX_TRANS': 'dias', 'CO_INC_COMUN': 'dias', 'CO_INC_LABORAL': 'dias', 'CO_LIC_MAT': 'dias',
-    'CO_LIC_PAT': 'dias', 'CO_LIC_REM': 'dias', 'CO_VAC': 'dias',
+    'CO_LIC_PAT': 'dias', 'CO_LIC_REM': 'dias', 'CO_VAC': 'dias', 'CO_APOYO_SOST': 'dias', 'CO_APOYO_SOST_PRAC': 'dias',      # H-F1-09: el apoyo sale del sueldo por dias
     'CO_HED': 'horas', 'CO_HEN': 'horas', 'CO_HRN': 'horas', 'CO_HEDDF': 'horas', 'CO_HENDF': 'horas', 'CO_HRDDF': 'horas', 'CO_HRNDF': 'horas',
 }
 _UNIDAD_TIPOS = {

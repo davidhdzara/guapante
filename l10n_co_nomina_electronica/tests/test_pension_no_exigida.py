@@ -48,7 +48,8 @@ class TestPensionNoExigida(base.TestValidacionAfiliacion):
             _empleado, recibo = self._calculado(nombre, tipo=tipo, subtipo=subtipo, eps=self.eps, ccf=self.ccf)
             self._sin_lineas_de_pension(recibo, nombre)
             self.assertAlmostEqual(self._total(recibo, 'CO_SALUD_EMP'), salud_empleado, delta=0.01, msg=nombre)       # la EPS se sigue exigiendo; el pensionado paga su 4 % y la lectiva no
-            self.assertAlmostEqual(self._total(recibo, 'CO_IBC_SP'), 10000000.0, delta=0.01, msg=nombre)         # el IBC no cambia
+            ibc = recibo._rule_parameter('l10n_co_smmlv', recibo._ne_fecha_parametros()) if tipo == '19' else 10000000.0      # H-F1-09: el sueldo del aprendiz es su apoyo y cotiza sobre 1 SMMLV
+            self.assertAlmostEqual(self._total(recibo, 'CO_IBC_SP'), ibc, delta=0.01, msg=nombre)         # la excepcion de la AFP no cambia el IBC
             self.assertFalse(recibo.l10n_co_ne_aviso_afiliacion, nombre)
             recibo._ne_validar_afiliaciones()                                                                    # confirma sin AFP
 
@@ -56,8 +57,9 @@ class TestPensionNoExigida(base.TestValidacionAfiliacion):
         """Condicion del TL: el 19 era la etapa productiva (con pension) hasta el 31-jul-2025 y es la lectiva (sin pension ni FSP) desde el 1-ago-2025; el IBC de salud no cambia."""
         _e1, julio = self._calculado('Diecinueve Julio', tipo='19', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2025, 7, 1), hasta=date(2025, 7, 31))
         _e2, agosto = self._calculado('Diecinueve Agosto', tipo='19', eps=self.eps, afp=self.afp, ccf=self.ccf, desde=date(2025, 8, 1), hasta=date(2025, 8, 31))
-        self.assertAlmostEqual(self._total(julio, 'CO_PENSION_EMP'), -400000.0, delta=0.01)
-        self.assertAlmostEqual(self._total(julio, 'CO_PENSION_CIA'), 1200000.0, delta=0.01)
+        smmlv = julio._rule_parameter('l10n_co_smmlv', julio._ne_fecha_parametros())      # H-F1-09: en julio de 2025 el 19 es un aprendiz en practica: cotiza sobre 1 SMMLV
+        self.assertAlmostEqual(self._total(julio, 'CO_PENSION_EMP'), -smmlv * 0.04, delta=0.05)
+        self.assertAlmostEqual(self._total(julio, 'CO_PENSION_CIA'), smmlv * 0.12, delta=0.05)
         self._sin_lineas_de_pension(agosto)
         self.assertAlmostEqual(self._total(julio, 'CO_IBC_SP'), self._total(agosto, 'CO_IBC_SP'), delta=0.01)
 
@@ -80,9 +82,10 @@ class TestPensionNoExigida(base.TestValidacionAfiliacion):
         """Sin la fila (19, *, afp) el aprendiz es un dependiente normal: la pension del empleado y de la empresa y el FSP se calculan y el aviso pide la AFP."""
         self.env.ref(PARAMETRO).parameter_value = "[('*', '01', 'afp'), ('*', '02', 'afp')]"
         _empleado, recibo = self._calculado('Aprendiz Sin Fila', tipo='19', subtipo='00', eps=self.eps, ccf=self.ccf)
-        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_EMP'), -400000.0, delta=0.01)
-        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_CIA'), 1200000.0, delta=0.01)
-        self.assertTrue(self._total(recibo, 'CO_FSP'))
+        smmlv = recibo._rule_parameter('l10n_co_smmlv', recibo._ne_fecha_parametros())      # H-F1-09: aprendiz: cotiza sobre 1 SMMLV; el FSP empieza en 4 SMMLV
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_EMP'), -smmlv * 0.04, delta=0.05)
+        self.assertAlmostEqual(self._total(recibo, 'CO_PENSION_CIA'), smmlv * 0.12, delta=0.05)
+        self.assertFalse(self._total(recibo, 'CO_FSP'))
         self.assertIn('AFP', recibo.l10n_co_ne_aviso_afiliacion)
 
     def test_el_extranjero_no_obligado_sigue_sin_pension_y_ahora_tampoco_fsp(self):

@@ -176,7 +176,9 @@
 # un conteo distinto (WORK100), produciendo un DiasTrabajados incoherente con el sueldo.
 _dias_mes = payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
 dias_pagables = payslip._ne_dias_pagables()
-result = contract.wage / _dias_mes
+# H-F1-09: el sueldo del contrato de un aprendiz es su apoyo de sostenimiento y lo pagan CO_APOYO_SOST o CO_APOYO_SOST_PRAC: aqui la linea queda en 0 con sus dias (los leen la colilla, PILA y el XML).
+# El metodo da error si el recibo trae la novedad antigua del apoyo o si el contrato del aprendiz tiene sueldo 0.
+result = 0.0 if payslip._ne_es_aprendiz_validado() else contract.wage / _dias_mes
 result_qty = dias_pagables
             </field>
             <field name="appears_on_payslip" eval="True"/>
@@ -890,11 +892,17 @@ result = inputs['CO_INT_CES'].amount
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# H-F1-09: este es el apoyo de la LECTIVA (y el de un contrato que no esta en la tabla de etapas): no salarial. El de la fase PRACTICA es CO_APOYO_SOST_PRAC (mismo tipo de novedad, regla por etapa)
-result = inputs.get('CO_APOYO_SOST') and inputs.get('CO_APOYO_SOST').amount > 0 and payslip._ne_regimen_cotizante()['etapa'] != 'practica'
+# H-F1-09: apoyo del aprendiz en una etapa SIN prestaciones (hoy la lectiva): no salarial. El de la etapa que las causa es CO_APOYO_SOST_PRAC. La etapa sale de la tabla l10n_co_aprendiz_etapas.
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and not _regimen['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">result = inputs['CO_APOYO_SOST'].amount</field>
+            <field name="amount_python_compute">
+# H-F1-09: el apoyo de sostenimiento es el SUELDO DEL CONTRATO (unica fuente; ya no se carga como novedad), por los dias pagables del periodo, igual que el sueldo.
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="l10n_co_ne_unidad">dias</field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
             <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
@@ -915,15 +923,22 @@ result = inputs.get('CO_APOYO_SOST') and inputs.get('CO_APOYO_SOST').amount > 0 
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-result = inputs.get('CO_APOYO_SOST') and inputs.get('CO_APOYO_SOST').amount > 0 and payslip._ne_regimen_cotizante()['etapa'] == 'practica'
+# H-F1-09: apoyo del aprendiz en una etapa que causa prestaciones (practica o formacion dual).
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and _regimen['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">result = inputs['CO_APOYO_SOST'].amount</field>
+            <field name="amount_python_compute">
+# H-F1-09: el apoyo de sostenimiento es el SUELDO DEL CONTRATO (unica fuente; ya no se carga como novedad), por los dias pagables del periodo, igual que el sueldo.
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_from)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="l10n_co_ne_unidad">dias</field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
             <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
             <field name="note">Apoyo de sostenimiento del aprendiz en la fase práctica o la formación dual (100 % de 1 SMMLV en la formación tradicional; 75 % el primer año y 100 % el segundo en la dual; Decreto 223 de
-2026, art. 2.2.6.3.3.4): es base de las prestaciones (prima, cesantías, intereses y vacaciones) y NO del IBC de seguridad social (1 SMMLV, par. 2). Se alimenta con la novedad «Apoyo de Sostenimiento».</field>
+2026, art. 2.2.6.3.3.4): es base de las prestaciones (prima, cesantías, intereses y vacaciones) y NO del IBC de seguridad social (1 SMMLV, par. 2). Sale del sueldo del contrato del aprendiz, por los días del periodo.</field>
         </record>
 
         <record id="hr_salary_rule_co_bonif_retiro" model="hr.salary.rule">
@@ -1891,7 +1906,11 @@ result = ibc * payslip._rule_parameter('l10n_co_pct_icbf', payslip.date_from) / 
             <field name="sequence">310</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: sin provision si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # .303 (doc 78): provision de prima de servicios (CST art. 306, Ley 1788/2016: 30 dias de salario por ano) = base prestacional DEVENGADA de ESTE recibo / divisor.
@@ -1918,7 +1937,11 @@ else:
             <field name="sequence">311</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: sin provision si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # .303 (doc 78): provision de cesantias (CST art. 249: un mes de salario por ano; art. 253: base = salario devengado, promedio si varia) = base prestacional DEVENGADA
@@ -1944,7 +1967,11 @@ else:
             <field name="sequence">312</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: sin provision si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Intereses sobre cesantias (Ley 52/1975) = cesantias_provisionadas x pct anual / 100.
@@ -1976,7 +2003,11 @@ result = result_rules['CO_PROV_CESANTIAS']['total'] * pct / 100
             <field name="sequence">313</field>
             <field name="category_id" ref="hr_salary_rule_category_provisiones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_nomina"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: sin provision si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # .303 (doc 78): provision de vacaciones (CST art. 186: 15 dias habiles por ano; art. 192: se liquidan con el salario ordinario, excluyendo solo el trabajo en dias de

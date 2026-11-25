@@ -38,6 +38,8 @@
 # el salario no supere el tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv; hoy 2 SMMLV, Art. 7 Ley 1 de 1963,
 # fuente secundaria: pendiente de confirmar por David)
 _salario = contract.wage
+# H-F1-09: error si el recibo trae la novedad antigua del apoyo o si el contrato de un aprendiz tiene sueldo 0 (su sueldo es el apoyo).
+payslip._ne_es_aprendiz_validado()
 
 # Determinar si incluye auxilio de transporte
 _aux_transporte = 0
@@ -283,12 +285,71 @@ result = payslip._ne_neto_redondeado(result_rules, 'PREST')
 # abarcan varios meses/anos (contrato desde hace tiempo, retiro reciente).
 _dias = payslip._ne_dias_pagables()
 
-result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+# H-F1-09: para un aprendiz el sueldo del contrato es su apoyo (reglas del apoyo de esta estructura): aqui la linea queda en 0 con sus dias.
+result = 0.0 if payslip._ne_es_aprendiz_validado() else contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
 result_qty = _dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Sueldo</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== CO_APOYO_SOST (liquidacion) ==================== -->
+        <record id="hr_salary_rule_co_liq_apoyo_sost" model="hr.salary.rule">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
+            <field name="code">CO_APOYO_SOST</field>
+            <field name="sequence">11</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: apoyo del aprendiz pendiente del ultimo tramo, en una etapa SIN prestaciones (lectiva). El sueldo del contrato es el apoyo; CO_LIQ_SALARIOS queda en 0.
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and not _regimen['causa_prestaciones']
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
+            <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
+            <field name="l10n_co_liq_tratamiento">salario</field>
+            <field name="note">Apoyo de sostenimiento del aprendiz (etapa sin prestaciones) dentro del último tramo del contrato.</field>
+        </record>
+
+        <!-- ==================== CO_APOYO_SOST_PRAC (liquidacion) ==================== -->
+        <record id="hr_salary_rule_co_liq_apoyo_sost_prac" model="hr.salary.rule">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz, fase práctica)</field>
+            <field name="code">CO_APOYO_SOST_PRAC</field>
+            <field name="sequence">12</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: apoyo del aprendiz pendiente del ultimo tramo, en una etapa que causa prestaciones (practica o dual). El sueldo del contrato es el apoyo; CO_LIQ_SALARIOS queda en 0.
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and _regimen['causa_prestaciones']
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
+            <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
+            <field name="l10n_co_liq_tratamiento">salario</field>
+            <field name="note">Apoyo de sostenimiento del aprendiz (fase práctica o dual) dentro del último tramo del contrato.</field>
         </record>
 
         <!-- ==================== CO_LIQ_PRIMA ==================== -->

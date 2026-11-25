@@ -6,8 +6,12 @@ El nativo ya distingue una novedad en cantidad de una en pesos con ``is_quantity
 distingue días de horas. Aquí se agrega solo esa unidad, y solo cuando ``is_quantity``. Hasta .286 los tipos del módulo llevaban la unidad en
 el nombre («(días)»); la siembra de abajo no cambia nombres ni toca lo que el usuario ya configuró."""
 
+import logging
+
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
+
+_logger = logging.getLogger(__name__)
 
 
 class HrPayslipInputType(models.Model):
@@ -51,4 +55,22 @@ class HrPayslipInputType(models.Model):
             self.with_context(active_test=False).search(
                 [('id', 'in', propios), ('code', '=', codigo), ('l10n_co_ne_unidad', '=', False)]
             ).write({'is_quantity': True, 'l10n_co_ne_unidad': unidad})
+        return True
+
+    # Tipos de novedad que dejaron de usarse porque su dato tiene otra fuente: xmlid -> motivo (H-F1-09: el apoyo del aprendiz es el sueldo del contrato).
+    _NE_TIPOS_REEMPLAZADOS = ('l10n_co_nomina_electronica.input_co_apoyo_sost',)
+
+    @api.model
+    def _ne_retirar_tipos_reemplazados(self):
+        """Archiva (no borra) los tipos de ``_NE_TIPOS_REEMPLAZADOS`` en cada actualización. El nativo no permite archivar un tipo con un ajuste salarial en curso
+        (``hr_payslip_input_type.py:30-33``): en ese caso no se archiva y queda anotado en el log; el cálculo igual rechaza la novedad."""
+        for xmlid in self._NE_TIPOS_REEMPLAZADOS:
+            tipo = self.env.ref(xmlid, raise_if_not_found=False)
+            if not tipo or not tipo.active:
+                continue
+            en_curso = self.env['hr.salary.attachment'].sudo().search_count([('other_input_type_id', '=', tipo.id), ('state', 'not in', ('close', 'cancel'))])
+            if en_curso:
+                _logger.warning('No se archiva el tipo de novedad %s: tiene %s ajuste(s) salarial(es) en curso.', xmlid, en_curso)
+                continue
+            tipo.active = False
         return True
