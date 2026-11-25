@@ -189,20 +189,28 @@ class TestAprendizApoyo(TransactionCase):
             'company_ids': [(6, 0, self.company.ids)],
             'groups_id': [(6, 0, [self.env.ref('base.group_user').id, self.env.ref('hr_contract.group_hr_contract_manager').id])]})
 
-    def test_un_contrato_con_recibos_confirmados_de_lectiva_no_pasa_a_practica_ni_para_quien_no_ve_nomina(self):
+    def test_un_contrato_con_recibos_confirmados_de_lectiva_no_pasa_a_un_regimen_con_prestaciones_ni_para_quien_no_ve_nomina(self):
         contrato = self._aprendiz(LECTIVA, ' cambio')
         self._recibo(contrato, self.general, *MARZO).write({'state': 'done'})
         gestor = self._gestor_de_contratos()
         self.assertFalse(gestor.has_group('hr_payroll.group_hr_payroll_user'))
-        for quien in (contrato, contrato.with_user(gestor)):
-            with self.assertRaisesRegex(UserError, 'cree el de la práctica'):
-                quien.write({'l10n_co_pila_tipo_cotizante': '01'})
-        self.assertEqual(contrato.l10n_co_pila_tipo_cotizante, '19')
+        cambios = (
+            {'l10n_co_pila_tipo_cotizante': '01'},                                      # práctica o dual (01 con el contrato «4»)
+            {'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_ne_contract_type': '2'},     # empleado a término indefinido
+        )
+        for cambio in cambios:
+            for quien in (contrato, contrato.with_user(gestor)):
+                with self.assertRaisesRegex(UserError, 'cree un contrato nuevo'):
+                    quien.write(dict(cambio))
+        self.assertEqual((contrato.l10n_co_pila_tipo_cotizante, contrato.l10n_co_ne_contract_type), ('19', '4'))
 
     def test_los_demas_cambios_de_tipo_se_permiten(self):
         sin_recibos = self._aprendiz(LECTIVA, ' sin recibos')
-        sin_recibos.write({'l10n_co_pila_tipo_cotizante': '01'})
+        sin_recibos.write({'l10n_co_pila_tipo_cotizante': '01', 'l10n_co_ne_contract_type': '2'})
         self.assertEqual(sin_recibos.l10n_co_pila_tipo_cotizante, '01')
+        sigue_lectiva = self._aprendiz(LECTIVA, ' sigue lectiva')
+        self._recibo(sigue_lectiva, self.general, *MARZO).write({'state': 'done'})
+        sigue_lectiva.write({'l10n_co_ne_contract_type': '2'})                          # sigue siendo lectiva (19): sin prestaciones
         practica = self._aprendiz(PRACTICA, ' a lectiva')
         self._recibo(practica, self.general, *MARZO).write({'state': 'done'})
         practica.write({'l10n_co_pila_tipo_cotizante': '19'})
