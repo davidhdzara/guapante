@@ -43,6 +43,7 @@ from .hr_employee import NE_EMPLEADO_GRUPO_AFILIACION, NE_EMPLEADO_PESTANA, NE_U
 from ..services import (
     cune as cune_service,
     dian_utils,
+    huella_calculo,
     nomina_xml_builder,
     soap_client,
     xml_signer,
@@ -1063,6 +1064,8 @@ class HrPayslip(models.Model):
         self._ne_validar_duracion_periodo()
         colombia = self._ne_solo_colombia()
         colombia._ne_validar_terceros_attachments()
+        # C-24 (doc 106 §13): a los recibos que el nativo SI recalcula (borrador o en espera) se les guarda la huella al terminar; un recibo hecho no se recalcula y su huella no se toca.
+        con_huella = colombia.filtered(lambda r: r.state in ('draft', 'verify'))
         # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
         # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
         res = True
@@ -1081,6 +1084,7 @@ class HrPayslip(models.Model):
             recibos._ne_registrar_ajustes(sugeridos)
             recibos._ne_regenerar_conceptos()
         colombia._ne_validar_terceros_deducciones()
+        con_huella._ne_guardar_huella()                 # solo si TODO el calculo termino: un error antes de aqui deja la huella anterior
         return res
 
     # ── Ajustes de la empresa (E11 pieza 2b, .288, doc 71c) ──────────────────────────────────────────────────────────────────────
@@ -1268,7 +1272,11 @@ class HrPayslip(models.Model):
     def write(self, vals):
         """.286: el formulario guarda las novedades con ``write({'input_line_ids': [...]})``; durante ese ``write`` el campo está protegido y el
         recálculo de ``hr.payslip.input`` se salta (ver ``_ne_recalcular_hoja_por_novedad``). Se recalcula aquí, una vez, al terminar el
-        ``write``. Las novedades creadas por el ORM directo (fuera de este ``write``) siguen recalculando desde ``hr.payslip.input``."""
+        ``write``. Las novedades creadas por el ORM directo (fuera de este ``write``) siguen recalculando desde ``hr.payslip.input``.
+
+        C-24: la huella del cálculo la escribe solo el cálculo (``_ne_guardar_huella``, que pasa por debajo de este método): cualquier otro ``write`` que la traiga se rechaza."""
+        if 'l10n_co_ne_huella_calculo' in vals:
+            self._ne_rechazar_huella_externa()
         res = super().write(vals)
         if ('input_line_ids' in vals and self._ne_comandos_cambian_novedades(vals['input_line_ids'])) or (
                 'l10n_co_concepto_ids' in vals and self._ne_comandos_cambian_conceptos(vals['l10n_co_concepto_ids'])):
@@ -1447,6 +1455,64 @@ class HrPayslip(models.Model):
             new_lines[posicion:posicion + 1] = nuevas
         return new_lines
 
+    # ──────────────────────────────────────────────────────────────────
+    # C-24: no se confirma un recibo cuyas líneas no corresponden a sus datos («hoja al día», doc 106 §13)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_huella_calculo = fields.Char(
+        string='Huella del cálculo', readonly=True, copy=False,
+        help='Técnico (C-24): resume los datos del recibo con los que se calculó la hoja (periodo, contrato y su salario, novedades, ajustes, días trabajados y ausencias aprobadas del periodo). Al '
+             'confirmar se compara con los datos actuales. Solo la escribe el cálculo; un recibo duplicado no la hereda.')
+
+    def _ne_rechazar_huella_externa(self):
+        raise UserError(_('La huella del cálculo la escribe solo «Calcular hoja»: no se puede crear ni modificar a mano.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any('l10n_co_ne_huella_calculo' in vals for vals in vals_list):
+            self._ne_rechazar_huella_externa()
+        recibos = super().create(vals_list)
+        if any(recibos.mapped('l10n_co_ne_huella_calculo')):          # por un valor por defecto (contexto ``default_...`` o valor definido por el usuario)
+            self._ne_rechazar_huella_externa()
+        return recibos
+
+    def _ne_huella_calculo(self):
+        """La huella de los datos ACTUALES del recibo (``services.huella_calculo``). Datos propios del recibo que el cálculo lee: cabecera, salario del contrato (D1), novedades, días
+        trabajados (las reglas de básico y de ausencias los leen), ajustes de la empresa y las ausencias VALIDADAS del empleado que se cruzan con el periodo (D2; la cadena de prórrogas
+        anterior al periodo no entra). Fuera: parámetros, reglas, datos del empleado, el resto del contrato y recibos anteriores (se resuelven con «Calcular hoja»)."""
+        self.ensure_one()
+        recibo = self.sudo()                 # solo se resumen valores: no depende de las reglas de acceso del usuario que calcula o confirma
+        ausencias = self.env['hr.leave'].sudo().search([
+            ('employee_id', '=', recibo.employee_id.id), ('state', '=', 'validate'),
+            ('request_date_from', '<=', recibo.date_to), ('request_date_to', '>=', recibo.date_from)])
+        return huella_calculo.huella(
+            cabecera=(recibo.employee_id.id, recibo.contract_id.id, recibo.struct_id.id, recibo.date_from, recibo.date_to),
+            salario=recibo.contract_id.wage,
+            entradas=[(e.input_type_id.id, e.amount) for e in recibo.input_line_ids],
+            dias=[(d.work_entry_type_id.id, d.number_of_days, d.number_of_hours) for d in recibo.worked_days_line_ids],
+            ajustes=[(a.salary_rule_id.id, a.quantity, a.rate, a.amount) for a in recibo.l10n_co_ajuste_ids],
+            ausencias=[(a.id, a.request_date_from, a.request_date_to, a.holiday_status_id.id) for a in ausencias])
+
+    def _ne_guardar_huella(self):
+        """Guarda la huella de cada recibo. Escribe por debajo de ``HrPayslip.write`` (``super``): así la guarda que rechaza escrituras externas no depende de un contexto que un cliente RPC
+        pudiera mandar."""
+        for recibo in self:
+            super(HrPayslip, recibo).write({'l10n_co_ne_huella_calculo': recibo._ne_huella_calculo()})
+
+    def _ne_validar_hoja_al_dia(self):
+        """Al CONFIRMAR: un recibo en borrador o en espera cuya huella no coincide con sus datos actuales (o que no tiene huella: calculado antes de esta versión, nunca calculado o
+        duplicado) tiene la hoja desactualizada. Un solo error con TODOS los recibos del conjunto. No mira los reembolsos ni los recibos con líneas editadas a mano (recalcular borraría
+        esas líneas) ni los ya confirmados o pagados."""
+        viejos = self.filtered(lambda r: r.state in ('draft', 'verify') and not r.edited and not r.credit_note and r.l10n_co_ne_huella_calculo != r._ne_huella_calculo())
+        if not viejos:
+            return
+        lineas = '\n'.join(
+            _('- «%(recibo)s» de %(empleado)s (%(desde)s a %(hasta)s)', recibo=r.number or r.name, empleado=r.employee_id.name, desde=r.date_from, hasta=r.date_to) for r in viejos)
+        raise UserError(_(
+            'No se puede confirmar: la hoja de cálculo no está al día en %(cantidad)s recibo(s):\n%(recibos)s\n'
+            'Cambiaron sus novedades, ajustes, días trabajados, datos del recibo, el salario del contrato o las ausencias del periodo después del último cálculo, o la hoja se calculó antes de '
+            'esta versión. Abra cada recibo, pulse «Calcular hoja», revise las líneas y vuelva a confirmar. «Recalcular la hoja entera» además rehace los días trabajados y descarta los que se '
+            'hayan editado a mano.', cantidad=len(viejos), recibos=lineas))
+
     def action_payslip_done(self):
         """
         Sobrescribe la confirmación de la nómina para asignar el consecutivo
@@ -1458,6 +1524,7 @@ class HrPayslip(models.Model):
         colombia._ne_validar_cuenta_neto()
         colombia._ne_validar_pacto_no_salarial()
         colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
+        colombia._ne_validar_hoja_al_dia()        # C-24: despues de las anteriores y antes de crear el asiento o cambiar el estado
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()

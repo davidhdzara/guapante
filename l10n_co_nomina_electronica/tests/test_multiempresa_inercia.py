@@ -60,7 +60,7 @@ class TestMultiempresaInercia(TransactionCase):
         registros se llamo (un mock cuenta tambien la llamada sobre un conjunto vacio)."""
         a, m = self._recibo(self.co), self._recibo(self.mx)
         patron = 'odoo.addons.hr_payroll.models.hr_payslip.HrPayslip.action_payslip_done'
-        llamadas = {'ibc': [], 'libranzas': [], 'solape': [], 'afiliaciones': []}
+        llamadas = {'ibc': [], 'libranzas': [], 'solape': [], 'afiliaciones': [], 'hoja': []}
 
         def registrar(clave):
             def _llamada(recibos, *args, **kwargs):
@@ -75,7 +75,9 @@ class TestMultiempresaInercia(TransactionCase):
                 mock.patch.object(type(a), '_ne_validar_sin_solape', autospec=True,
                                   side_effect=registrar('solape')), \
                 mock.patch.object(type(a), '_ne_validar_afiliaciones', autospec=True,
-                                  side_effect=registrar('afiliaciones')):
+                                  side_effect=registrar('afiliaciones')), \
+                mock.patch.object(type(a), '_ne_validar_hoja_al_dia', autospec=True,
+                                  side_effect=registrar('hoja')):          # C-24: la «hoja al dia» tambien es solo de recibos colombianos
             m.action_payslip_done()
             for clave, recibos in llamadas.items():
                 self.assertTrue(all(not r for r in recibos), clave)  # solo conjuntos vacios

@@ -171,6 +171,7 @@ from . import test_dias_por_asistencia
 from . import test_novedades_recalculan_hoja
 from . import test_e11_pieza_1a
 from . import test_novedades_formulario
+from . import test_hoja_al_dia
 from . import test_e11_pieza_2a
 from . import test_ajuste_concepto_recibo
 from . import test_conceptos_de_pago
