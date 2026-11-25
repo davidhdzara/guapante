@@ -433,10 +433,16 @@ en la fase práctica o la formación dual SÍ se exige la pensión (EPS, AFP y A
         <field name="name">Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato</field>
         <field name="code">l10n_co_aprendiz_etapas</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Tabla que dice cuándo un contrato es de un aprendiz y en qué etapa está: tuplas <code>(tipo de cotizante PILA, tipo de contrato DIAN, etapa, TipoTrabajador DIAN, paga auxilio de transporte)</code> con
-<code>'*'</code> como comodín del tipo de contrato; la etapa es <code>'lectiva'</code> o <code>'practica'</code>; la última columna es <code>True</code> o <code>False</code>. Un contrato que no aparece NO es de aprendiz.
+        <field name="description" type="html"><p>Tabla que dice cuándo un contrato es de un aprendiz y en qué etapa está: tuplas <code>(tipo de cotizante PILA, tipo de contrato DIAN, etapa, TipoTrabajador DIAN, paga auxilio de transporte, causa prestaciones)</code> con
+<code>'*'</code> como comodín del tipo de contrato; la etapa es <code>'lectiva'</code> o <code>'practica'</code>; las dos últimas columnas son <code>True</code> o <code>False</code>. Un contrato que no aparece NO es de aprendiz.
 De ella salen: qué regla del apoyo de sostenimiento se calcula (no salarial en la lectiva; base de las prestaciones en la práctica), el TipoTrabajador del XML, el régimen de aportes (lectiva: salud y riesgos pagados
-por la empresa, sin pensión; práctica: como dependiente con IBC de 1 SMMLV) y si la regla «Auxilio de Transporte» aplica (con el tope de siempre, solo si la fila lo dice).</p>
+por la empresa, sin pensión; práctica: como dependiente con IBC de 1 SMMLV), si el auxilio de transporte aplica (con el tope de siempre, solo si la fila lo dice: nómina, base de prima y prima y cesantías de la
+liquidación) y si las estructuras de prima y de liquidación calculan prima, cesantías, intereses y vacaciones (solo si la fila lo dice).</p>
+<h3 class="mt-5">Prestaciones sociales (prima, cesantías, intereses y vacaciones)</h3>
+<p><strong>Lectiva: no se causan; práctica y formación dual: sí</strong> (Decreto 223 de 2026, art. 2.2.6.3.3.6: num. 1, la fase lectiva trae salud y riesgos laborales pagados por la empresa; num. 2, la fase práctica o toda la
+formación dual traen «todas las prestaciones, auxilios y demás derechos propios del contrato laboral»; Circular MinTrabajo 083 de 2025, num. 4: en la lectiva únicamente apoyo de sostenimiento, salud y riesgos). Con una fila
+que no las causa, si el empleado tiene vacaciones validadas en el último tramo de su liquidación, el cálculo se detiene y lo dice. <strong>NO VERIFICADO:</strong> el texto literal del art. 21 de la Ley 2466 de 2025 y la decisión
+para los periodos anteriores a esa ley.</p>
 <h3 class="mt-5">Auxilio de transporte</h3>
 <p><strong>Lectiva: no se paga; práctica y formación dual: sí</strong> (Circular MinTrabajo 083 del 18-jul-2025, numeral 4, Cuadro 1: la etapa lectiva de la formación tradicional trae «el pago del apoyo de
 sostenimiento mensual, así como las afiliaciones a salud y riesgos laborales», sin auxilio de transporte; la etapa práctica y la formación dual traen «prestaciones, auxilios y demás derechos propios de un contrato de
@@ -444,18 +450,18 @@ trabajo», con «Auxilio de transporte» en la lista). Es una circular (instruct
 contrato «4 - Aprendizaje», que esta tabla ya trata como práctica: por eso recibe el auxilio también en la etapa lectiva de la dual. Si un caso necesita otra cosa, cree un valor nuevo con su fecha.
 <strong>NO VERIFICADO:</strong> el valor anterior al 1-ago-2025 (esquema de los tipos 12 y 19) conserva la misma decisión; no se leyó una norma de ese periodo.</p>
 <h3 class="mt-5">Valores y norma</h3>
-<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'lectiva', '12', False), ('19', '*', 'practica', '19', True)]</code> (12 = etapa lectiva, 19 = etapa productiva).
-<strong>Desde el 1-ago-2025:</strong> <code>[('19', '*', 'lectiva', '12', False), ('01', '4', 'practica', '19', True)]</code>: la lectiva se reporta con el tipo 19 y la práctica o la formación dual con el tipo 01 (dependiente) y el tipo de
+<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'lectiva', '12', False, False), ('19', '*', 'practica', '19', True, True)]</code> (12 = etapa lectiva, 19 = etapa productiva).
+<strong>Desde el 1-ago-2025:</strong> <code>[('19', '*', 'lectiva', '12', False, False), ('01', '4', 'practica', '19', True, True)]</code>: la lectiva se reporta con el tipo 19 y la práctica o la formación dual con el tipo 01 (dependiente) y el tipo de
 contrato «4 - Aprendizaje» (Concepto MinSalud 2025310001925691 del 22-jul-2025 y Circular MinTrabajo 083 del 18-jul-2025; Ley 2466 de 2025, art. 21, que modifica el art. 81 del CST; Decreto 223 de 2026, arts. 2.2.6.3.3.4 y 2.2.6.3.3.6).
 Esquema <strong>PROVISIONAL</strong> «mientras el Ministerio de Salud y Protección Social expide el acto administrativo» de ajuste de la PILA: si cambia, cree un valor nuevo con su fecha de vigencia; no edite este.</p></field>
     </record>
     <record id="rule_parameter_aprendiz_etapas_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('12', '*', 'lectiva', '12', False), ('19', '*', 'practica', '19', True)]</field>
+        <field name="parameter_value">[('12', '*', 'lectiva', '12', False, False), ('19', '*', 'practica', '19', True, True)]</field>
         <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
     <record id="rule_parameter_aprendiz_etapas_2025_08" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('19', '*', 'lectiva', '12', False), ('01', '4', 'practica', '19', True)]</field>
+        <field name="parameter_value">[('19', '*', 'lectiva', '12', False, False), ('01', '4', 'practica', '19', True, True)]</field>
         <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
         <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
     </record>

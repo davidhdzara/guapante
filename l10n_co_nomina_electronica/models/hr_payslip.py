@@ -464,11 +464,11 @@ class HrPayslip(models.Model):
 
     def _ne_regimen_cotizante(self):
         """Régimen de cotización del empleado de este recibo según el tipo de cotizante y el tipo de contrato del CONTRATO del recibo (H-F1-09, doc 88): UN solo método para el aprendiz. Devuelve
-        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False, 'paga_auxilio_transporte': bool}``: la tabla es el parámetro versionado
-        ``l10n_co_aprendiz_etapas``, tuplas ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador, paga auxilio de transporte)`` con ``'*'`` como comodín del tipo de contrato; un contrato que no aparece
-        NO es de aprendiz (``etapa`` falso y ``paga_auxilio_transporte`` verdadero: la regla general del auxilio, con su tope, decide). Las reglas del apoyo de sostenimiento, la salud, la base de parafiscales y el
-        auxilio de transporte del aprendiz y el TipoTrabajador del XML lo consultan: nada de la norma está repartido en las fórmulas. La decisión de qué AFP no se exige vive en
-        ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las cinco columnas, un error que lo nombra (sin valor por defecto)."""
+        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False, 'paga_auxilio_transporte': bool, 'causa_prestaciones': bool}``: la tabla es el parámetro versionado
+        ``l10n_co_aprendiz_etapas``, tuplas ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador, paga auxilio de transporte, causa prestaciones)`` con ``'*'`` como comodín del tipo de contrato; un
+        contrato que no aparece NO es de aprendiz (``etapa`` falso y las dos decisiones verdaderas: las reglas generales, con sus topes, deciden). Las reglas del apoyo de sostenimiento, la salud, la base de
+        parafiscales, el auxilio de transporte, las prestaciones de las estructuras de prima y liquidación (H-F1-12: prima, cesantías, intereses y vacaciones) y el TipoTrabajador del XML lo consultan.
+        La decisión de qué AFP no se exige vive en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las seis columnas, un error que lo nombra (sin valor por defecto)."""
         self.ensure_one()
         fecha = self._ne_fecha_parametros()
         try:
@@ -481,14 +481,15 @@ class HrPayslip(models.Model):
         tipo = contrato.l10n_co_pila_tipo_cotizante or ''
         tipo_contrato = contrato.l10n_co_ne_contract_type or ''
         for fila in tabla:
-            if len(fila) != 5:
+            if len(fila) != 6:
                 raise UserError(_(
-                    'El parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) tiene una fila que no trae las cinco columnas (tipo de cotizante, '
-                    'tipo de contrato, etapa, TipoTrabajador y si paga auxilio de transporte): %(fila)s. Corrija el valor vigente al %(fecha)s en Nómina > Configuración > Parámetros de reglas.', fila=fila, fecha=fecha))
-            clave_tipo, clave_contrato, etapa, tipo_trabajador, paga_auxilio = fila
+                    'El parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) tiene una fila que no trae las seis columnas (tipo de cotizante, '
+                    'tipo de contrato, etapa, TipoTrabajador, si paga auxilio de transporte y si causa prima, cesantías, intereses y vacaciones): %(fila)s. Corrija el valor vigente al %(fecha)s en Nómina > '
+                    'Configuración > Parámetros de reglas.', fila=fila, fecha=fecha))
+            clave_tipo, clave_contrato, etapa, tipo_trabajador, paga_auxilio, causa_prestaciones = fila
             if clave_tipo == tipo and clave_contrato in ('*', tipo_contrato):
-                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio)}
-        return {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True}
+                return {'etapa': etapa, 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio), 'causa_prestaciones': bool(causa_prestaciones)}
+        return {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True}
 
     def _ne_no_cotiza_pension(self):
         """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
@@ -3225,6 +3226,25 @@ class HrPayslip(models.Model):
                        if wd.work_entry_type_id.code in codigos)
         return sum(self._ne_ausencia_habil(codigo, tramo_ini, tramo_fin)[0]
                    for codigo in sorted(codigos))
+
+    def _ne_liq_vacaciones_disfrutadas_aplican(self):
+        """Condición de ``CO_LIQ_VAC_DISFRUTADAS``: ¿hay días de vacaciones disfrutadas del último tramo que pagar? H-F1-12 (D1): si el contrato no causa vacaciones (aprendiz en etapa lectiva, columna
+        «causa prestaciones» de ``l10n_co_aprendiz_etapas``) y aun así tiene vacaciones validadas en el tramo, un error que nombra al empleado y las ausencias: ocultar la línea dejaría sin pagar los días que
+        ``_ne_dias_pagables`` resta del sueldo (la misma fuente: ``_ne_ausencia_habil_tramo``)."""
+        self.ensure_one()
+        dias, detalle = self._ne_ausencia_habil_tramo('CO_VAC')
+        if dias <= 0:
+            return False
+        if not self._ne_regimen_cotizante()['causa_prestaciones']:
+            ausencias = '; '.join(
+                _('«%(tipo)s» del %(desde)s al %(hasta)s', tipo=ausencia.holiday_status_id.name,
+                  desde=format_date(self.env, ausencia.request_date_from), hasta=format_date(self.env, ausencia.request_date_to))
+                for ausencia, *_resto in detalle)
+            raise UserError(_(
+                'El contrato de %(empleado)s no causa vacaciones (aprendiz en etapa lectiva, según el parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato», código '
+                'l10n_co_aprendiz_etapas) y tiene vacaciones validadas en el último tramo de la liquidación: %(ausencias)s. Esos días se restarían del sueldo sin pagarse. Corrija o anule la ausencia en la '
+                'aplicación Ausencias, o revise el tipo de cotizante y el tipo de contrato en el contrato del empleado.', empleado=self.employee_id.name, ausencias=ausencias))
+        return True
 
     def _ne_ausencia_habil_tramo(self, work_entry_code):
         """Ausencias en dias HABILES acotadas al tramo pagable del recibo: lo que este documento

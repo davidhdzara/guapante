@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """H-F1-09 (doc 88; decisiones del TL del 22-nov): el aprendiz tiene un regimen propio que sale de UN metodo, ``HrPayslip._ne_regimen_cotizante``, y de una tabla versionada por fecha (parametro
-``l10n_co_aprendiz_etapas``: tipo de cotizante, tipo de contrato, etapa, TipoTrabajador de la DIAN y si paga auxilio de transporte). Esquema PROVISIONAL «mientras el Ministerio de Salud expide el acto administrativo» (Concepto MinSalud
+``l10n_co_aprendiz_etapas``: tipo de cotizante, tipo de contrato, etapa, TipoTrabajador de la DIAN, si paga auxilio de transporte y si causa prestaciones, H-F1-12). Esquema PROVISIONAL «mientras el Ministerio de Salud expide el acto administrativo» (Concepto MinSalud
 2025310001925691 y Circular MinTrabajo 083 del 18-jul-2025): hasta el 31-jul-2025 el 12 era la lectiva y el 19 la productiva; desde el 1-ago-2025 la lectiva es el tipo 19 y la practica o dual es el tipo 01 con el contrato
 «4 - Aprendizaje»; el 12 se restringe."""
 
@@ -41,7 +41,7 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
     def test_un_dependiente_normal_no_es_aprendiz(self):
         """Tipo 01 con un contrato que no es de aprendizaje: sin etapa y sin TipoTrabajador derivado (se usa el de la ficha, como siempre)."""
         regimen = self._regimen('Normal', '01', '2')
-        self.assertEqual(regimen, {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True})      # la regla general del auxilio (con su tope) decide
+        self.assertEqual(regimen, {'etapa': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True})      # las reglas generales (con sus topes) deciden
 
     def test_sin_el_parametro_un_error_que_lo_nombra(self):
         _empleado, recibo = self._empleado_y_recibo('Sin Tabla')
@@ -54,7 +54,7 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
         self.env['hr.rule.parameter.value'].create({
             'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1),
-            'parameter_value': "[('19', '*', 'lectiva', '12', False), ('01', '4', 'practica', '19', True), ('01', '2', 'practica', '19', True)]"})
+            'parameter_value': "[('19', '*', 'lectiva', '12', False, False), ('01', '4', 'practica', '19', True, True), ('01', '2', 'practica', '19', True, True)]"})
         self.assertFalse(self._regimen('Marzo', '01', '2', date(2026, 3, 1), date(2026, 3, 31))['etapa'])
         self.assertEqual(self._regimen('Abril', '01', '2', date(2026, 4, 1), date(2026, 4, 30))['etapa'], 'practica')
 
@@ -75,17 +75,34 @@ class TestAprendizRegimen(base.TestValidacionAfiliacion):
         """Un caso que necesite otra cosa (por ejemplo, una formacion dual reportada con el tipo 19) cambia la columna con un valor nuevo y su fecha: el codigo no mira el tipo de cotizante."""
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
         self.env['hr.rule.parameter.value'].create({
-            'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': "[('19', '*', 'lectiva', '12', True), ('01', '4', 'practica', '19', True)]"})
+            'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': "[('19', '*', 'lectiva', '12', True, False), ('01', '4', 'practica', '19', True, True)]"})
         self.assertFalse(self._regimen('Lectiva marzo', '19', '4', date(2026, 3, 1), date(2026, 3, 31))['paga_auxilio_transporte'])
         self.assertTrue(self._regimen('Lectiva abril', '19', '4', date(2026, 4, 1), date(2026, 4, 30))['paga_auxilio_transporte'])
 
-    def test_una_fila_sin_la_columna_del_auxilio_da_un_error_que_nombra_el_parametro(self):
-        """Sin valor por defecto: una fila de cuatro columnas (el formato anterior) no se interpreta como «sin auxilio»."""
+    def test_la_tabla_dice_si_la_etapa_causa_prestaciones(self):
+        """H-F1-12: Decreto 223/2026 art. 2.2.6.3.3.6: la lectiva no causa prima, cesantias, intereses ni vacaciones; la practica y la dual si; el que no es aprendiz tambien. Mismo reparto en el esquema anterior
+        al 1-ago-2025 (NO VERIFICADO para esos periodos: la practica queda como estaba)."""
+        casos = (
+            ('19 lectiva 2026', '19', '4', date(2026, 3, 1), date(2026, 3, 31), False),
+            ('01 practica o dual 2026', '01', '4', date(2026, 3, 1), date(2026, 3, 31), True),
+            ('01 dependiente 2026', '01', '2', date(2026, 3, 1), date(2026, 3, 31), True),
+            ('12 lectiva julio 2025', '12', '2', date(2025, 7, 1), date(2025, 7, 31), False),
+            ('19 productiva julio 2025', '19', '2', date(2025, 7, 1), date(2025, 7, 31), True),
+        )
+        for nombre, tipo, tipo_contrato, desde, hasta, causa in casos:
+            self.assertIs(self._regimen(nombre, tipo, tipo_contrato, desde, hasta)['causa_prestaciones'], causa, nombre)
+
+    def test_una_fila_sin_las_seis_columnas_da_un_error_que_nombra_el_parametro(self):
+        """Sin valor por defecto: una fila de cinco o de cuatro columnas (los formatos anteriores) no se interpreta como «sin auxilio» ni como «sin prestaciones»."""
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_aprendiz_etapas')
-        self.env['hr.rule.parameter.value'].create({
-            'rule_parameter_id': parametro.id, 'date_from': date(2026, 4, 1), 'parameter_value': "[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19')]"})
-        with self.assertRaisesRegex(UserError, 'l10n_co_aprendiz_etapas'):
-            self._regimen('Fila vieja', '19', '4', date(2026, 4, 1), date(2026, 4, 30))
+        casos = (
+            (date(2026, 4, 1), "[('19', '*', 'lectiva', '12', False), ('01', '4', 'practica', '19', True)]"),
+            (date(2026, 5, 1), "[('19', '*', 'lectiva', '12'), ('01', '4', 'practica', '19')]"),
+        )
+        for desde, valor in casos:
+            self.env['hr.rule.parameter.value'].create({'rule_parameter_id': parametro.id, 'date_from': desde, 'parameter_value': valor})
+            with self.assertRaisesRegex(UserError, 'seis columnas'):
+                self._regimen('Fila vieja %s' % desde.month, '19', '4', desde, desde + timedelta(days=27))
 
 
 @tagged('post_install', '-at_install')

@@ -41,7 +41,8 @@ _salario = contract.wage
 
 # Determinar si incluye auxilio de transporte
 _aux_transporte = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary:
+# H-F1-12: la misma decision del auxilio que CO_AUX_TRANS (payslip._ne_regimen_cotizante(), tabla l10n_co_aprendiz_etapas)
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux_transporte = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
 
 # Si es salario integral, la base es el 100% del salario
@@ -73,7 +74,8 @@ else:
 # el resultado ya calculado vive en result_rules['CODE']['total'] (dict).
 # Bug historico, nunca ejercitado (0 payslips reales contra esta
 # estructura hasta el ciclo de doc 18/provisiones que lo destapo).
-result = result_rules.get('CO_PRIMA_BASE') and result_rules['CO_PRIMA_BASE']['total'] &gt; 0
+# H-F1-12: sin linea si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = result_rules.get('CO_PRIMA_BASE') and result_rules['CO_PRIMA_BASE']['total'] &gt; 0 and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -298,8 +300,8 @@ result_qty = _dias
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica para salario integral
-result = not contract.l10n_co_ne_integral_salary
+# No aplica para salario integral ni si la etapa del contrato no causa prestaciones (H-F1-12, parametro l10n_co_aprendiz_etapas)
+result = not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -314,7 +316,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to):
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to) and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux
@@ -354,8 +356,8 @@ result_qty = _dias
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica para salario integral
-result = not contract.l10n_co_ne_integral_salary
+# No aplica para salario integral ni si la etapa del contrato no causa prestaciones (H-F1-12, parametro l10n_co_aprendiz_etapas)
+result = not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -367,7 +369,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to):
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to) and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux
@@ -439,7 +441,8 @@ result_qty = _dias
             <field name="condition_python">
 # Dias habiles de esta ausencia dentro del tramo del ultimo mes (los de meses anteriores ya se
 # pagaron en su nomina) -- misma fuente con la que _ne_dias_pagables() los resta del sueldo.
-result = payslip._ne_ausencia_habil_tramo('CO_VAC')[0] &gt; 0
+# H-F1-12: si la etapa del contrato no causa vacaciones y hay dias en el tramo, el metodo da un error que nombra empleado y ausencia.
+result = payslip._ne_liq_vacaciones_disfrutadas_aplican()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -603,7 +606,11 @@ result = _pago / dias if dias else 0.0
             <field name="sequence">40</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-12: sin linea si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Vacaciones compensadas = valor dia x dias pendientes (Art. 186 y 189 CST).
