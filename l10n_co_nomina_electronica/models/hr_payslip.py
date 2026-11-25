@@ -1098,6 +1098,7 @@ class HrPayslip(models.Model):
         # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
         # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
         res = True
+        con_huella._ne_rete_validar_secuencias()        # R-2: nada de la base puede calcularse después de la retención
         con_huella._ne_rete_validar_pendientes()        # R-2: el recibo que retiene por el mes exige confirmados los que suman antes que él
         cifras_retencion = {}
         for company in self.company_id:

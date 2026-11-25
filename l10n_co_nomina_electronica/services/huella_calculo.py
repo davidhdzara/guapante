@@ -37,7 +37,7 @@ def huella(cabecera, salario, entradas, dias, ajustes, ausencias, mes=None):
     :param dias: iterable de (tipo_de_entrada_de_trabajo_id, número_de_días, número_de_horas)
     :param ajustes: iterable de (regla_id, cantidad, porcentaje, importe)
     :param ausencias: iterable de (ausencia_id, fecha_desde, fecha_hasta, tipo_de_ausencia_id)
-    :param mes: lo que la retención lee del mes (R-2): ``None`` o ``[cierra, [[recibo_id, base, base_salarial, retenido, exento], ...]]``
+    :param mes: lo que la retención lee del mes (R-2): ``None`` o ``[cierra, [[recibo_id, base, base_salarial, salud, pensión, retenido, exento], ...]]``
     """
     empleado, contrato, estructura, desde, hasta = cabecera
     datos = {

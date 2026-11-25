@@ -4,8 +4,11 @@
 retienen y no hay reintegros. Qué entra en la base sale del parámetro ``l10n_co_retefuente_base_mes``. Si la retención no cabe en el recibo de cierre se retiene lo disponible y confirmar exige la
 autorización del administrador de nómina; ningún recibo colombiano se confirma con neto negativo. Valores a mano con la UVT 2026 (52.374): 12.000.000 mensuales retienen 642.432."""
 
+import re
 from datetime import date
 from unittest.mock import patch
+
+from freezegun import freeze_time
 
 from odoo import Command
 from odoo.exceptions import UserError
@@ -80,9 +83,30 @@ class TestRetefuenteMes(TransactionCase):
         return sum(recibo.line_ids.filtered(lambda l: l.code == codigo).mapped('total'))
 
     def _oraculo(self, recibo, base, ibc, **extra):
-        """La depuración y la tabla de siempre (``compute_retefuente``, sin cambios) sobre una base escrita a mano en la prueba."""
+        """La depuración y la tabla de siempre (``compute_retefuente``) sobre una base escrita a mano en la prueba; sin ``aporte_salud``/``aporte_pension``, los aportes salen de ``ibc``."""
         return self.config.compute_retefuente(
             recibo.employee_id, base, ibc, ibc, self.company, contract=recibo.contract_id, payslip=recibo, **extra)['retencion_pesos']
+
+    def _aportes(self, *recibos):
+        """Salud y pensión del trabajador efectivamente descontadas en ``recibos`` (códigos de la nómina, escritos a mano)."""
+        return {'aporte_salud': -sum(self._total(r, 'CO_SALUD_EMP') for r in recibos), 'aporte_pension': -sum(self._total(r, 'CO_PENSION_EMP') for r in recibos)}
+
+    def _ausencia(self, contrato, xmlid, desde, hasta):
+        ausencia = self.env['hr.leave'].create({
+            'employee_id': contrato.employee_id.id, 'holiday_status_id': self.env.ref('l10n_co_nomina_electronica.%s' % xmlid).id,
+            'request_date_from': desde, 'request_date_to': hasta})
+        ausencia.action_validate()
+        self.assertEqual(ausencia.state, 'validate')
+
+    def _comprobar_mes_con_aportes_reales(self, primera, segunda):
+        """La retención del cierre resta los aportes descontados de verdad, mayores que los que saldrían de la base salarial."""
+        base, ibc = (self._total(primera, c) + self._total(segunda, c) for c in ('CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'))
+        reales = self._aportes(primera, segunda)
+        self.assertGreater(reales['aporte_salud'], ibc * 0.04 + 1.0, 'Premisa: se cotizó sobre más que la base salarial')
+        esperado = self._oraculo(segunda, base, ibc, fecha_mes=date(2026, 9, 30), **reales)
+        self.assertGreater(esperado, 0.0)
+        self.assertAlmostEqual(-self._total(segunda, 'CO_RETEFUENTE'), esperado, delta=1.0)
+        self.assertLess(esperado, self._oraculo(segunda, base, ibc, fecha_mes=date(2026, 9, 30)))
 
     def _nuevo_valor(self, valor, desde=date(2026, 9, 1)):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_retefuente_base_mes')
@@ -179,6 +203,81 @@ class TestRetefuenteMes(TransactionCase):
         segunda = self._segunda(contrato)         # no exige confirmar la primera: no lee otros recibos
         self.assertAlmostEqual(-self._total(segunda, 'CO_RETEFUENTE'), esperado, delta=1.0)
 
+    # ── la depuración resta los aportes efectivamente descontados ────
+    def test_vacaciones_disfrutadas_en_el_mes_restan_sus_aportes(self):
+        contrato = self._contrato()
+        self._ausencia(contrato, 'hr_leave_type_co_vac', date(2026, 9, 7), date(2026, 9, 11))
+        primera = self._hecho(self._primera(contrato))
+        self.assertGreater(self._total(primera, 'CO_VAC'), 0.0, 'Premisa: la quincena paga vacaciones')
+        self._comprobar_mes_con_aportes_reales(primera, self._segunda(contrato))
+
+    def test_la_incapacidad_en_el_mes_resta_sus_aportes(self):
+        contrato = self._contrato()
+        self._ausencia(contrato, 'hr_leave_type_co_inc_comun', date(2026, 9, 7), date(2026, 9, 11))
+        primera = self._hecho(self._primera(contrato))
+        self.assertGreater(self._total(primera, 'CO_INC_COMUN'), 0.0, 'Premisa: la quincena paga incapacidad')
+        self._comprobar_mes_con_aportes_reales(primera, self._segunda(contrato))
+
+    def test_el_exceso_del_40_por_ciento_resta_sus_aportes(self):
+        recibo = self._recibo(self._contrato(periodicidad='monthly'), date(2026, 9, 1), date(2026, 9, 30), novedades=[('CO_BONIF_NOSAL', 20000000.0)])
+        reales = self._aportes(recibo)
+        self.assertGreater(reales['aporte_salud'], 480000.0 + 1.0, 'Premisa: el exceso del 40 % sumó a los aportes')
+        self.assertAlmostEqual(-self._total(recibo, 'CO_RETEFUENTE'), self._oraculo(recibo, 32000000.0, 12000000.0, **reales), delta=1.0)
+
+    def test_el_porcentaje_fijo_promedia_meses_con_los_aportes_descontados(self):
+        contrato = self._contrato(l10n_co_ne_retention_procedure='2')
+        semestre = self.env['l10n.co.retefuente.procedure2'].create({
+            'contract_id': contrato.id, 'semester_start': date(2026, 7, 1), 'fixed_percentage': 0.0, 'months_considered': 12})
+        recibos = [self._hecho(self._primera(contrato, novedades=[('CO_BONIF_NOSAL', 20000000.0)])), self._hecho(self._segunda(contrato))]
+        base, ibc = (sum(self._total(r, c) for r in recibos) for c in ('CO_RETEFUENTE_BASE_GROSS', 'CO_RETEFUENTE_BASE_IBC'))
+        with freeze_time('2026-06-15'):
+            contrato.action_calculate_retention_procedure2()
+        calculo = self.config.compute_retefuente(
+            contrato.employee_id, base, ibc, ibc, self.company, contract=contrato, force_procedure='1', **self._aportes(*recibos))
+        self.assertEqual(semestre.months_considered, 1)
+        self.assertAlmostEqual(semestre.average_gross, base, delta=1.0)
+        self.assertAlmostEqual(semestre.fixed_percentage, calculo['retencion_uvt'] / calculo['base_uvt'] * 100, places=2)
+
+    def test_la_prima_en_procedimiento_2_usa_el_porcentaje_del_contrato(self):
+        contrato = self._contrato(salario=20000000.0, l10n_co_ne_retention_procedure='2')
+        self.env['l10n.co.retefuente.procedure2'].create({
+            'contract_id': contrato.id, 'semester_start': date(2026, 7, 1), 'fixed_percentage': 10.0, 'months_considered': 12})
+        prima = self._recibo(contrato, date(2026, 7, 1), date(2026, 12, 31), estructura=self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_prima'))
+        valor = self._total(prima, 'CO_PRIMA_VALOR')
+        extra = {'fecha_mes': date(2026, 12, 31), 'sin_aportes_voluntarios': True}
+        esperado = self._oraculo(prima, valor, 0.0, **extra)
+        self.assertGreater(esperado, 0.0)
+        self.assertNotAlmostEqual(esperado, self._oraculo(prima, valor, 0.0, force_procedure='1', **extra), delta=1.0)
+        self.assertAlmostEqual(-self._total(prima, 'CO_PRIMA_RETE'), esperado, delta=1.0)
+
+    # ── reembolsos ───────────────────────────────────────────────────
+    def test_un_reembolso_confirmado_deja_en_cero_la_base_y_la_retencion_del_recibo(self):
+        contrato = self._contrato(periodicidad='monthly')
+        original = self._hecho(self._recibo(contrato, date(2026, 9, 1), date(2026, 9, 30)))
+        original.refund_sheet()
+        reembolso = self.env['hr.payslip'].search([('contract_id', '=', contrato.id), ('credit_note', '=', True)])
+        self.assertEqual((len(reembolso), reembolso.state), (1, 'verify'))
+        self.assertAlmostEqual(self._total(reembolso, 'CO_RETEFUENTE'), RETENCION_12M, delta=1.0)
+        nuevo = self._recibo(contrato, date(2026, 9, 1), date(2026, 9, 30), calculado=False)
+        with self.assertRaisesRegex(UserError, re.escape(reembolso.number or reembolso.name)):
+            nuevo.compute_sheet()
+        self._hecho(reembolso)
+        for indice, cifras in enumerate(zip(nuevo._ne_rete_cifras_de(original), nuevo._ne_rete_cifras_de(reembolso))):
+            with self.subTest(cifra=indice):
+                self.assertAlmostEqual(sum(cifras), 0.0, delta=0.01)
+        nuevo.compute_sheet()
+        self.assertAlmostEqual(-self._total(nuevo, 'CO_RETEFUENTE'), RETENCION_12M, delta=1.0)
+
+    # ── un devengado calculado después de la retención ───────────────
+    def test_un_concepto_calculado_despues_de_la_retencion_detiene_el_calculo(self):
+        self.env['hr.salary.rule'].create({
+            'name': 'Bono Tardío de la Empresa', 'code': 'X_BONO_TARDIO', 'struct_id': self.general.id, 'sequence': 115,
+            'category_id': self.env.ref('l10n_co_nomina_electronica.hr_salary_rule_category_devengados_no_salariales').id,
+            'condition_select': 'none', 'amount_select': 'fix', 'amount_fix': 1.0, 'quantity': '1.0', 'l10n_co_pila_origen_no_salarial': 'naturaleza'})
+        recibo = self._primera(self._contrato(), calculado=False)
+        with self.assertRaisesRegex(UserError, 'X_BONO_TARDIO'):
+            recibo.compute_sheet()
+
     # ── bonificaciones (D1) ──────────────────────────────────────────
     def _bono(self, contrato, dia=20, monto=2000000.0, **extra):
         return self._recibo(contrato, date(2026, 9, dia), date(2026, 9, dia), estructura=self.bonificacion, novedades=[('CO_BON_VALOR', monto)],
@@ -273,8 +372,11 @@ class TestRetefuenteMes(TransactionCase):
         liquidacion = self._recibo(contrato, date(2026, 1, 1), date(2026, 9, 30), estructura=self.liquidacion)
         propia = sum(self._total(liquidacion, c) for c in liquidacion._ne_rete_codigos_base(self.liquidacion.rule_ids))
         salarial = sum(liquidacion.line_ids.filtered(lambda l: l.category_id.code in ('DEV_SAL', 'HEX')).mapped('total'))
+        reales = self._aportes(primera)
+        reales['aporte_salud'] -= self._total(liquidacion, 'CO_LIQ_SALUD')
+        reales['aporte_pension'] -= self._total(liquidacion, 'CO_LIQ_PENSION')
         esperado = self._oraculo(liquidacion, propia + self._total(primera, 'CO_RETEFUENTE_BASE_GROSS'),
-                                 salarial + self._total(primera, 'CO_RETEFUENTE_BASE_IBC'), fecha_mes=date(2026, 9, 30))
+                                 salarial + self._total(primera, 'CO_RETEFUENTE_BASE_IBC'), fecha_mes=date(2026, 9, 30), **reales)
         self.assertGreater(esperado, 0.0)
         self.assertAlmostEqual(liquidacion.l10n_co_ne_rete_a_descontar, esperado, delta=1.0)
         self.assertGreater(self._total(liquidacion, 'CO_LIQ_PRIMA'), 0.0, 'Premisa: la liquidación trae prima')

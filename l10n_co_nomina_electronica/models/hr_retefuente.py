@@ -226,7 +226,7 @@ class L10nCoRetefuenteUvt(models.Model):
     def compute_retefuente(self, employee, gross_salary, ibc_pension,
                            ibc_salud, company=None, contract=None,
                            payslip=None, force_procedure=None, fecha_mes=None,
-                           sin_aportes_voluntarios=False):
+                           sin_aportes_voluntarios=False, aporte_salud=None, aporte_pension=None):
         """Calcula la retención en la fuente mensual para un empleado.
 
         Ejecuta la depuración de la base gravable según la normatividad
@@ -262,6 +262,9 @@ class L10nCoRetefuenteUvt(models.Model):
             retención del mes recalcula el mes completo) y el semestre del Procedimiento 2 se elige con esta fecha.
         :param sin_aportes_voluntarios: bool (opcional, R-2, prima). Con ``contract`` toma su procedimiento y su
             porcentaje, sin descontar pensión voluntaria ni AFC (son aportes sobre el salario del mes).
+        :param aporte_salud: float (opcional, R-2). Salud del trabajador EFECTIVAMENTE descontada en los recibos que
+            suman; si se pasa, la depuración resta ese valor y no el calculado sobre ``ibc_salud``.
+        :param aporte_pension: float (opcional, R-2). Igual para la pensión obligatoria del trabajador.
         :returns: dict con el detalle de la depuración y el valor final
             de retención en pesos, con la siguiente estructura::
 
@@ -305,12 +308,14 @@ class L10nCoRetefuenteUvt(models.Model):
         ingreso_bruto = gross_salary
 
         # ── 2. Aportes obligatorios salud empleado ────────────────────
-        aporte_salud = round(
-            ibc_salud * _p('l10n_co_pct_salud_empleado') / 100, 2)
+        if aporte_salud is None:
+            aporte_salud = ibc_salud * _p('l10n_co_pct_salud_empleado') / 100
+        aporte_salud = round(aporte_salud, 2)
 
         # ── 3. Aportes obligatorios pensión empleado ──────────────────
-        aporte_pension = round(
-            ibc_pension * _p('l10n_co_pct_pension_empleado') / 100, 2)
+        if aporte_pension is None:
+            aporte_pension = ibc_pension * _p('l10n_co_pct_pension_empleado') / 100
+        aporte_pension = round(aporte_pension, 2)
 
         # ── 4/5. Pensión voluntaria + AFC — tope COMBINADO del 30%% ──
         #     AUD-05/doc 32: Art. 126-1 ET (mod. Ley 1819/2016) + Art.

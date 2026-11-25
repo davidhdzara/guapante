@@ -128,20 +128,26 @@ class HrContractRetefuenteProcedure(models.Model):
         # R-2 (doc 108 §1): la unidad del promedio es el MES (por «Hasta»), no el recibo: cada recibo guarda su base propia.
         por_mes = {}
         for payslip in payslips:
-            mes = por_mes.setdefault((payslip.date_to.year, payslip.date_to.month), [0.0, 0.0])
+            mes = por_mes.setdefault((payslip.date_to.year, payslip.date_to.month), [0.0, 0.0, 0.0, 0.0])
             mes[0] += sum(payslip.line_ids.filtered(lambda l: l.code == _BASE_GROSS_CODE).mapped('total'))
             mes[1] += sum(payslip.line_ids.filtered(lambda l: l.code == _BASE_IBC_CODE).mapped('total'))
+            salud, pension = payslip._ne_rete_aportes_de(payslip.line_ids)      # lo efectivamente descontado, no un porcentaje de la base
+            mes[2] += salud
+            mes[3] += pension
         meses = sorted(por_mes, reverse=True)[:_MAX_MONTHS_AVERAGE]
 
         months_considered = len(meses)
         avg_gross = sum(por_mes[m][0] for m in meses) / months_considered
         avg_ibc = sum(por_mes[m][1] for m in meses) / months_considered
+        avg_salud = sum(por_mes[m][2] for m in meses) / months_considered
+        avg_pension = sum(por_mes[m][3] for m in meses) / months_considered
 
         RetefuenteUvt = self.env['l10n.co.retefuente.uvt']
         rete_cfg = RetefuenteUvt.get_uvt_for_year(next_semester_start.year, self.company_id)
         result = rete_cfg.compute_retefuente(
             self.employee_id, avg_gross, avg_ibc, avg_ibc,
             self.company_id, contract=self, force_procedure='1',
+            aporte_salud=avg_salud, aporte_pension=avg_pension,
         )
         base_uvt = result['base_uvt']
         if base_uvt > 0:

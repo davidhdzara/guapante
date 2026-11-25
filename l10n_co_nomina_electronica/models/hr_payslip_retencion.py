@@ -116,7 +116,7 @@ class HrPayslipRetencion(models.Model):
                     return otro_codigo == codigo and anterior
                 return otro_codigo == 'CO_BON_RETE' or anterior
 
-            pendientes = recibo._ne_rete_otros_del_mes().filtered(lambda o: o.state in _ABIERTOS and not o.credit_note and bloquea(o))
+            pendientes = recibo._ne_rete_otros_del_mes().filtered(lambda o: o.state in _ABIERTOS and bloquea(o))          # un reembolso sin confirmar también
             if pendientes:
                 nombres = ', '.join('«%s»' % (p.number or p.name) for p in pendientes)
                 raise UserError(_(
@@ -157,19 +157,48 @@ class HrPayslipRetencion(models.Model):
         return salarial
 
     def _ne_rete_cifras_de(self, recibo):
-        """``(base, base salarial, retenido, exento voluntario)`` de un recibo confirmado del mes, leídos de sus líneas."""
+        """``(base, base salarial, salud, pensión, retenido, exento voluntario)`` de un recibo confirmado del mes, leídos de sus líneas (un reembolso las trae negadas)."""
         lineas = recibo.line_ids
         codigos = self._ne_rete_codigos_base(lineas.salary_rule_id, liquidacion=recibo._ne_rete_codigo() == 'CO_LIQ_RETE')
         salarial = sum(l.total for l in lineas if _en_categorias(l.salary_rule_id.category_id, ('DEV_SAL',)))
         return (
-            sum(l.total for l in lineas if l.code in codigos), recibo._ne_rete_ibc(salarial),
+            sum(l.total for l in lineas if l.code in codigos), recibo._ne_rete_ibc(salarial), *self._ne_rete_aportes_de(lineas),
             -sum(l.total for l in lineas if l.code in _ORDEN), sum(l.total for l in lineas if l.code == 'CO_EXENTO_PENSION_AFC'))
+
+    def _ne_rete_codigos_aporte(self, reglas):
+        """``(códigos de salud, códigos de pensión)`` que descuenta el trabajador: reglas de ``SS_EMP`` por su concepto DIAN. El fondo de solidaridad no entra en esta resta."""
+        return tuple(
+            {regla.code for regla in reglas if regla.l10n_co_ne_dian_concept == concepto and _en_categorias(regla.category_id, ('SS_EMP',))}
+            for concepto in ('Salud', 'FondoPension'))
+
+    def _ne_rete_aportes_de(self, lineas):
+        """``(salud, pensión)`` del trabajador efectivamente descontadas en ``lineas`` (positivas; en un reembolso, negativas)."""
+        return tuple(
+            -sum(lineas.filtered(lambda l, codigos=codigos: l.code in codigos).mapped('total'))
+            for codigos in self._ne_rete_codigos_aporte(lineas.salary_rule_id))
+
+    def _ne_rete_validar_secuencias(self):
+        """Un devengado o un aporte que se calcule DESPUÉS de la retención quedaría fuera de su base sin avisar (p. ej. un concepto creado por la empresa): se detiene el cálculo y se nombra."""
+        for recibo in self.filtered(lambda r: r._ne_rete_codigo()):
+            reglas = recibo.struct_id.rule_ids
+            retencion = reglas.filtered(lambda r: r.code == recibo._ne_rete_codigo())
+            limite = min(retencion.mapped('sequence'))
+            codigos = recibo._ne_rete_codigos_base(reglas)
+            tarde = reglas.filtered(lambda r: r.sequence >= limite and (
+                r.code in codigos or _en_categorias(r.category_id.parent_id, ('DEV',)) or _en_categorias(r.category_id, ('SS_EMP',))))
+            if tarde:
+                raise UserError(_(
+                    'No se puede calcular «%(recibo)s»: estas reglas se calculan después de «%(retencion)s» (secuencia %(limite)s) y quedarían fuera de la retención en la fuente: %(reglas)s. '
+                    'Póngales una secuencia menor en la regla salarial.', recibo=recibo.number or recibo.name, retencion=retencion[:1].name, limite=limite,
+                    reglas=', '.join('«%s» (%s, secuencia %s)' % (r.name, r.code, r.sequence) for r in tarde)))
 
     # ── el cálculo (lo llaman las reglas) ────────────────────────────
     def _ne_resultado_retefuente(self, result_rules):
         """UN solo lugar (H-F1-02) para las reglas de retención de la nómina, la liquidación y la bonificación y sus acumuladores.
 
         :param result_rules: las líneas ya calculadas del recibo (``localdict['result_rules']``).
+        La depuración resta la salud y la pensión del trabajador efectivamente descontadas en los recibos que suman (vacaciones, incapacidad y exceso del 40 % incluidos).
+
         :returns: ``base`` y ``ibc`` propios del recibo; ``retiene`` (si lleva línea de retención); ``a_descontar`` (pesos, nunca negativo); ``exento`` (pensión voluntaria y AFC que este recibo suma al
             acumulado anual) y ``exceso`` (lo que el límite global no dejó deducir)."""
         self.ensure_one()
@@ -180,16 +209,18 @@ class HrPayslipRetencion(models.Model):
         resultado = {'base': base, 'ibc': ibc, 'retiene': False, 'a_descontar': 0.0, 'exento': 0.0, 'exceso': 0.0}
         config = self._ne_retefuente_config()
         mensual = self._ne_rete_es_procedimiento_1()
-        previos = [0.0, 0.0, 0.0, 0.0]
+        salud, pension = (-sum(result_rules[codigo]['total'] for codigo in codigos) for codigos in self._ne_rete_codigos_aporte(reglas))
+        previos = [0.0] * 6
         if mensual:
             if not self._ne_rete_retiene_mes():
                 return resultado
             for recibo in self._ne_rete_otros_del_mes().filtered(lambda r: r.state in _CONFIRMADOS):
                 previos = [suma + valor for suma, valor in zip(previos, self._ne_rete_cifras_de(recibo))]
-        base_previa, ibc_previo, retenido, exento_previo = previos
+        base_previa, ibc_previo, salud_previa, pension_previa, retenido, exento_previo = previos
         calculo = config.compute_retefuente(
             self.employee_id, base + base_previa, ibc + ibc_previo, ibc + ibc_previo, self.employee_id.company_id,
-            contract=self.contract_id, payslip=self, fecha_mes=self.date_to if mensual else None)
+            contract=self.contract_id, payslip=self, fecha_mes=self.date_to if mensual else None,
+            aporte_salud=salud + salud_previa, aporte_pension=pension + pension_previa)
         resultado.update(
             retiene=True, a_descontar=max(calculo['retencion_pesos'] - retenido, 0.0),
             exento=calculo['exento_vol_pension_afc'] - exento_previo, exceso=calculo.get('exceso_limite_global', 0.0))
