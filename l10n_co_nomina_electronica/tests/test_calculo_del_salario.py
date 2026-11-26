@@ -82,7 +82,7 @@ class TestCalculoDelSalario(TransactionCase):
         self.assertEqual(pagina.get('invisible'), 'not l10n_co_ne_usa_conceptos')
         nativa = arch.xpath("//page[@name='salary_computation']")
         self.assertEqual(len(nativa), 1)
-        self.assertEqual(nativa[0].get('invisible'), 'l10n_co_ne_oculta_pagina_novedades', 'La pestaña nativa solo se oculta donde «Conceptos de pago» la reemplaza')
+        self.assertEqual(nativa[0].get('invisible'), 'l10n_co_ne_usa_conceptos', 'La pestaña nativa solo se oculta en estructuras con conceptos')
         campo = pagina.xpath(".//field[@name='l10n_co_calculo_ids']")[0]
         self.assertEqual(campo.get('widget'), 'section_and_note_one2many')
         self.assertIn(campo.get('readonly'), ('1', 'True', 'true'), 'Solo lectura: sin «Agregar», sin papelera, sin edición')

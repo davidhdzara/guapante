@@ -161,12 +161,13 @@ class TestAprendizPrestaciones(TransactionCase):
         reglas = self.env['hr.salary.rule'].browse(datos.mapped('res_id')).exists()
         for codigos, clave in ((REGLAS_CON_LA_DECISION, 'causa_prestaciones'), (REGLAS_CON_AUXILIO, 'paga_auxilio_transporte')):
             for codigo in codigos:
-                regla = reglas.filtered(lambda r: r.code == codigo)
-                self.assertEqual(len(regla), 1, codigo)
-                texto = '\n'.join(
-                    linea for linea in ('%s\n%s' % (regla.condition_python or '', regla.amount_python_compute or '')).splitlines()
-                    if not linea.strip().startswith('#'))
-                self.assertIn("_ne_regimen_cotizante()['%s']" % clave, texto, codigo)
-                self.assertNotIn('lectiva', texto, codigo)
-                self.assertNotIn('practica', texto, codigo)
+                homonimas = reglas.filtered(lambda r: r.code == codigo)
+                self.assertEqual(len(homonimas), 2 if codigo == 'CO_AUX_TRANS' else 1, codigo)     # .328: la nómina y la liquidación pagan el auxilio
+                for regla in homonimas:
+                    texto = '\n'.join(
+                        linea for linea in ('%s\n%s' % (regla.condition_python or '', regla.amount_python_compute or '')).splitlines()
+                        if not linea.strip().startswith('#'))
+                    self.assertIn("_ne_regimen_cotizante()['%s']" % clave, texto, regla.struct_id.name)
+                    self.assertNotIn('lectiva', texto, regla.struct_id.name)
+                    self.assertNotIn('practica', texto, regla.struct_id.name)
         self.assertEqual(reglas.filtered(lambda r: r.code == 'CO_LIQ_VACACIONES').condition_select, 'python')

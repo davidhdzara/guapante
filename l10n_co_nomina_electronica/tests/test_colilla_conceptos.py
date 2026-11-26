@@ -146,7 +146,8 @@ class TestColillaConceptos(TransactionCase):
                         texto = _('Ajustado por la empresa. Sugerido: %s', formatLang(self.env, ajuste.sugerido_total, digits=2))
                     valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_note', 'name': texto, 'origen': 'calculado'})
                 if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
-                        and recibo.struct_id.use_worked_day_lines):
+                        and recibo.struct_id.use_worked_day_lines
+                        and recibo.l10n_co_ne_oculta_pagina_novedades):          # .328 (única diferencia con la copia): en prima y liquidación los días siguen en la pestaña nativa
                     dias_puestos = True
                     # Ajuste de David (22-nov): UNA fila «Asistencia» con los días pagados con el sueldo; las demás líneas (ausencias), cada una en su fila.
                     lineas_dias = recibo.worked_days_line_ids.sorted(lambda w: (w.sequence, w.id)).filtered(lambda w: w.number_of_days or w.number_of_hours)
