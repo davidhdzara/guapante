@@ -8,6 +8,8 @@ import base64
 from datetime import date
 from unittest.mock import MagicMock
 
+from lxml import etree
+
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
 
@@ -124,6 +126,12 @@ class TestEnvioPorReciboIncierto(DocumentoFixture, TransactionCase):
     def test_la_regla_90_sin_veredicto_queda_incierto(self):
         self.consulta.return_value = CONEXION
         self.assertEqual(self._enviar(REGLA_90), 'uncertain')
+
+    def test_el_formulario_no_ofrece_regenerar_un_incierto(self):
+        arch = etree.fromstring(self.env['hr.payslip'].get_view(view_type='form')['arch'].encode())
+        condicion = arch.xpath("//header/button[@string='Regenerar XML']")[0].get('invisible')
+        self.assertNotIn('uncertain', condicion)
+        self.assertIn('rejected', condicion)
 
     # ── el motor de habilitación (condición para no romperlo) ────────
     def test_el_motor_no_regenera_un_incierto(self):
