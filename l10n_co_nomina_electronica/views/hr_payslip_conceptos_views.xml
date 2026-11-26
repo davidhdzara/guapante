@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- E11 pieza 3 (.289, doc 71c §5): pestaña «Conceptos de pago» del recibo. Solo para las estructuras con el interruptor
-         l10n_co_ne_conceptos_de_pago; en las demás la pestaña nativa «Worked Days & Inputs» queda igual. Selectores por @name (nunca por @string),
+         l10n_co_ne_conceptos_de_pago; en las demás (y en prima y liquidación) la pestaña nativa «Worked Days & Inputs» queda igual. Selectores por @name (nunca por @string),
          sin colores ni íconos propios. Lista con el widget nativo section_and_note_one2many del módulo account (secciones y notas como una orden de
          venta) y SOLO «Agregar concepto» (patrón de sale/views/sale_order_views.xml:511-516 sin las opciones de sección y nota). -->
     <record id="view_payslip_form_ne_conceptos" model="ir.ui.view">
@@ -11,11 +11,12 @@
         <field name="priority">100</field>
         <field name="arch" type="xml">
             <xpath expr="//page[@name='worked_days_input']" position="attributes">
-                <attribute name="invisible">l10n_co_ne_usa_conceptos</attribute>
+                <attribute name="invisible">l10n_co_ne_oculta_pagina_novedades</attribute>
             </xpath>
             <xpath expr="//page[@name='worked_days_input']" position="after">
                 <page string="Conceptos de pago" name="conceptos_de_pago" invisible="not l10n_co_ne_usa_conceptos">
                     <field name="l10n_co_ne_usa_conceptos" invisible="1"/>
+                    <field name="l10n_co_ne_oculta_pagina_novedades" invisible="1"/>
                     <div class="alert alert-warning mb-2" role="alert" invisible="not l10n_co_ne_aviso_dias">
                         <strong>Revise las entradas de trabajo</strong><br/>
                         <field name="l10n_co_ne_aviso_dias" readonly="1" nolabel="1"/>

@@ -162,6 +162,7 @@ class TestCalculoDelSalario(TransactionCase):
         general = self._recibo()
         self.assertTrue(general.l10n_co_ne_usa_conceptos)
         self.assertTrue(general.l10n_co_calculo_ids)
+        self.prima.l10n_co_ne_conceptos_de_pago = False          # desde .328 la prima nace con el interruptor encendido
         prima = self._recibo(estructura=self.prima, desde=date(2026, 7, 1), hasta=date(2026, 12, 31))
         self.assertFalse(prima.l10n_co_calculo_ids, 'La estructura de prima no usa «Conceptos de pago»: la pestaña nativa queda igual')
         self.prima.l10n_co_ne_conceptos_de_pago = True

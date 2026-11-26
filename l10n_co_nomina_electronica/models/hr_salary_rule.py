@@ -240,8 +240,8 @@ class HrSalaryRule(models.Model):
              'Solo se marcan los conceptos de pago (sueldo, horas, recargos, bonificaciones, auxilios) y las deducciones voluntarias o '
              'pactadas (libranzas, cooperativa, AFC, pensión voluntaria, sindicato). NO se marcan los aportes de salud, pensión y FSP del '
              'empleado, la retención en la fuente, los embargos, los aportes de la empresa, las provisiones, las bases, las incapacidades, '
-             'las licencias ni las vacaciones: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
-             'UGPP. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
+             'las licencias ni las vacaciones disfrutadas: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
+             'UGPP. En los recibos de prima y liquidación sí se marcan la prima, las cesantías, sus intereses y las vacaciones compensadas. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
              'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan. '
              'Esta marca se siembra desde el XML del módulo: cada actualización del módulo devuelve a su valor sembrado la de las reglas de la estructura '
              'general; las reglas propias del cliente no se tocan.')
