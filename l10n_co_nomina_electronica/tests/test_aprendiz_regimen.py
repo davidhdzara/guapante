@@ -12,6 +12,7 @@ from odoo.tests.common import tagged
 
 from . import test_pension_no_exigida as pension
 from . import test_validacion_afiliacion as base
+from .common_dane import ciudad_con_dane
 
 
 @tagged('post_install', '-at_install')
@@ -293,7 +294,7 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         pais = self.env.ref('base.co')
         departamento = self.env['res.country.state'].search([('country_id', '=', pais.id)], limit=1) or self.env['res.country.state'].create({
             'name': 'Departamento Prueba Aprendiz', 'code': 'PA', 'country_id': pais.id})
-        ciudad = self.env['res.city'].create({'name': 'Ciudad Prueba Aprendiz', 'state_id': departamento.id, 'country_id': pais.id})
+        ciudad = ciudad_con_dane(self.env, departamento, 'Ciudad Prueba Aprendiz')
         self.company.partner_id.write({'country_id': pais.id, 'state_id': departamento.id, 'city_id': ciudad.id, 'street': 'Calle Prueba Aprendiz # 1-1'})
 
     def test_el_tipo_de_trabajador_del_aprendiz_sale_del_contrato_y_el_de_los_demas_de_la_ficha(self):

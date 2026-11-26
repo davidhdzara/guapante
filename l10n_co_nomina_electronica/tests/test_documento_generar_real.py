@@ -20,6 +20,7 @@ from lxml import etree
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.l10n_co_nomina_electronica.services import xml_signer
+from .common_dane import ciudad_con_dane
 
 _logger = logging.getLogger(__name__)
 CAJA = Path(__file__).resolve().parent.parent / 'DIAN' / 'Caja-de-Herramientas-Nomina-Electronica-V1-0'
@@ -35,10 +36,7 @@ class TestDocumentoGenerarReal(TransactionCase):
         env = cls.env
         pais = env.ref('base.co')
         estado = env['res.country.state'].search([('country_id', '=', pais.id)], limit=1)
-        ciudad = env['res.city'].search([('country_id', '=', pais.id), ('state_id', '=', estado.id)], limit=1)
-        if not ciudad:
-            ciudad = env['res.city'].create({
-                'name': 'Ciudad Prueba', 'country_id': pais.id, 'state_id': estado.id, 'zipcode': '11001'})
+        ciudad = ciudad_con_dane(env, estado, 'Ciudad Prueba Generar Real')
         cls.company = env['res.company'].create({
             'name': 'Empresa Generar Real', 'country_id': pais.id, 'vat': '900123456-8',
             'street': 'Calle 1 # 2-3', 'state_id': estado.id,

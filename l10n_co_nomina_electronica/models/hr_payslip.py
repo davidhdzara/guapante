@@ -1754,6 +1754,7 @@ class HrPayslip(models.Model):
         # America/Bogota via pytz.
         now = datetime.now(_pytz_timezone('America/Bogota'))
         company_nit, company_dv = self._ne_company_nit_dv()
+        departamento_cia, municipio_cia = self._ne_codigos_ubicacion(company.partner_id, _('la compañía %s', company.name))
 
         # AUD-DIAN-34 (2026-09-14): NumeroSecuenciaXML/@Numero debe ser
         # Prefijo+Consecutivo (ej. "NE00000001"), pero @Consecutivo debe
@@ -1803,10 +1804,8 @@ class HrPayslip(models.Model):
             },
             'lugar_generacion': {
                 'Pais': company.partner_id.country_id.code,
-                'DepartamentoEstado': dian_utils.get_department_code(
-                    company.partner_id.state_id
-                ),
-                'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
+                'DepartamentoEstado': departamento_cia,
+                'MunicipioCiudad': municipio_cia,
                 'Idioma': nomina_xml_builder.NE_IDIOMA,
             },
             'proveedor_xml': {
@@ -1825,10 +1824,8 @@ class HrPayslip(models.Model):
                 'NIT': company_nit,
                 'DV': company_dv,
                 'Pais': company.partner_id.country_id.code,
-                'DepartamentoEstado': dian_utils.get_department_code(
-                    company.partner_id.state_id
-                ),
-                'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
+                'DepartamentoEstado': departamento_cia,
+                'MunicipioCiudad': municipio_cia,
                 'Direccion': company.partner_id.street or '',
             },
 
@@ -1883,6 +1880,34 @@ class HrPayslip(models.Model):
         nit = dian_utils.clean_nit(self.company_id.vat)
         dv = dian_utils.compute_dv(nit) if self.company_id.vat else ''
         return nit, dv
+
+    @api.model
+    def _ne_codigos_ubicacion(self, contacto, de_quien):
+        """H-F3-06: códigos de departamento y municipio que van al XML desde la dirección ``contacto`` de ``de_quien``. En Colombia es la MISMA regla de la PILA
+        (``get_pila_municipality_code``): departamento con código DANE numérico y ciudad con código DANE (``l10n_co_edi_code``) de ese departamento; si falta
+        algo se detiene y se nombra: nunca se toma el código postal. Fuera de Colombia, como hasta ahora (qué espera la DIAN: NO VERIFICADO)."""
+        departamento, ciudad = contacto.state_id, contacto.city_id
+        codigo = dian_utils.get_department_code(departamento)
+        if contacto.country_id.code != 'CO':
+            return codigo, dian_utils.get_city_code(ciudad)
+        if not departamento:
+            falta = _('el departamento')
+        elif not ciudad:
+            falta = _('la ciudad (elegida de la lista)')
+        else:
+            try:
+                return codigo, codigo + dian_utils.get_pila_municipality_code(codigo, getattr(ciudad, 'l10n_co_edi_code', None))
+            except ValueError as motivo:
+                falta = {
+                    'departamento_sin_codigo': _('el código DANE del departamento «%s»', departamento.name),
+                    'ciudad_sin_codigo': _('el código DANE de la ciudad «%s»', ciudad.name),
+                    'ciudad_codigo_invalido': _('un código DANE válido en la ciudad «%s»', ciudad.name),
+                    'ciudad_otro_departamento': _('una ciudad del departamento «%(departamento)s» (el código DANE de «%(ciudad)s» es de otro)',
+                                                  departamento=departamento.name, ciudad=ciudad.name),
+                }[motivo.args[0]]
+        raise UserError(_(
+            'No se puede generar el XML: en la dirección de %(quien)s (contacto «%(contacto)s») falta %(falta)s. Complételo en Contactos; los códigos DANE los trae la localización '
+            'colombiana de facturación electrónica (l10n_co_edi).', quien=de_quien, contacto=contacto.display_name, falta=falta))
 
     def _ne_lugar_trabajo_partner(self):
         """Único partner fuente de los 4 atributos LugarTrabajo* del nodo <Trabajador>
@@ -2285,6 +2310,7 @@ class HrPayslip(models.Model):
         contract = self.contract_id
         _name_parts = employee._l10n_co_nombre_dian()
         lugar_trabajo = self._ne_lugar_trabajo_partner()
+        departamento_trabajo, municipio_trabajo = self._ne_codigos_ubicacion(lugar_trabajo, _('el lugar de trabajo de %s', employee.name))
         return {
             # H-F1-09 (decision del TL del 22-nov): para el APRENDIZ el TipoTrabajador se DERIVA del tipo de cotizante y de contrato del CONTRATO del recibo (tabla ``l10n_co_aprendiz_etapas``: una sola
             # fuente); para los demas sale de la ficha, como siempre. ``l10n_co_ne_aviso_tipo_trabajador`` avisa si la ficha del aprendiz dice otra cosa.
@@ -2305,9 +2331,8 @@ class HrPayslip(models.Model):
             # los 4 atributos LugarTrabajo* salen del mismo partner -- ver
             # _ne_lugar_trabajo_partner().
             'LugarTrabajoPais': lugar_trabajo.country_id.code,
-            'LugarTrabajoDepartamentoEstado': dian_utils.get_department_code(
-                lugar_trabajo.state_id),
-            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(lugar_trabajo.city_id),
+            'LugarTrabajoDepartamentoEstado': departamento_trabajo,
+            'LugarTrabajoMunicipioCiudad': municipio_trabajo,
             'LugarTrabajoDireccion': lugar_trabajo.street or '',
 
             'SalarioIntegral': (
