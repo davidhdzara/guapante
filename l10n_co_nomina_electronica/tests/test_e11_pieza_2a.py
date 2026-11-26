@@ -83,7 +83,7 @@ class TestE11Pieza2a(TransactionCase):
     # ── reglas: ajustable y unidad ───────────────────────────────────────────────────────────────────────────────────────────────
     def test_la_regla_ajustable_es_un_dato_sembrado_y_ninguna_regla_derivada_lo_es(self):
         """.298: ninguna regla de una categoría SIN sección devengados/deducciones es ajustable (bases, costo de la empresa, totales, neto), y las que lo son
-        están en una estructura que usa «Conceptos de pago» (hoy la general)."""
+        están en una estructura que usa «Conceptos de pago» (la general, y desde .328 prima y liquidación)."""
         reglas = self._del_modulo('hr.salary.rule')
         self.assertTrue(reglas)
         for regla in reglas.filtered('l10n_co_ne_ajustable'):
@@ -113,10 +113,12 @@ class TestE11Pieza2a(TransactionCase):
         self.assertFalse(self.env['hr.salary.rule'].default_get(['l10n_co_ne_ajustable']).get('l10n_co_ne_ajustable'),
                          'Una regla nueva NO es ajustable hasta que se marque')
 
-    def test_solo_la_estructura_general_usa_conceptos_de_pago(self):
-        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+    def test_usan_conceptos_de_pago_la_general_la_prima_y_la_liquidacion(self):
+        con = self.env['hr.payroll.structure']
+        for xmlid in ('hr_payroll_structure_co_nomina', 'hr_payroll_structure_co_prima', 'hr_payroll_structure_co_liquidacion'):
+            con |= self.env.ref('l10n_co_nomina_electronica.%s' % xmlid)
         for estructura in self._del_modulo('hr.payroll.structure'):
-            self.assertEqual(estructura.l10n_co_ne_conceptos_de_pago, estructura == general, estructura.name)
+            self.assertEqual(estructura.l10n_co_ne_conceptos_de_pago, estructura in con, estructura.name)
 
     def test_la_decision_manual_se_conserva_y_no_cambia_con_la_categoria_ni_con_el_interruptor_de_la_estructura(self):
         """.298: dato plano. Cambiar la categoría o el interruptor de la estructura NO recalcula ni pisa lo que se sembró o decidió."""
@@ -151,7 +153,8 @@ class TestE11Pieza2a(TransactionCase):
         general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
         otras = self._del_modulo('hr.salary.rule').filtered(lambda r: r.struct_id != general)
         self.assertTrue(otras)
-        self.assertFalse(otras.filtered('l10n_co_ne_ajustable'), 'Q3: las demás estructuras no usan Conceptos de pago todavía')
+        self.assertEqual(sorted(otras.filtered('l10n_co_ne_ajustable').mapped('code')), ['CO_LIQ_CESANTIAS', 'CO_LIQ_INT_CES', 'CO_LIQ_PRIMA', 'CO_LIQ_VACACIONES', 'CO_PRIMA_VALOR'],
+                         '.328 (pedido de David): en las demás estructuras solo son ajustables la prima, las cesantías, sus intereses y las vacaciones compensadas')
         self.assertFalse(otras.filtered('l10n_co_ne_unidad'))
 
     # ── tipos de novedad: cantidad y unidad ──────────────────────────────────────────────────────────────────────────────────────
@@ -218,6 +221,7 @@ class TestE11Pieza2a(TransactionCase):
     def test_el_formulario_de_la_estructura_trae_el_interruptor(self):
         estructura = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
         fijar_diario_de_salarios(self.env, estructura)       # .296: el formulario de la estructura exige el diario; no se toma de la base
+        estructura.l10n_co_ne_conceptos_de_pago = False          # desde .328 la liquidación nace con el interruptor encendido
         self.assertFalse(estructura.l10n_co_ne_conceptos_de_pago)
         with Form(estructura) as formulario:
             formulario.l10n_co_ne_conceptos_de_pago = True

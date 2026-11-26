@@ -272,7 +272,7 @@ class L10nCoPayslipConcepto(models.Model):
                     texto = _('Ajustado por la empresa. Sugerido: %s', formatLang(self.env, ajuste.sugerido_total, digits=2))
                 valores.append({'slip_id': recibo.id, 'sequence': siguiente(), 'display_type': 'line_note', 'name': texto, 'origen': 'calculado'})
             if (not dias_puestos and seccion == 'devengados' and regla.l10n_co_ne_dian_concept == 'Sueldo'
-                    and recibo.struct_id.use_worked_day_lines):
+                    and recibo.struct_id.use_worked_day_lines and recibo.l10n_co_ne_oculta_pagina_novedades):          # .328: en liquidación los días siguen en la pestaña nativa (los de aquí serían los del contrato entero)
                 dias_puestos = True
                 valores.extend(self._filas_de_dias(recibo, siguiente))
         return valores

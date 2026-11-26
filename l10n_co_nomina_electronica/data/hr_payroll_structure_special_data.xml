@@ -21,6 +21,7 @@
                  con un importe nativo que nada usa. Explicito en False: un -u no cambia un campo
                  ausente en el registro de datos. -->
             <field name="use_worked_day_lines" eval="False"/>
+            <field name="l10n_co_ne_conceptos_de_pago" eval="True"/>
         </record>
 
         <!-- ==================== CO_PRIMA_BASE ==================== -->
@@ -66,6 +67,7 @@ else:
         <record id="hr_salary_rule_co_prima_valor" model="hr.salary.rule">
             <field name="name">Prima de Servicios - Valor</field>
             <field name="code">CO_PRIMA_VALOR</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">20</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_prima"/>
@@ -267,6 +269,7 @@ result = payslip._ne_neto_redondeado(result_rules, 'PREST')
             <field name="type_id" ref="hr_payroll_structure_type_co"/>
             <field name="country_id" ref="base.co"/>
             <field name="input_line_type_ids" eval="[(4, ref('input_co_liq_indemniz'))]"/>
+            <field name="l10n_co_ne_conceptos_de_pago" eval="True"/>
         </record>
 
         <!-- ==================== CO_LIQ_SALARIOS ==================== -->
@@ -354,10 +357,41 @@ result_qty = payslip._ne_dias_pagables()
             <field name="note">Apoyo de sostenimiento del aprendiz (fase práctica o dual) dentro del último tramo del contrato.</field>
         </record>
 
+        <!-- ==================== CO_AUX_TRANS (liquidacion) ==================== -->
+        <record id="hr_salary_rule_co_liq_aux_transporte" model="hr.salary.rule">
+            <field name="name">Auxilio de Transporte</field>
+            <field name="code">CO_AUX_TRANS</field>
+            <field name="sequence">15</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# Auxilio de los dias del ultimo tramo que ningun recibo de nomina confirmado haya pagado: la misma decision que CO_AUX_TRANS de la nomina general, con las fechas de la liquidacion (date_to: el
+# «Desde» de una liquidacion es el ingreso) y la misma fuente de dias (_ne_dias_pagables, que ya resta lo pagado). El auxilio de la base de prima y cesantias se calcula aparte, desde el parametro.
+result = (contract.wage &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to)
+          and not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['paga_auxilio_transporte'] and payslip._ne_dias_pagables() &gt; 0)
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to) / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">Transporte</field>
+            <field name="l10n_co_ugpp_payment_type">tp_no_salarial</field>
+            <field name="l10n_co_ugpp_non_salary_class">contrato</field>
+            <field name="l10n_co_liq_tratamiento">salario</field>
+        </record>
+
         <!-- ==================== CO_LIQ_PRIMA ==================== -->
         <record id="hr_salary_rule_co_liq_prima" model="hr.salary.rule">
             <field name="name">Prima Proporcional</field>
             <field name="code">CO_LIQ_PRIMA</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">20</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
@@ -414,6 +448,7 @@ result_qty = _dias
         <record id="hr_salary_rule_co_liq_cesantias" model="hr.salary.rule">
             <field name="name">Cesantias Proporcionales</field>
             <field name="code">CO_LIQ_CESANTIAS</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">30</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
@@ -459,6 +494,7 @@ result_qty = _dias
         <record id="hr_salary_rule_co_liq_int_ces" model="hr.salary.rule">
             <field name="name">Intereses sobre Cesantias</field>
             <field name="code">CO_LIQ_INT_CES</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">31</field>
             <field name="category_id" ref="hr_salary_rule_category_prestaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
@@ -666,6 +702,7 @@ result = _pago / dias if dias else 0.0
         <record id="hr_salary_rule_co_liq_vacaciones" model="hr.salary.rule">
             <field name="name">Vacaciones Compensadas</field>
             <field name="code">CO_LIQ_VACACIONES</field>
+            <field name="l10n_co_ne_ajustable" eval="True"/>
             <field name="sequence">40</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>

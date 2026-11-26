@@ -1134,6 +1134,17 @@ class HrPayslip(models.Model):
         help='Vista de lo calculado: se regenera al final de cada cálculo. Editar una fila cambia su fuente (ajuste o novedad).')
     l10n_co_ne_usa_conceptos = fields.Boolean(
         related='struct_id.l10n_co_ne_conceptos_de_pago', string='La estructura usa «Conceptos de pago»', readonly=True)
+    l10n_co_ne_oculta_pagina_novedades = fields.Boolean(compute='_compute_ne_oculta_pagina_novedades', string='Oculta la pestaña nativa de días y novedades')
+
+    @api.depends('struct_id', 'struct_id.l10n_co_ne_conceptos_de_pago')
+    def _compute_ne_oculta_pagina_novedades(self):
+        """«Conceptos de pago» reemplaza la pestaña nativa «Worked Days & Inputs», salvo en prima y liquidación: allí hay novedades cuyo código no es el de ninguna regla (CO_LIQ_INDEMNIZ,
+        CO_VAC, CO_LIC_REM) y «Conceptos de pago» no las puede agregar."""
+        conservan = self.env['hr.payroll.structure']
+        for xmlid in ('hr_payroll_structure_co_prima', 'hr_payroll_structure_co_liquidacion'):
+            conservan |= self.env.ref('l10n_co_nomina_electronica.%s' % xmlid, raise_if_not_found=False) or conservan
+        for slip in self:
+            slip.l10n_co_ne_oculta_pagina_novedades = slip.l10n_co_ne_usa_conceptos and slip.struct_id not in conservan
     # E11 pieza 4a (.294, doc 74 §3): «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría); se regenera junto a los conceptos.
     l10n_co_calculo_ids = fields.One2many(
         'l10n.co.payslip.calculo', 'slip_id', string='Cálculo del salario', copy=False,

@@ -190,3 +190,4 @@ from . import test_pacto_desalarizacion
 from . import test_consecutivos_proteccion
 from . import test_crons_inactivos
 from . import test_retefuente_mes             # R-2 (doc 108)
+from . import test_liquidacion_aux_y_prestaciones_ajustables

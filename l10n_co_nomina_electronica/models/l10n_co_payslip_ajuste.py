@@ -84,8 +84,9 @@ class L10nCoPayslipAjuste(models.Model):
             if not regla.l10n_co_ne_ajustable:
                 raise ValidationError(_(
                     'La regla "%(regla)s" no admite ajuste de la empresa: su valor sale de la ley o del cálculo (seguridad social, retención, '
-                    'embargos, aportes de la empresa, provisiones, bases, incapacidades, licencias y vacaciones) y cambiarlo expone a la empresa a '
-                    'inexactitud ante la UGPP. Solo se ajustan los conceptos de pago y las deducciones voluntarias o pactadas.',
+                    'embargos, aportes de la empresa, provisiones, bases, incapacidades, licencias y vacaciones disfrutadas) y cambiarlo expone a la empresa a '
+                    'inexactitud ante la UGPP. Solo se ajustan los conceptos de pago, las deducciones voluntarias o pactadas y, en los recibos de prima y liquidación, la prima, las cesantías, sus intereses y las '
+                    'vacaciones compensadas.',
                     regla=regla.display_name))
             if len(recibo.input_line_ids.filtered(lambda i: i.code == regla.code)) > 1:
                 raise ValidationError(_(

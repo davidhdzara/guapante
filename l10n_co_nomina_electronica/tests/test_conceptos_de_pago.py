@@ -99,7 +99,7 @@ class TestConceptosDePago(TransactionCase):
         self.assertEqual(pagina.get('invisible'), 'not l10n_co_ne_usa_conceptos')
         nativa = arch.xpath("//page[@name='worked_days_input']")
         self.assertEqual(len(nativa), 1)
-        self.assertEqual(nativa[0].get('invisible'), 'l10n_co_ne_usa_conceptos', 'La pestaña nativa solo se oculta en estructuras con conceptos')
+        self.assertEqual(nativa[0].get('invisible'), 'l10n_co_ne_oculta_pagina_novedades', 'La pestaña nativa solo se oculta donde «Conceptos de pago» la reemplaza')
         campo = pagina.xpath(".//field[@name='l10n_co_concepto_ids']")[0]
         self.assertEqual(campo.get('widget'), 'section_and_note_one2many')
         self.assertEqual(len(campo.xpath(".//control/create")), 1, 'Solo «Agregar concepto»')
@@ -235,6 +235,7 @@ class TestConceptosDePago(TransactionCase):
         general = self._recibo()
         self.assertTrue(general.l10n_co_ne_usa_conceptos)
         self.assertTrue(general.l10n_co_concepto_ids)
+        self.prima.l10n_co_ne_conceptos_de_pago = False          # desde .328 la prima nace con el interruptor encendido
         prima = self._recibo(estructura=self.prima, desde=date(2026, 7, 1), hasta=date(2026, 12, 31))
         self.assertFalse(prima.l10n_co_ne_usa_conceptos)
         self.assertFalse(prima.l10n_co_concepto_ids, 'La estructura de prima no usa Conceptos de pago: sin filas')
