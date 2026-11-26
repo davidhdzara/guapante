@@ -4,25 +4,19 @@
          Comprobante de pago ÚNICO por empleado y fecha de pago (Frente 5, C3).
 
          Comprobante INTERNO: sin QR, CUNE ni referencias a la DIAN. Genérico y multicliente: logo, colores y fuente del
-         diseño de documentos de la compañía (``web.external_layout``), solo clases nativas de Bootstrap, importes con la
-         moneda de la compañía, cada sección con el nombre de la estructura salarial del recibo. Reutiliza los bloques
-         comunes de la colilla.
+         pie de página de la compañía del recibo (``ne_comprobante_layout``; H-QA-044: ya no el encabezado nativo de ``web.external_layout``), solo clases nativas de Bootstrap, importes con la
+         moneda de la compañía, cada sección con el nombre de la estructura salarial del recibo (doc 58 D5-5).
+
+         E11 pieza 5b (.292): UNA media página por (empleado, fecha de pago) (doc 58 §5(a) y §9 D5-1, D5-7; doc 53 §5.6), con UNA SECCIÓN POR ORIGEN
+         (Quincena, Prima, Bonificación, Liquidación: todo lo pagado el mismo día), cada una con la tabla compacta de la colilla (``ne_colilla_tabla``:
+         conceptos con valor y su subtotal de devengado, deducciones y neto de ESA sección) y, al pie, el neto total pagado. Si el grupo no cabe en
+         una media página, el PDF pasa a una segunda media página (último recurso): nunca A4.
 
          Media hoja A4 horizontal (A5, 210 x 148 mm) con un formato de papel PROPIO del informe: no cambia el formato de
          papel de la compañía ni el de otros informes.
          =================================================================== -->
-    <record id="paperformat_comprobante_pago" model="report.paperformat">
-        <field name="name">Comprobante de pago (A5 horizontal)</field>
-        <field name="default" eval="False"/>
-        <field name="format">A5</field>
-        <field name="orientation">Landscape</field>
-        <field name="margin_top">30</field>
-        <field name="margin_bottom">18</field>
-        <field name="margin_left">8</field>
-        <field name="margin_right">8</field>
-        <field name="header_spacing">24</field>
-        <field name="dpi">90</field>
-    </record>
+    <!-- El formato de papel ``paperformat_comprobante_pago`` (A5 horizontal) se define en ``hr_payslip_ne_report.xml``: lo comparten la colilla
+         por recibo y este comprobante (E11 pieza 5a: la colilla también es de media página). -->
 
     <record id="action_report_comprobante_pago" model="ir.actions.report">
         <field name="name">Comprobante de pago por fecha de pago</field>
@@ -35,66 +29,35 @@
         <field name="binding_type">report</field>
     </record>
 
+    <!-- UNA página por grupo (empleado, fecha de pago): un solo ``ne_comprobante_layout`` (H-QA-044: layout propio y compacto, no ``web.external_layout``) y un solo ``class="page"``. El encabezado va en modo ``agrupado``
+         (sin «No.», periodo ni días trabajados, que son de cada origen); cada sección lleva el nombre de la estructura salarial del recibo, su periodo
+         y, si lo tiene, sus días trabajados, y debajo la tabla compacta de ese recibo con sus subtotales. -->
     <template id="report_comprobante_pago">
         <t t-call="web.html_container">
             <t t-foreach="grupos" t-as="g">
                 <t t-set="o" t-value="g['recibos'][:1]"/>
                 <t t-set="moneda" t-value="g['moneda']"/>
-                <t t-call="web.external_layout">
+                <t t-set="fecha_pago" t-value="g['fecha_pago']"/>
+                <t t-set="dias_pagados" t-value="g['dias_pagados']"/>
+                <t t-set="agrupado" t-value="True"/>
+                <t t-call="l10n_co_nomina_electronica.ne_comprobante_layout">
                     <div class="page">
-                        <div class="row mb-2">
-                            <div class="col-8">
-                                <h3>Comprobante de pago</h3>
-                            </div>
-                            <div class="col-4 text-end">
-                                <p class="mb-0">
-                                    <strong>Fecha de pago:</strong>
-                                    <span t-out="g['fecha_pago']" t-options='{"widget": "date"}'/>
-                                </p>
-                            </div>
-                        </div>
-                        <div class="row border rounded p-2 mb-2">
-                            <div class="col-6">
-                                <p class="mb-1">
-                                    <strong>Empleado:</strong>
-                                    <span t-out="g['empleado'].name"/>
-                                </p>
-                                <p class="mb-1">
-                                    <strong>Documento:</strong>
-                                    <span t-out="g['empleado'].identification_id"/>
-                                </p>
-                            </div>
-                            <div class="col-6">
-                                <p class="mb-1">
-                                    <strong>Cargo:</strong>
-                                    <span t-out="g['empleado'].job_title"/>
-                                </p>
-                                <p class="mb-1">
-                                    <strong>Departamento:</strong>
-                                    <span t-out="g['empleado'].department_id.name"/>
-                                </p>
-                            </div>
-                        </div>
+                        <t t-call="l10n_co_nomina_electronica.ne_comprobante_encabezado"/>
                         <t t-foreach="g['secciones']" t-as="s">
-                            <h5 class="mt-2">
-                                <span t-out="s['desglose']['origen']"/>
-                                (<span t-out="s['desglose']['recibo'].date_from" t-options='{"widget": "date"}'/> -
-                                <span t-out="s['desglose']['recibo'].date_to" t-options='{"widget": "date"}'/>)
-                            </h5>
-                            <t t-call="l10n_co_nomina_electronica.ne_comprobante_conceptos">
-                                <t t-set="lineas" t-value="s['lineas']"/>
-                                <t t-set="neto" t-value="s['desglose']['neto']"/>
-                                <t t-set="moneda" t-value="g['moneda']"/>
-                            </t>
-                            <p class="mb-1">
-                                <span t-if="s['desglose']['salud']">Salud: <span t-out="s['desglose']['salud']" t-options='{"widget": "monetary", "display_currency": moneda}'/>. </span>
-                                <span t-if="s['desglose']['pension']">Pensión: <span t-out="s['desglose']['pension']" t-options='{"widget": "monetary", "display_currency": moneda}'/>. </span>
-                                <span t-if="s['desglose']['fsp']">Fondo de solidaridad pensional: <span t-out="s['desglose']['fsp']" t-options='{"widget": "monetary", "display_currency": moneda}'/>. </span>
-                                <span t-if="s['desglose']['retencion']">Retención en la fuente: <span t-out="s['desglose']['retencion']" t-options='{"widget": "monetary", "display_currency": moneda}'/>. </span>
-                                <span t-if="s['desglose']['otras_deducciones']">Otras deducciones: <span t-out="s['desglose']['otras_deducciones']" t-options='{"widget": "monetary", "display_currency": moneda}'/>.</span>
+                            <p class="small fw-bold mt-1 mb-0">
+                                <span t-out="s['origen']"/>
+                                (<span t-out="s['recibo'].date_from" t-options='{"widget": "date"}'/> -
+                                <span t-out="s['recibo'].date_to" t-options='{"widget": "date"}'/>)
+                                <t t-if="s['linea_dias']">
+                                    - <span>Días trabajados:</span>
+                                    <span t-out="s['linea_dias'].quantity" t-options='{"widget": "float", "precision": 2}'/>
+                                </t>
                             </p>
+                            <t t-call="l10n_co_nomina_electronica.ne_colilla_tabla">
+                                <t t-set="colilla" t-value="s['colilla']"/>
+                            </t>
                         </t>
-                        <table class="table table-sm table-bordered mt-2">
+                        <table class="table table-sm table-bordered small mt-1 mb-0">
                             <tr class="table-light fw-bold">
                                 <td>Neto total pagado</td>
                                 <td class="text-end">

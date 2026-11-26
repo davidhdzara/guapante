@@ -81,7 +81,7 @@ class TestPdfReciboNeto(TransactionCase):
         self.assertNotIn(1800000.0, valores_monetarios(html))
         self.assertIn('>CO_LIQ_SALARIOS<', html)    # los conceptos reales siguen
         self.assertIn(2900000.0, valores_monetarios(html))          # devengado: 900.000 + 600.000 + 1.400.000
-        self.assertIn(72000.0, valores_monetarios(html))             # deducciones: 36.000 + 36.000
+        self.assertIn(-72000.0, valores_monetarios(html))            # total deducciones, con su signo (E11 pieza 5a): -36.000 - 36.000
         self.assertIn(2828000.0, valores_monetarios(html))          # NETO A PAGAR = CO_LIQ_NETO
 
     def test_nomina_general_sin_fila_de_bruto_ni_neto(self):
@@ -96,7 +96,7 @@ class TestPdfReciboNeto(TransactionCase):
         self.assertNotIn('>CO_NETO<', html)
         self.assertIn('>CO_BASICO<', html)
         self.assertIn(3000000.0, valores_monetarios(html))
-        self.assertIn(240000.0, valores_monetarios(html))
+        self.assertIn(-240000.0, valores_monetarios(html))           # total deducciones, con su signo (E11 pieza 5a)
         self.assertIn(2760000.0, valores_monetarios(html))
 
     def test_prima_y_bonificacion_usan_su_propia_linea_de_neto(self):

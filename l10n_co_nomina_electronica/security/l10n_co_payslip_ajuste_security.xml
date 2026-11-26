@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 pieza 2b (.288): la visibilidad del ajuste es la del recibo al que pertenece (mismo criterio que el documento mensual DIAN en
+         security/l10n_co_ne_documento_security.xml): global por compañía, el oficial de nómina solo ve los de los empleados que ve en el
+         recibo y el administrador de nómina ve todo. Las reglas de grupo se combinan con O entre sí y con Y con la regla global. -->
+    <record id="rule_l10n_co_payslip_ajuste_company" model="ir.rule">
+        <field name="name">Ajuste de recibo: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_payslip_ajuste"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_payslip_ajuste_oficial" model="ir.rule">
+        <field name="name">Ajuste de recibo: el oficial de nómina solo ve lo de los empleados que ve en el recibo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_ajuste"/>
+        <field name="domain_force">['|', '|', ('slip_id.employee_id.user_id', '=', user.id), ('slip_id.employee_id.department_id', '=', False), ('slip_id.employee_id.department_id.manager_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_user'))]"/>
+    </record>
+    <record id="rule_l10n_co_payslip_ajuste_administrador" model="ir.rule">
+        <field name="name">Ajuste de recibo: el administrador de nómina ve todo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_ajuste"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+    </record>
+</odoo>

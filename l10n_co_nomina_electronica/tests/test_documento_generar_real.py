@@ -20,6 +20,7 @@ from lxml import etree
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.l10n_co_nomina_electronica.services import xml_signer
+from .common_dane import ciudad_con_dane
 
 _logger = logging.getLogger(__name__)
 CAJA = Path(__file__).resolve().parent.parent / 'DIAN' / 'Caja-de-Herramientas-Nomina-Electronica-V1-0'
@@ -35,10 +36,7 @@ class TestDocumentoGenerarReal(TransactionCase):
         env = cls.env
         pais = env.ref('base.co')
         estado = env['res.country.state'].search([('country_id', '=', pais.id)], limit=1)
-        ciudad = env['res.city'].search([('country_id', '=', pais.id), ('state_id', '=', estado.id)], limit=1)
-        if not ciudad:
-            ciudad = env['res.city'].create({
-                'name': 'Ciudad Prueba', 'country_id': pais.id, 'state_id': estado.id, 'zipcode': '11001'})
+        ciudad = ciudad_con_dane(env, estado, 'Ciudad Prueba Generar Real')
         cls.company = env['res.company'].create({
             'name': 'Empresa Generar Real', 'country_id': pais.id, 'vat': '900123456-8',
             'street': 'Calle 1 # 2-3', 'state_id': estado.id,
@@ -143,3 +141,40 @@ class TestDocumentoGenerarReal(TransactionCase):
         self.assertEqual([f.text for f in raiz.findall('.//{*}FechaPago')], ['2026-03-15', '2026-03-31'])
         self.assertEqual(raiz.find('{*}InformacionGeneral').get('PeriodoNomina'), '5')
         _logger.warning('GENERAR REAL: consecutivo=%s dev=%s ded=%s', doc.consecutive, dev, ded)
+
+    def test_el_documento_de_un_aprendiz_es_valido_con_basico_en_cero_y_el_apoyo(self):
+        """H-F1-09 (doc 88, D1): el apoyo es el sueldo del contrato. El XML lleva ``Basico`` (obligatorio en el XSD) con los dias y SueldoTrabajado 0.00, y ``ApoyoSost`` con el valor; antes, con sueldo 0 y
+        la novedad, salia sin ``Basico`` y no se podia generar. Practica y lectiva. La regla de negocio de la DIAN para SueldoTrabajado 0 NO esta verificada (habilitacion)."""
+        estructura = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        tipo = self.contrato.structure_type_id
+        for nombre, documento, cotizante, trabajador, apoyo in (('Ana Practica', '1020304061', '01', '19', 1750905.0), ('Luis Lectiva', '1020304062', '19', '12', 1313180.0)):
+            empleado = self.env['hr.employee'].create({
+                'name': nombre, 'company_id': self.company.id, 'identification_id': documento, 'l10n_co_ne_payment_method': '10', 'l10n_co_ne_worker_type': trabajador,
+                'l10n_co_ne_worker_subtype': '00', 'address_id': self.company.partner_id.id})
+            empleado.work_contact_id.l10n_latam_identification_type_id = self.env.ref('l10n_co.national_citizen_id')
+            contrato = self.env['hr.contract'].create({
+                'name': 'Aprendizaje %s' % nombre, 'employee_id': empleado.id, 'company_id': self.company.id, 'structure_type_id': tipo.id, 'wage': apoyo, 'date_start': date(2026, 1, 1),
+                'state': 'open', 'l10n_co_ne_contract_type': '4', 'l10n_co_pila_tipo_cotizante': cotizante, 'l10n_co_pila_subtipo_cotizante': '00'})
+            recibos = self.env['hr.payslip']
+            for ini, fin in ((1, 15), (16, 31)):
+                recibo = self.env['hr.payslip'].create({
+                    'name': '%s %s-%s' % (nombre, ini, fin), 'employee_id': empleado.id, 'contract_id': contrato.id, 'company_id': self.company.id, 'struct_id': estructura.id,
+                    'date_from': date(2026, 3, ini), 'date_to': date(2026, 3, fin)})
+                recibo.compute_sheet()
+                recibo.write({'state': 'paid', 'paid_date': date(2026, 3, fin)})
+                recibos |= recibo
+            resultado = self.env['l10n.co.ne.documento']._ne_preparar(recibos)
+            doc = resultado['documentos']
+            self.assertEqual(len(doc), 1, resultado)
+            bloqueos = [a['message'] for a in (doc.alertas or []) if a['level'] == 'danger']
+            self.assertFalse(bloqueos, '%s: %s' % (nombre, bloqueos))
+            doc.action_generar_xml()
+            xml_bytes = base64.b64decode(doc.xml_attachment_id.datas)
+            valido, errores = self._validar_xsd(xml_bytes)
+            self.assertTrue(valido, '%s: XML del aprendiz invalido contra el XSD v1.0.6: %s' % (nombre, errores))
+            raiz = etree.fromstring(xml_bytes)
+            basico = raiz.find('.//{*}Devengados/{*}Basico')
+            self.assertEqual((basico.get('DiasTrabajados'), basico.get('SueldoTrabajado')), ('30', '0.00'), nombre)
+            self.assertEqual(Decimal(raiz.find('.//{*}Devengados/{*}ApoyoSost').text), Decimal(str(apoyo)).quantize(Decimal('0.01')), nombre)
+            self.assertEqual(Decimal(raiz.find('.//{*}Trabajador').get('Sueldo')), Decimal(str(apoyo)).quantize(Decimal('0.01')), nombre)
+

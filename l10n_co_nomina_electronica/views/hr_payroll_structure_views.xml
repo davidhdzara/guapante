@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 (doc 71c): interruptor «Usa Conceptos de pago» de la estructura. El selector va por @name del grupo nativo. -->
+    <record id="view_payroll_structure_form_ne" model="ir.ui.view">
+        <field name="name">hr.payroll.structure.form.ne</field>
+        <field name="model">hr.payroll.structure</field>
+        <field name="inherit_id" ref="hr_payroll.view_hr_employee_grade_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='salary_details']" position="inside">
+                <field name="l10n_co_ne_conceptos_de_pago"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

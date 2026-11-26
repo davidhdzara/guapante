@@ -20,8 +20,8 @@ from odoo import _, api, fields, models, modules
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services import (
-    cune as cune_service, dian_message, dian_respuesta, dian_utils, documento_merge, ne_xml_utils, nomina_xml_builder,
-    nota_ajuste, representacion_grafica, soap_client, xml_signer)
+    cune as cune_service, dian_message, dian_respuesta, dian_utils, documento_merge, documento_segmentos, ne_xml_utils,
+    nomina_xml_builder, nota_ajuste, representacion_grafica, soap_client, xml_signer)
 from ..services.soap_client import _parse_response
 
 _logger = logging.getLogger(__name__)
@@ -47,6 +47,9 @@ _ESTADO_INTENTO_POR_VEREDICTO = {
     dian_respuesta.RECHAZADO: 'invoice_rejected',
     dian_respuesta.PENDIENTE: 'invoice_pending',
     dian_respuesta.ERROR_TRANSPORTE: 'invoice_sending_failed',
+    # H-DIAN-03: ninguno es un veredicto sobre el documento: nunca rechazo.
+    dian_respuesta.YA_PROCESADO: 'invoice_pending',
+    dian_respuesta.NO_CONOCIDO: 'invoice_pending',
 }
 
 
@@ -67,7 +70,14 @@ class L10nCoNeDocumento(models.Model):
                                   help='Contrato vigente en el mes (ingreso/retiro, tipo de contrato).')
     period = fields.Date(string='Mes', required=True, index=True,
                          help='Primer día del mes del documento (mes de la primera fecha de pago de sus recibos).')
-    payslip_ids = fields.One2many('hr.payslip', 'l10n_co_ne_documento_id', string='Recibos incluidos')
+    segmento = fields.Integer(
+        string='Segmento del mes', default=1, required=True, copy=False,
+        help='H-F3-04 (opción A del doc 95): si el tipo de trabajador cambia dentro del mes y la compañía activó la separación del mes, el mes tiene un documento por cada tramo consecutivo; este es el número del '
+             'tramo (1, 2, 3...). Sin cambio de tipo, o con la separación apagada, es siempre 1. La nota de ajuste hereda el de su documento original.')
+    novedad_de_id = fields.Many2one(
+        'l10n.co.ne.documento', string='Novedad de', copy=False, ondelete='restrict', check_company=True,
+        help='El documento del tramo anterior del mes: el XML de este documento lleva Novedad = true con su CUNE (Anexo Técnico NIE199 y NIE204). Solo del segundo tramo en adelante.')
+    payslip_ids = fields.One2many('hr.payslip', 'l10n_co_ne_documento_id', string='Recibos incluidos', check_company=True)       # H-F2-03 (C5)
     recibo_xml_ids = fields.Many2many('hr.payslip', string='Recibos del XML', compute='_compute_recibo_xml_ids',
                                       help='Recibos con los que se arma el XML: los propios y, en una nota de ajuste, '
                                            'los de la cadena de documentos (doc 53 §23.16, D-1).')
@@ -101,7 +111,7 @@ class L10nCoNeDocumento(models.Model):
     hab_set_id = fields.Char(string='Set de habilitación DIAN', copy=False, index=True)
     exchange_ids = fields.Many2many('l10n.co.ne.exchange', 'l10n_co_ne_exchange_documento_rel',
                                     'documento_id', 'exchange_id', string='Historial de intercambios DIAN',
-                                    readonly=True, copy=False)
+                                    readonly=True, copy=False, check_company=True)
 
     is_adjustment = fields.Boolean(string='Es nota de ajuste', copy=False)
     adjustment_type = fields.Selection([('1', 'Reemplazar'), ('2', 'Eliminar')], string='Tipo de nota de ajuste',
@@ -146,21 +156,25 @@ class L10nCoNeDocumento(models.Model):
     ]
 
     def init(self):
-        """Un original activo por (compañía, empleado, mes): índice parcial (el ORM no lo expresa)."""
+        """Un original activo por (compañía, empleado, mes, segmento): índice parcial (el ORM no lo expresa). H-F3-04: antes era (compañía, empleado, mes); sin cambio de tipo en el mes todo es el
+        segmento 1 y la regla es la de siempre. Los documentos que ya existían quedan en el segmento 1 (el valor por defecto de la columna): no hay migración de datos."""
+        self.env.cr.execute("DROP INDEX IF EXISTS l10n_co_ne_documento_mes_unico")
         self.env.cr.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS l10n_co_ne_documento_mes_unico
-            ON l10n_co_ne_documento (company_id, employee_id, period)
+            CREATE UNIQUE INDEX IF NOT EXISTS l10n_co_ne_documento_mes_segmento_unico
+            ON l10n_co_ne_documento (company_id, employee_id, period, segmento)
             WHERE is_adjustment IS NOT TRUE AND legacy IS NOT TRUE AND eliminado IS NOT TRUE
         """)
 
     # ──────────────────────────────────────────────────────────────────
     # Calculados
     # ──────────────────────────────────────────────────────────────────
-    @api.depends('employee_id.name', 'period', 'is_adjustment')
+    @api.depends('employee_id.name', 'period', 'is_adjustment', 'segmento')
     def _compute_name(self):
         for doc in self:
             mes = doc.period.strftime('%Y-%m') if doc.period else ''
             base = '%s %s' % (doc.employee_id.name or '', mes)
+            if doc.segmento > 1:
+                base = '%s (%s)' % (base, doc.segmento)       # H-F3-04: el tramo del mes
             doc.name = ('%s %s' % (_('Ajuste'), base) if doc.is_adjustment else base).strip()
 
     @api.depends('payslip_ids', 'payslip_ids.state', 'is_adjustment', 'parent_id')
@@ -205,10 +219,8 @@ class L10nCoNeDocumento(models.Model):
                                               a.get('message') or '') for a in items) if items else False
 
     # ──────────────────────────────────────────────────────────────────
-    # Plazo de transmisión (doc 53 §4.4, D10)
+    # Plazo de transmisión (doc 53 §4.4, D10): los días salen del parámetro versionado ``l10n_co_ne_dias_plazo_transmision`` (H-F3-05)
     # ──────────────────────────────────────────────────────────────────
-    DIAS_HABILES_PLAZO = 10   # Res. DIAN 000013/2021 art. 8: 10 primeros días hábiles del mes siguiente
-
     def _ne_calendario(self):
         """Calendario laboral del documento: el del contrato; si no, el de la compañía."""
         self.ensure_one()
@@ -244,8 +256,13 @@ class L10nCoNeDocumento(models.Model):
         if not base:
             return False
         primero = (base.replace(day=28) + timedelta(days=4)).replace(day=1)
-        dias = int(self.env['hr.rule.parameter']._get_parameter_from_code(
-            'l10n_co_ne_dias_plazo_transmision', primero))   # Res. DIAN 000013/2021 art. 8 (versionado)
+        try:
+            dias = int(self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_ne_dias_plazo_transmision', primero))   # Res. DIAN 000013/2021 art. 8 (versionado)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Plazo de Transmisión de Nómina Electrónica (días hábiles)» (código l10n_co_ne_dias_plazo_transmision) para el %(fecha)s, que se necesita para '
+                'calcular la fecha límite de transmisión de «%(documento)s» a la DIAN (Resolución DIAN 000013 de 2021, art. 8). Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas.', fecha=primero, documento=self.display_name)) from None
         habiles = sorted(self._ne_dias_habiles(primero, primero + timedelta(days=44)))
         return habiles[dias - 1] if len(habiles) >= dias else False
 
@@ -317,9 +334,34 @@ class L10nCoNeDocumento(models.Model):
             return False
 
     @api.model
+    def _ne_segmentar(self, company, recibos):
+        """Parte los recibos del mes de UN empleado en segmentos CONSECUTIVOS por ``HrPayslip._ne_clave_segmento`` (tipo y subtipo de trabajador; H-F3-04, opción A del doc 95, doc 98). Devuelve una lista de
+        recordsets de ``hr.payslip`` ordenados en el tiempo (``date_to``, ``date_from``, ``id``). Con la separación del mes APAGADA en la compañía (por defecto) o sin recibos devuelve UN solo segmento (``[recibos]``):
+        todo el módulo se comporta como antes. Un recibo cuya clave no se resuelve (dato incompleto: ya lo avisa la validación) se suma al segmento abierto. NO VERIFICADO con la DIAN (doc 95 §4)."""
+        if not recibos or not company.l10n_co_ne_segmentar_mes:
+            return [recibos]
+        recibos = recibos.sorted(lambda slip: (slip.date_to, slip.date_from, slip.id))
+        claves = []
+        for slip in recibos:
+            try:
+                claves.append(slip._ne_clave_segmento())
+            except UserError:
+                claves.append(None)
+        return [recibos.browse([recibos[posicion].id for posicion in segmento])
+                for segmento in documento_segmentos.segmentar(claves)]
+
+    def _ne_recibos_del_segmento(self):
+        """Los recibos pagados del mes que le tocan al segmento de ESTE documento (una nota de ajuste hereda el del original). Con la separación apagada es el mes entero, igual que antes."""
+        self.ensure_one()
+        mes = self._ne_recibos_del_mes(self.company_id, self.employee_id, self.period)
+        segmentos = self._ne_segmentar(self.company_id, mes)
+        return segmentos[self.segmento - 1] if 0 < self.segmento <= len(segmentos) else mes.browse()
+
+    @api.model
     def _ne_preparar(self, recibos):
         """Agrupa ``recibos`` por (compañía, empleado, mes de la primera fecha de pago), crea o reutiliza el documento
-        de cada grupo, enlaza TODOS los recibos pagados del mes (no solo los seleccionados) y lo valida.
+        de cada grupo (uno por segmento del mes, H-F3-04; uno solo con la separación apagada), enlaza TODOS los recibos
+        pagados del mes (no solo los seleccionados) y lo valida.
 
         No gasta consecutivo ni envía. Devuelve ``{'documentos': recordset, 'sin_fecha': [(recibo, motivo)]}``: los
         recibos sin fecha de pago (o no hechos) no pertenecen a ningún mes y se informan aparte."""
@@ -346,23 +388,7 @@ class L10nCoNeDocumento(models.Model):
             grupos.setdefault(clave, self.env['hr.payslip'])
             grupos[clave] |= slip
         for (company, employee, period) in grupos:
-            doc = self._ne_documento_del_grupo(company, employee, period)
-            # Solo se recompone un documento SIN estado DIAN: uno con envío fallido (``invoice_sending_failed``) pudo haber
-            # llegado a la DIAN, así que se reenvía el MISMO XML y su composición no cambia (solo se valida y alerta);
-            # mismo criterio que un envío incierto (doc 53 §28.7, D6).
-            if not doc.state and not doc.is_being_sent:
-                doc._ne_componer(self._ne_recibos_del_mes(company, employee, period))
-            else:
-                # Documento ya transmitido (D-5): los recibos nuevos del mes se adoptan en la nota abierta, nunca en el
-                # documento aceptado; sin nota abierta queda la alerta persistente ``recibo_tardio``.
-                nota = doc._ne_nota_abierta()
-                if nota:
-                    mes = self._ne_recibos_del_mes(company, employee, period)
-                    nota._ne_componer_adoptados(doc._ne_adoptables(mes, nota))
-                    nota._ne_validar()
-                    resultado['documentos'] |= nota
-            doc._ne_validar()
-            resultado['documentos'] |= doc
+            self._ne_preparar_grupo(company, employee, period, resultado)
         # Un recibo que cambió de mes (nueva fecha de pago) sale del documento donde estaba: ese documento se
         # recompone y revalida; si queda vacío y sin historia, se elimina.
         for previo in previos - resultado['documentos']:
@@ -370,13 +396,12 @@ class L10nCoNeDocumento(models.Model):
                 # D-M: un recibo adoptado cuya fecha de pago pasó a otro mes sale de la nota abierta; una nota ya
                 # enviada no se toca (``_ne_validar`` deja la alerta persistente ``recibo_otro_mes``).
                 if not previo.state and not previo.is_being_sent:
-                    previo._ne_componer_adoptados(
-                        previo.payslip_ids & self._ne_recibos_del_mes(previo.company_id, previo.employee_id, previo.period))
+                    previo._ne_componer_adoptados(previo.payslip_ids & previo._ne_recibos_del_segmento())
                 previo._ne_validar()
                 continue
             if previo.legacy or previo.state:
                 continue
-            previo._ne_componer(self._ne_recibos_del_mes(previo.company_id, previo.employee_id, previo.period))
+            previo._ne_componer(previo._ne_recibos_del_segmento())
             if previo.payslip_ids:
                 previo._ne_validar()
             else:
@@ -384,16 +409,80 @@ class L10nCoNeDocumento(models.Model):
         return resultado
 
     @api.model
-    def _ne_documento_del_grupo(self, company, employee, period):
+    def _ne_segmentos_coinciden(self, mes, segmentos, existentes):
+        """¿Lo ya transmitido del mes cabe en SU segmento de hoy? Cada documento congelado (con estado DIAN, en la cola o incierto) debe tener todos sus recibos (y los de sus notas) dentro del segmento que le
+        toca por su número. Con un solo segmento y sin documentos de segmento > 1 es verdadero sin mirar (es el comportamiento de siempre). Si es falso no se mueve ni se crea nada (Q6 del TL)."""
+        if len(segmentos) <= 1 and not any(d.segmento > 1 for d in existentes):
+            return True
+        congelados = existentes.filtered(lambda d: d.state or d.is_being_sent or d.incierto)
+        return all(d.segmento <= len(segmentos) and ((d._ne_cadena().payslip_ids & mes) <= segmentos[d.segmento - 1]) for d in congelados)
+
+    @api.model
+    def _ne_preparar_grupo(self, company, employee, period, resultado):
+        """Prepara los documentos de UN (compañía, empleado, mes): un documento por segmento (``_ne_segmentar``); con la separación apagada es un solo segmento y esto es lo que siempre hizo ``_ne_preparar``.
+
+        Un documento ya transmitido NO se recompone y sus recibos nunca se mueven (D-5): los recibos nuevos de SU segmento se adoptan en la nota abierta. H-F3-04 (Q6 del TL): si lo ya transmitido no coincide
+        con los segmentos de hoy (un recibo cambió de tipo, o llegó uno que abriría un segmento ANTES de un documento transmitido) no se crea ni se adopta nada: se avisa en el documento y en el recibo.
+        Un documento de segmento que sobra y no tiene historia ante la DIAN se retira."""
+        mes = self._ne_recibos_del_mes(company, employee, period)
+        segmentos = self._ne_segmentar(company, mes)
+        existentes = self.search([
+            ('company_id', '=', company.id), ('employee_id', '=', employee.id), ('period', '=', period),
+            ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)], order='segmento, id')
+        congelados = existentes.filtered(lambda d: d.state or d.is_being_sent or d.incierto)
+        if not self._ne_segmentos_coinciden(mes, segmentos, existentes):
+            for doc in existentes:
+                doc._ne_validar()
+                resultado['documentos'] |= doc
+            return
+        for numero, segmento in enumerate(segmentos, 1):
+            doc = existentes.filtered(lambda d: d.segmento == numero)[:1]
+            if not doc:
+                if any(d.segmento > numero for d in congelados):
+                    continue      # abriría un segmento ANTES de uno ya transmitido: no se crea (el aviso lo da el recibo y ``_ne_validar``)
+                doc = self.create({'company_id': company.id, 'employee_id': employee.id, 'period': period, 'segmento': numero})
+                existentes |= doc
+            # Solo se recompone un documento SIN estado DIAN: uno con envío fallido (``invoice_sending_failed``) pudo haber
+            # llegado a la DIAN, así que se reenvía el MISMO XML y su composición no cambia (solo se valida y alerta);
+            # mismo criterio que un envío incierto (doc 53 §28.7, D6).
+            if not doc.state and not doc.is_being_sent:
+                anterior = existentes.filtered(lambda d: d.segmento == numero - 1)[:1] if numero > 1 else self.browse()
+                if doc.novedad_de_id != anterior:
+                    doc.novedad_de_id = anterior
+                doc._ne_componer(segmento)
+            else:
+                # Documento ya transmitido (D-5): los recibos nuevos de su segmento se adoptan en la nota abierta, nunca en el
+                # documento aceptado; sin nota abierta queda la alerta persistente ``recibo_tardio``.
+                nota = doc._ne_nota_abierta()
+                if nota:
+                    nota._ne_componer_adoptados(doc._ne_adoptables(segmento, nota))
+                    nota._ne_validar()
+                    resultado['documentos'] |= nota
+            doc._ne_validar()
+            resultado['documentos'] |= doc
+        for doc in existentes.filtered(lambda d: d.segmento > len(segmentos)):
+            if not doc.state and not doc.is_being_sent and not doc.incierto and not doc.consecutive and not doc.intento_ids:
+                doc._ne_componer(self.env['hr.payslip'])          # ya no tiene segmento: suelta sus recibos y se retira
+                doc.unlink()
+            else:
+                doc._ne_validar()
+                resultado['documentos'] |= doc
+
+    @api.model
+    def _ne_documento_del_grupo(self, company, employee, period, segmento=1):
         doc = self.search([
             ('company_id', '=', company.id), ('employee_id', '=', employee.id), ('period', '=', period),
-            ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)], limit=1)
-        return doc or self.create({'company_id': company.id, 'employee_id': employee.id, 'period': period})
+            ('segmento', '=', segmento), ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)], limit=1)
+        return doc or self.create({'company_id': company.id, 'employee_id': employee.id, 'period': period, 'segmento': segmento})
 
     def _ne_componer(self, recibos):
         """Deja exactamente ``recibos`` en el documento (los que ya no corresponden se sueltan) y fija el contrato.
         Solo se compone un documento sin transmitir (draft/ready/envío fallido): lo llama ``_ne_preparar``."""
         self.ensure_one()
+        # H-F3-04: un recibo que ya está en un documento TRANSMITIDO de otro segmento no se mueve nunca (con un solo segmento esto no filtra nada).
+        recibos = recibos.filtered(lambda slip: not (
+            slip.l10n_co_ne_documento_id and slip.l10n_co_ne_documento_id != self and slip.l10n_co_ne_documento_id.segmento != self.segmento
+            and (slip.l10n_co_ne_documento_id.state or slip.l10n_co_ne_documento_id.is_being_sent)))
         sueltos = self.payslip_ids - recibos
         if sueltos:
             sueltos.write({'l10n_co_ne_documento_id': False})
@@ -501,11 +590,10 @@ class L10nCoNeDocumento(models.Model):
         padre = self._ne_ultimo_aceptado()
         nota = self.create({
             'company_id': self.company_id.id, 'employee_id': self.employee_id.id, 'period': self.period,
-            'contract_id': self.contract_id.id, 'is_adjustment': True, 'adjustment_type': tipo,
+            'contract_id': self.contract_id.id, 'is_adjustment': True, 'adjustment_type': tipo, 'segmento': self.segmento,
             'parent_id': padre.id, 'adjustment_ref_cune': padre.cune, 'error_conocido_el': fecha, 'etapa': 'draft'})
         if tipo == '1':
-            nota._ne_componer_adoptados(self._ne_adoptables(
-                self._ne_recibos_del_mes(self.company_id, self.employee_id, self.period)))
+            nota._ne_componer_adoptados(self._ne_adoptables(self._ne_recibos_del_segmento()))
         return nota
 
     def _ne_adoptables(self, recibos, nota=None):
@@ -576,7 +664,7 @@ class L10nCoNeDocumento(models.Model):
                         recibo=slip.display_name))
         # Recibo pagado en el mes que no está en ningún documento y el original ya se transmitió (D-5): pide una nota.
         if self.state and not self.is_adjustment and not self.legacy and not self.eliminado:
-            tardios = self._ne_recibos_del_mes(self.company_id, self.employee_id, self.period).filtered(
+            tardios = self._ne_recibos_del_segmento().filtered(
                 lambda s: not s.l10n_co_ne_documento_id)
             if tardios:
                 alerta('recibo_tardio', 'warning', _(
@@ -584,13 +672,16 @@ class L10nCoNeDocumento(models.Model):
                     'ajuste Reemplazar para incluirlos.', recibos=', '.join(tardios.mapped('display_name'))))
         # Envío fallido: no se recompone (su XML pudo llegar a la DIAN); si el mes cambió, se avisa en vez de cambiarlo.
         if self.state == 'invoice_sending_failed' and not self.is_adjustment and not self.legacy:
-            mes = self._ne_recibos_del_mes(self.company_id, self.employee_id, self.period)
+            mes = self._ne_recibos_del_segmento()
             if mes != self.payslip_ids:
                 alerta('fallo_envio_composicion', 'warning', _(
                     'El documento tuvo un fallo de envío y su XML pudo haber llegado a la DIAN: no se recompone. Los '
                     'recibos del mes ya no coinciden con los del documento (%(recibos)s). Reintente el envío tal como '
                     'está y corrija el resto con una nota de ajuste.',
                     recibos=', '.join(((mes - self.payslip_ids) | (self.payslip_ids - mes)).mapped('display_name'))))
+        # H-F3-04: el mes partido en documentos por segmento (separación del mes, solo con el ajuste de la compañía encendido).
+        for clave, nivel, mensaje in self._ne_alertas_segmento():
+            alerta(clave, nivel, mensaje)
         # Recibos del mes que NO entraron (sin fecha de pago, en borrador...): ¿falta una quincena?
         fin = (self.period.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         faltan = self._ne_recibos_que_faltan(self.company_id, self.employee_id, self.period, recibos_xml)
@@ -622,6 +713,138 @@ class L10nCoNeDocumento(models.Model):
         bloqueos = [a for a in alertas if a['level'] == 'danger']
         if not self.state:
             self.etapa = 'draft' if bloqueos else 'ready'
+
+    def _ne_alertas_segmento(self):
+        """``[(clave, nivel, mensaje)]`` del mes partido en segmentos (H-F3-04, doc 98). Vacío mientras la compañía tenga la separación apagada y el documento sea el segmento 1."""
+        self.ensure_one()
+        alertas = []
+        if self.legacy or self.eliminado:
+            return alertas
+        company = self.company_id
+        if self.segmento > 1 and not company.l10n_co_ne_segmentar_mes:
+            alertas.append(('segmentacion_apagada', 'danger', _(
+                'Este documento es el segmento %(n)s del mes de %(empleado)s, pero la compañía tiene apagada «Separar el mes en documentos por cambio de tipo de trabajador» (solo el administrador del '
+                'sistema la activa, cuando la DIAN haya verificado cómo recibe el segundo documento: doc 95 §4). No se envía.', n=self.segmento, empleado=self.employee_id.name)))
+        if not company.l10n_co_ne_segmentar_mes and self.segmento <= 1:
+            return alertas
+        grupo = self.search([
+            ('company_id', '=', company.id), ('employee_id', '=', self.employee_id.id), ('period', '=', self.period),
+            ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)])
+        if len(grupo) > 1:
+            alertas.append(('segmentos_del_mes', 'warning', _(
+                'El tipo de trabajador de %(empleado)s cambió dentro del mes: el mes tiene %(n)s documentos (%(docs)s) y este es el segmento %(este)s. El segundo y los siguientes llevan «Novedad» con el CUNE del anterior. '
+                'NO VERIFICADO con la DIAN (doc 95 §4).', empleado=self.employee_id.name, n=len(grupo), docs=', '.join(grupo.sorted('segmento').mapped('display_name')), este=self.segmento)))
+        if self.segmento > 1 and not self.is_adjustment:
+            anterior = self.novedad_de_id
+            if not anterior:
+                alertas.append(('segmento_sin_anterior', 'danger', _(
+                    'El documento del segmento %(n)s no tiene el documento del segmento anterior: vuelva a preparar el mes del empleado %(empleado)s.', n=self.segmento, empleado=self.employee_id.name)))
+            elif anterior.state != 'invoice_accepted' and not self.state:
+                alertas.append(('segmento_espera', 'warning', _(
+                    'Este documento queda pendiente hasta que "%(anterior)s" sea aceptado por la DIAN (la DIAN rechaza una «Novedad» sin el documento anterior recibido: NIE199a y NIE204a). Si se encola, '
+                    'sale solo cuando el anterior esté aceptado.', anterior=anterior.display_name)))
+        # Lo transmitido ya no cabe en los segmentos de hoy (un recibo cambió de tipo, o llegó uno que abriría un segmento antes de un documento transmitido): se avisa, no se mueve nada.
+        mes = self._ne_recibos_del_mes(company, self.employee_id, self.period)
+        segmento = self._ne_recibos_del_segmento()
+        propios = self._ne_cadena().payslip_ids & mes if not self.is_adjustment else self.payslip_ids & mes
+        ajenos = propios - segmento
+        if ajenos and (self.state or self.is_being_sent):
+            alertas.append(('segmento_no_coincide', 'warning', _(
+                'Estos recibos del documento ya no pertenecen a su segmento del mes (cambió el tipo de trabajador de un recibo): %(recibos)s. Un documento ya transmitido no se rehace ni se renumera: corríjalo con una nota de ajuste.',
+                recibos=', '.join(ajenos.mapped('display_name')))))
+        return alertas
+
+    @api.model
+    def _ne_aviso_de_segmento(self, slip):
+        """Texto que se le muestra al usuario en el RECIBO cuando no cabe en el documento de su segmento del mes (H-F3-04, Q6 del TL), o False. Solo con la separación del mes encendida; nunca escribe."""
+        if not slip.company_id.l10n_co_ne_segmentar_mes or slip.state not in ('done', 'paid') or slip.l10n_co_ne_is_adjustment or slip.credit_note:
+            return False
+        try:
+            periodo = slip._ne_fecha_pago().replace(day=1)
+        except UserError:
+            return False
+        mes = self._ne_recibos_del_mes(slip.company_id, slip.employee_id, periodo)
+        if slip not in mes:
+            return False
+        segmentos = self._ne_segmentar(slip.company_id, mes)
+        numero = next((n for n, segmento in enumerate(segmentos, 1) if slip in segmento), 0)
+        documentos = self.search([
+            ('company_id', '=', slip.company_id.id), ('employee_id', '=', slip.employee_id.id), ('period', '=', periodo),
+            ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)])
+        congelados = documentos.filtered(lambda d: d.state or d.is_being_sent or d.incierto)
+        try:
+            tipo = slip._ne_tipo_trabajador()
+        except UserError:
+            tipo = '?'
+        doc = slip.l10n_co_ne_documento_id
+        if doc and not doc.legacy:
+            if doc.segmento != numero:
+                return _('El recibo es del segmento %(n)s del mes (tipo de trabajador %(tipo)s) pero está en el documento "%(doc)s", del segmento %(d)s. Un documento transmitido no se rehace: corríjalo con una nota de ajuste.',
+                         n=numero, tipo=tipo, doc=doc.display_name, d=doc.segmento)
+            return False
+        if not self._ne_segmentos_coinciden(mes, segmentos, documentos):
+            return _('Los documentos ya transmitidos de este mes no coinciden con los segmentos de hoy (cambió el tipo de trabajador de un recibo o llegó uno nuevo) y este recibo (segmento %(n)s, tipo de trabajador %(tipo)s) no está en ninguno: no se mueve ni se crea nada. Corríjalo con una nota de ajuste del documento que corresponda.',
+                     n=numero, tipo=tipo)
+        propio = documentos.filtered(lambda d: d.segmento == numero)[:1]
+        if not propio and any(d.segmento > numero for d in congelados):
+            return _('El recibo abriría el segmento %(n)s del mes (tipo de trabajador %(tipo)s) ANTES de un documento ya transmitido: no se adopta. Corríjalo con una nota de ajuste del documento que corresponda.',
+                     n=numero, tipo=tipo)
+        if propio in congelados:
+            return _('El documento "%(doc)s", del segmento %(n)s de este recibo, ya fue transmitido: cree una nota de ajuste Reemplazar para incluirlo.', doc=propio.display_name, n=numero)
+        return False
+
+    def _ne_espera_anterior(self):
+        """Texto («queda pendiente...») si este documento debe ESPERAR a que el del segmento anterior sea aceptado por la DIAN, o False si puede seguir (H-F3-04, Q5 y Q7 del TL: el cron lo deja en espera y reintenta solo,
+        es un bloqueo suave). ``UserError`` cuando NO puede salir hasta que el usuario corrija algo: la separación del mes está apagada, falta el documento anterior, el anterior fue rechazado o eliminado, o el XML
+        ya generado lleva un CUNENov que ya no es el vigente del anterior (hay que regenerarlo). Solo el segmento 2 en adelante; la nota de ajuste y el segmento 1 no esperan a nadie. NO VERIFICADO con la DIAN
+        (doc 95 §4.3): que el orden de envío importe se deduce de NIE199a y NIE204a."""
+        self.ensure_one()
+        if self.segmento <= 1:
+            return False
+        if not self.company_id.l10n_co_ne_segmentar_mes:
+            raise UserError(_(
+                'El documento "%(doc)s" es el segmento %(n)s del mes, pero la compañía tiene apagada «Separar el mes en documentos por cambio de tipo de trabajador»: solo el administrador del sistema la '
+                'activa, cuando la DIAN haya verificado cómo recibe el segundo documento (doc 95 §4). No se envía.', doc=self.display_name, n=self.segmento))
+        if self.is_adjustment:
+            return False            # la nota cuelga de SU original (``parent_id``), que ya se exige aceptado
+        anterior = self.novedad_de_id
+        if not anterior or anterior.legacy or anterior.eliminado:
+            raise UserError(_(
+                'El documento "%(doc)s" lleva una «Novedad» del documento anterior del mes, que no existe o fue eliminado: vuelva a preparar el mes de %(empleado)s.', doc=self.display_name, empleado=self.employee_id.name))
+        if anterior.state == 'invoice_rejected':
+            raise UserError(_(
+                'La DIAN rechazó el documento anterior del mes ("%(anterior)s"). Corríjalo y genere su XML otra vez, y después genere de nuevo el XML de "%(doc)s": su «Novedad» apunta al CUNE del anterior.',
+                anterior=anterior.display_name, doc=self.display_name))
+        if anterior.state == 'invoice_accepted':
+            if self.xml_attachment_id and self._ne_cunenov_del_xml() != anterior.cune:
+                raise UserError(_(
+                    'El XML de "%(doc)s" lleva la «Novedad» de un CUNE que ya no es el de "%(anterior)s". Genere de nuevo el XML de "%(doc)s".', doc=self.display_name, anterior=anterior.display_name))
+            return False
+        estado = dict(anterior._fields['state'].selection).get(anterior.state) or _('sin enviar')
+        return _('El documento "%(doc)s" queda pendiente hasta que "%(anterior)s" sea aceptado por la DIAN (hoy: %(estado)s): su «Novedad» exige el documento anterior ya recibido (NIE199a y NIE204a).',
+                 doc=self.display_name, anterior=anterior.display_name, estado=estado)
+
+    def _ne_cunenov_del_xml(self):
+        """El ``Novedad/@CUNENov`` del XML YA GENERADO (la fuente de lo que viaja a la DIAN), o ''."""
+        self.ensure_one()
+        try:
+            return ne_xml_utils.cunenov_de_xml(base64.b64decode(self.xml_attachment_id.datas))
+        except Exception:      # XML ilegible: se trata como no coincidente
+            return ''
+
+    def _ne_novedad_del_segmento(self, estricto=True):
+        """``{'CUNENov', 'value'}`` de un documento que NO es el primero del mes (H-F3-04), o None. ``estricto``: sin el CUNE del anterior (su XML aún no se genera) es un error claro; al VALIDAR no lo es (se
+        valida la fusión, no el orden de generación)."""
+        self.ensure_one()
+        if self.segmento <= 1 or self.is_adjustment:
+            return None
+        anterior = self.novedad_de_id
+        if not (anterior and anterior.cune):
+            if estricto:
+                raise UserError(_(
+                    'Genere primero el XML del documento anterior del mes ("%(anterior)s"): este documento lleva una «Novedad» con su CUNE.', anterior=anterior.display_name or _('sin documento anterior')))
+            return None
+        return {'CUNENov': anterior.cune, 'value': True}
 
     def _ne_validar_datos_recibo(self, slip):
         """Datos mínimos del empleado/contrato para generar el documento (sin los chequeos de estado del recibo)."""
@@ -694,6 +917,13 @@ class L10nCoNeDocumento(models.Model):
         ultimo = (primero.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         inicio = max(primero, contrato.date_start) if contrato.date_start else primero
         fin = min(ultimo, contrato.date_end) if contrato.date_end else ultimo
+        # H-F3-04, regla PROVISIONAL aprobada por el TL (23-nov, Q4; NO VERIFICADA con la DIAN, doc 95 §4.2): con el mes partido en segmentos, el periodo de liquidación de cada documento es el
+        # primer y el último día cubiertos por SUS recibos, recortados al mes y al contrato. FechaIngreso, FechaRetiro y TiempoLaborado siguen como siempre. Con un solo segmento no cambia nada.
+        if len(self._ne_segmentar(self.company_id, self._ne_recibos_del_mes(self.company_id, self.employee_id, self.period))) > 1:
+            cubiertos = self._ne_recibos_para_xml()
+            if cubiertos:
+                inicio = max(inicio, min(cubiertos.mapped('date_from')))
+                fin = min(fin, max(cubiertos.mapped('date_to')))
         ahora = _dt.now(pytz.timezone('America/Bogota'))
         return {
             'FechaIngreso': str(contrato.date_start) if contrato.date_start else '',
@@ -704,7 +934,7 @@ class L10nCoNeDocumento(models.Model):
             'FechaGen': ahora.strftime('%Y-%m-%d'),
         }
 
-    def _collect_documento_data(self, consecutivo=None):
+    def _collect_documento_data(self, consecutivo=None, validando=False):
         """Diccionario del documento mensual para ``nomina_xml_builder``: los datos de cada recibo (código existente,
         sin reescribir constructores) fusionados por ``documento_merge``. ``consecutivo`` provisional (con prefijo)
         solo para armar la numeración cuando el documento aún no tiene el suyo; no gasta ninguno."""
@@ -720,7 +950,11 @@ class L10nCoNeDocumento(models.Model):
             datos = documento_merge.fusionar_documento(
                 datos_recibos, fechas, self._ne_periodo(contrato), periodo_nomina='5')
         except documento_merge.ErrorFusion as error:
-            raise UserError(_('No se pueden fusionar los recibos del mes: %s', str(error)))
+            raise UserError(_(
+                'No se pueden fusionar los recibos del mes de %(empleado)s (%(mes)s): %(error)s%(ayuda)s',
+                empleado=self.employee_id.name, mes=self.period.strftime('%Y-%m'), error=str(error),
+                ayuda=_(' Si el cambio es de tipo de trabajador, el administrador del sistema puede activar «Separar el mes en documentos por cambio de tipo de trabajador» (Ajustes > Nómina): un documento por tramo, '
+                        'con la «Novedad» del anterior. Hoy NO está verificado con la DIAN (doc 95 §4).') if not self.company_id.l10n_co_ne_segmentar_mes else ''))
         # §5.4: el CUNE depende de ValDev/ValDed/ValTol; un error de suma es un rechazo de la DIAN.
         descuadres = documento_merge.conciliar_fusion(datos_recibos, datos)
         if descuadres:
@@ -734,8 +968,11 @@ class L10nCoNeDocumento(models.Model):
             Consecutivo=numero[len(prefijo):] if prefijo and numero.startswith(prefijo) else numero)
         datos['proveedor_xml'] = dict(
             datos.get('proveedor_xml', {}),
-            SoftwareSC=dian_utils.compute_software_security_code(modo.software_id, modo.software_pin, numero)
+            SoftwareSC=dian_utils.compute_software_security_code(modo.software_id, modo._ne_pin_del_software(), numero)
             if numero else '')
+        novedad = self._ne_novedad_del_segmento(estricto=not validando)   # H-F3-04: del segmento 2 en adelante, «Novedad» con el CUNE del anterior (Anexo NIE199 y NIE204)
+        if novedad:
+            datos['novedad'] = novedad
         if self.is_adjustment:
             # Nota de ajuste (Anexo §5.5.8): TipoXML 103, ``novedad`` con el CUNE de referencia y la sección
             # <Reemplazar> o <Eliminar> armada por el servicio (sin duplicar el código del recibo).
@@ -770,7 +1007,7 @@ class L10nCoNeDocumento(models.Model):
         if not self._ne_recibos_para_xml():
             return alertas
         try:
-            datos = self._collect_documento_data(consecutivo='PRE')
+            datos = self._collect_documento_data(consecutivo='PRE', validando=True)
         except UserError as error:
             return [{'key': 'xml', 'level': 'danger', 'message': str(error)}]
         nit = self.env.ref('l10n_co.rut', raise_if_not_found=False)
@@ -867,63 +1104,32 @@ class L10nCoNeDocumento(models.Model):
     # Generar y firmar (etapa 3b): consecutivo, CUNE, firma y adjunto
     # ──────────────────────────────────────────────────────────────────
     def _ne_prefijo_nomina(self):
-        """Prefijo de nómina electrónica de la compañía. Sin prefijo configurado es un error claro: no se inventa
-        uno (antes caía en 'NE' o en '' en silencio, igual que la secuencia sin configurar)."""
+        """Prefijo de nómina electrónica de la compañía. Sin prefijo configurado es un error claro (``res.company._ne_prefijo_consecutivo``, .304: una sola fuente)."""
         self.ensure_one()
-        prefijo = self.company_id.l10n_co_ne_payroll_prefix
-        if not prefijo or not prefijo.strip():
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene prefijo de nómina electrónica. Configúrelo en Ajustes > Nómina '
-                '(Prefijo Nómina) antes de generar el documento.', compania=self.company_id.name))
-        return prefijo
+        return self.company_id._ne_prefijo_consecutivo(False)
 
     def _ne_prefijo_ajuste(self):
-        """Prefijo de las notas de ajuste de la compañía. Sin prefijo es un error claro (el 'NA' del recibo cae en
-        silencio: no se copia)."""
+        """Prefijo de las notas de ajuste de la compañía. Sin prefijo es un error claro."""
         self.ensure_one()
-        prefijo = self.company_id.l10n_co_ne_adjust_prefix
-        if not prefijo or not prefijo.strip():
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene prefijo de notas de ajuste. Configúrelo en Ajustes > Nómina '
-                '(Prefijo Nota de Ajuste) antes de generar la nota.', compania=self.company_id.name))
-        return prefijo
+        return self.company_id._ne_prefijo_consecutivo(True)
 
     def _ne_prefijo(self):
         """Prefijo del consecutivo de ESTE documento: el de ajuste para una nota, el de nómina para un original."""
         self.ensure_one()
-        return self._ne_prefijo_ajuste() if self.is_adjustment else self._ne_prefijo_nomina()
-
-    def _ne_siguiente_consecutivo_ajuste(self):
-        """Siguiente consecutivo de la secuencia de ajuste (código ``l10n_co_nomina.ajuste``): primero la de la
-        compañía y, si no, la sin compañía. Sin secuencia es un error claro: no hay fallback silencioso."""
-        self.ensure_one()
-        secuencia = self.env['ir.sequence'].search([
-            ('code', '=', 'l10n_co_nomina.ajuste'), '|', ('company_id', '=', self.company_id.id),
-            ('company_id', '=', False)], order='company_id', limit=1)   # la de la compañía primero (NULL al final)
-        if not secuencia:
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene secuencia de notas de ajuste de nómina electrónica (código '
-                'l10n_co_nomina.ajuste). Configúrela antes de generar la nota.', compania=self.company_id.name))
-        return secuencia.next_by_id()
+        return self.company_id._ne_prefijo_consecutivo(self.is_adjustment)
 
     def _ne_siguiente_consecutivo(self):
-        """Siguiente consecutivo oficial de la compañía (misma secuencia no_gap del ciclo por recibo). Sin secuencia
-        configurada es un error claro: no se inventa un número."""
+        """Siguiente consecutivo oficial de la compañía (la misma secuencia no_gap del ciclo por recibo): UNA sola función, ``res.company._ne_tomar_consecutivo`` (.304), con los controles de
+        número ya enviado, secuencia atrasada y número ya asignado; sin secuencia o sin prefijo es un error claro, no hay fallback."""
         self.ensure_one()
-        if self.is_adjustment:
-            return self._ne_siguiente_consecutivo_ajuste()
-        secuencia = self.company_id.l10n_co_ne_sequence_id
-        if not secuencia:
-            raise UserError(_(
-                'La compañía "%(compania)s" no tiene secuencia de nómina electrónica. Configúrela en Ajustes > '
-                'Nómina antes de generar el documento.', compania=self.company_id.name))
-        return secuencia.next_by_id()
+        return self.company_id._ne_tomar_consecutivo(self.is_adjustment)
 
     def action_generar_xml(self):
         """Genera el XML mensual firmado: revalida, toma consecutivo (después de una corrida en seco), arma el
         XML fusionado, calcula el CUNE (depende de los totales fusionados), lo inserta, firma con XAdES-BES y
         guarda el adjunto. El documento queda 'ready' con su consecutivo, CUNE y XML (sin estado 'generado',
         doc 53 §18.6); un fallo después de tomar el número lo devuelve con el rollback (secuencia no_gap)."""
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         # Se genera si nunca se envió, o si TODOS los envíos anteriores fueron rechazados (D-a: se corrige y se
         # regenera en el MISMO documento, con consecutivo y CUNE nuevos). Aceptado, pendiente, incierto, eliminado
@@ -977,7 +1183,7 @@ class L10nCoNeDocumento(models.Model):
             val_dev=valores['val_dev'], val_ded=valores['val_ded'],
             val_tol=valores['val_tol'], nit_ne=dian_utils.clean_nit(company.vat),
             doc_trab=valores['doc_trab'], cl_ne='103' if self.is_adjustment else '102',
-            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
+            software_pin=company.l10n_co_ne_operation_mode_ids._ne_pin_del_software() or '',
             tipo_amb=company.l10n_co_ne_environment or '2')
         return cune
 
@@ -1001,7 +1207,7 @@ class L10nCoNeDocumento(models.Model):
                 'envío extemporáneo: marque "Confirmo envío extemporáneo" en Enviar y Procesar (solo el administrador de '
                 'nómina puede confirmarlo).', doc=self.display_name, fecha=self.fecha_limite))
 
-    def _ne_precondiciones_envio(self, confirmado=None):
+    def _ne_precondiciones_envio(self, confirmado=None, permitir_espera=False):
         """UserError local, ANTES de tocar la DIAN: sin intento, sin consecutivo gastado. ``confirmado`` (envío
         extemporáneo): al encolar lo trae quien confirma; el cron lo lee de la cola (``sending_data``), así no puede
         saltarse el bloqueo."""
@@ -1013,6 +1219,11 @@ class L10nCoNeDocumento(models.Model):
                 self.display_name))
         if self.eliminado:
             raise UserError(_('El documento "%s" ya fue eliminado por una nota de ajuste.', self.display_name))
+        # H-F3-04: el segmento 2 en adelante no sale con la separación del mes apagada (error claro) ni antes de que el anterior sea aceptado. ``permitir_espera``: al ENCOLAR se acepta esperar (el cron lo
+        # deja en espera y reintenta solo); al ENVIAR no.
+        espera = self._ne_espera_anterior()
+        if espera and not permitir_espera:
+            raise UserError(espera)
         if self.is_adjustment:
             # La nota solo se envía contra el ÚLTIMO documento aceptado de su cadena, vigente y no eliminado (§23.16).
             padre = self.parent_id
@@ -1033,6 +1244,8 @@ class L10nCoNeDocumento(models.Model):
                 '(toma un consecutivo nuevo): el mismo XML no se reenvía.', self.display_name))
         if self.etapa != 'ready' or not (self.cune and self.consecutive and self.xml_attachment_id):
             raise UserError(_('Genere el XML del documento "%s" antes de enviarlo.', self.display_name))
+        # .304 (doc 77, A): el número de este documento no pudo haber viajado ya en otro (p. ej. tras restaurar o mover la secuencia).
+        self.company_id._ne_exigir_numero_sin_viajar(self.consecutive, self.is_adjustment, documento=self)
         if confirmado is None:
             confirmado = bool((self.sending_data or {}).get('extemporaneo_confirmado'))
         self._ne_exigir_plazo(confirmado)
@@ -1057,17 +1270,32 @@ class L10nCoNeDocumento(models.Model):
         es "Envío fallido", reintentable con el MISMO consecutivo, CUNE y XML, nunca rechazo). Lanza UserError solo
         por precondiciones locales, antes de llamar. El ``state`` del documento se recalcula solo.
 
+        H-DIAN-03 (doc 107): si el último envío del mismo CUNE falló (pudo haber llegado), primero se consulta por CUNE y solo se reenvía si la DIAN contesta que no lo conoce. La regla 90 de un envío
+        no es un rechazo: se concilia por CUNE y, sin veredicto, el documento queda incierto.
+
         Returns:
-            ``l10n.co.ne.documento.intento`` creado.
+            ``l10n.co.ne.documento.intento`` creado (o el anterior, conciliado o aún fallido, cuando no se reenvió).
         """
         self.ensure_one()
         self._ne_precondiciones_envio()
         company = self.company_id
+        previo = self._ultimo_intento()
+        if previo and previo.state == 'invoice_sending_failed' and previo.identifier == self.cune and not company.l10n_co_ne_demo_mode:
+            consulta = self._ne_reconsultar_por_cune()
+            if previo.state != 'invoice_sending_failed':          # la DIAN ya tenía el veredicto
+                self.sending_data = False
+                return previo
+            if consulta.veredicto != dian_respuesta.NO_CONOCIDO:
+                self._ne_nota_una_vez(_(
+                    'No se reenvió: la consulta por CUNE no permite saber si la DIAN ya tiene este documento (%s). Solo se reenvía cuando la DIAN contesta que no lo conoce.',
+                    consulta.mensaje or consulta.veredicto), 'No se reenvió: la consulta por CUNE')
+                return previo
         xml = base64.b64decode(self.xml_attachment_id.datas)
         nit = (company.vat or 'SIN_NIT').replace('-', '').strip()
         filename = 'ne_%s_%s.xml' % (nit, self.consecutive)
         exchange = self.env['l10n.co.ne.exchange']
         respuesta = {}
+        ya_procesado = False
         if company.l10n_co_ne_demo_mode:
             # Modo Demo: validación local, sin transmitir (mismo criterio que el ciclo por recibo).
             estado, zip_key = 'invoice_accepted', ''
@@ -1083,6 +1311,7 @@ class L10nCoNeDocumento(models.Model):
                     'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT))
             resultado = dian_respuesta.interpretar_respuesta(respuesta, contexto=dian_respuesta.CONTEXTO_ENVIO)
             estado = _ESTADO_INTENTO_POR_VEREDICTO[resultado.veredicto]
+            ya_procesado = resultado.veredicto == dian_respuesta.YA_PROCESADO
             zip_key = resultado.zip_key
             message_json = dian_message.build_message_json(respuesta)
             exchange = self.env['l10n.co.ne.exchange'].create_exchange(
@@ -1104,7 +1333,23 @@ class L10nCoNeDocumento(models.Model):
         self.message_post(
             body=_('Envío a la DIAN: %s.', dict(intento._fields['state'].selection).get(estado)),
             message_type='comment', subtype_xmlid='mail.mt_note')
+        if ya_procesado:
+            self._ne_conciliar_ya_procesado(intento)
         return intento
+
+    def _ne_conciliar_ya_procesado(self, intento):
+        """H-DIAN-03 (b): la DIAN contestó que ya había procesado el documento. Se consulta por CUNE en el acto; sin veredicto queda INCIERTO (fuera de la cola, a conciliar), nunca rechazado."""
+        self.ensure_one()
+        try:
+            with self.env.cr.savepoint():
+                self._ne_reconsultar_por_cune()
+        except Exception:   # noqa: BLE001 -- el intento ya está registrado: pase lo que pase, queda incierto
+            _logger.exception('Documento %s: no se pudo consultar por CUNE tras la respuesta «procesado anteriormente»', self.id)
+        if intento.state not in ('invoice_accepted', 'invoice_rejected'):
+            self.incierto = True
+            self.message_post(body=_(
+                'La DIAN contestó que ya había procesado este documento y la consulta por CUNE no dio su veredicto: queda como envío incierto. Use «Consultar estado DIAN por CUNE»; no genere otro XML.'),
+                message_type='comment', subtype_xmlid='mail.mt_note')
 
     # Entrega de la representación gráfica y el XML al empleado (Frente 5, C6c). Solo tras la aceptación de la DIAN (patrón
     # de facturación: el correo sale después de la DIAN y solo si fue aceptado). Un fallo de correo NO cambia el estado DIAN.
@@ -1251,7 +1496,7 @@ class L10nCoNeDocumento(models.Model):
         for doc in self:
             if doc.is_being_sent:
                 raise UserError(_('El documento "%s" ya está en la cola de envío.', doc.display_name))
-            doc._ne_precondiciones_envio(confirmado=confirmo_extemporaneo)
+            doc._ne_precondiciones_envio(confirmado=confirmo_extemporaneo, permitir_espera=True)
         ahora = fields.Datetime.to_string(fields.Datetime.now())
         for doc in self:
             datos = {
@@ -1345,6 +1590,23 @@ class L10nCoNeDocumento(models.Model):
             for doc in vencidos:
                 datos = dict(doc.sending_data)
                 resumen = resultados.setdefault(datos.get('author_partner_id') or 0, {})
+                # H-F3-04 (Q5 y Q7 del TL): el segmento 2 en adelante espera, sin error, a que el anterior sea aceptado; se reintenta solo (es un documento con plazo de 10 días hábiles). Un problema que el
+                # usuario debe corregir (anterior rechazado, XML con un CUNENov viejo, separación apagada) sí es un error local, como cualquier otro.
+                try:
+                    espera = doc._ne_espera_anterior()
+                except UserError as error:
+                    doc.sending_data = {'error': str(error), 'author_partner_id': datos.get('author_partner_id')}
+                    doc.message_post(body=_('No se envió el documento desde la cola: %s', error),
+                                     message_type='comment', subtype_xmlid='mail.mt_note')
+                    resumen['fallido'] = resumen.get('fallido', 0) + 1
+                    self._ne_commit()
+                    continue
+                if espera:
+                    datos['proximo'] = fields.Datetime.to_string(fields.Datetime.now() + timedelta(minutes=self._ne_espera_reintento(1, company)))
+                    doc.sending_data = datos
+                    doc._ne_nota_una_vez(espera, 'queda pendiente hasta que')      # una sola vez: el cron vuelve a pasar cada pocos minutos
+                    self._ne_commit()
+                    continue
 
                 def contar(clave, _r=resumen):
                     _r[clave] = _r.get(clave, 0) + 1
@@ -1380,11 +1642,10 @@ class L10nCoNeDocumento(models.Model):
                                 'proximo': fields.Datetime.to_string(fields.Datetime.now() + timedelta(minutes=espera))}
                             contar('reintento')
                         else:
-                            doc.sending_data = False
-                            doc.message_post(body=_('Se agotaron los reintentos de envío: el documento queda como '
-                                                    'envío fallido.'), message_type='comment',
-                                             subtype_xmlid='mail.mt_note')
-                            contar('fallido')
+                            doc.write({'sending_data': False, 'incierto': True})          # H-DIAN-03: pudo haber llegado
+                            doc.message_post(body=_('Se agotaron los reintentos de envío: el documento queda como envío incierto. Use «Consultar estado DIAN por CUNE»: si la DIAN contesta que no lo conoce, '
+                                                    'podrá enviarse otra vez con el mismo XML.'), message_type='comment', subtype_xmlid='mail.mt_note')
+                            contar('incierto')
                     else:
                         contar({'invoice_accepted': 'aceptado', 'invoice_rejected': 'rechazado'}.get(
                             intento.state, 'pendiente'))
@@ -1560,6 +1821,10 @@ class L10nCoNeDocumento(models.Model):
         veredicto = resultado.veredicto
         if veredicto in (dian_respuesta.ERROR_TRANSPORTE, dian_respuesta.PENDIENTE):
             return resultado
+        if veredicto == dian_respuesta.NO_CONOCIDO:
+            if self.incierto and (not ultimo or ultimo.state != 'invoice_pending'):
+                self._ne_liberar_no_conocido(ultimo, respuesta, exchange)
+            return resultado
         if veredicto == dian_respuesta.NIVEL_SET:
             self._ne_nota_una_vez(_(
                 'La DIAN respondió sobre el SET de pruebas, no sobre este documento: %s. No se cambia el estado.',
@@ -1600,6 +1865,19 @@ class L10nCoNeDocumento(models.Model):
                 'state'].selection).get(estado)),
             message_type='comment', subtype_xmlid='mail.mt_note')
         return resultado
+
+    def _ne_liberar_no_conocido(self, ultimo, respuesta, exchange):
+        """H-DIAN-03: la DIAN contestó que no conoce el CUNE de un documento incierto: queda «Envío fallido» con su MISMO XML, consecutivo y CUNE, y puede enviarse otra vez."""
+        self.ensure_one()
+        if not ultimo or ultimo.identifier != self.cune or ultimo.state != 'invoice_sending_failed':
+            company = self.company_id
+            self.env['l10n.co.ne.documento.intento'].create({
+                'documento_id': self.id, 'datetime': fields.Datetime.now(), 'state': 'invoice_sending_failed', 'identifier': self.cune, 'numero': self.consecutive,
+                'attachment_id': self.xml_attachment_id.id, 'message_json': dian_message.build_message_json(respuesta), 'exchange_id': exchange.id or False,
+                'test_environment': company.l10n_co_ne_environment == '2', 'certification_process': bool(company.l10n_co_ne_certification_process)})
+        self.incierto = False
+        self.message_post(body=_('La DIAN contestó que no tiene registrado este CUNE: el documento puede enviarse otra vez con el mismo XML («Enviar y Procesar»).'),
+                          message_type='comment', subtype_xmlid='mail.mt_note')
 
     # ──────────────────────────────────────────────────────────────────
     # Cron de reconsulta del documento (doc 53 §23.17, 7c). El cron del RECIBO no se toca.
@@ -1678,17 +1956,17 @@ class L10nCoNeDocumento(models.Model):
                 raise ValidationError(_(
                     'El mes del documento debe ser el primer día del mes; se recibió %(fecha)s.', fecha=doc.period))
 
-    @api.constrains('company_id', 'employee_id', 'period', 'is_adjustment', 'legacy', 'eliminado')
+    @api.constrains('company_id', 'employee_id', 'period', 'segmento', 'is_adjustment', 'legacy', 'eliminado')
     def _check_original_unico(self):
         for doc in self.filtered(lambda d: not d.is_adjustment and not d.legacy and not d.eliminado):
             otro = self.search([
                 ('id', '!=', doc.id), ('company_id', '=', doc.company_id.id), ('employee_id', '=', doc.employee_id.id),
-                ('period', '=', doc.period), ('is_adjustment', '=', False), ('legacy', '=', False),
+                ('period', '=', doc.period), ('segmento', '=', doc.segmento), ('is_adjustment', '=', False), ('legacy', '=', False),
                 ('eliminado', '=', False)], limit=1)
             if otro:
                 raise ValidationError(_(
                     'Ya existe un documento mensual activo de %(empleado)s para %(mes)s (%(otro)s). Solo puede haber '
-                    'uno por empleado y mes; para corregirlo cree una nota de ajuste.',
+                    'uno por empleado, mes y segmento del mes; para corregirlo cree una nota de ajuste.',
                     empleado=doc.employee_id.display_name, mes=doc.period.strftime('%Y-%m'), otro=otro.display_name))
 
     @api.constrains('is_adjustment', 'adjustment_ref_cune')
@@ -1706,20 +1984,20 @@ class L10nCoNeDocumento(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         """Un original activo por (compañía, empleado, mes): se comprueba ANTES del INSERT para dar el mensaje claro
-        (el índice parcial ``l10n_co_ne_documento_mes_unico`` queda como respaldo ante concurrencia)."""
+        (el índice parcial ``l10n_co_ne_documento_mes_segmento_unico`` queda como respaldo ante concurrencia)."""
         vistos = set()
         for vals in vals_list:
             if vals.get('is_adjustment') or vals.get('legacy') or vals.get('eliminado') or not vals.get('period'):
                 continue
             company = vals.get('company_id') or self.env.company.id
-            clave = (company, vals.get('employee_id'), fields.Date.to_date(vals['period']))
+            clave = (company, vals.get('employee_id'), fields.Date.to_date(vals['period']), vals.get('segmento', 1))
             otro = self.search([
-                ('company_id', '=', company), ('employee_id', '=', clave[1]), ('period', '=', clave[2]),
+                ('company_id', '=', company), ('employee_id', '=', clave[1]), ('period', '=', clave[2]), ('segmento', '=', clave[3]),
                 ('is_adjustment', '=', False), ('legacy', '=', False), ('eliminado', '=', False)], limit=1)
             if otro or clave in vistos:
                 raise ValidationError(_(
-                    'Ya existe un documento mensual activo para ese empleado y mes (%(otro)s). Solo puede haber uno por '
-                    'empleado y mes; para corregirlo cree una nota de ajuste.', otro=otro.display_name or clave[2]))
+                    'Ya existe un documento mensual activo para ese empleado, mes y segmento del mes (%(otro)s). Solo puede haber uno por '
+                    'empleado, mes y segmento; para corregirlo cree una nota de ajuste.', otro=otro.display_name or clave[2]))
             vistos.add(clave)
         return super().create(vals_list)
 

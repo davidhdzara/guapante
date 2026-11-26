@@ -1,6 +1,6 @@
 {
     'name': 'Colombia - Nómina',
-    'version': '18.0.3.0.281',
+    'version': '18.0.3.0.327',
     'category': 'Human Resources/Payroll',
     'countries': ['co'],
     'summary': 'Generación y envío de Nómina Electrónica a la DIAN (Resolución 000013 de 2021)',
@@ -52,6 +52,12 @@ Funcionalidades principales:
         'security/l10n_co_ne_exchange_security.xml',
         'security/l10n_co_company_security.xml',
         'security/l10n_co_ne_documento_security.xml',
+        'security/l10n_co_payslip_ajuste_security.xml',
+        'security/l10n_co_payslip_concepto_security.xml',
+        'security/l10n_co_payslip_calculo_security.xml',
+        'security/l10n_co_employee_pacto_security.xml',
+        'security/l10n_co_employee_descanso_security.xml',
+        'security/l10n_co_ne_consecutivo_security.xml',
         # Data
         'data/ir_sequence_data.xml',
         'data/l10n_co_rule_parameters_data.xml',
@@ -62,10 +68,14 @@ Funcionalidades principales:
         'data/l10n_co_horas_extra_input_types_data.xml',
         'data/l10n_co_novedades_input_types_data.xml',
         'data/l10n_co_ausencias_data.xml',
+        'data/l10n_co_work_entry_types_dias_data.xml',
         'data/hr_payroll_structure_special_data.xml',
         'data/hr_salary_rule_alinear_nativas.xml',
         'data/hr_salary_rule_auto_deductions.xml',
         'data/hr_salary_rule_tercero_origen.xml',
+        'data/hr_payslip_input_type_unidad.xml',
+        'data/hr_payslip_conceptos_pendientes.xml',
+        'data/l10n_co_ne_consecutivos_pendientes.xml',
         'data/hr_retefuente_data.xml',
         'data/ir_cron_habilitacion.xml',
         'data/ir_cron_dian_status_recheck.xml',
@@ -87,6 +97,9 @@ Funcionalidades principales:
         # modulo ya instalado, -u en vez de -i).
         'views/hr_retefuente_views.xml',
         'views/hr_salary_rule_views.xml',
+        'views/hr_payslip_input_type_views.xml',
+        'views/hr_salary_rule_category_views.xml',
+        'views/hr_payroll_structure_views.xml',
         # res_config_settings_views.xml debe cargar DESPUES de
         # hr_salary_rule_views.xml -- su boton "Abrir Cuentas
         # Contables" referencia action_hr_salary_rule_account_ne,
@@ -97,6 +110,9 @@ Funcionalidades principales:
         'views/hr_contract_views.xml',
         'views/hr_leave_prorroga_views.xml',
         'views/hr_payslip_views.xml',
+        'views/hr_payslip_conceptos_views.xml',
+        'views/hr_payslip_calculo_views.xml',
+        'views/l10n_co_ne_consecutivo_views.xml',
         'views/l10n_co_ne_exchange_views.xml',
         'views/l10n_co_nomina_ugpp_views.xml',
         # Despues de ugpp_views: usa su menu menu_l10n_co_nomina_reportes.

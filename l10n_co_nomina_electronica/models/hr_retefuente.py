@@ -22,7 +22,7 @@ import logging
 from datetime import timedelta
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -116,6 +116,30 @@ class L10nCoRetefuenteUvt(models.Model):
     ]
 
     # ──────────────────────────────────────────────────────────────────
+    # H-F2-03 (G1): las filas compartidas (sin compañía) solo las toca el administrador del sistema
+    # ──────────────────────────────────────────────────────────────────
+    def _ne_exigir_sistema_si_comparte(self, toca_compartidas):
+        """Las filas SIN compañía rigen para TODAS las compañías (de ellas depende la retención de cada una): las crea, edita y borra solo el administrador del sistema (o el sistema al cargar datos con
+        ``-u``). La regla de registro (``security/l10n_co_company_security.xml``) ya lo impide; este aviso lo dice con claro quién puede hacerlo, en vez del mensaje genérico de Odoo."""
+        if toca_compartidas and not self.env.is_system():
+            raise AccessError(_(
+                'La configuración de retención sin compañía rige para TODAS las compañías: solo la crea, edita o borra el administrador del sistema (permiso «Administración: Ajustes»). '
+                'El administrador de nómina edita únicamente la de su compañía; los valores legales (UVT, tabla del art. 383) los carga la actualización del módulo.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        self._ne_exigir_sistema_si_comparte(any('company_id' in vals and not vals['company_id'] for vals in vals_list))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        self._ne_exigir_sistema_si_comparte(any(not fila.company_id for fila in self) or ('company_id' in vals and not vals['company_id']))
+        return super().write(vals)
+
+    def unlink(self):
+        self._ne_exigir_sistema_si_comparte(any(not fila.company_id for fila in self))
+        return super().unlink()
+
+    # ──────────────────────────────────────────────────────────────────
     # Validaciones
     # ──────────────────────────────────────────────────────────────────
     @api.constrains('uvt_value')
@@ -201,7 +225,8 @@ class L10nCoRetefuenteUvt(models.Model):
     # ══════════════════════════════════════════════════════════════════
     def compute_retefuente(self, employee, gross_salary, ibc_pension,
                            ibc_salud, company=None, contract=None,
-                           payslip=None, force_procedure=None):
+                           payslip=None, force_procedure=None, fecha_mes=None,
+                           sin_aportes_voluntarios=False, aporte_salud=None, aporte_pension=None):
         """Calcula la retención en la fuente mensual para un empleado.
 
         Ejecuta la depuración de la base gravable según la normatividad
@@ -232,6 +257,14 @@ class L10nCoRetefuenteUvt(models.Model):
             aplicar SIEMPRE la tabla marginal Art. 383 (fuerza '1') sobre
             el ingreso PROMEDIO al derivar el % fijo semestral, sin
             importar qué procedimiento tenga configurado el año en curso.
+        :param fecha_mes: date (opcional, R-2). Cualquier día del MES al que se asigna la retención (el del
+            «Hasta» del recibo). Con ella el acumulado del techo anual de exentos llega hasta el mes anterior (la
+            retención del mes recalcula el mes completo) y el semestre del Procedimiento 2 se elige con esta fecha.
+        :param sin_aportes_voluntarios: bool (opcional, R-2, prima). Con ``contract`` toma su procedimiento y su
+            porcentaje, sin descontar pensión voluntaria ni AFC (son aportes sobre el salario del mes).
+        :param aporte_salud: float (opcional, R-2). Salud del trabajador EFECTIVAMENTE descontada en los recibos que
+            suman; si se pasa, la depuración resta ese valor y no el calculado sobre ``ibc_salud``.
+        :param aporte_pension: float (opcional, R-2). Igual para la pensión obligatoria del trabajador.
         :returns: dict con el detalle de la depuración y el valor final
             de retención en pesos, con la siguiente estructura::
 
@@ -244,6 +277,10 @@ class L10nCoRetefuenteUvt(models.Model):
                     'deduccion_dependientes': float,
                     'subtotal_depurado': float,
                     'renta_exenta_25': float,
+                    'base_limite_global': float,  (ingreso - salud - pension)
+                    'limite_global': float,       (min(40 % de la base, 1.340/12 UVT))
+                    'beneficios_antes_del_limite': float,
+                    'exceso_limite_global': float, (lo que el limite no deja deducir)
                     'base_gravable': float,
                     'base_uvt': float,
                     'retencion_uvt': float,
@@ -271,12 +308,14 @@ class L10nCoRetefuenteUvt(models.Model):
         ingreso_bruto = gross_salary
 
         # ── 2. Aportes obligatorios salud empleado ────────────────────
-        aporte_salud = round(
-            ibc_salud * _p('l10n_co_pct_salud_empleado') / 100, 2)
+        if aporte_salud is None:
+            aporte_salud = ibc_salud * _p('l10n_co_pct_salud_empleado') / 100
+        aporte_salud = round(aporte_salud, 2)
 
         # ── 3. Aportes obligatorios pensión empleado ──────────────────
-        aporte_pension = round(
-            ibc_pension * _p('l10n_co_pct_pension_empleado') / 100, 2)
+        if aporte_pension is None:
+            aporte_pension = ibc_pension * _p('l10n_co_pct_pension_empleado') / 100
+        aporte_pension = round(aporte_pension, 2)
 
         # ── 4/5. Pensión voluntaria + AFC — tope COMBINADO del 30%% ──
         #     AUD-05/doc 32: Art. 126-1 ET (mod. Ley 1819/2016) + Art.
@@ -288,8 +327,9 @@ class L10nCoRetefuenteUvt(models.Model):
         #     l10n_co_ne_afc -- la misma fuente que alimenta la deduccion
         #     real del payslip (reglas CO_PENSION_VOL/CO_AFC), no un campo
         #     de empleado desconectado (el que existia antes se eliminó).
-        raw_vol_pension = (contract.l10n_co_ne_pension_voluntaria or 0.0) if contract else 0.0
-        raw_afc = (contract.l10n_co_ne_afc or 0.0) if contract else 0.0
+        con_voluntarios = bool(contract) and not sin_aportes_voluntarios
+        raw_vol_pension = (contract.l10n_co_ne_pension_voluntaria or 0.0) if con_voluntarios else 0.0
+        raw_afc = (contract.l10n_co_ne_afc or 0.0) if con_voluntarios else 0.0
         total_raw_vol_afc = raw_vol_pension + raw_afc
 
         max_combinado_pct = _p('l10n_co_max_vol_pension_afc_combinado_pct')
@@ -315,8 +355,9 @@ class L10nCoRetefuenteUvt(models.Model):
         #     ejemplo/demo), se omite el techo anual.
         if payslip is not None:
             techo_anual = _p('l10n_co_max_vol_pension_afc_anual_uvt') * uvt
-            _year_start = payslip.date_from.replace(month=1, day=1)
-            _dia_anterior = payslip.date_from - timedelta(days=1)
+            _corte = fecha_mes.replace(day=1) if fecha_mes else payslip.date_from
+            _year_start = _corte.replace(month=1, day=1)
+            _dia_anterior = _corte - timedelta(days=1)
             if _dia_anterior >= _year_start:
                 acumulado_previo = payslip._sum(
                     'CO_EXENTO_PENSION_AFC', _year_start, _dia_anterior,
@@ -368,8 +409,26 @@ class L10nCoRetefuenteUvt(models.Model):
             subtotal * _p('l10n_co_pct_renta_exenta') / 100,
             _p('l10n_co_max_renta_exenta_uvt_anual') / 12.0 * uvt)
 
+        # ── 7b. Límite global de rentas exentas y deducciones (H-F1-02, doc 90) ──
+        #     Art. 336 num. 3 ET (Ley 2277/2022 art. 7) y Decreto 1625/2016 art. 1.2.4.1.6 par. 3 (Decreto 2231/2023 art. 9): las rentas exentas y deducciones
+        #     (aqui: aporte voluntario a pension, AFC, dependientes y el 25 %) no pueden superar el 40 % de «ingreso menos ingresos no constitutivos de renta»
+        #     (aqui: salud y pension obligatorias) ni 1.340 UVT ANUALES; en la retencion, que se depura por mes, 1.340 / 12 UVT -- sin acumulado anual y sin
+        #     prorrateo por quincena (el limite se calcula sobre la base MENSUAL). Un exceso no es deducible. Los 72 UVT por dependiente del art. 336 son de la
+        #     declaracion anual, no de la retencion mensual (decision del TL, doc 90 D-02-2). Los numerales 6-9 del art. 206 y el 206-1, excluidos del limite,
+        #     no existen en el modulo.
+        base_limite_global = max(ingreso_bruto - aporte_salud - aporte_pension, 0.0)
+        beneficios = aporte_vol_pension + afc + deduccion_dep + renta_exenta_25
+        limite_global = min(
+            base_limite_global * _p('l10n_co_limite_global_pct') / 100.0,
+            _p('l10n_co_limite_global_uvt_anual') / 12.0 * uvt)
+        exceso_limite_global = max(beneficios - limite_global, 0.0)
+
         # ── 8. Base gravable ─────────────────────────────────────────
-        base_gravable = max(subtotal - renta_exenta_25, 0.0)
+        #     Sin exceso es exactamente la depuracion de siempre (subtotal - 25 %); con exceso, el ingreso depurado menos lo PERMITIDO (el limite).
+        if exceso_limite_global:
+            base_gravable = max(base_limite_global - limite_global, 0.0)
+        else:
+            base_gravable = max(subtotal - renta_exenta_25, 0.0)
 
         # ── 9. Conversión a UVT ──────────────────────────────────────
         base_uvt = base_gravable / uvt
@@ -396,7 +455,7 @@ class L10nCoRetefuenteUvt(models.Model):
             # no se ha calculado el semestre todavia.
             pct = self.percentage_procedure2
             if contract:
-                _ref = payslip.date_from if payslip else fields.Date.context_today(self)
+                _ref = fecha_mes or (payslip.date_from if payslip else fields.Date.context_today(self))
                 semester_start = _ref.replace(month=1, day=1) if _ref.month <= 6 else _ref.replace(month=7, day=1)
                 proc2 = self.env['l10n.co.retefuente.procedure2'].search([
                     ('contract_id', '=', contract.id),
@@ -429,6 +488,10 @@ class L10nCoRetefuenteUvt(models.Model):
             'deduccion_dependientes': deduccion_dep,
             'subtotal_depurado': subtotal,
             'renta_exenta_25': renta_exenta_25,
+            'base_limite_global': base_limite_global,
+            'limite_global': limite_global,
+            'beneficios_antes_del_limite': beneficios,
+            'exceso_limite_global': exceso_limite_global,
             'base_gravable': base_gravable,
             'base_uvt': round(base_uvt, 4),
             'retencion_uvt': round(retencion_uvt, 4),

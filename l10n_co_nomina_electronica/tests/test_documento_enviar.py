@@ -43,7 +43,11 @@ class TestDocumentoEnviar(DocumentoFixture, TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls._fixture_documento('Compañía Enviar Documento')
+        cls._preparar_compania(cls, 'Compañía Enviar Documento')
+
+    @staticmethod
+    def _preparar_compania(cls, nombre):
+        cls._fixture_documento(nombre)
         cls.env['l10n.co.ne.operation_mode'].create({
             'company_id': cls.company.id, 'software_id': 'SOFT-ID', 'software_pin': PIN, 'test_set_id': 'TS'})
         cls.company.l10n_co_ne_environment = '1'          # Producción: el documento solo transmite aquí (D-b)
@@ -56,7 +60,13 @@ class TestDocumentoEnviar(DocumentoFixture, TransactionCase):
 
     def setUp(self):
         super().setUp()
+        self._simular_dian(self)
+        self.doc = self._documento(date(2024, 3, 1))
+        self.doc._ne_validar()
+        self.doc.action_generar_xml()                     # NE00000015, listo para enviar
 
+    @staticmethod
+    def _simular_dian(self):
         def fabrica(slip):
             datos = copy.deepcopy(_quincena_con_prima() if slip.date_to.day > 15 else _recibo())
             datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=HORA)
@@ -74,9 +84,9 @@ class TestDocumentoEnviar(DocumentoFixture, TransactionCase):
         self._patch(soap_client, 'send_nomina_sync', self.soap)
         self.consulta = MagicMock(name='get_status_zip')
         self._patch(soap_client, 'get_status_zip', self.consulta)
-        self.doc = self._documento(date(2024, 3, 1))
-        self.doc._ne_validar()
-        self.doc.action_generar_xml()                     # NE00000015, listo para enviar
+        # H-DIAN-03: el reintento de un envío fallido consulta antes por CUNE; por defecto la DIAN no lo conoce.
+        self.consulta_cune = MagicMock(name='get_status', return_value={'IsValid': 'false', 'StatusCode': '66', 'ErrorMessages': [], 'XmlDocumentKey': ''})
+        self._patch(soap_client, 'get_status', self.consulta_cune)
 
     # ── utilidades ───────────────────────────────────────────────────
     def _enviar(self, respuesta):

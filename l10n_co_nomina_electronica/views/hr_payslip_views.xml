@@ -28,7 +28,7 @@
                 <button name="action_regenerate_ne_xml"
                         string="Regenerar XML"
                         type="object"
-                        invisible="l10n_co_ne_en_produccion or country_code != 'CO' or (l10n_co_ne_documento_id and l10n_co_ne_state == 'draft') or l10n_co_ne_state not in ('generated', 'rejected', 'uncertain') or state != 'done'"
+                        invisible="l10n_co_ne_en_produccion or country_code != 'CO' or (l10n_co_ne_documento_id and l10n_co_ne_state == 'draft') or l10n_co_ne_state not in ('generated', 'rejected') or state != 'done'"
                         groups="hr_payroll.group_hr_payroll_manager"/>
                 <button name="action_send_ne_dian"
                         string="Enviar a DIAN"
@@ -75,6 +75,41 @@
                     <field name="l10n_co_ne_aviso_periodicidad" readonly="1" nolabel="1"/>
                 </div>
 
+                <!-- H-F1-06 (doc 87): aviso de afiliación incompleta (EPS, AFP, Caja, ARL): no bloquea al calcular; al confirmar es un error. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_afiliacion">
+                    <field name="l10n_co_ne_aviso_afiliacion" readonly="1" nolabel="1"/>
+                </div>
+
+                <!-- H-F1-07 (doc 92): el día de descanso del empleado no cuadra con su calendario o con las horas de recargo dominical/festivo, o el pacto no tiene el documento; no bloquea. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_descanso">
+                    <field name="l10n_co_ne_aviso_descanso" readonly="1" nolabel="1"/>
+                </div>
+
+                <!-- H-F1-09 (doc 88): el tipo de trabajador de la ficha de un aprendiz no coincide con el del contrato (el XML usa el del contrato); no bloquea. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_tipo_trabajador">
+                    <field name="l10n_co_ne_aviso_tipo_trabajador" readonly="1" nolabel="1"/>
+                </div>
+
+                <!-- H-F3-04 (doc 98): con el mes separado por tipo de trabajador, este recibo no cabe en el documento de su segmento; no bloquea. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_segmento">
+                    <field name="l10n_co_ne_aviso_segmento" readonly="1" nolabel="1"/>
+                </div>
+
+                <!-- H-F1-11 (doc 89): sin IBC consolidado del mes anterior, la base de vacaciones, licencia remunerada y SLN es el sueldo de la ficha del empleado; no bloquea. -->
+                <div class="alert alert-warning mb-0"
+                     role="alert"
+                     invisible="not l10n_co_ne_aviso_ibc_anterior">
+                    <field name="l10n_co_ne_aviso_ibc_anterior" readonly="1" nolabel="1"/>
+                </div>
+
                 <!-- Banner de Pendiente de Procesamiento -->
                 <div class="alert alert-warning text-center mb-0"
                      role="alert"
@@ -105,6 +140,23 @@
                     <br/>
                     Revise los detalles del error en el chatter a continuación. Corrija los datos correspondientes en el empleado, contrato o compañía, y vuelva a hacer clic en <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo (sin desperdiciar números).
                 </div>
+
+                <!-- R-2: la retención en la fuente no cabe en el recibo -->
+                <div class="alert alert-danger mb-0" role="alert" invisible="l10n_co_ne_rete_faltante &lt;= 0">
+                    <strong>La retención en la fuente no cabe en este recibo.</strong>
+                    Por descontar: <field name="l10n_co_ne_rete_a_descontar" class="oe_inline"/>;
+                    disponible: <field name="l10n_co_ne_rete_disponible" class="oe_inline"/>;
+                    sin practicar: <field name="l10n_co_ne_rete_faltante" class="oe_inline"/>.
+                    Para confirmar, el administrador de nómina debe marcar «Autorizo confirmar con retención incompleta».
+                </div>
+                <group invisible="l10n_co_ne_rete_faltante &lt;= 0">
+                    <group>
+                        <field name="l10n_co_ne_rete_autorizada" groups="hr_payroll.group_hr_payroll_manager" readonly="state not in ('draft', 'verify')"/>
+                        <field name="l10n_co_ne_rete_autorizada_por" invisible="not l10n_co_ne_rete_autorizada_por"/>
+                        <field name="l10n_co_ne_rete_autorizada_fecha" invisible="not l10n_co_ne_rete_autorizada_fecha"/>
+                        <field name="currency_id" invisible="1"/>
+                    </group>
+                </group>
             </xpath>
 
             <!-- Notebook page for NE details -->
@@ -227,6 +279,14 @@
         <field name="model">hr.payslip</field>
         <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
         <field name="arch" type="xml">
+            <!-- .284 (E2a): aviso (no bloquea) de las fechas sin entrada de trabajo; el selector va por @name, sin atributos traducibles -->
+            <xpath expr="//page[@name='worked_days_input']/field[@name='worked_days_line_ids']" position="before">
+                <div class="alert alert-warning mb-2" role="alert" invisible="not l10n_co_ne_aviso_dias">
+                    <strong>Revise las entradas de trabajo</strong>
+                    <br/>
+                    <field name="l10n_co_ne_aviso_dias" readonly="1" nolabel="1"/>
+                </div>
+            </xpath>
             <xpath expr="//page[@name='worked_days_input']/field[@name='worked_days_line_ids']/following-sibling::separator[1]" position="attributes">
                 <attribute name="invisible">1</attribute>
             </xpath>
@@ -238,6 +298,18 @@
             </xpath>
             <xpath expr="//page[@name='worked_days_input']//field[@name='worked_days_line_ids']/list/field[@name='amount']" position="attributes">
                 <attribute name="optional">hide</attribute>
+            </xpath>
+            <!-- .282: el importe de las novedades se ve con DOS decimales (300.000,00). Causa (nativo, leída por TL en el servidor):
+                 hr.payslip.input.amount usa la precisión «Payroll Rate» (4 decimales, hr_payslip_input.py:18-21) y el widget de la lista,
+                 float_without_trailing_zeros, solo recorta ceros tras un PUNTO decimal (hr/static/src/components/float_without_trailing_zeros/
+                 float_without_trailing_zeros.js:8-13): con coma decimal (es_CO) los ceros quedan. `widget="float"` sustituye el widget y
+                 `digits` solo formatea la vista; el valor guardado no cambia (el campo y su precisión no se tocan: el campo guarda pesos, días y horas). -->
+            <xpath expr="//page[@name='worked_days_input']//field[@name='input_line_ids']/list/field[@name='amount']" position="attributes">
+                <attribute name="widget">float</attribute>
+                <attribute name="digits">[16, 2]</attribute>
+            </xpath>
+            <xpath expr="//page[@name='worked_days_input']//field[@name='input_line_ids']/form//field[@name='amount']" position="attributes">
+                <attribute name="digits">[16, 2]</attribute>
             </xpath>
         </field>
     </record>

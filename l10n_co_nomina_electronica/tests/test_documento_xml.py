@@ -152,6 +152,7 @@ class TestDocumentoXml(DocumentoFixture, TransactionCase):
                 patch.object(hr_payslip, '_ne_company_nit_dv', lambda s: ('900123456', '8')), \
                 patch.object(dian_utils, 'get_department_code', lambda *a: '11'), \
                 patch.object(dian_utils, 'get_city_code', lambda *a: '11001'), \
+                patch.object(hr_payslip, '_ne_codigos_ubicacion', lambda *a: ('11', '11001')), \
                 patch.object(dian_utils, 'compute_software_security_code', lambda *a: 'SC'):
             datos = slip._collect_payslip_data()
         self.assertEqual(datos['periodo']['TiempoLaborado'], '750')   # el calendario daba 760

@@ -807,7 +807,7 @@ def _add_deducciones(parent: etree._Element, data: dict) -> None:
     salud = data.get('Salud', {})
     _attr(
         ded, 'Salud',
-        Porcentaje=_fmt(salud.get('Porcentaje', 4)),
+        Porcentaje=_fmt(salud.get('Porcentaje', 0)),      # H-F3-04: sin nodo = la regla no se calculó (0 %), no un 4 % fijo
         Deduccion=_fmt(salud.get('Deduccion', 0)),
     )
 
@@ -815,7 +815,7 @@ def _add_deducciones(parent: etree._Element, data: dict) -> None:
     pension = data.get('FondoPension', {})
     _attr(
         ded, 'FondoPension',
-        Porcentaje=_fmt(pension.get('Porcentaje', 4)),
+        Porcentaje=_fmt(pension.get('Porcentaje', 0)),
         Deduccion=_fmt(pension.get('Deduccion', 0)),
     )
 
@@ -1712,11 +1712,11 @@ def _get_deducciones_node(data: dict) -> dict:
 
     node = {
         'Salud': {
-            'Porcentaje': _fmt(salud.get('Porcentaje', 4)),
+            'Porcentaje': _fmt(salud.get('Porcentaje', 0)),
             'Deduccion': _fmt(salud.get('Deduccion', 0)),
         },
         'FondoPension': {
-            'Porcentaje': _fmt(pension.get('Porcentaje', 4)),
+            'Porcentaje': _fmt(pension.get('Porcentaje', 0)),
             'Deduccion': _fmt(pension.get('Deduccion', 0)),
         },
         'FondoSP': {

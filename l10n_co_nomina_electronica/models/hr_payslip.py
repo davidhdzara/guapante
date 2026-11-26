@@ -25,19 +25,25 @@ import base64
 import calendar
 import hashlib
 import logging
+import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
 
-from odoo import api, fields, models, _
+from odoo import Command, api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_is_zero, float_round
+from odoo.tools.misc import format_amount, format_date
+
+from .hr_employee import NE_EMPLEADO_GRUPO_AFILIACION, NE_EMPLEADO_PESTANA, NE_UBICACION_AJUSTES_PILA
 
 from ..services import (
     cune as cune_service,
     dian_utils,
+    huella_calculo,
     nomina_xml_builder,
     soap_client,
     xml_signer,
@@ -84,9 +90,14 @@ HORA_EXTRA_CONCEPTS = {'HED', 'HEN', 'HRN', 'HEDDF', 'HRDDF', 'HENDF', 'HRNDF'}
 #   4 cuentan directamente desde las fechas de la hr.leave validada
 #   (_ne_ausencia_calendario()), no desde worked_days.
 _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES = {'CO_VAC', 'CO_LIC_REM', 'CO_LIC_NR'}
+_NOVEDAD_INCAPACIDAD_CODES = ('CO_INC_COMUN', 'CO_INC_LABORAL')       # incapacidades: no entran a CO_SS_BASE_IBC (H-F1-11)
 _NOVEDAD_AUSENCIA_CALENDARIO_CODES = {
     'CO_LIC_MAT', 'CO_LIC_PAT', 'CO_INC_COMUN', 'CO_INC_LABORAL',
 }
+
+# Secciones de «Conceptos de pago» (E11 pieza 3, .289) y de la colilla (pieza 5a, .291): UNA sola fuente para la pestaña y el informe. Las claves
+# son valores de ``hr.salary.rule.category.l10n_co_ne_seccion_concepto``; el orden es el de impresión.
+NE_SECCIONES_CONCEPTO = (('devengados', 'Devengados'), ('deducciones', 'Deducciones'))
 
 DEDUCTION_SIMPLE_CONCEPTS = {
     'PensionVoluntaria': 'PensionVoluntaria',
@@ -166,6 +177,439 @@ class HrPayslip(models.Model):
                 '(Nómina > Configuración > Tipos de estructura) y calcule de nuevo: un semanal sin esa periodicidad se calcula con '
                 'días comerciales y una semana que cruza un mes de 31 días saldría de 6 días.',
                 empleado=recibo.employee_id.name, periodicidad=etiqueta)
+
+    l10n_co_ne_aviso_dias = fields.Char(
+        string='Aviso de días trabajados', compute='_compute_ne_aviso_dias',
+        help='Solo para las vistas: aviso (no bloquea) con las fechas del recibo que no tienen entrada de trabajo y se pagan con el horario del contrato.')
+
+    @api.depends('worked_days_line_ids', 'worked_days_line_ids.number_of_days', 'date_from', 'date_to', 'contract_id', 'state')
+    def _compute_ne_aviso_dias(self):
+        """.284 (E2a, doc 68 §12): regla de David «si falta la entrada manda el horario del contrato»: la fecha se paga como laborada y aquí se
+        avisa cuál es, para que se genere o corrija la entrada. Solo recibos en borrador o en espera que se desglosan por fecha.
+
+        .300 (E2b): además, aviso de «líneas desactualizadas»: los días de una vacación o licencia de la pestaña no coinciden con las fechas de las entradas
+        (``_ne_avisos_ausencias_desactualizadas``: un recibo calculado antes de .300 o cuyas entradas cambiaron). Los avisos se juntan en el mismo campo; un
+        error al leerlos (p. ej. sin el parámetro de fracciones) no se lanza al abrir el formulario: sale al calcular."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_dias = False
+            if not (isinstance(recibo.id, int) and recibo.state in ('draft', 'verify') and recibo.worked_days_line_ids and recibo.contract_id):
+                continue
+            avisos = []
+            if recibo._ne_desglosa_por_fecha():
+                try:
+                    clasificacion = recibo._ne_clasificar_fechas()
+                except UserError:
+                    clasificacion = None    # sin el tipo «Asistencia» no hay desglose: el error ya sale al calcular los días, no al abrir el formulario
+                if clasificacion and clasificacion['sin_entrada']:
+                    fechas = ', '.join(dia.strftime('%d/%m/%Y') for dia in sorted(clasificacion['sin_entrada']))
+                    avisos.append(_(
+                        'No hay entrada de trabajo de %(empleado)s en: %(fechas)s. Esos días se pagan como laborados con el horario del contrato. '
+                        'Revise las entradas de trabajo de esas fechas (Nómina > Entradas de trabajo) y use «Recalcular la hoja entera» en el menú Acciones.',
+                        empleado=recibo.employee_id.name, fechas=fechas))
+            if recibo._ne_aplica_dias_por_asistencia():
+                try:
+                    avisos.extend(recibo._ne_avisos_ausencias_desactualizadas())
+                except UserError:
+                    pass
+            recibo.l10n_co_ne_aviso_dias = ' '.join(avisos) or False
+
+    l10n_co_ne_aviso_no_salarial = fields.Char(
+        string='Aviso de habitualidad de pagos no salariales', compute='_compute_ne_aviso_no_salarial',
+        help='Solo para las vistas: aviso (no bloquea ni cambia el cálculo) cuando un concepto no salarial vigilado se pagó en cada uno de los últimos N meses calendario.')
+
+    @api.depends('line_ids', 'line_ids.total', 'date_to', 'employee_id', 'company_id', 'state')
+    def _compute_ne_aviso_no_salarial(self):
+        """.301 (doc 76 §2.2): ver ``_ne_avisos_habitualidad``. Un parámetro que falta NO se calla (sería un valor por defecto silencioso) ni bloquea el formulario: el
+        aviso dice qué falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_no_salarial = False
+            if not (isinstance(recibo.id, int) and recibo.date_to and recibo.employee_id and recibo.line_ids):
+                continue
+            try:
+                recibo.l10n_co_ne_aviso_no_salarial = ' '.join(recibo._ne_avisos_habitualidad()) or False
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_no_salarial = error.args[0]
+
+    l10n_co_ne_aviso_pacto = fields.Char(
+        string='Aviso del pacto de desalarización', compute='_compute_ne_aviso_pacto',
+        help='Solo para las vistas: aviso cuando el recibo trae un pago no salarial por pacto de desalarización y el empleado no tiene registrado el pacto o lo tiene sin el documento firmado.')
+
+    @api.depends('line_ids', 'line_ids.total', 'date_to', 'employee_id', 'employee_id.l10n_co_pacto_ids', 'employee_id.l10n_co_pacto_ids.fecha_firma',
+                 'employee_id.l10n_co_pacto_ids.fecha_fin', 'employee_id.l10n_co_pacto_ids.salary_rule_id', 'employee_id.l10n_co_pacto_ids.attachment_ids')
+    def _compute_ne_aviso_pacto(self):
+        """.302 (doc 76 §2.3): ver ``l10n.co.employee.pacto``. SIEMPRE avisa, aunque el interruptor ``l10n_co_exigir_pacto_no_salarial`` esté en 0: así el dato
+        que falta se ve sin bloquear a nadie. No lee el interruptor."""
+        Pacto = self.env['l10n.co.employee.pacto']
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_pacto = False
+            if not (isinstance(recibo.id, int) and recibo.date_to and recibo.employee_id and recibo.line_ids):
+                continue
+            recibo.l10n_co_ne_aviso_pacto = ' '.join(Pacto._textos_sin_pacto(recibo)) or False
+
+    def _ne_validar_pacto_no_salarial(self):
+        """.302: al confirmar, un pago no salarial por pacto sin pacto del empleado es un error si el interruptor ``l10n_co_exigir_pacto_no_salarial`` vale 1."""
+        self.env['l10n.co.employee.pacto']._validar_recibos(self)
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-F1-06 (doc 87): validación EXPLÍCITA de la afiliación (EPS, AFP, Caja, ARL), independiente de la contabilidad
+    # ──────────────────────────────────────────────────────────────────
+    _NE_ESTADOS_AVISO_AFILIACION = ('draft', 'verify')       # estados del recibo en que se avisa (v18); el consultor v19 verifica los estados
+
+    l10n_co_ne_aviso_afiliacion = fields.Char(
+        string='Aviso de afiliación incompleta', compute='_compute_ne_aviso_afiliacion',
+        help='Solo para las vistas: aviso (no bloquea) con lo que falta de la afiliación (EPS, AFP, Caja de Compensación y ARL) del empleado. Al confirmar el recibo es un error.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id',
+                 'employee_id.l10n_co_pila_eps_id', 'employee_id.l10n_co_pila_afp_id', 'employee_id.l10n_co_pila_ccf_id',
+                 'contract_id.l10n_co_pila_tipo_cotizante', 'contract_id.l10n_co_pila_subtipo_cotizante',
+                 'company_id.l10n_co_pila_arl_id', 'company_id.l10n_co_pila_ccf_id', 'company_id.l10n_co_pila_ccf_por_empleado')
+    def _compute_ne_aviso_afiliacion(self):
+        """Aviso en el recibo en borrador o en espera de un empleado de una compañía colombiana. Un parámetro que falta NO se calla ni bloquea el formulario: el aviso dice qué falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_afiliacion = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            try:
+                faltan = recibo._ne_afiliaciones_faltantes()
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_afiliacion = error.args[0]
+                continue
+            recibo.l10n_co_ne_aviso_afiliacion = recibo._ne_texto_afiliacion([(recibo.employee_id.name, faltan)], ' ') if faltan else False
+
+    _NE_CODIGOS_RECARGO_DOMINICAL = ('CO_HEDDF', 'CO_HRDDF', 'CO_HENDF', 'CO_HRNDF')
+
+    l10n_co_ne_aviso_descanso = fields.Char(
+        string='Aviso del día de descanso', compute='_compute_ne_aviso_descanso',
+        help='Solo para las vistas: aviso (no bloquea) cuando el día de descanso del empleado (el pactado por escrito o, sin pacto, el domingo) no cuadra con su calendario o con las horas de recargo dominical/festivo del recibo, '
+             'o cuando el pacto está registrado sin el documento firmado.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'line_ids.code', 'line_ids.total', 'contract_id.resource_calendar_id',
+                 'employee_id.l10n_co_descanso_ids', 'employee_id.l10n_co_descanso_ids.dia_semana', 'employee_id.l10n_co_descanso_ids.fecha_firma',
+                 'employee_id.l10n_co_descanso_ids.fecha_fin', 'employee_id.l10n_co_descanso_ids.attachment_ids')
+    def _compute_ne_aviso_descanso(self):
+        """H-F1-07 (doc 92; decisión del TL del 22-nov): avisos del día de descanso, sin bloquear. (1) Hay horas de recargo dominical/festivo (HEDDF, HRDDF, HENDF, HRNDF) pero en el periodo no hay ninguna fecha con
+        asistencia que sea festivo o el día de descanso del empleado. (2) El calendario del contrato tiene jornada el día de descanso del empleado (p. ej. Guapante, que descansa el lunes y trabaja el domingo, sin el
+        pacto cargado: se presume domingo). (3) El pacto está registrado sin el documento firmado (no cubre: rige el domingo). El día de descanso lo da ``HrEmployee._ne_dia_de_descanso``; E2c lo reutilizará."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_descanso = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo.date_to and recibo._ne_solo_colombia()):
+                continue
+            empleado, fecha = recibo.employee_id, recibo.date_to
+            nombre_dia = dict(self.env['l10n.co.employee.descanso']._fields['dia_semana'].selection)
+            descanso = empleado._ne_dia_de_descanso(fecha)
+            avisos = []
+            if empleado._ne_descanso_sin_soporte(fecha):
+                avisos.append(_(
+                    'El día de descanso pactado de %(empleado)s está registrado sin el documento firmado (pacto sin soporte): no cubre y se presume el domingo (Ley 2466 de 2025, art. 14, par. 3). '
+                    'Adjunte el contrato u otrosí en la ficha del empleado, pestaña Nómina > Día de descanso pactado.', empleado=empleado.name))
+            calendario = recibo.contract_id.resource_calendar_id or recibo.company_id.resource_calendar_id
+            if calendario and any(int(asistencia.dayofweek) == descanso for asistencia in calendario.attendance_ids if not asistencia.display_type):
+                avisos.append(_(
+                    'El calendario del contrato de %(empleado)s tiene jornada el %(dia)s, que es su día de descanso (%(origen)s). Si descansa otro día, registre el pacto por escrito en la ficha del empleado, '
+                    'pestaña Nómina > Día de descanso pactado (el contrato u otrosí firmado); si no, corrija el calendario.',
+                    empleado=empleado.name, dia=nombre_dia[str(descanso)].lower(),
+                    origen=_('el domingo por presunción de la ley, sin un pacto con documento') if descanso == 6 else _('pactado por escrito')))
+            if any(linea.code in self._NE_CODIGOS_RECARGO_DOMINICAL and linea.total for linea in recibo.line_ids):
+                try:
+                    clasificacion = recibo._ne_clasificar_fechas()
+                except UserError:
+                    clasificacion = None            # una liquidación mal fechada ya da su error al calcular: el aviso no lo repite
+                if clasificacion is not None:
+                    en_descanso = set(clasificacion['festivos_trabajados']) | {f for f in clasificacion['laborados'] if f.weekday() == empleado._ne_dia_de_descanso(f)}
+                    if not en_descanso:
+                        avisos.append(_(
+                            'El recibo de %(empleado)s trae horas de recargo dominical o festivo, pero según el calendario y las asistencias del periodo no aparece ninguna fecha trabajada que sea festivo ni su día de descanso (%(dia)s). '
+                            'Verifique las horas y las fechas: el recargo es por trabajar en día de descanso obligatorio (Ley 2466 de 2025, art. 14).', empleado=empleado.name, dia=nombre_dia[str(descanso)].lower()))
+            recibo.l10n_co_ne_aviso_descanso = ' '.join(avisos) or False
+
+    l10n_co_ne_aviso_tipo_trabajador = fields.Char(
+        string='Aviso del tipo de trabajador', compute='_compute_ne_aviso_tipo_trabajador',
+        help='Solo para las vistas: aviso (no bloquea) cuando el empleado es un aprendiz y el tipo de trabajador de su ficha no es el que corresponde al tipo de cotizante y de contrato de su contrato: el XML usa el del contrato.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'employee_id.l10n_co_ne_worker_type', 'contract_id.l10n_co_pila_tipo_cotizante',
+                 'contract_id.l10n_co_ne_contract_type')
+    def _compute_ne_aviso_tipo_trabajador(self):
+        """H-F1-09 (decision del TL del 22-nov): el TipoTrabajador del aprendiz sale del contrato (``_ne_regimen_cotizante``); si la ficha del empleado dice otro, se AVISA (el XML usa el del contrato). Los
+        demas empleados no se tocan. Un parametro que falta no rompe el formulario: el aviso dice que falta."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_tipo_trabajador = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            try:
+                derivado = recibo._ne_regimen_cotizante()['tipo_trabajador']
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_tipo_trabajador = error.args[0]
+                continue
+            ficha = recibo.employee_id.l10n_co_ne_worker_type
+            if derivado and ficha != derivado:
+                etiqueta = dict(recibo.employee_id._fields['l10n_co_ne_worker_type'].selection)
+                recibo.l10n_co_ne_aviso_tipo_trabajador = _(
+                    'El empleado %(empleado)s es un aprendiz: por el tipo de cotizante y el tipo de contrato de su contrato le corresponde el tipo de trabajador «%(derivado)s» y su ficha dice «%(ficha)s». '
+                    'El XML de nómina electrónica usa el del contrato; corrija el de la ficha (pestaña Nómina) para que coincidan.',
+                    empleado=recibo.employee_id.name, derivado=etiqueta.get(derivado, derivado), ficha=etiqueta.get(ficha, ficha) if ficha else _('(vacío)'))
+
+    l10n_co_ne_aviso_segmento = fields.Char(
+        string='Aviso del segmento del mes', compute='_compute_ne_aviso_segmento',
+        help='Solo para las vistas: aviso (no bloquea) cuando la compañía separa el mes en documentos por cambio de tipo de trabajador y este recibo no cabe en el documento de su segmento: está en el documento de otro '
+             'segmento, abriría un segmento antes de un documento ya transmitido, o su documento ya fue transmitido (se corrige con una nota de ajuste). H-F3-04, doc 98.')
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'date_to', 'company_id', 'company_id.l10n_co_ne_segmentar_mes', 'l10n_co_ne_documento_id', 'l10n_co_ne_documento_id.segmento',
+                 'l10n_co_ne_documento_id.state')
+    def _compute_ne_aviso_segmento(self):
+        """H-F3-04 (Q6 del TL, 23-nov): con la separación del mes encendida, el recibo avisa si no cabe en el documento de su segmento. Con la separación apagada (por defecto) no calcula nada."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_segmento = False
+            if not (isinstance(recibo.id, int) and recibo.company_id.l10n_co_ne_segmentar_mes and recibo._ne_solo_colombia()):
+                continue
+            try:
+                recibo.l10n_co_ne_aviso_segmento = self.env['l10n.co.ne.documento']._ne_aviso_de_segmento(recibo)
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_segmento = error.args[0]
+
+    # Lineas que se pagan o cotizan con la base «IBC del mes anterior» (H-F1-11, doc 89): vacaciones y licencia remunerada de la nomina y de la liquidacion, y los dias de suspension (SLN); y la
+    # incapacidad comun (H-F1-08), cuyo valor del dia sale del IBC del mes anterior al inicio de la inicial de su cadena.
+    _NE_CODIGOS_BASE_IBC_MES_ANTERIOR = ('CO_VAC', 'CO_LIC_REM', 'CO_LIQ_VAC_DISFRUTADAS', 'CO_LIQ_LIC_REM', 'CO_IBC_SLN')
+    _NE_CODIGO_INCAPACIDAD_COMUN = 'CO_INC_COMUN'
+
+    l10n_co_ne_aviso_ibc_anterior = fields.Char(
+        string='Aviso de IBC del mes anterior', compute='_compute_ne_aviso_ibc_anterior',
+        help='Solo para las vistas: aviso (no bloquea) cuando el recibo trae vacaciones, licencia remunerada, días de suspensión o incapacidad común y el empleado no tiene IBC del mes anterior (recibos confirmados): '
+             'la base es el sueldo de la ficha del empleado; o cuando la incapacidad común se paga sobre el tope del 40 % del promedio de los 12 meses previos (Decreto 780 de 2016, art. 2.2.3.4.5).')
+
+    def _ne_fechas_base_ibc_mes_anterior(self):
+        """Fechas ``antes_de`` con las que este recibo consulta el IBC del mes anterior segun las lineas que trae (H-F1-11, H-F1-08): el inicio del tramo si paga vacaciones, licencia remunerada o SLN, y
+        el inicio de la INICIAL de cada cadena de incapacidad comun (que puede ser de un mes anterior al del recibo)."""
+        self.ensure_one()
+        con_valor = {linea.code for linea in self.line_ids if linea.total}
+        fechas = set()
+        if con_valor & set(self._NE_CODIGOS_BASE_IBC_MES_ANTERIOR):
+            fechas.add(self._ne_tramo_pagable_periodo()[0])
+        fechas.update(self._ne_fechas_inicio_incapacidad())
+        return sorted(fechas)
+
+    def _ne_fechas_inicio_incapacidad(self):
+        """Fechas de inicio de la INICIAL de cada cadena de incapacidad comun que paga este recibo (H-F1-08): con ellas se consulta la base de la incapacidad (``_ne_ibc_incapacidad_datos``). Vacia
+        si el recibo no tiene valor en ``CO_INC_COMUN``."""
+        self.ensure_one()
+        if self._NE_CODIGO_INCAPACIDAD_COMUN not in {linea.code for linea in self.line_ids if linea.total}:
+            return []
+        # Sin cadenas (p. ej. una incapacidad por novedad manual, sin ausencia) el pago cuenta desde el inicio del recibo: la misma fecha que usa _ne_pago_ausencia_calendario.
+        return sorted({inicio for _previos, _dias, inicio in self._ne_incapacidad_cadenas() or [(0, 0, self._ne_tramo_pagable_periodo()[0])]})
+
+    @api.depends('state', 'employee_id', 'contract_id', 'date_from', 'company_id', 'line_ids.code', 'line_ids.total')
+    def _compute_ne_aviso_ibc_anterior(self):
+        """H-F1-11 (doc 89, D-89-3): sin IBC del mes anterior la base de vacaciones, licencia remunerada, SLN e incapacidad comun (H-F1-08) es el sueldo de la ficha del empleado, y eso se AVISA (nunca
+        en silencio). Solo en el recibo en borrador o en espera y solo si ya se calculo con alguna de esas lineas: el aviso refleja lo que el calculo uso. Una cadena de incapacidad con una anterior no
+        aprobada no rompe el formulario: el aviso dice el error."""
+        for recibo in self:
+            recibo.l10n_co_ne_aviso_ibc_anterior = False
+            if not (isinstance(recibo.id, int) and recibo.state in self._NE_ESTADOS_AVISO_AFILIACION and recibo.employee_id and recibo.contract_id and recibo._ne_solo_colombia()):
+                continue
+            try:
+                recibo._ne_validar_inicio_liquidacion()
+            except UserError:
+                continue                  # una liquidacion mal fechada ya da su error al calcular: el aviso no lo repite ni lo pisa
+            try:
+                fechas = recibo._ne_fechas_base_ibc_mes_anterior()
+            except UserError as error:
+                recibo.l10n_co_ne_aviso_ibc_anterior = error.args[0]
+                continue
+            sin_base = {}
+            for fecha in fechas:
+                ibc, mes, con_base = recibo._ne_ibc_mes_anterior_datos(recibo.contract_id, antes_de=fecha)
+                if not con_base:
+                    sin_base[mes] = ibc
+            avisos = []
+            for fecha in recibo._ne_fechas_inicio_incapacidad():
+                _ibc, mes, _con_base, tope = recibo._ne_ibc_incapacidad_datos(recibo.contract_id, antes_de=fecha)
+                if tope:
+                    porcentaje = recibo._rule_parameter('l10n_co_incapacidad_variacion_pct', recibo._ne_fecha_parametros())
+                    avisos.append(_(
+                        'El IBC del mes anterior (%(mes)s) de %(empleado)s, %(base)s, supera en más del %(pct)s %% el promedio de los %(meses)s meses previos (%(promedio)s): la incapacidad se paga sobre '
+                        'el tope de %(tope)s, no sobre el IBC completo (Decreto 780 de 2016, art. 2.2.3.4.5). Revise que el IBC reportado ese mes sea correcto.',
+                        mes=mes.strftime('%Y-%m'), empleado=recibo.employee_id.name, pct=int(porcentaje) if float(porcentaje).is_integer() else porcentaje,
+                        meses=tope['meses'], base=format_amount(self.env, tope['base'], recibo.company_id.currency_id),
+                        promedio=format_amount(self.env, tope['promedio'], recibo.company_id.currency_id), tope=format_amount(self.env, tope['tope'], recibo.company_id.currency_id)))
+            if sin_base:
+                try:                      # H-F1-09: el aprendiz cotiza sobre 1 SMMLV y su sueldo es su apoyo: el aviso de la base no le aplica
+                    if recibo._ne_regimen_cotizante()['es_aprendiz']:
+                        sin_base = {}
+                except UserError as error:
+                    avisos.append(error.args[0])
+            if sin_base:
+                avisos.insert(0, _(
+                    'No hay IBC del mes anterior (%(meses)s) para el empleado %(empleado)s: la base de sus vacaciones, licencia remunerada, días de suspensión o incapacidad en este recibo es el '
+                    'sueldo de la ficha del empleado (%(sueldo)s). Si el empleado tuvo recibos confirmados en ese mes, confírmelos y calcule este recibo de nuevo; si es su primer mes, es lo esperado.',
+                    meses=', '.join(mes.strftime('%Y-%m') for mes in sorted(sin_base)), empleado=recibo.employee_id.name,
+                    sueldo=format_amount(self.env, sin_base[min(sin_base)], recibo.company_id.currency_id)))
+            if avisos:
+                recibo.l10n_co_ne_aviso_ibc_anterior = ' '.join(avisos)
+
+    def _ne_afiliaciones_faltantes(self):
+        """``[(etiqueta, nivel)]`` de lo que falta de la afiliación del empleado de este recibo (ver ``HrEmployee._ne_afiliaciones_faltantes``), con el tipo y el subtipo de cotizante del contrato y la fecha con que se resuelven los parámetros."""
+        self.ensure_one()
+        return self.employee_id._ne_afiliaciones_faltantes(self.contract_id, self._ne_fecha_parametros())
+
+    _NE_FACTOR_DOMINICAL = {'CO_HRDDF': 'l10n_co_factor_hrddf', 'CO_HRNDF': 'l10n_co_factor_hrndf'}
+
+    def _ne_factor_dominical(self, codigo):
+        """Factor con el que se paga una hora de la JORNADA ORDINARIA en día de descanso obligatorio (``CO_HRDDF`` diurna, ``CO_HRNDF`` nocturna): UNA sola decisión (H-F1-07, doc 92; decisión del TL del 22-nov).
+        Es el factor TOTAL del parámetro (1,80 / 1,90 / 2,00 el diurno) si la compañía eligió «valor de la hora + recargo del día de descanso» (concepto MinTrabajo 24429 de 2026; la decisión D1 de David del 17-nov, el
+        comportamiento de siempre) y ese factor menos 1 si eligió «solo el recargo del día de descanso» (CSJ SL3567-2019: el día de descanso ya está en el sueldo mensual). En las dos hay recargo (CST art. 179 num. 1). El módulo paga todo contrato por sueldo mensual (el valor de la hora
+        es sueldo / ``l10n_co_horas_mensuales``): no hay que distinguir al pagado por horas. Las horas EXTRA dominicales (HEDDF, HENDF) no pasan por aquí: el sueldo mensual no las cubre. La compañía no tiene
+        valor por defecto: sin elegir, un error que dice dónde elegir."""
+        self.ensure_one()
+        factor = self._rule_parameter(self._NE_FACTOR_DOMINICAL[codigo], self.date_from)
+        forma = self.company_id.l10n_co_ne_pago_dominical_mensual
+        if not forma:
+            raise UserError(_(
+                'La compañía %(compania)s no ha elegido cómo se paga el dominical o festivo con salario mensual y el recibo de %(empleado)s trae horas de recargo dominical. Elíjalo en Nómina > Configuración > Ajustes, '
+                'bloque «Parámetros Nómina Colombia», «Pago del día de descanso obligatorio (dominical) con salario mensual»: «Valor de la hora + recargo del día de descanso» (concepto MinTrabajo 24429 de 2026) o «Solo el recargo del día de descanso» (CSJ SL3567-2019).',
+                compania=self.company_id.name, empleado=self.employee_id.name))
+        return factor - 1.0 if forma == 'solo_recargo' else factor
+
+    def _ne_regimen_cotizante(self):
+        """Régimen de cotización del empleado de este recibo según el tipo de cotizante y el tipo de contrato del CONTRATO del recibo (H-F1-09, doc 88): UN solo método para el aprendiz. Devuelve
+        ``{'etapa': 'lectiva' | 'practica' | False, 'tipo_trabajador': TipoTrabajador de la DIAN | False, 'paga_auxilio_transporte': bool, 'causa_prestaciones': bool}``: la tabla es el parámetro versionado
+        ``l10n_co_aprendiz_etapas``, tuplas ``(tipo de cotizante, tipo de contrato, etapa, TipoTrabajador, paga auxilio de transporte, causa prestaciones)`` con ``'*'`` como comodín del tipo de contrato; un
+        contrato que no aparece NO es de aprendiz (``etapa`` falso y las dos decisiones verdaderas: las reglas generales, con sus topes, deciden). Las reglas del apoyo de sostenimiento, la salud, la base de
+        parafiscales, el auxilio de transporte, las prestaciones de las estructuras de prima y liquidación (H-F1-12: prima, cesantías, intereses y vacaciones) y el TipoTrabajador del XML lo consultan.
+        La decisión de qué AFP no se exige vive en ``HrEmployee._ne_entidad_exigida`` (H-F1-06). Sin el parámetro, o con una fila que no tiene las seis columnas, un error que lo nombra (sin valor por defecto).
+        ``es_aprendiz`` (H-F1-09): el contrato está en la tabla; su sueldo es el apoyo de sostenimiento."""
+        self.ensure_one()
+        contrato = self.contract_id
+        return self._ne_regimen_de(contrato.l10n_co_pila_tipo_cotizante or '', contrato.l10n_co_ne_contract_type or '', self._ne_fecha_parametros(), self.employee_id.name)
+
+    @api.model
+    def _ne_regimen_de(self, tipo, tipo_contrato, fecha, empleado):
+        """La tabla ``l10n_co_aprendiz_etapas`` vigente en ``fecha`` para un tipo de cotizante y un tipo de contrato (ver ``_ne_regimen_cotizante``, que es quien la explica). Separada del recibo para que el
+        contrato la consulte al cambiar de etapa (H-F1-09). ``empleado``: nombre para los mensajes."""
+        try:
+            tabla = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_aprendiz_etapas', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) para el %(fecha)s, que se necesita para calcular el recibo '
+                'de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.', fecha=fecha, empleado=empleado)) from None
+        for fila in tabla:
+            if len(fila) != 6:
+                raise UserError(_(
+                    'El parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato» (código l10n_co_aprendiz_etapas) tiene una fila que no trae las seis columnas (tipo de cotizante, '
+                    'tipo de contrato, etapa, TipoTrabajador, si paga auxilio de transporte y si causa prima, cesantías, intereses y vacaciones): %(fila)s. Corrija el valor vigente al %(fecha)s en Nómina > '
+                    'Configuración > Parámetros de reglas.', fila=fila, fecha=fecha))
+            clave_tipo, clave_contrato, etapa, tipo_trabajador, paga_auxilio, causa_prestaciones = fila
+            if clave_tipo == tipo and clave_contrato in ('*', tipo_contrato):
+                return {'etapa': etapa, 'es_aprendiz': bool(etapa), 'tipo_trabajador': tipo_trabajador, 'paga_auxilio_transporte': bool(paga_auxilio), 'causa_prestaciones': bool(causa_prestaciones)}
+        return {'etapa': False, 'es_aprendiz': False, 'tipo_trabajador': False, 'paga_auxilio_transporte': True, 'causa_prestaciones': True}
+
+    def _ne_es_aprendiz_validado(self):
+        """H-F1-09 (doc 88): la llaman las reglas que pagan el sueldo o toman su base (``CO_BASICO``, ``CO_LIQ_SALARIOS``, ``CO_PRIMA_BASE``). Devuelve si el recibo es de un aprendiz. El apoyo de
+        sostenimiento del aprendiz ES el sueldo de su contrato (única fuente): un recibo con la novedad ``CO_APOYO_SOST`` con valor (la forma anterior) es un error, porque se pagaría dos veces; y un contrato de
+        aprendiz con el sueldo en 0 también, porque no hay de dónde calcular. Sin valores por defecto: los dos errores nombran al empleado y dicen qué hacer."""
+        self.ensure_one()
+        novedades = self.input_line_ids.filtered(lambda entrada: entrada.input_type_id.code == 'CO_APOYO_SOST' and entrada.amount)
+        if novedades:
+            raise UserError(_(
+                'El recibo de %(empleado)s trae la novedad «%(novedad)s»: el apoyo de sostenimiento ya no se carga como novedad, es el sueldo del contrato del aprendiz (con la novedad se pagaría dos veces). '
+                'Borre la novedad del recibo. Si es un aprendiz, registre el apoyo mensual como sueldo del contrato «%(contrato)s» y revise su tipo de cotizante y su tipo de contrato.',
+                empleado=self.employee_id.name, novedad=novedades[0].input_type_id.name, contrato=self.contract_id.name))
+        es_aprendiz = self._ne_regimen_cotizante()['es_aprendiz']
+        if es_aprendiz and self.contract_id.wage <= 0:
+            raise UserError(_(
+                'El contrato «%(contrato)s» de %(empleado)s es de un aprendiz (por su tipo de cotizante y su tipo de contrato) y tiene el sueldo en 0: el apoyo de sostenimiento es el sueldo del contrato. '
+                'Registre en el contrato el apoyo mensual de su etapa.', contrato=self.contract_id.name, empleado=self.employee_id.name))
+        return es_aprendiz
+
+    def _ne_no_cotiza_pension(self):
+        """¿En este recibo el empleado NO cotiza a pension? Verdadero si es un extranjero no obligado (marca de la ficha, ``l10n_co_ne_foreigner_no_pension``) o si la AFP no se exige para el tipo y el
+        subtipo de cotizante de su contrato segun el parametro versionado ``l10n_co_afiliaciones_no_exigidas`` (pensionado: Ley 100/1993 art. 17, mod. Ley 797/2003 art. 4; aprendiz en etapa lectiva: solo
+        salud y riesgos, Decreto 223/2026 art. 2.2.6.3.3.6). UNA sola decision para el aviso de afiliacion y para las reglas de pension del empleado y de la empresa, el FSP y los descuentos de pension de la
+        liquidacion, la prima y la bonificacion (H-F1-06): no hay una segunda lista en las condiciones de las reglas, y quitar la fila del parametro vuelve a calcularlas. El IBC de salud y de las
+        demas administradoras no cambia."""
+        self.ensure_one()
+        return bool(self.employee_id.l10n_co_ne_foreigner_no_pension) or not self.employee_id._ne_entidad_exigida('afp', self.contract_id, self._ne_fecha_parametros())
+
+    @api.model
+    def _ne_texto_afiliacion(self, por_empleado, separador):
+        """Texto (traducible) de lo que falta: ``por_empleado`` = ``[(nombre, [(etiqueta, nivel)])]``. Una línea por empleado con TODOS sus campos y, al final, DÓNDE completarlos según el nivel
+        de lo que falta (ficha del empleado o ajustes de la compañía). Único texto del aviso, del error al confirmar y del mensaje del asiento."""
+        lineas = [_('%(empleado)s: falta %(campos)s.', empleado=nombre, campos=', '.join(etiqueta for etiqueta, _nivel in faltan)) for nombre, faltan in por_empleado]
+        niveles = {nivel for _nombre, faltan in por_empleado for _etiqueta, nivel in faltan}
+        dondes = []
+        if 'empleado' in niveles:
+            dondes.append(_('Complete lo del empleado en su ficha, pestaña %(pestana)s, grupo «%(grupo)s».', pestana=NE_EMPLEADO_PESTANA, grupo=NE_EMPLEADO_GRUPO_AFILIACION))
+        if 'compañía' in niveles:
+            dondes.append(_('Complete lo de la compañía en %(ubicacion)s.', ubicacion=NE_UBICACION_AJUSTES_PILA))
+        return separador.join([_('Afiliación incompleta a la seguridad social.')] + lineas + dondes)
+
+    def _ne_validar_afiliaciones(self):
+        """Al confirmar: error si a algún empleado de una compañía colombiana le falta algo de la afiliación (aun cuando las reglas no tengan cuenta contable). Un solo error con una línea por
+        empleado (un lote de recibos), con TODOS los campos que faltan y dónde completarlos."""
+        por_empleado, vistos = [], set()
+        for recibo in self._ne_solo_colombia():
+            if recibo.employee_id.id in vistos:
+                continue
+            vistos.add(recibo.employee_id.id)
+            faltan = recibo._ne_afiliaciones_faltantes()
+            if faltan:
+                por_empleado.append((recibo.employee_id.name, faltan))
+        if por_empleado:
+            raise UserError(self._ne_texto_afiliacion(por_empleado, '\n'))
+
+    def _ne_meses_habitualidad(self):
+        """Parámetro ``l10n_co_no_salarial_meses_habitualidad`` (``hr.rule.parameter``, 3 de fábrica, decisión del TL del 22-nov; 0 apaga el aviso). OBLIGATORIO: si falta hay
+        un error claro que dice dónde crearlo; nunca se asume un valor."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        try:
+            return int(self._rule_parameter('l10n_co_no_salarial_meses_habitualidad', fecha))
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Meses de Habitualidad de Pagos No Salariales» (código l10n_co_no_salarial_meses_habitualidad) para el %(fecha)s, '
+                'que se necesita para avisar de los pagos no salariales que se repiten mes a mes. Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas (cantidad de meses; 0 apaga el aviso).', fecha=fecha)) from None
+
+    def _ne_avisos_habitualidad(self):
+        """.301 (doc 76 §2.2, decisión del TL del 22-nov): avisos de los conceptos no salariales VIGILADOS (``DEV_NOSAL`` con ``l10n_co_ne_vigilar_habitualidad``) del recibo que
+        se pagaron en cada uno de los últimos N meses calendario, contando el mes del recibo. El mes de un recibo es el de su ``date_to`` (un solo criterio de mes con el
+        IBC mensual y la UGPP); un concepto cuenta en un mes si está en CUALQUIER recibo de ese mes (da igual que el pago sea quincenal o mensual), de cualquier
+        estructura, del mismo empleado y compañía. Los meses anteriores y los otros recibos del mes cuentan solo hechos o pagados; el recibo que se mira cuenta en el estado
+        en que esté. Solo informa: no cambia el cálculo. No hay norma que fije N (criterio del TL); lo que mueve el aviso es el art. 127 CST (el salario es lo que
+        retribuye el servicio, se llame como se llame)."""
+        self.ensure_one()
+        vigiladas = self.line_ids.filtered(
+            lambda l: l.total and l.salary_rule_id.category_id.code == 'DEV_NOSAL' and l.salary_rule_id.l10n_co_ne_vigilar_habitualidad)
+        if not vigiladas:
+            return []
+        n = self._ne_meses_habitualidad()
+        if n <= 0:
+            return []
+        indice = self.date_to.year * 12 + self.date_to.month - 1
+        requeridos = [indice - k for k in range(n - 1, -1, -1)]               # de más antiguo a más reciente
+        primero = date(requeridos[0] // 12, requeridos[0] % 12 + 1, 1)
+        ultimo = date(self.date_to.year, self.date_to.month, calendar.monthrange(self.date_to.year, self.date_to.month)[1])
+        codigos = vigiladas.mapped('code')
+        lineas = self.env['hr.payslip.line'].sudo().search([
+            ('slip_id.employee_id', '=', self.employee_id.id), ('slip_id.company_id', '=', self.company_id.id),
+            ('code', 'in', codigos), ('total', '!=', 0),
+            ('slip_id.date_to', '>=', primero), ('slip_id.date_to', '<=', ultimo),
+            '|', ('slip_id', '=', self.id), ('slip_id.state', 'in', ('done', 'paid'))])
+        meses_por_codigo = defaultdict(set)
+        for linea in lineas:
+            fecha = linea.slip_id.date_to
+            meses_por_codigo[linea.code].add(fecha.year * 12 + fecha.month - 1)
+        nombres = [format_date(self.env, date(i // 12, i % 12 + 1, 1), date_format='MMMM y') for i in requeridos]
+        meses = nombres[0] if len(nombres) == 1 else _('%(lista)s y %(ultimo)s', lista=', '.join(nombres[:-1]), ultimo=nombres[-1])
+        avisos, puestos = [], set()
+        for linea in vigiladas.sorted(lambda l: (l.sequence, l.id)):
+            if linea.code in puestos or not set(requeridos) <= meses_por_codigo[linea.code]:
+                continue
+            puestos.add(linea.code)
+            avisos.append(_(
+                'El concepto «%(concepto)s» (no salarial) se pagó a %(empleado)s en cada uno de los últimos %(n)s meses (%(meses)s).',
+                concepto=linea.salary_rule_id.name, empleado=self.employee_id.name, n=n, meses=meses))
+        if avisos:
+            avisos.append(_('Un pago habitual que retribuye el servicio puede ser salario aunque se llame no salarial (art. 127 CST) y entrar al IBC. Revise su naturaleza.'))
+        return avisos
 
     @api.depends('company_id.l10n_co_ne_environment', 'company_id.l10n_co_ne_certification_process')
     def _compute_ne_en_produccion(self):
@@ -256,24 +700,18 @@ class HrPayslip(models.Model):
     # ══════════════════════════════════════════════════════════════════
 
 
-    # Deduccion (codigo de regla) -> campo del contrato con su tercero.
-    _NE_TERCERO_DEDUCCION_CONTRATO = {
-        'CO_SINDICATO': 'l10n_co_ne_sindicato_partner_id',
-        'CO_AFC': 'l10n_co_ne_afc_partner_id',
-        'CO_PENSION_VOL': 'l10n_co_ne_pension_voluntaria_partner_id',
-        'CO_PLAN_COMP': 'l10n_co_ne_plan_complementario_partner_id',
-        'CO_COOPERATIVA': 'l10n_co_ne_cooperativa_partner_id',
-        'CO_EDUCACION': 'l10n_co_ne_educacion_partner_id',
-    }
-
     def _ne_validar_terceros_deducciones(self):
         """Sin valores por defecto silenciosos: una deduccion calculada
         (desde el contrato o desde un input manual) exige el contacto al que
-        se paga lo retenido, definido en el contrato."""
+        se paga lo retenido, definido en el contrato. E11 pieza 1A (.285): el
+        campo del contrato sale del origen del tercero que la propia regla
+        declara (``l10n_co_tercero_origen`` = ``contract_*``, tabla unica
+        ``_NE_TERCERO_ORIGEN_CAMPO``); ya no hay una tabla por codigo de regla."""
         for slip in self:
             for line in slip.line_ids:
-                campo = self._NE_TERCERO_DEDUCCION_CONTRATO.get(line.code)
-                if not campo or not line.total:
+                origen = line.salary_rule_id.l10n_co_tercero_origen
+                modelo, campo = self._NE_TERCERO_ORIGEN_CAMPO.get(origen, (None, None))
+                if modelo != 'contract_id' or not line.total:
                     continue
                 contract = slip.contract_id
                 if not contract[campo]:
@@ -408,6 +846,18 @@ class HrPayslip(models.Model):
                     manual=manual_topado, nomina=self.display_name, total=total))
         self._ne_guardar_reparto('CO_EMBARGO', filas)
         return total
+
+    def _ne_nombre_embargo(self):
+        """Nombre de la línea de la regla ``CO_EMBARGO`` (``result_name`` nativo, ``hr_payroll/models/hr_salary_rule.py:92``): una sola línea suma todos los embargos del empleado, así que
+        lleva el nombre del TIPO real (el del tipo de entrada: «Embargo - Civil / Comercial», «Embargo - Alimentos…», «Embargo - Cooperativa / Fondo») cuando solo hay uno abierto, y
+        ``False`` (la regla usa su nombre neutro, «Embargo judicial») cuando hay varios o solo el ajuste manual. Antes se llamaba «Embargo Fiscal» siempre, que es el nombre del NODO
+        del XML de la DIAN (``EmbargoFiscal``, que no cambia) y no de un embargo civil o de alimentos."""
+        self.ensure_one()
+        tipos = self.employee_id.salary_attachment_ids.filtered(
+            lambda a: a.state == 'open' and a.other_input_type_id.code in self._NE_PRIORIDAD_EMBARGO).mapped('other_input_type_id')
+        if len(tipos) != 1:
+            return False
+        return tipos.with_context(lang=self.employee_id.lang or self.env.lang).name
 
     # ──────────────────────────────────────────────────────────────────
     # Liquidacion: embargos y libranzas por tipo de concepto
@@ -643,14 +1093,269 @@ class HrPayslip(models.Model):
         self._ne_validar_duracion_periodo()
         colombia = self._ne_solo_colombia()
         colombia._ne_validar_terceros_attachments()
+        # C-24 (doc 106 §13): a los recibos que el nativo SI recalcula (borrador o en espera) se les guarda la huella al terminar; un recibo hecho no se recalcula y su huella no se toca.
+        con_huella = colombia.filtered(lambda r: r.state in ('draft', 'verify'))
         # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
         # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
         res = True
+        con_huella._ne_liq_validar_nomina_posterior()   # P0: una nómina no vuelve a pagar días que una liquidación confirmada cerró
+        con_huella._ne_rete_validar_secuencias()        # R-2: nada de la base puede calcularse después de la retención
+        con_huella._ne_rete_validar_pendientes()        # R-2: el recibo que retiene por el mes exige confirmados los que suman antes que él
+        con_huella._ne_liq_validar_mes()                # P0: la liquidación sabe qué días del mes están pagados, o no se calcula
+        cifras_retencion = {}
         for company in self.company_id:
             recibos = self.filtered(lambda s, c=company: s.company_id == c).with_company(company)
-            res = super(HrPayslip, recibos).compute_sheet()
+            # E11 pieza 2b (.288): el gancho de ``hr.salary.rule._compute_rule`` anota en este diccionario lo que SUGIRIÓ cada regla ajustada;
+            # al terminar el cálculo se registra en cada ajuste (sugerido, aviso de cambio, «sin línea»).
+            sugeridos = {}
+            # .290: ``ne_calculo`` (token único por cálculo) NO es decoración. ``Environment.__new__`` (``odoo/api.py:570``) recorre
+            # ``transaction.envs`` y devuelve el entorno que ya existe si ``(cr, uid, su, uid_origin, context)`` es IGUAL POR VALOR (``:584-587``): un
+            # ``{}`` nuevo es igual a un ``{}`` viejo. Sin el token, el cálculo recibía el entorno del cálculo anterior con SU diccionario vacío: el
+            # gancho de ``_compute_rule`` escribía lo sugerido allí y ``_ne_registrar_ajustes`` leía este ``sugeridos`` (vacío), así que el ajuste
+            # quedaba «sin línea» aunque sí se aplicaba (N2 «co» de .289: test_02 y test_03). Con el token el contexto nunca coincide con el de otro
+            # cálculo y el diccionario que lee el gancho es siempre este.
+            res = super(HrPayslip, recibos.with_context(ne_sugeridos=sugeridos, ne_retencion=cifras_retencion, ne_calculo=uuid.uuid4().hex)).compute_sheet()
+            recibos._ne_registrar_ajustes(sugeridos)
+            recibos._ne_regenerar_conceptos()
         colombia._ne_validar_terceros_deducciones()
+        con_huella._ne_rete_guardar_cifras(cifras_retencion)
+        con_huella._ne_guardar_huella()                 # solo si TODO el calculo termino: un error antes de aqui deja la huella anterior
         return res
+
+    # ── Ajustes de la empresa (E11 pieza 2b, .288, doc 71c) ──────────────────────────────────────────────────────────────────────
+    l10n_co_ajuste_ids = fields.One2many(
+        'l10n.co.payslip.ajuste', 'slip_id', string='Ajustes de la empresa', copy=False,
+        help='Ajustes que la empresa hizo a conceptos de este recibo. Se aplican dentro del cálculo y se conservan al recalcular. '
+             'No se copian a otro recibo.')
+
+    # ── «Conceptos de pago» (E11 pieza 3, .289, doc 71c §4 y §5) ─────────────────────────────────────────────────────────────────
+    l10n_co_concepto_ids = fields.One2many(
+        'l10n.co.payslip.concepto', 'slip_id', string='Conceptos de pago', copy=False,
+        help='Vista de lo calculado: se regenera al final de cada cálculo. Editar una fila cambia su fuente (ajuste o novedad).')
+    l10n_co_ne_usa_conceptos = fields.Boolean(
+        related='struct_id.l10n_co_ne_conceptos_de_pago', string='La estructura usa «Conceptos de pago»', readonly=True)
+    # E11 pieza 4a (.294, doc 74 §3): «Cálculo del salario» por secciones, de SOLO LECTURA (soporte de auditoría); se regenera junto a los conceptos.
+    l10n_co_calculo_ids = fields.One2many(
+        'l10n.co.payslip.calculo', 'slip_id', string='Cálculo del salario', copy=False,
+        help='Vista de solo lectura de lo calculado que no está en «Conceptos de pago»: bases de cotización, aportes de la empresa y provisiones. Se '
+             'regenera al final de cada cálculo. No se copia a otro recibo.')
+    l10n_co_total_devengado = fields.Float(string='Total devengado', digits='Payroll', compute='_compute_l10n_co_totales')
+    l10n_co_total_deducciones = fields.Float(string='Total deducciones', digits='Payroll', compute='_compute_l10n_co_totales')
+    l10n_co_costo_empresa = fields.Float(
+        string='Costo empresa', digits='Payroll', compute='_compute_l10n_co_totales',
+        help='Aportes de la empresa y provisiones del recibo (las categorías con sección «Costo empresa»).')
+
+    @api.depends('line_ids.total', 'line_ids.category_id', 'line_ids.appears_on_payslip')
+    def _compute_l10n_co_totales(self):
+        """Totales del pie de «Conceptos de pago», sobre las LÍNEAS del recibo (no sobre las filas): devengados y deducciones de las categorías
+        con esa sección que se imprimen en el recibo, y costo de la empresa de las categorías con sección «costo_empresa»."""
+        for recibo in self:
+            devengado = deducciones = costo = 0.0
+            for linea in recibo.line_ids:
+                seccion = linea.category_id.l10n_co_ne_seccion_concepto
+                if seccion == 'devengados' and linea.appears_on_payslip:
+                    devengado += linea.total
+                elif seccion == 'deducciones' and linea.appears_on_payslip:
+                    deducciones += linea.total
+                elif seccion == 'costo_empresa':
+                    costo += linea.total
+            recibo.l10n_co_total_devengado = devengado
+            recibo.l10n_co_total_deducciones = deducciones
+            recibo.l10n_co_costo_empresa = costo
+
+    def _ne_regenerar_conceptos(self):
+        """Regenera las filas de «Conceptos de pago» y de «Cálculo del salario» de estos recibos (solo los de estructuras que usan «Conceptos de pago»)."""
+        self.env['l10n.co.payslip.concepto']._regenerar_de_recibos(self)
+        self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(self)
+
+    def _ne_filas_de_concepto(self):
+        """Filas de conceptos del recibo, en el orden de impresión (E11 pieza 5a, .291, doc 74 §4.2): FUENTE ÚNICA de la pestaña «Conceptos de pago»
+        (``l10n.co.payslip.concepto._valores_del_recibo``) y de la colilla (``_ne_colilla``), para que no puedan diferir. Solo lee: no escribe ni
+        recalcula nada.
+
+        Una fila por línea del recibo que se imprime (``appears_on_payslip``), cuya categoría tiene sección ``devengados`` o ``deducciones``
+        (``NE_SECCIONES_CONCEPTO``) y que tiene valor, o que la empresa ajustó (una línea ajustada a 0 sigue visible). Orden: la sección y,
+        dentro de ella, la secuencia de la línea. Cada fila trae la sección, la línea y la regla, el ajuste de la empresa (si hay), la novedad que
+        la origina (la i-ésima línea de un código se enlaza a la i-ésima novedad de ese código) y los valores ya resueltos: nombre, cantidad,
+        unidad (la del tipo de novedad si lleva cantidad; si no, la de la regla), porcentaje, importe y total."""
+        self.ensure_one()
+        ajustes = {a.salary_rule_id.id: a for a in self.l10n_co_ajuste_ids}
+        entradas = defaultdict(list)
+        for entrada in self.input_line_ids.sorted(lambda i: (i.sequence, i.id)):
+            entradas[entrada.code].append(entrada)
+        secciones = dict(NE_SECCIONES_CONCEPTO)
+        lineas = self.line_ids.filtered(
+            lambda l: l.appears_on_payslip and l.category_id.l10n_co_ne_seccion_concepto in secciones
+            and (l.total or l.salary_rule_id.id in ajustes)).sorted(lambda l: (l.sequence, l.id))
+        vistos_por_codigo = defaultdict(int)
+        filas = []
+        for seccion in secciones:
+            for linea in lineas.filtered(lambda l: l.category_id.l10n_co_ne_seccion_concepto == seccion):
+                regla = linea.salary_rule_id
+                posicion = vistos_por_codigo[regla.code]
+                vistos_por_codigo[regla.code] += 1
+                candidatas = entradas.get(regla.code, [])
+                entrada = candidatas[posicion] if posicion < len(candidatas) else False
+                tipo = entrada.input_type_id if entrada else self.env['hr.payslip.input.type']
+                unidad = (tipo.l10n_co_ne_unidad if (tipo and tipo.is_quantity) else False) or regla.l10n_co_ne_unidad or False
+                filas.append({
+                    'seccion': seccion, 'linea': linea, 'regla': regla, 'ajuste': ajustes.get(regla.id), 'entrada': entrada, 'tipo': tipo,
+                    'nombre': linea.name, 'cantidad': linea.quantity, 'unidad': unidad, 'porcentaje': linea.rate, 'importe': linea.amount,
+                    'total': linea.total})
+        return filas
+
+    def _ne_colilla(self):
+        """Datos de la tabla de la colilla (E11 pieza 5a, .291, doc 74 §4): las secciones «Devengados» y «Deducciones» con sus filas, los totales por
+        sección y el neto. Sale de las LÍNEAS ya calculadas (``_ne_filas_de_concepto``) y del neto de la estructura (``_ne_pdf_neto``, que sin línea de
+        neto lanza un error claro): no recalcula ni escribe. Es un comprobante INTERNO: no lleva el ajuste de la empresa (ni su nota de sugerido) ni
+        el costo de la empresa; lo ajustado se imprime con su valor.
+
+        Reglas de impresión (el diseño de «Conceptos de pago»): cantidad y unidad solo si la fila tiene unidad (un concepto monetario las deja
+        vacías: ``False``); el porcentaje solo si es distinto de 100; las deducciones van con su signo (negativas). ``diferencia`` = neto - total
+        devengado - total de deducciones (0 si la tabla cuadra con el neto, o si difiere en menos de un peso: redondeo): si no cuadra NO se oculta ni
+        se bloquea la impresión (criterio del Frente 5: ``_ne_desglose()['diferencia']``), la plantilla la imprime como una fila «Diferencia sin
+        clasificar»."""
+        self.ensure_one()
+        neto = self._ne_pdf_neto()
+        unidades = dict(self.env['hr.salary.rule']._fields['l10n_co_ne_unidad']._description_selection(self.env))
+        titulos = {'devengados': _('Devengados'), 'deducciones': _('Deducciones')}
+        filas = self._ne_filas_de_concepto()
+        secciones = []
+        for seccion, _titulo in NE_SECCIONES_CONCEPTO:
+            de_la_seccion = [f for f in filas if f['seccion'] == seccion]
+            if not de_la_seccion:
+                continue
+            secciones.append({'seccion': seccion, 'titulo': titulos[seccion], 'filas': [{
+                'nombre': f['nombre'],
+                'cantidad': f['cantidad'] if f['unidad'] else False,
+                'unidad': unidades.get(f['unidad'], '') if f['unidad'] else '',
+                'porcentaje': False if float_is_zero(f['porcentaje'] - 100.0, precision_digits=4) else f['porcentaje'],
+                'importe': f['importe'],
+                'total': f['total'],
+            } for f in de_la_seccion]})
+        total_devengado = sum(f['total'] for f in filas if f['seccion'] == 'devengados')
+        total_deducciones = sum(f['total'] for f in filas if f['seccion'] == 'deducciones')
+        diferencia = self.company_id.currency_id.round(neto - total_devengado - total_deducciones)
+        if abs(diferencia) < self.env['l10n.co.ne.documento']._NE_UMBRAL_CONCILIACION:
+            diferencia = 0.0      # menos de un peso es redondeo (mismo umbral que la conciliación C4): no se imprime
+        return {
+            'secciones': secciones,
+            'total_devengado': total_devengado,
+            'total_deducciones': total_deducciones,
+            'neto': neto,
+            'diferencia': diferencia,
+        }
+
+    @api.model
+    def _ne_generar_conceptos_pendientes(self):
+        """Función de datos (corre en cada ``-u``): genera las filas de los recibos YA calculados de estructuras con «Conceptos de pago» que
+        todavía no las tienen (los creados antes de .289 y los de una estructura recién activada). No recalcula ni cambia ningún valor: las
+        filas son una vista de las líneas; un recibo hecho o pagado también las recibe, de solo lectura. Las de «Cálculo del salario» se regeneran además en los
+        recibos en borrador o en espera (H-QA-040)."""
+        recibos = self.sudo().with_context(active_test=False).search([
+            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), ('l10n_co_concepto_ids', '=', False)])
+        recibos._ne_regenerar_conceptos()
+        # .294: los recibos que YA tienen sus conceptos (hechos con .289-.293) y todavía no las filas de «Cálculo del salario».
+        # H-QA-040 (QA sobre .298, pedido del TL): además, los recibos en BORRADOR o EN ESPERA se regeneran siempre: una versión anterior de «Cálculo del salario» (la de
+        # .294-.297 traía devengados y deducciones, la de .298 solo Bases, aportes y provisiones) quedaba con sus filas viejas porque ya tenía alguna. Regenerar solo lee las
+        # líneas (no recalcula ni cambia un valor). Los HECHOS y PAGADOS son históricos: se quedan como están, salvo que no tengan ninguna fila.
+        sin_calculo = self.sudo().with_context(active_test=False).search([
+            ('struct_id.l10n_co_ne_conceptos_de_pago', '=', True), ('line_ids', '!=', False), '|', ('l10n_co_calculo_ids', '=', False),
+            ('state', 'in', ('draft', 'verify'))])
+        self.env['l10n.co.payslip.calculo']._regenerar_de_recibos(sin_calculo)
+        # .298: los ajustes que quedaron sobre reglas que ya no son ajustables (la decisión de David del 21-nov por el riesgo UGPP): se retiran en los recibos
+        # en borrador o en espera, con nota; los de recibos confirmados no se tocan. Corre DESPUÉS de cargar las reglas con su valor sembrado (manifest).
+        self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables()
+        return True
+
+    @api.model
+    def _ne_comandos_cambian_conceptos(self, comandos):
+        """¿Los comandos de ``l10n_co_concepto_ids`` de un ``write`` cambian lo que calcula la hoja? Altas, bajas, vínculos y reemplazos sí; un
+        cambio solo de orden o de campos que no son valores (comando UPDATE) no."""
+        for comando in comandos or ():
+            if comando[0] == Command.UPDATE:
+                if {'quantity', 'rate', 'amount', 'name', 'input_type_id'} & set(comando[2] or ()):
+                    return True
+            else:
+                return True
+        return False
+
+    def _ne_estado_documento_ajuste(self):
+        """Estado del documento DIAN del recibo (``False`` si no tiene). Una sola lectura para el bloqueo de ajustes (Q6 de TL)."""
+        self.ensure_one()
+        return self.l10n_co_ne_documento_state
+
+    def _ne_registrar_ajustes(self, sugeridos):
+        """Después de ``compute_sheet``: cada ajuste de estos recibos guarda lo sugerido de ese cálculo (``l10n.co.payslip.ajuste._registrar_calculo``)."""
+        for recibo in self:
+            for ajuste in recibo.sudo().l10n_co_ajuste_ids:
+                ajuste._registrar_calculo(sugeridos)
+
+    @api.model
+    def _ne_comandos_cambian_novedades(self, comandos):
+        """¿Los comandos de ``input_line_ids`` de un ``write`` cambian lo que calcula la hoja? Altas, bajas, vínculos y reemplazos sí; un cambio
+        de ``name`` o ``sequence`` (comando UPDATE) no: los mismos campos que ``hr.payslip.input._NE_CAMPOS_QUE_RECALCULAN``."""
+        campos = self.env['hr.payslip.input']._NE_CAMPOS_QUE_RECALCULAN
+        for comando in comandos or ():
+            if comando[0] == Command.UPDATE:
+                if campos & set(comando[2] or ()):
+                    return True
+            else:
+                return True
+        return False
+
+    def write(self, vals):
+        """.286: el formulario guarda las novedades con ``write({'input_line_ids': [...]})``; durante ese ``write`` el campo está protegido y el
+        recálculo de ``hr.payslip.input`` se salta (ver ``_ne_recalcular_hoja_por_novedad``). Se recalcula aquí, una vez, al terminar el
+        ``write``. Las novedades creadas por el ORM directo (fuera de este ``write``) siguen recalculando desde ``hr.payslip.input``.
+
+        C-24: la huella del cálculo la escribe solo el cálculo (``_ne_guardar_huella``, que pasa por debajo de este método): cualquier otro ``write`` que la traiga se rechaza."""
+        if 'l10n_co_ne_huella_calculo' in vals:
+            self._ne_rechazar_huella_externa()
+        res = super().write(vals)
+        if ('input_line_ids' in vals and self._ne_comandos_cambian_novedades(vals['input_line_ids'])) or (
+                'l10n_co_concepto_ids' in vals and self._ne_comandos_cambian_conceptos(vals['l10n_co_concepto_ids'])):
+            self._ne_recalcular_hoja_por_novedad()
+        return res
+
+    def _ne_recalcular_hoja_por_novedad(self):
+        """Recalcula la hoja de los recibos cuya novedad (``hr.payslip.input``) se creó, cambió o borró (.283, doc 68 §14; orden de David).
+
+        Solo los recibos de compañía colombiana, en borrador o en espera (``compute_sheet`` ya exige eso, ``nat:597-614``), no editados a mano
+        (``edited``: las copias de reembolso traen las líneas negadas y recalcularlas las borraría) y con la hoja YA calculada (``line_ids``):
+        un borrador sin calcular no tiene nada viejo, y calcularlo lo pasaría a «en espera», gastaría un número de la secuencia y correría
+        dentro de la creación del propio recibo (las novedades nacen en el ``create`` del recibo, en el asistente de liquidación y en
+        ``_compute_input_line_ids``). Los días NO se tocan (``action_refresh_from_work_entries`` no se usa: no dependen de las novedades).
+
+        No se recalcula con el contexto ``ne_sin_recalculo_hoja`` (cargas masivas; se enciende solo mientras se calcula aquí, contra la
+        re-entrada), con ``import_file`` (importación: el lote queda sin recalcular, se calcula al final con «Calcular hoja») ni mientras Odoo
+        calcula ``input_line_ids`` del recibo (embargos de ``hr.salary.attachment``).
+
+        .286: ``input_line_ids`` también está PROTEGIDO durante el ``write`` del recibo que trae ese campo (``odoo/models.py:4774-4785``,
+        ``:4798``), que es lo que manda el formulario (``web_save`` -> ``write``). Por eso las novedades guardadas desde el formulario no
+        recalculaban: sus ``create``/``write``/``unlink`` caían dentro de ese ``write``, con el campo protegido. Ese camino lo cubre
+        ``HrPayslip.write`` (abajo): recalcula UNA vez, después de ``super()``, cuando la protección ya terminó.
+
+        Un error de ``compute_sheet`` (periodo inválido, terceros de embargos, reparto que no cuadra...) NO impide guardar la novedad: el
+        recálculo corre en un savepoint, se revierte, la novedad se conserva y el recibo recibe una nota con el error y la instrucción de pulsar
+        «Calcular hoja» (decisión de TL: así se puede corregir el monto que arreglaría el reparto)."""
+        contexto = self.env.context
+        if contexto.get('ne_sin_recalculo_hoja') or contexto.get('import_file'):
+            return
+        recibos = self.exists()._ne_solo_colombia().filtered(
+            lambda r: r.state in ('draft', 'verify') and not r.edited and r.line_ids
+            and not self.env.is_protected(r._fields['input_line_ids'], r))
+        for recibo in recibos:
+            try:
+                with self.env.cr.savepoint():
+                    recibo.with_context(ne_sin_recalculo_hoja=True).compute_sheet()
+            except UserError as error:
+                self.env.invalidate_all()
+                recibo.message_post(
+                    body=_('La hoja de cálculo no se pudo recalcular al cambiar una novedad: %(error)s. Hoja sin recalcular: corrija lo indicado '
+                           'y pulse «Calcular hoja».', error=error.args[0] if error.args else error),
+                    message_type='notification', subtype_xmlid='mail.mt_note')
+                recibo._ne_regenerar_conceptos()          # las filas vuelven a mostrar lo que SÍ está en la hoja
 
     # ──────────────────────────────────────────────────────────────────
     # Asiento contable por tercero
@@ -697,13 +1402,21 @@ class HrPayslip(models.Model):
         modelo, campo = self._NE_TERCERO_ORIGEN_CAMPO[origen]
         partner = self[modelo][campo]
         if not partner:
+            if origen in ('employee_eps', 'employee_afp', 'company_arl'):
+                self._ne_validar_afiliaciones()      # H-F1-06: el MISMO error completo de la afiliación (empleado, TODOS los campos, dónde completarlos)
+            # Si la afiliación está exceptuada o el origen es de otra entidad (contrato, compañía): mensaje en español con «empleado» o «compañía» y el nombre, no el modelo en inglés.
+            if modelo == 'contract_id':
+                donde = _('el contrato del empleado "%s"', self.employee_id.name)
+            elif modelo == 'employee_id':
+                donde = _('la ficha del empleado "%s"', self.employee_id.name)
+            else:
+                donde = _('la compañía "%s"', self.company_id.name)
             raise UserError(_(
                 'No se puede generar el asiento de la nomina "%(nomina)s": '
                 'la regla "%(regla)s" paga a un tercero y falta el campo '
-                '"%(campo)s" en %(donde)s "%(nombre)s".',
+                '"%(campo)s" en %(donde)s.',
                 nomina=self.display_name, regla=line.name,
-                campo=self[modelo]._fields[campo].string,
-                donde=self[modelo]._description, nombre=self[modelo].display_name))
+                campo=self[modelo]._fields[campo].string, donde=donde))
         return [(partner, 1.0)]
 
     def _ne_validar_cuenta_neto(self):
@@ -777,6 +1490,66 @@ class HrPayslip(models.Model):
             new_lines[posicion:posicion + 1] = nuevas
         return new_lines
 
+    # ──────────────────────────────────────────────────────────────────
+    # C-24: no se confirma un recibo cuyas líneas no corresponden a sus datos («hoja al día», doc 106 §13)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_huella_calculo = fields.Char(
+        string='Huella del cálculo', readonly=True, copy=False,
+        help='Técnico (C-24): resume los datos del recibo con los que se calculó la hoja (periodo, contrato y su salario, novedades, ajustes, días trabajados y ausencias aprobadas del periodo). Al '
+             'confirmar se compara con los datos actuales. Solo la escribe el cálculo; un recibo duplicado no la hereda.')
+
+    def _ne_rechazar_huella_externa(self):
+        raise UserError(_('La huella del cálculo la escribe solo «Calcular hoja»: no se puede crear ni modificar a mano.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any('l10n_co_ne_huella_calculo' in vals for vals in vals_list):
+            self._ne_rechazar_huella_externa()
+        recibos = super().create(vals_list)
+        if any(recibos.mapped('l10n_co_ne_huella_calculo')):          # por un valor por defecto (contexto ``default_...`` o valor definido por el usuario)
+            self._ne_rechazar_huella_externa()
+        return recibos
+
+    def _ne_huella_calculo(self):
+        """La huella de los datos ACTUALES del recibo (``services.huella_calculo``). Datos propios del recibo que el cálculo lee: cabecera, salario del contrato (D1), novedades, días
+        trabajados (las reglas de básico y de ausencias los leen), ajustes de la empresa, lo que la retención lee del mes (R-2: si cierra y los recibos confirmados) y las ausencias VALIDADAS del empleado que se cruzan con el periodo (D2; la cadena de prórrogas
+        anterior al periodo no entra). Fuera: parámetros, reglas, datos del empleado, el resto del contrato y los demás recibos anteriores (se resuelven con «Calcular hoja»)."""
+        self.ensure_one()
+        recibo = self.sudo()                 # solo se resumen valores: no depende de las reglas de acceso del usuario que calcula o confirma
+        ausencias = self.env['hr.leave'].sudo().search([
+            ('employee_id', '=', recibo.employee_id.id), ('state', '=', 'validate'),
+            ('request_date_from', '<=', recibo.date_to), ('request_date_to', '>=', recibo.date_from)])
+        return huella_calculo.huella(
+            cabecera=(recibo.employee_id.id, recibo.contract_id.id, recibo.struct_id.id, recibo.date_from, recibo.date_to),
+            salario=recibo.contract_id.wage,
+            entradas=[(e.input_type_id.id, e.amount) for e in recibo.input_line_ids],
+            dias=[(d.work_entry_type_id.id, d.number_of_days, d.number_of_hours) for d in recibo.worked_days_line_ids],
+            ajustes=[(a.salary_rule_id.id, a.quantity, a.rate, a.amount) for a in recibo.l10n_co_ajuste_ids],
+            ausencias=[(a.id, a.request_date_from, a.request_date_to, a.holiday_status_id.id) for a in ausencias],
+            mes=recibo._ne_rete_huella())
+
+    def _ne_guardar_huella(self):
+        """Guarda la huella de cada recibo. Escribe por debajo de ``HrPayslip.write`` (``super``): así la guarda que rechaza escrituras externas no depende de un contexto que un cliente RPC
+        pudiera mandar."""
+        for recibo in self:
+            super(HrPayslip, recibo).write({'l10n_co_ne_huella_calculo': recibo._ne_huella_calculo()})
+
+    def _ne_validar_hoja_al_dia(self):
+        """Al CONFIRMAR: un recibo en borrador o en espera cuya huella no coincide con sus datos actuales (o que no tiene huella: calculado antes de esta versión, nunca calculado o
+        duplicado) tiene la hoja desactualizada. Un solo error con TODOS los recibos del conjunto. No mira los reembolsos ni los recibos con líneas editadas a mano (recalcular borraría
+        esas líneas) ni los ya confirmados o pagados."""
+        viejos = self.filtered(lambda r: r.state in ('draft', 'verify') and not r.edited and not r.credit_note and r.l10n_co_ne_huella_calculo != r._ne_huella_calculo())
+        if not viejos:
+            return
+        lineas = []
+        for r in viejos:        # un bucle y no un generador: `_()` busca el idioma en las variables del marco; en un generador sin `self` no lo encuentra, no traduce y avisa en el log
+            lineas.append(_('- «%(recibo)s» de %(empleado)s (%(desde)s a %(hasta)s)', recibo=r.number or r.name, empleado=r.employee_id.name, desde=r.date_from, hasta=r.date_to))
+        raise UserError(_(
+            'No se puede confirmar: la hoja de cálculo no está al día en %(cantidad)s recibo(s):\n%(recibos)s\n'
+            'Cambiaron sus novedades, ajustes, días trabajados, datos del recibo, el salario del contrato o las ausencias del periodo después del último cálculo, o la hoja se calculó antes de '
+            'esta versión. Abra cada recibo, pulse «Calcular hoja», revise las líneas y vuelva a confirmar. «Recalcular la hoja entera» además rehace los días trabajados y descarta los que se '
+            'hayan editado a mano.', cantidad=len(viejos), recibos='\n'.join(lineas)))
+
     def action_payslip_done(self):
         """
         Sobrescribe la confirmación de la nómina para asignar el consecutivo
@@ -786,6 +1559,16 @@ class HrPayslip(models.Model):
         colombia._ne_validar_duracion_periodo()
         colombia._ne_validar_sin_solape()
         colombia._ne_validar_cuenta_neto()
+        colombia._ne_validar_pacto_no_salarial()
+        colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
+        sin_confirmar = colombia.filtered(lambda r: r.state in ('draft', 'verify'))
+        sin_confirmar._ne_liq_validar_nomina_posterior()          # P0: no se paga dos veces lo que una liquidación confirmada cerró
+        sin_confirmar._ne_liq_validar_mes()                       # P0: la liquidación se comprueba otra vez al confirmar
+        colombia._ne_validar_hoja_al_dia()        # C-24: despues de las anteriores y antes de crear el asiento o cambiar el estado
+        colombia._ne_validar_retencion_conjunto()  # R-2: la retencion del mes no ve los recibos que se confirman a la vez
+        colombia._ne_validar_retencion_incompleta()
+        colombia._ne_validar_neto_no_negativo()
+        colombia._ne_validar_retencion_reembolso()
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()
@@ -976,6 +1759,7 @@ class HrPayslip(models.Model):
         # America/Bogota via pytz.
         now = datetime.now(_pytz_timezone('America/Bogota'))
         company_nit, company_dv = self._ne_company_nit_dv()
+        departamento_cia, municipio_cia = self._ne_codigos_ubicacion(company.partner_id, _('la compañía %s', company.name))
 
         # AUD-DIAN-34 (2026-09-14): NumeroSecuenciaXML/@Numero debe ser
         # Prefijo+Consecutivo (ej. "NE00000001"), pero @Consecutivo debe
@@ -1025,10 +1809,8 @@ class HrPayslip(models.Model):
             },
             'lugar_generacion': {
                 'Pais': company.partner_id.country_id.code,
-                'DepartamentoEstado': dian_utils.get_department_code(
-                    company.partner_id.state_id
-                ),
-                'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
+                'DepartamentoEstado': departamento_cia,
+                'MunicipioCiudad': municipio_cia,
                 'Idioma': nomina_xml_builder.NE_IDIOMA,
             },
             'proveedor_xml': {
@@ -1038,7 +1820,7 @@ class HrPayslip(models.Model):
                 'SoftwareID': company.l10n_co_ne_operation_mode_ids.software_id or '',
                 'SoftwareSC': dian_utils.compute_software_security_code(
                     company.l10n_co_ne_operation_mode_ids.software_id,
-                    company.l10n_co_ne_operation_mode_ids.software_pin,
+                    company.l10n_co_ne_operation_mode_ids._ne_pin_del_software(),
                     self.l10n_co_ne_consecutive,
                 ),
             },
@@ -1047,10 +1829,8 @@ class HrPayslip(models.Model):
                 'NIT': company_nit,
                 'DV': company_dv,
                 'Pais': company.partner_id.country_id.code,
-                'DepartamentoEstado': dian_utils.get_department_code(
-                    company.partner_id.state_id
-                ),
-                'MunicipioCiudad': dian_utils.get_city_code(company.partner_id.city_id),
+                'DepartamentoEstado': departamento_cia,
+                'MunicipioCiudad': municipio_cia,
                 'Direccion': company.partner_id.street or '',
             },
 
@@ -1106,6 +1886,34 @@ class HrPayslip(models.Model):
         dv = dian_utils.compute_dv(nit) if self.company_id.vat else ''
         return nit, dv
 
+    @api.model
+    def _ne_codigos_ubicacion(self, contacto, de_quien):
+        """H-F3-06: códigos de departamento y municipio que van al XML desde la dirección ``contacto`` de ``de_quien``. En Colombia es la MISMA regla de la PILA
+        (``get_pila_municipality_code``): departamento con código DANE numérico y ciudad con código DANE (``l10n_co_edi_code``) de ese departamento; si falta
+        algo se detiene y se nombra: nunca se toma el código postal. Fuera de Colombia, como hasta ahora (qué espera la DIAN: NO VERIFICADO)."""
+        departamento, ciudad = contacto.state_id, contacto.city_id
+        codigo = dian_utils.get_department_code(departamento)
+        if contacto.country_id.code != 'CO':
+            return codigo, dian_utils.get_city_code(ciudad)
+        if not departamento:
+            falta = _('el departamento')
+        elif not ciudad:
+            falta = _('la ciudad (elegida de la lista)')
+        else:
+            try:
+                return codigo, codigo + dian_utils.get_pila_municipality_code(codigo, getattr(ciudad, 'l10n_co_edi_code', None))
+            except ValueError as motivo:
+                falta = {
+                    'departamento_sin_codigo': _('el código DANE del departamento «%s»', departamento.name),
+                    'ciudad_sin_codigo': _('el código DANE de la ciudad «%s»', ciudad.name),
+                    'ciudad_codigo_invalido': _('un código DANE válido en la ciudad «%s»', ciudad.name),
+                    'ciudad_otro_departamento': _('una ciudad del departamento «%(departamento)s» (el código DANE de «%(ciudad)s» es de otro)',
+                                                  departamento=departamento.name, ciudad=ciudad.name),
+                }[motivo.args[0]]
+        raise UserError(_(
+            'No se puede generar el XML: en la dirección de %(quien)s (contacto «%(contacto)s») falta %(falta)s. Complételo en Contactos; los códigos DANE los trae la localización '
+            'colombiana de facturación electrónica (l10n_co_edi).', quien=de_quien, contacto=contacto.display_name, falta=falta))
+
     def _ne_lugar_trabajo_partner(self):
         """Único partner fuente de los 4 atributos LugarTrabajo* del nodo <Trabajador>
         (H-018, 2026-10-11, decisión de David + Tech Lead).
@@ -1153,6 +1961,61 @@ class HrPayslip(models.Model):
                 employee=employee.name, campos=', '.join(faltantes),
             ))
         return partner
+
+    def _ne_ubicacion_laboral_pila(self):
+        """``(departamento, municipio)`` de los campos 9 y 10 del registro tipo 2 de la PILA (H-F4-08, doc 99).
+
+        Es la ubicación LABORAL del cotizante, no su domicilio (Anexo Técnico 2 de la Res. 2388/2016, campos 9 y 10: «código del
+        departamento / municipio de la ubicación laboral»). La fuente es la MISMA que usan los 4 atributos ``LugarTrabajo*`` del
+        XML de nómina: la «Dirección de Trabajo» del empleado (``_ne_lugar_trabajo_partner``): PILA y XML no pueden discrepar. Una
+        ciudad o un departamento sin código DANE, o una ciudad que no es del departamento, es un ``UserError`` que nombra al empleado:
+        ya no sale en blanco, sin aviso, para todos (el defecto de origen leía ``address_home_id``, que no existe en Odoo 18).
+
+        - Departamento: ``dian_utils.get_department_code`` (2 dígitos).
+        - Municipio: el código DANE de la ciudad (``l10n_co_edi_code``, se EXIGE: no cae a ``zipcode``) menos el prefijo del
+          departamento (``dian_utils.get_pila_municipality_code``).
+
+        Colombiano en el exterior (campo 8 en «X», ``l10n_co_pila_colombiano_exterior``): los DOS campos van en blanco, sin consultar la
+        Dirección de Trabajo, porque así lo manda el anexo («de lo contrario se deberá dejar en blanco»). **Fuera de alcance, a
+        propósito:** si ese cotizante aporta voluntariamente a una caja de compensación, el anexo pide reportar el departamento y el
+        municipio de ubicación de LA CAJA; el módulo no modela ese aporte. No es una omisión (decisión del TL, 23-nov, Q1).
+
+        No se compara con el departamento de la caja de compensación (el anexo dice que el operador lo valida y el módulo no guarda el
+        departamento de cobertura de la caja; decisión del TL, Q3).
+        """
+        self.ensure_one()
+        employee = self.employee_id
+        if employee.l10n_co_pila_colombiano_exterior:
+            return '', ''
+        partner = self._ne_lugar_trabajo_partner()
+        departamento = dian_utils.get_department_code(partner.state_id)
+        ciudad = partner.city_id
+        try:
+            municipio = dian_utils.get_pila_municipality_code(departamento, getattr(ciudad, 'l10n_co_edi_code', None))
+        except ValueError as motivo:
+            razon = motivo.args[0] if motivo.args else ''
+            datos = {'employee': employee.name, 'ciudad': ciudad.name, 'departamento': partner.state_id.name,
+                     'dep_codigo': departamento or '-', 'ciudad_codigo': getattr(ciudad, 'l10n_co_edi_code', None) or '-'}
+            if razon == 'departamento_sin_codigo':
+                raise UserError(_(
+                    'El departamento "%(departamento)s" de la Dirección de Trabajo de %(employee)s no tiene un código DANE numérico '
+                    '(se encontró "%(dep_codigo)s"). Complételo en la configuración de departamentos: el campo 9 de la PILA '
+                    '(departamento de ubicación laboral) no se deja en blanco ni se inventa.', **datos))
+            if razon == 'ciudad_sin_codigo':
+                raise UserError(_(
+                    'La ciudad "%(ciudad)s" de la Dirección de Trabajo de %(employee)s (departamento "%(departamento)s") no tiene '
+                    'código DANE (campo l10n_co_edi_code de la ciudad). Complete el código o elija otra ciudad: el campo 10 de la '
+                    'PILA (municipio de ubicación laboral) no se deja en blanco ni se toma del código postal.', **datos))
+            if razon == 'ciudad_otro_departamento':
+                raise UserError(_(
+                    'La ciudad "%(ciudad)s" (código DANE %(ciudad_codigo)s) de la Dirección de Trabajo de %(employee)s no pertenece '
+                    'al departamento "%(departamento)s" (código %(dep_codigo)s): su código no empieza por el del departamento. '
+                    'Corrija la ciudad o el departamento antes de generar la planilla PILA.', **datos))
+            raise UserError(_(
+                'El código DANE de la ciudad "%(ciudad)s" de la Dirección de Trabajo de %(employee)s no es válido (se encontró '
+                '"%(ciudad_codigo)s"; debe ser numérico, de máximo %(longitud)s dígitos). Corríjalo antes de generar la planilla PILA.',
+                longitud=dian_utils.DANE_MUNICIPIO_LONGITUD, **datos))
+        return departamento, municipio
 
     def _ne_tipo_documento(self):
         """Código DIAN (TipoDocumento del nodo <Trabajador>) del tipo de identificación
@@ -1220,13 +2083,13 @@ class HrPayslip(models.Model):
         return sum(neto.mapped('total'))
 
 
-    # Desglose del recibo para el comprobante de pago (Frente 5, C1): clasificación por CÓDIGO de regla del módulo (no
-    # por cliente). Lo que no cae en ninguna columna va a "otras deducciones" (negativo) o queda en el devengado
-    # (positivo), de modo que devengado - deducciones siempre se explica completo.
-    _NE_DESGLOSE_SALUD = ('CO_SALUD_EMP', 'CO_PRIMA_SALUD', 'CO_LIQ_SALUD', 'CO_BON_SALUD')
-    _NE_DESGLOSE_PENSION = ('CO_PENSION_EMP', 'CO_PRIMA_PENSION', 'CO_LIQ_PENSION', 'CO_BON_PENSION')
-    _NE_DESGLOSE_FSP = ('CO_FSP',)
-    _NE_DESGLOSE_RETENCION = ('CO_RETEFUENTE', 'CO_PRIMA_RETE', 'CO_LIQ_RETE', 'CO_BON_RETE')
+    # Desglose del recibo para el comprobante de pago (Frente 5, C1): clasificación por el CONCEPTO DIAN de la regla
+    # (``l10n_co_ne_dian_concept``, una sola fuente: el mismo dato que arma el XML; E11 pieza 1A, .285), ya no por lista de códigos.
+    # Lo que no cae en ninguna columna va a "otras deducciones" (negativo) o queda en el devengado (positivo), de modo que
+    # devengado - deducciones siempre se explica completo. Las claves son las columnas del desglose; los valores, los conceptos
+    # del anexo técnico (valores de la selección ``l10n_co_ne_dian_concept``, no códigos de regla).
+    _NE_DESGLOSE_CONCEPTO_DIAN = {
+        'salud': 'Salud', 'pension': 'FondoPension', 'fsp': 'FondoSP', 'retencion': 'RetencionFuente'}
 
     def _ne_fecha_pago_o_falso(self):
         """Primera fecha de pago del recibo o False si no se puede resolver (sin fecha, sin fuente configurada o sin
@@ -1295,15 +2158,16 @@ class HrPayslip(models.Model):
         self.ensure_one()
         lineas = self._ne_pdf_lineas()
 
-        def deducido(codigos):
-            return -sum(l.total for l in lineas if l.code in codigos)
+        def deducido(columna):
+            concepto = self._NE_DESGLOSE_CONCEPTO_DIAN[columna]
+            return -sum(l.total for l in lineas if l.salary_rule_id.l10n_co_ne_dian_concept == concepto)
 
         devengado = sum(l.total for l in lineas if l.total > 0)
         deducciones = -sum(l.total for l in lineas if l.total < 0)
-        salud = deducido(self._NE_DESGLOSE_SALUD)
-        pension = deducido(self._NE_DESGLOSE_PENSION)
-        fsp = deducido(self._NE_DESGLOSE_FSP)
-        retencion = deducido(self._NE_DESGLOSE_RETENCION)
+        salud = deducido('salud')
+        pension = deducido('pension')
+        fsp = deducido('fsp')
+        retencion = deducido('retencion')
         neto = self._ne_pdf_neto()
         return {
             'recibo': self,
@@ -1428,15 +2292,35 @@ class HrPayslip(models.Model):
             'NumeroCuenta': (cuenta.acc_number or '') if cuenta else '',
         }
 
+    def _ne_tipo_trabajador(self):
+        """``TipoTrabajador`` del XML (Anexo NIE041): para el APRENDIZ se deriva del contrato del recibo (``_ne_regimen_cotizante``, H-F1-09); para los demás sale de la ficha del empleado. UNA sola fuente: la
+        usan ``_ne_trabajador`` y la clave del segmento del mes (``_ne_clave_segmento``)."""
+        self.ensure_one()
+        return self._ne_regimen_cotizante()['tipo_trabajador'] or self.employee_id._ne_valor_obligatorio('l10n_co_ne_worker_type')
+
+    def _ne_subtipo_trabajador(self):
+        """``SubTipoTrabajador`` del XML (Anexo NIE042): el de la ficha del empleado. Misma fuente para ``_ne_trabajador`` y la clave del segmento."""
+        self.ensure_one()
+        return self.employee_id._ne_valor_obligatorio('l10n_co_ne_worker_subtype')
+
+    def _ne_clave_segmento(self):
+        """Clave con la que el documento mensual parte el mes de un empleado en segmentos (H-F3-04, opcion A del doc 95; decision del TL del 23-nov, doc 98): ``(TipoTrabajador, SubTipoTrabajador)``. El porcentaje de
+        salud o de pension NO entra: un porcentaje distinto con el mismo tipo sigue deteniendo la fusion (``ErrorFusion``). Si el dato esta incompleto, un ``UserError`` (el que quien llama convierte en «clave sin resolver»)."""
+        self.ensure_one()
+        return (self._ne_tipo_trabajador(), self._ne_subtipo_trabajador())
+
     def _ne_trabajador(self):
         """Sección <Trabajador> del XML de nómina electrónica."""
         employee = self.employee_id
         contract = self.contract_id
         _name_parts = employee._l10n_co_nombre_dian()
         lugar_trabajo = self._ne_lugar_trabajo_partner()
+        departamento_trabajo, municipio_trabajo = self._ne_codigos_ubicacion(lugar_trabajo, _('el lugar de trabajo de %s', employee.name))
         return {
-            'TipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_type'),
-            'SubTipoTrabajador': employee._ne_valor_obligatorio('l10n_co_ne_worker_subtype'),
+            # H-F1-09 (decision del TL del 22-nov): para el APRENDIZ el TipoTrabajador se DERIVA del tipo de cotizante y de contrato del CONTRATO del recibo (tabla ``l10n_co_aprendiz_etapas``: una sola
+            # fuente); para los demas sale de la ficha, como siempre. ``l10n_co_ne_aviso_tipo_trabajador`` avisa si la ficha del aprendiz dice otra cosa.
+            'TipoTrabajador': self._ne_tipo_trabajador(),
+            'SubTipoTrabajador': self._ne_subtipo_trabajador(),
             'AltoRiesgoPension': (
                 'true' if employee.l10n_co_ne_high_risk_pension else 'false'
             ),
@@ -1452,9 +2336,8 @@ class HrPayslip(models.Model):
             # los 4 atributos LugarTrabajo* salen del mismo partner -- ver
             # _ne_lugar_trabajo_partner().
             'LugarTrabajoPais': lugar_trabajo.country_id.code,
-            'LugarTrabajoDepartamentoEstado': dian_utils.get_department_code(
-                lugar_trabajo.state_id),
-            'LugarTrabajoMunicipioCiudad': dian_utils.get_city_code(lugar_trabajo.city_id),
+            'LugarTrabajoDepartamentoEstado': departamento_trabajo,
+            'LugarTrabajoMunicipioCiudad': municipio_trabajo,
             'LugarTrabajoDireccion': lugar_trabajo.street or '',
 
             'SalarioIntegral': (
@@ -1781,15 +2664,112 @@ class HrPayslip(models.Model):
         dentro de un mismo mes (el caso normal mensual) el resultado es el período completo
         tal cual. Compartido por _ne_dias_pagables() y _ne_ausencia_calendario() (H-014) --
         ambos deben recortar al mismo tramo para no descontar/pagar fuera de él.
+
+        P0 (doc 111 §1): la liquidación empieza además después del último «Hasta» que la nómina del mes ya pagó (``_ne_liq_pagado_hasta``); sin días por pagar el tramo queda vacío.
         """
         self._ne_validar_inicio_liquidacion()
         periodo_ini = self.date_from
         periodo_fin = self.date_to
         # M1-1 (doc 61): el recorte al mes de date_to es SOLO de la liquidacion (los meses anteriores ya se pagaron en
         # nominas regulares). Un periodo regular que cruza de mes (pagos los 5 y 20, semana que cruza) se paga completo.
-        if self._ne_es_liquidacion() and (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
-            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+        if self._ne_es_liquidacion():
+            if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
+                periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+            pagado = self._ne_liq_pagado_hasta()
+            if pagado:
+                periodo_ini = max(periodo_ini, pagado + timedelta(days=1)) if self._ne_liq_dias_pendientes(periodo_fin, pagado) else periodo_fin + timedelta(days=1)
         return periodo_ini, periodo_fin
+
+    # ── P0 (doc 111 §1): la liquidación no vuelve a pagar los días que la nómina del mes ya pagó ─────────
+    @api.model
+    def _ne_liq_recibos_del_mes(self, contrato, retiro):
+        """``(sin_confirmar, pagados)``: los recibos de nómina general del contrato que tocan el mes de ``retiro`` o pagan después de él. Pagados = confirmados netos de reembolsos confirmados, por fecha."""
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        recibos = self.sudo().search([
+            ('contract_id', '=', contrato.id), ('company_id', '=', contrato.company_id.id), ('struct_id', '=', general.id), ('state', '!=', 'cancel'),
+            ('l10n_co_ne_is_adjustment', '=', False), ('date_to', '>=', max(retiro.replace(day=1), contrato.date_start))])
+        fin_mes = retiro.replace(day=self._ne_dias_en_mes_calendario(retiro.year, retiro.month))
+        sin_confirmar = recibos.filtered(lambda r: r.state in ('draft', 'verify') and r.date_from <= fin_mes)
+        pagados = recibos.filtered(lambda r: r.state in ('done', 'paid') and not r.credit_note and not r._ne_rete_reembolsado(self.browse()))
+        return sin_confirmar, pagados.sorted(lambda r: (r.date_from, r.date_to))
+
+    def _ne_liq_pagados(self):
+        """Los recibos cuyos días resta esta liquidación: en borrador o en espera, los pagados de hoy; ya confirmada, los que guardó al calcularse (un recibo posterior no cambia lo que liquidó)."""
+        self.ensure_one()
+        if not (self.contract_id and self.date_to and self._ne_es_liquidacion()):
+            return self.browse()
+        if self.state in ('draft', 'verify'):
+            return self._ne_liq_recibos_del_mes(self.contract_id, self.date_to)[1]
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        desde = max(self.date_to.replace(day=1), self.contract_id.date_start)
+        return self.sudo().l10n_co_ne_rete_sumados_ids.filtered(
+            lambda r: r.struct_id == general and r.contract_id == self.contract_id and not r.credit_note and r.date_to >= desde)
+
+    def _ne_liq_pagado_hasta(self):
+        """El último «Hasta» que la liquidación da por pagado, o ``False``."""
+        self.ensure_one()
+        return max(self._ne_liq_pagados().mapped('date_to'), default=False)
+
+    def _ne_liq_dias_pendientes(self, fin, pagado_hasta):
+        """Días comerciales del mes de ``fin`` que faltan por pagar. Se cuentan por diferencia: el 31 tras pagar hasta el 30 no vale otro día y el 28 de febrero completa el mes."""
+        self.ensure_one()
+        inicio = max(fin.replace(day=1), self.contract_id.date_start)
+        return max(0, self._ne_contar_dias(inicio, fin) - self._ne_contar_dias(inicio, pagado_hasta))
+
+    def _ne_liq_validar_mes(self):
+        """Antes de calcular o confirmar una liquidación: nada se adivina. Detiene (nombrando recibos y fechas) un recibo del mes sin confirmar, un pago posterior al retiro, un hueco sin pagar antes del
+        último pago o una prima del semestre ya confirmada (la liquidación la calcula desde el inicio del semestre)."""
+        for liq in self.filtered(lambda r: not r.credit_note and r.contract_id and r.date_to and r._ne_es_liquidacion()):
+            contrato, retiro = liq.contract_id, liq.date_to
+            sin_confirmar, pagados = liq._ne_liq_recibos_del_mes(contrato, retiro)
+            encabezado = _('No se puede liquidar a %(empleado)s con retiro el %(retiro)s: ', empleado=liq.employee_id.name, retiro=retiro)
+            if sin_confirmar:
+                raise UserError(encabezado + _(
+                    'hay recibos de nómina de ese mes sin confirmar: %s. Confírmelos si ya se pagaron, o cancélelos: la liquidación paga solo los días que faltan.', sin_confirmar._ne_liq_nombres()))
+            posteriores = pagados.filtered(lambda r, retiro=retiro: r.date_to > retiro)
+            if posteriores:
+                raise UserError(encabezado + _(
+                    'hay recibos confirmados que pagan días posteriores al retiro: %s. Reembólselos (y confirme el reembolso) o corrija la fecha de retiro.', posteriores._ne_liq_nombres()))
+            siguiente = max(retiro.replace(day=1), contrato.date_start)
+            for recibo in pagados:
+                if recibo.date_from > siguiente:
+                    raise UserError(encabezado + _(
+                        'quedan días sin pagar del %(desde)s al %(hasta)s, antes de %(recibo)s. Páguelos en un recibo de nómina o corrija las fechas.',
+                        desde=siguiente, hasta=recibo.date_from - timedelta(days=1), recibo=recibo._ne_liq_nombres()))
+                siguiente = max(siguiente, recibo.date_to + timedelta(days=1))
+            prima = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_prima')
+            inicio_semestre = date(retiro.year, 1 if retiro.month <= 6 else 7, 1)
+            fin_semestre = date(retiro.year, 6, 30) if retiro.month <= 6 else date(retiro.year, 12, 31)
+            primas = self.sudo().search([
+                ('contract_id', '=', contrato.id), ('struct_id', '=', prima.id), ('state', 'in', ('done', 'paid')), ('credit_note', '=', False),
+                ('date_to', '>=', inicio_semestre), ('date_to', '<=', fin_semestre)]).filtered(lambda r: not r._ne_rete_reembolsado(self.browse()))
+            if primas:
+                raise UserError(encabezado + _(
+                    'ya hay una prima confirmada de ese semestre: %s. La liquidación calcula la prima desde el inicio del semestre y la pagaría otra vez. Reembólsela (y confirme el reembolso) antes de liquidar.',
+                    primas._ne_liq_nombres()))
+
+    def _ne_liq_validar_nomina_posterior(self):
+        """El sentido inverso (P0): con una liquidación confirmada, una nómina general del mismo contrato no se calcula ni se confirma si paga días del mes del retiro hasta la fecha de retiro: ya los pagó
+        la liquidación o un recibo que ella restó."""
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        liquidacion = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
+        for recibo in self.filtered(lambda r: r.struct_id == general and r.contract_id and r.date_to and not r.credit_note and not r.l10n_co_ne_is_adjustment):
+            confirmadas = self.sudo().search([
+                ('contract_id', '=', recibo.contract_id.id), ('company_id', '=', recibo.company_id.id), ('struct_id', '=', liquidacion.id), ('state', 'in', ('done', 'paid')),
+                ('credit_note', '=', False), ('l10n_co_ne_is_adjustment', '=', False), ('date_to', '>=', recibo.date_from)])
+            for liq in confirmadas:
+                desde = max(liq.date_to.replace(day=1), recibo.contract_id.date_start)
+                if recibo.date_to >= desde and not liq._ne_rete_reembolsado(self.browse()):
+                    raise UserError(_(
+                        'No se puede calcular ni confirmar «%(recibo)s» de %(empleado)s: la liquidación %(liquidacion)s, ya confirmada, cerró los días del %(desde)s al %(hasta)s de ese contrato (los pagó '
+                        'ella o los recibos que restó) y se pagarían dos veces. Cancele este recibo; si hay que corregir, cancele primero la liquidación (o reembólsela y confirme ese reembolso).',
+                        recibo=recibo.number or recibo.name, empleado=recibo.employee_id.name, liquidacion=liq._ne_liq_nombres(), desde=desde, hasta=liq.date_to))
+
+    def _ne_liq_nombres(self):
+        nombres = []
+        for recibo in self:
+            nombres.append(_('«%(recibo)s» (%(desde)s a %(hasta)s)', recibo=recibo.number or recibo.name, desde=recibo.date_from, hasta=recibo.date_to))
+        return ', '.join(nombres)
 
     def _ne_dias_corridos_en_tramo(self, fecha_ini, fecha_fin, tramo_ini, tramo_fin, dias_mes):
         """Días CALENDARIO corridos (lunes a domingo) de [fecha_ini, fecha_fin] que caen
@@ -1802,18 +2782,25 @@ class HrPayslip(models.Model):
             return 0
         return self._ne_contar_dias(ini, fin)
 
+    def _ne_rango_activo(self):
+        """(ini, fin) del tramo pagable en que el contrato estuvo vigente (ini > fin si no hay ninguno). La fecha de ingreso y la de retiro
+        recortan el rango. Fuente única de ``_ne_dias_bajo_contrato`` y del desglose por fecha (.284)."""
+        self.ensure_one()
+        contract = self.contract_id
+        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
+        contrato_fin = contract.date_end or periodo_fin
+        return max(periodo_ini, contract.date_start), min(periodo_fin, contrato_fin)
+
     def _ne_dias_bajo_contrato(self):
         """Dias (mes comercial) del tramo pagable en que el contrato estuvo vigente.
         Delimita ING/RET: la fecha de ingreso y de retiro recortan el rango."""
         self.ensure_one()
-        contract = self.contract_id
-        periodo_ini, periodo_fin = self._ne_tramo_pagable_periodo()
-        contrato_ini = contract.date_start
-        contrato_fin = contract.date_end or periodo_fin
-        activo_ini = max(periodo_ini, contrato_ini)
-        activo_fin = min(periodo_fin, contrato_fin)
+        activo_ini, activo_fin = self._ne_rango_activo()
         if activo_ini > activo_fin:
             return 0
+        pagado = self._ne_liq_pagado_hasta()
+        if pagado:
+            return self._ne_liq_dias_pendientes(activo_fin, pagado)
         return self._ne_contar_dias(activo_ini, activo_fin)
 
     def _ne_codigos_tipos_no_remunerados(self):
@@ -1902,6 +2889,32 @@ class HrPayslip(models.Model):
                 empleado=self.employee_id.name))
         return tipo
 
+    def _ne_tipos_dias_de_asistencia(self):
+        """Ajuste de David a «Conceptos de pago» (22-nov, decisión del TL: opción B): los tipos de las líneas de días que, JUNTAS, son los días PAGADOS con el sueldo
+        (``_ne_desglose_por_fecha``: «Asistencia» (WORK100), «Festivos trabajados», «Descansos remunerados» y «Ajuste mes comercial»; Σ días = ``_ne_dias_pagables``). La pestaña
+        de días trabajados los sigue mostrando por separado; «Conceptos de pago» los junta en UNA fila «Asistencia». Los tipos de ausencia (vacaciones, licencias,
+        incapacidades) NO entran. Sin valores por defecto silenciosos: un tipo que no existe en la base simplemente no suma."""
+        self.ensure_one()
+        tipos = self.env['hr.work.entry.type']
+        try:
+            tipos |= self._ne_tipo_asistencia()
+        except UserError:
+            pass                                   # sin el tipo «Asistencia» no hay desglose por fecha: el error ya sale al calcular los días
+        for xmlid in ('hr_work_entry_type_co_festivo_trabajado', 'hr_work_entry_type_co_descanso_remunerado', 'hr_work_entry_type_co_ajuste_mes_comercial'):
+            tipos |= self.env.ref('l10n_co_nomina_electronica.%s' % xmlid, raise_if_not_found=False) or tipos.browse()
+        return tipos
+
+    def _ne_nombre_dias_de_asistencia(self):
+        """Nombre de la fila única «Asistencia» de «Conceptos de pago» (N2 «cu», 22-nov): el del TIPO «Asistencia» (WORK100), que Odoo traduce al idioma del usuario, sin importar
+        qué tipos junte la fila ni cuál sea la primera línea: el nombre de una línea de días puede ser el nativo con « (Half-Day)» (``hr_payslip_worked_days.py:49-53``) o el de
+        «Festivos trabajados»/«Descansos remunerados» si «Asistencia» no tiene días. Sin el tipo en la base (no hay desglose por fecha: ``_ne_tipos_dias_de_asistencia``) se usa
+        el texto traducible «Asistencia»."""
+        self.ensure_one()
+        try:
+            return self._ne_tipo_asistencia().name
+        except UserError:
+            return _('Asistencia')
+
     def _ne_ajustar_dias_por_asistencia(self, valores):
         """Rearma la lista de líneas de días que calculó el nativo (``valores``: diccionarios con ``work_entry_type_id``, ``sequence``,
         ``number_of_days`` y ``number_of_hours``):
@@ -1921,8 +2934,13 @@ class HrPayslip(models.Model):
            fechas de la ausencia y estas líneas no se leen (.281). Las horas no se tocan, así que ``amount`` y ``BASIC`` no cambian. No se
            reemplaza la línea si no hay ausencia validada (entradas de trabajo sueltas) ni si el tipo es ``unpaid`` (su código SÍ entra a
            ``_ne_dias_habiles_excluidos`` y el cambio movería el pago).
-        4. Todo lo demás (vacaciones, licencias remuneradas y sin sueldo) se conserva igual y en su orden (días = horas ÷ horas por día del
-           nativo; contarlos por fecha cambia plata y es otra pieza).
+        4. .300 (E2b): las vacaciones, licencias remuneradas y sin sueldo (y los tipos sin sueldo) cuentan sus días por FECHA con entrada de la ausencia
+           (``_ne_dias_ausencia_por_fecha``), no horas ÷ horas por día del nativo (un domingo de 7 h en un horario de 44 h en 6 días se pagaba 0,95 días);
+           las horas no se tocan. Todo lo demás se conserva igual y en su orden.
+
+        .284 (E2a): en un recibo que se desglosa por fecha (``_ne_desglosa_por_fecha``) el punto 1 se reparte en «Asistencia» (días laborados),
+        «Festivos trabajados», «Descansos remunerados» y «Ajuste mes comercial» (``_ne_desglose_por_fecha``); los días siguen sumando los
+        pagados y las horas, las mismas. Con otra fuente de entradas queda UNA línea como en .282.
 
         La línea «OUT» (ingreso o retiro a mitad del periodo) la agrega el nativo DESPUÉS de este método y no se toca."""
         self.ensure_one()
@@ -1932,9 +2950,13 @@ class HrPayslip(models.Model):
         asistencia = self._ne_tipo_asistencia()
         ocultos = self._ne_codigos_dias_ocultos()
         no_remunerados = self._ne_codigos_tipos_no_remunerados()
+        # .300 (E2b): las ausencias de días hábiles se cuentan por FECHA ANTES de calcular los días pagables (que las resta leyendo estas líneas).
+        valores = self._ne_dias_ausencia_por_fecha(valores, codigo_por_tipo, nombre_por_tipo, no_remunerados)
         pagables = max(self._ne_dias_pagables(valores=valores), 0)
-        horas = sum(valor['number_of_hours'] for valor in valores
-                    if valor['work_entry_type_id'] == asistencia.id or codigo_por_tipo[valor['work_entry_type_id']] in ocultos)
+        horas_asistencia = sum(valor['number_of_hours'] for valor in valores if valor['work_entry_type_id'] == asistencia.id)
+        horas_ocultas = sum(valor['number_of_hours'] for valor in valores
+                            if valor['work_entry_type_id'] != asistencia.id and codigo_por_tipo[valor['work_entry_type_id']] in ocultos)
+        horas = horas_asistencia + horas_ocultas
         resto = []
         for valor in valores:
             tipo_id = valor['work_entry_type_id']
@@ -1948,14 +2970,189 @@ class HrPayslip(models.Model):
             resto.append(valor)
         if not pagables and not horas:
             return resto
-        linea = {
-            'name': asistencia.name,
-            'sequence': asistencia.sequence,
-            'work_entry_type_id': asistencia.id,
-            'number_of_days': pagables,
-            'number_of_hours': horas,
-        }
-        return [linea] + resto
+        # .282: la línea «Asistencia» va PRIMERA en la pestaña. El orden en pantalla es ``_order = 'payslip_id, sequence'`` del nativo
+        # (``hr_payslip_worked_days.py:11``) y todos los tipos traen la misma ``sequence`` (25): con empate el orden depende del desempate. Una
+        # ``sequence`` menor que la de todas las demás líneas lo fija; solo se usa para ordenar (``sequence`` es de la línea, no del tipo).
+        clasificacion = self._ne_clasificar_fechas() if self._ne_desglosa_por_fecha() else None
+        if clasificacion is None:
+            desglose = [(asistencia, pagables, horas)]
+        else:
+            desglose = self._ne_desglose_por_fecha(asistencia, pagables, horas_asistencia, horas_ocultas, clasificacion)
+        # .284: las líneas del desglose van juntas y primero, en su orden: cada una con una ``sequence`` consecutiva menor que la de las demás.
+        secuencia = min([valor.get('sequence', asistencia.sequence) for valor in resto] + [asistencia.sequence]) - len(desglose)
+        lineas = [{
+            'name': tipo.name,
+            'sequence': secuencia + orden,
+            'work_entry_type_id': tipo.id,
+            'number_of_days': dias,
+            'number_of_hours': horas_linea,
+        } for orden, (tipo, dias, horas_linea) in enumerate(desglose)]
+        return lineas + resto
+
+    # ──────────────────────────────────────────────────────────────────
+    # .284 (E2a, doc 68 §12): «Días trabajados» desglosado por FECHA
+    # ──────────────────────────────────────────────────────────────────
+    # La línea única «Asistencia» de .280 se reparte en: «Asistencia» (días laborados), «Festivos trabajados», «Descansos remunerados» y
+    # «Ajuste mes comercial». SOLO se reparte lo que ya se mostraba (los días pagados y las horas del nativo): los días siguen sumando
+    # ``_ne_dias_pagables`` y las horas, las mismas de .280, así que ni el pago, ni DiasTrabajados del XML, ni la suma de los importes de las
+    # líneas (= BASIC, GROSS, base de retención) cambian. «Asistencia» es el RESIDUO (pagables - ajuste - festivos - descansos): el desglose
+    # nunca puede dejar de sumar los días pagados, aunque una ausencia se cuente por horas ÷ horas por día (E2b la pasará a fechas).
+    def _ne_desglosa_por_fecha(self):
+        """True si este recibo se desglosa por fecha: el que ya rearma los días pagados (``_ne_aplica_dias_por_asistencia``), de un contrato cuyas
+        entradas salen del calendario (``work_entry_source == 'calendar'``, la única fuente que existe en la base de Guapante: con ``attendance``
+        o ``planning`` un día sin entrada puede ser una falta y no un descanso) y con un calendario laboral para consultar el horario."""
+        self.ensure_one()
+        contrato = self.contract_id
+        return bool(self._ne_aplica_dias_por_asistencia() and contrato.work_entry_source == 'calendar'
+                    and (contrato.resource_calendar_id or self.company_id.resource_calendar_id))
+
+    def _ne_zona_calendario(self):
+        """Zona horaria con la que se pasan las fechas de las entradas de trabajo (UTC en la base de datos) a fecha local: la del calendario
+        del contrato, como el nativo (``nat:1196``)."""
+        self.ensure_one()
+        return _pytz_timezone(self.contract_id.resource_calendar_id.tz or self.employee_id.tz
+                              or self.company_id.resource_calendar_id.tz or 'UTC')
+
+    def _ne_clasificar_fechas(self):
+        """Clasifica CADA fecha del tramo pagable (con el contrato vigente) del recibo. Devuelve ``None`` si no hay calendario ni tramo, o un
+        diccionario de conjuntos de fechas:
+
+        - ``ausentes``: fechas de una ausencia (vacación, licencias, incapacidades, tipos sin sueldo): salen de «Asistencia» porque sus días
+          ya se descuentan en ``_ne_dias_pagables``.
+        - ``festivos_trabajados``: fecha en un festivo global del calendario (``resource.calendar.leaves`` sin recurso) CON entrada de trabajo
+          (el usuario cambió el tipo de la entrada del festivo a «Asistencia»). Una entrada de tipo «ausencia» (``is_leave``) en un festivo global
+          es la que el calendario genera del festivo: cuenta como descanso aunque su tipo no esté en el parámetro de tipos ocultos.
+        - ``laborados``: fecha con entrada de asistencia que no es festivo.
+        - ``descansos``: entrada de un tipo oculto (``l10n_co_dias_trabajados_ocultar``: festivo, descanso), o fecha SIN entrada en la que el
+          calendario no tiene jornada (el lunes de Guapante) o que es festivo global (festivo no trabajado).
+        - ``sin_entrada``: fecha SIN entrada en la que el calendario SÍ tiene jornada (regla de David: si falta la entrada manda el horario del
+          contrato; se paga como laborada y se avisa). Generar las entradas no toca las existentes ni las que ya cubrió el contrato
+          (``generate_work_entries``, ``hr_contract.py:392-413``), por eso puede faltar una fecha suelta.
+
+        Además ``horas_festivos_trabajados`` (suma de ``duration`` de las entradas de ASISTENCIA de esas fechas), ``dias_reales`` (fechas del tramo) y ``dias_comerciales``
+        (los que paga el mes comercial: el 31 no cuenta, febrero se completa a 30).
+
+        Solo cuentan entradas ``draft`` y ``validated`` (los estados que cuenta el nativo, enterprise ``hr_contract.py:283-289``). La fecha de una
+        entrada es la de su INICIO en la zona del calendario del contrato."""
+        self.ensure_one()
+        contrato = self.contract_id
+        calendario = contrato.resource_calendar_id or self.company_id.resource_calendar_id
+        activo_ini, activo_fin = self._ne_rango_activo()
+        if not calendario or activo_ini > activo_fin:
+            return None
+        zona = self._ne_zona_calendario()
+        utc = _pytz_timezone('UTC')
+        inicio = zona.localize(datetime.combine(activo_ini, datetime.min.time()))
+        fin = zona.localize(datetime.combine(activo_fin, datetime.max.time()))
+        inicio_utc = inicio.astimezone(utc).replace(tzinfo=None)
+        fin_utc = fin.astimezone(utc).replace(tzinfo=None)
+
+        def fecha_local(momento):
+            return utc.localize(momento).astimezone(zona).date()
+
+        festivos = set()
+        for festivo in self.env['resource.calendar.leaves'].search([
+                ('resource_id', '=', False), ('time_type', '=', 'leave'), ('calendar_id', 'in', [calendario.id, False]),
+                ('company_id', 'in', [self.company_id.id, False]), ('date_from', '<=', fin_utc), ('date_to', '>=', inicio_utc)]):
+            dia = fecha_local(festivo.date_from)
+            ultimo = fecha_local(festivo.date_to - timedelta(microseconds=1))
+            while dia <= ultimo:
+                festivos.add(dia)
+                dia += timedelta(days=1)
+
+        asistencia = self._ne_tipo_asistencia()
+        ocultos = self._ne_codigos_dias_ocultos()
+        codigos_ausencia = (self._ne_codigos_tipos_no_remunerados() | _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES
+                            | _NOVEDAD_AUSENCIA_CALENDARIO_CODES)
+        por_fecha = {}
+        for entrada in self.env['hr.work.entry'].search([
+                ('contract_id', '=', contrato.id), ('state', 'in', ('draft', 'validated')),
+                ('date_start', '>=', inicio_utc), ('date_start', '<=', fin_utc)]):
+            tipo = entrada.work_entry_type_id
+            fecha = fecha_local(entrada.date_start)
+            datos = por_fecha.setdefault(fecha, {'ausencia': False, 'oculto': False, 'trabajo': False, 'horas': 0.0})
+            if tipo.code in codigos_ausencia:
+                datos['ausencia'] = True
+            elif tipo.code in ocultos or (tipo.is_leave and fecha in festivos):
+                # Tipo oculto por parámetro, o una entrada de tipo «ausencia» en un festivo global: es la entrada que el calendario genera
+                # del festivo (``hr_contract.py:49-53``, :66-77), no un día trabajado, aunque el tipo no esté en el parámetro.
+                datos['oculto'] = True
+            else:
+                datos['trabajo'] = True
+                if tipo == asistencia:
+                    datos['horas'] += entrada.duration
+
+        # Las 4 ausencias de días calendario cubren TODAS sus fechas (lunes a domingo, festivos incluidos): son las que ``_ne_dias_pagables``
+        # descuenta con ``_ne_ausencia_calendario``.
+        ausencia_calendario = set()
+        for codigo in _NOVEDAD_AUSENCIA_CALENDARIO_CODES:
+            for _ausencia, _dias, desde, hasta in self._ne_ausencia_calendario(codigo)[1]:
+                ausencia_calendario.update(desde + timedelta(days=n) for n in range((hasta - desde).days + 1))
+
+        # Fechas con jornada en el horario (sin descontar festivos). Misma forma de llamar al calendario que ``_ne_dias_habiles`` del documento.
+        con_jornada = {a.astimezone(zona).date() for a, _b, _rec in calendario.with_company(self.company_id)._attendance_intervals_batch(
+            inicio, fin)[False]}
+
+        resultado = {clave: set() for clave in ('ausentes', 'festivos_trabajados', 'laborados', 'descansos', 'sin_entrada')}
+        horas_festivos = 0.0
+        dia = activo_ini
+        while dia <= activo_fin:
+            datos = por_fecha.get(dia)
+            if dia in ausencia_calendario or (datos and datos['ausencia']):
+                resultado['ausentes'].add(dia)
+            elif datos and datos['trabajo']:
+                if dia in festivos:
+                    resultado['festivos_trabajados'].add(dia)
+                    horas_festivos += datos['horas']
+                else:
+                    resultado['laborados'].add(dia)
+            elif (datos and datos['oculto']) or dia in festivos or dia not in con_jornada:
+                resultado['descansos'].add(dia)
+            else:
+                resultado['sin_entrada'].add(dia)
+            dia += timedelta(days=1)
+        resultado['horas_festivos_trabajados'] = horas_festivos
+        resultado['dias_reales'] = (activo_fin - activo_ini).days + 1
+        resultado['dias_comerciales'] = self._ne_dias_bajo_contrato()
+        return resultado
+
+    def _ne_desglose_por_fecha(self, asistencia, pagables, horas_asistencia, horas_ocultas, clasificacion):
+        """Reparte los días pagados y las horas de «Asistencia» (las de .280) en líneas ``[(tipo, días, horas)]``, omitiendo las vacías:
+
+        1. «Asistencia» (WORK100): los días laborados = pagables - ajuste - festivos trabajados - descansos (RESIDUO), con las horas de la
+           asistencia menos las de los festivos trabajados.
+        2. «Festivos trabajados»: una fecha por festivo con entrada de asistencia; horas = ``duration`` de esas entradas (sin pasar de las horas
+           de asistencia del nativo).
+        3. «Descansos remunerados»: descansos del horario y festivos no trabajados; horas = las de los tipos ocultos (festivo, descanso).
+        4. «Ajuste mes comercial»: lo que separa las fechas reales del mes comercial (31 de mes: -1; febrero hasta el 28: +2). Sin horas.
+
+        Σ días = ``pagables`` y Σ horas = ``horas_asistencia + horas_ocultas`` SIEMPRE. Si el residuo saliera negativo (más descansos y festivos
+        que días pagables: una ausencia contada por horas ÷ horas por día en un periodo casi todo de ausencias) se recortan primero los descansos,
+        luego los festivos y por último se mueve lo que falte al ajuste; así «Asistencia» nunca queda con días negativos."""
+        self.ensure_one()
+        ref = self.env.ref
+        festivos = float(len(clasificacion['festivos_trabajados']))
+        descansos = float(len(clasificacion['descansos']))
+        ajuste = float(clasificacion['dias_comerciales'] - clasificacion['dias_reales'])
+        horas_festivos = max(min(clasificacion['horas_festivos_trabajados'], horas_asistencia), 0.0)
+        laborados = pagables - ajuste - festivos - descansos
+        if laborados < 0:
+            exceso = -laborados
+            quitar = min(descansos, exceso)
+            descansos -= quitar
+            exceso -= quitar
+            quitar = min(festivos, exceso)
+            festivos -= quitar
+            exceso -= quitar
+            ajuste -= exceso
+            laborados = 0.0
+        lineas = (
+            (asistencia, laborados, horas_asistencia - horas_festivos),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_festivo_trabajado'), festivos, horas_festivos),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_descanso_remunerado'), descansos, horas_ocultas),
+            (ref('l10n_co_nomina_electronica.hr_work_entry_type_co_ajuste_mes_comercial'), ajuste, 0.0),
+        )
+        return [(tipo, dias, horas) for tipo, dias, horas in lineas if dias or horas]
 
     def _get_worked_day_lines_values(self, domain=None):
         """Punto de extensión nativo de las líneas de días (``hr.payslip._get_worked_day_lines_values``): ver
@@ -1965,36 +3162,49 @@ class HrPayslip(models.Model):
             return valores
         return self._ne_ajustar_dias_por_asistencia(valores)
 
-    def _ne_factor_provision_periodo(self):
-        """Fraccion del mes que cubre este recibo, para las provisiones de prestaciones (CO_PROV_PRIMA, CO_PROV_CESANTIAS y
-        CO_PROV_VACACIONES; CO_PROV_INT_CES la hereda porque es un porcentaje de CO_PROV_CESANTIAS).
+    def _ne_base_prestacional(self, result_rules, campo):
+        """.303 (doc 78): base devengada de las provisiones de prestaciones = suma de lo que pagan en ESTE recibo las reglas ya calculadas con la marca ``campo``
+        (``l10n_co_ne_base_prima_cesantias`` o ``l10n_co_ne_base_vacaciones``; datos planos por regla, sembrados en el XML: sin lista de códigos aquí). La fracción del periodo
+        (mes, quincena, semana, ingreso a mitad de mes), las ausencias sin pago y el auxilio de transporte por días ya vienen en lo devengado: reemplaza al factor de periodo de
+        .279 (``_ne_factor_provision_periodo``), que provisionaba sobre el sueldo del contrato. Los ajustes de la empresa suman por la cascada del motor (``result_rules``).
 
-        Defecto (QA, prenomina de abril de 2026 de Guapante, quincenal): las 4 reglas daban el valor MENSUAL completo en cada
-        recibo, asi que dos quincenas acumulaban el doble en el mes (y en el asiento). Ahora cada regla multiplica su valor mensual
-        por este factor = ``_ne_dias_bajo_contrato()`` / ``l10n_co_dias_mes_comercial``: mes completo = 30/30 = 1.0 EXACTO (el mismo
-        valor de antes, sin diferencia de flotantes), quincena = 15/30 (1 al 15 y 16 al 30 o 31), semana = 7/30 (``_ne_contar_dias``),
-        y un ingreso o retiro a mitad de periodo recorta los dias (``_ne_dias_bajo_contrato``).
-
-        Fuente de dias (opcion A del diseno, aprobada por Tech Lead el 17-nov-2026; la formula contable la confirma David/contador):
-        NO ``_ne_dias_pagables()``. Esa resta TODA ausencia, incluidas las remuneradas (vacaciones, incapacidades, licencias) que se
-        pagan por otro concepto, y dejaria la provision en 0 en una quincena de vacaciones aunque la prestacion sigue causandose.
-        Consecuencia conocida: las ausencias NO descuentan la provision (una licencia no remunerada sobreprovisiona); si debe
-        descontarse es una decision normativa pendiente (variante C del diseno: restar solo las no remuneradas)."""
+        Una regla de la estructura que aún no se calcula (o que no aplica) no suma: según el motor ``result_rules`` trae el código o no."""
         self.ensure_one()
-        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
-        return self._ne_dias_bajo_contrato() / dias_mes
+        # La estructura NO hereda (en Odoo 18 ``hr.payroll.structure`` no tiene ``parent_id``: la N2 «ct» dio 280 errores por ``AttributeError`` al subir por padres, igual que
+        # la regresión «bu» del 16-nov): las reglas con la marca son las de la estructura del recibo.
+        total = 0.0
+        for regla in self.struct_id.rule_ids.filtered(lambda r: r[campo]):
+            try:
+                total += result_rules[regla.code]['total']
+            except (KeyError, TypeError):
+                continue
+        return total
 
     def _ne_pago_ausencia_calendario(self, codigo, dias, previos=None):
         """Valor a pagar por `dias` calendario corridos de una ausencia de pago por el empleador
         o por terceros: CO_INC_COMUN, CO_INC_LABORAL, CO_LIC_MAT, CO_LIC_PAT. Unico lugar del
         calculo, compartido por las reglas de la nomina general y de la liquidacion.
 
-        - CO_INC_COMUN (Decreto 780/2016 Art. 3.2.1.10 par. 1; H-013 paso 3): por tramos --
-          los primeros dias_incapacidad_empleador al pct_incapacidad_empleador (66,67 %); hasta
-          el limite 3-90 el pct_incapacidad_3_90 (EPS); mas alla el pct_incapacidad_91_mas.
+        - CO_INC_COMUN, por tramos (doc 106, norma leida verbatim):
+          * PORCENTAJES: CST art. 227 -- las 2/3 partes del salario los primeros 90 dias y la mitad el
+            resto, hasta 180 dias; con piso de 1 SMMLV (ver abajo).
+          * QUIEN PAGA: Decreto 780/2016, art. 3.2.1.10 par. 1 -- el empleador los dos (2) primeros dias
+            (``dias_incapacidad_empleador``, al ``pct_incapacidad_empleador`` = 66,67 %, H-013 paso 3; el
+            porcentaje de esos dos dias es NO VERIFICADO: el unico concepto de MinSalud leido es ambiguo,
+            doc 106 3.6) y la EPS desde el tercero (``pct_incapacidad_3_90`` y ``pct_incapacidad_91_mas``).
+          * BASE (H-F1-08): Decreto 780/2016, art. 2.2.3.3.1, sustituido por el art. 1 del Decreto 2126 de
+            2023 -- «se tomara como Ingreso Base de Cotizacion el reportado en el mes anterior al inicio de
+            la incapacidad, entendiendo por inicio, el reportado en el dia uno (1) de la incapacidad
+            inicial, no el de las prorrogas». El valor del dia sale del IBC del MES ANTERIOR al inicio de la
+            INICIAL de la cadena (``_ne_ibc_mes_anterior``), el mismo en todas sus prorrogas, NO del
+            sueldo actual en cada recibo; sin IBC de ese mes, el sueldo (con aviso en el recibo).
         - CO_INC_LABORAL: ARL al 100 % desde el primer dia. CO_LIC_MAT y CO_LIC_PAT: 100 % del
           salario, a cargo de la EPS (H-014, CST Art. 236 mod. Ley 2114/2021).
         Parametros normativos desde hr.rule.parameter a la fecha de _ne_fecha_parametros().
+        TOPE de la base de CO_INC_COMUN (H-F1-08 P2, ``_ne_ibc_incapacidad_datos``): Decreto 780/2016, art.
+        2.2.3.4.5 (Decreto 2126 de 2023) -- la variacion del IBC del mes anterior que exceda el 40 % del
+        promedio de los 12 meses anteriores (SIN incluir el mes de referencia) no se toma en la parte que
+        excede (parametros ``l10n_co_incapacidad_variacion_pct`` y ``l10n_co_incapacidad_meses_promedio``).
         CO_INC_COMUN tiene piso de 1 SMMLV por dia (H-163, CST Art. 227): ver abajo. Su tramo se
         cuenta desde el INICIO de la incapacidad y sus prorrogas (H-170): `previos` = dias de la
         misma incapacidad anteriores al periodo; sin darlo, se deduce de Ausencias."""
@@ -2007,86 +3217,87 @@ class HrPayslip(models.Model):
             return 0.0
         fecha = self._ne_fecha_parametros()
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', fecha)
-        valor_dia = self.contract_id.wage / dias_mes
         if codigo != 'CO_INC_COMUN':
-            return valor_dia * dias
+            return self.contract_id.wage / dias_mes * dias
         dias_emp = self._rule_parameter('l10n_co_dias_incapacidad_empleador', fecha)
         pct_emp = self._rule_parameter('l10n_co_pct_incapacidad_empleador', fecha) / 100
         pct_3_90 = self._rule_parameter('l10n_co_pct_incapacidad_3_90', fecha) / 100
         pct_91_mas = self._rule_parameter('l10n_co_pct_incapacidad_91_mas', fecha) / 100
         limite_3_90 = self._rule_parameter('l10n_co_dias_incapacidad_limite_3_90', fecha)
-        # H-163 (CST art. 227; T-468/2010): los porcentajes aplican "siempre y cuando el valor
-        # liquido a pagar no sea inferior al SMMLV": valor por dia = max(valor_dia x pct del
-        # tramo, SMMLV / dias_mes), en todos los tramos. Con salario de 1 SMMLV se paga el 100 %.
+        # H-163 (CST art. 227; Sentencia C-543/2007, que lo declara exequible «en el entendido que el
+        # auxilio monetario por enfermedad no profesional no podra ser inferior al salario minimo legal
+        # vigente»; T-468/2010): valor por dia = max(valor_dia x pct del tramo, SMMLV / dias_mes), en
+        # todos los tramos. Con salario de 1 SMMLV se paga el 100 %.
         # LIMITE CONOCIDO: con salario MENOR a 1 SMMLV (jornada parcial) el piso diario pagaria mas
         # del 100 % de su sueldo; no ocurre en Guapante y no se modela (decision pendiente).
         smmlv_dia = self._rule_parameter('l10n_co_smmlv', fecha) / dias_mes
 
-        def _por_dia(pct):
+        def _por_dia(valor_dia, pct):
             return max(valor_dia * pct, smmlv_dia)
 
-        def _pago_posiciones(previos, cantidad):
+        def _pago_posiciones(previos, cantidad, inicio):
             """Pago de los dias que ocupan las posiciones previos+1 .. previos+cantidad DENTRO de
-            la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo."""
+            la incapacidad (H-170): el tramo se cuenta desde su inicio, no desde el recibo. El valor
+            del dia es el del IBC del mes anterior a ``inicio`` (la fecha de inicio de la INICIAL
+            de la cadena; H-F1-08)."""
+            valor_dia = self._ne_ibc_incapacidad_datos(self.contract_id, antes_de=inicio)[0] / dias_mes
             ini, fin = previos, previos + cantidad
 
             def _solape(a, b):
                 return max(0, min(fin, b) - max(ini, a))
-            return (_solape(0, dias_emp) * _por_dia(pct_emp)
-                    + _solape(dias_emp, limite_3_90) * _por_dia(pct_3_90)
-                    + max(0, fin - max(ini, limite_3_90)) * _por_dia(pct_91_mas))
+            return (_solape(0, dias_emp) * _por_dia(valor_dia, pct_emp)
+                    + _solape(dias_emp, limite_3_90) * _por_dia(valor_dia, pct_3_90)
+                    + max(0, fin - max(ini, limite_3_90)) * _por_dia(valor_dia, pct_91_mas))
 
+        inicio_recibo = self._ne_tramo_pagable_periodo()[0]
         if previos is not None:
-            return _pago_posiciones(previos, dias)
+            return _pago_posiciones(previos, dias, inicio_recibo)
         cadenas = self._ne_incapacidad_cadenas()
-        if not cadenas or sum(en_periodo for _previos, en_periodo in cadenas) != dias:
+        if not cadenas or sum(en_periodo for _previos, en_periodo, _inicio in cadenas) != dias:
             # Sin ausencias que lo respalden (p. ej. input manual): la incapacidad empieza aqui.
-            cadenas = [(0, dias)]
-        return sum(_pago_posiciones(prev, en_periodo) for prev, en_periodo in cadenas)
+            cadenas = [(0, dias, inicio_recibo)]
+        return sum(_pago_posiciones(prev, en_periodo, inicio) for prev, en_periodo, inicio in cadenas)
 
     def _ne_incapacidad_cadenas(self):
-        """[(dias_previos, dias_en_periodo)] de cada incapacidad comun -- con sus prorrogas -- que
-        cae en el periodo del recibo (H-170). Las incapacidades validadas del empleado se encadenan
-        cuando la siguiente empieza a mas tardar l10n_co_dias_interrupcion_prorroga + 1 dias despues
-        del fin de la anterior (con 0, solo contiguas). dias_previos = dias CALENDARIO reales de
-        la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones 1..previos, y los
-        del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar)."""
+        """[(dias_previos, dias_en_periodo, inicio_de_la_inicial)] de cada incapacidad comun -- con sus prorrogas -- que cae en el periodo del recibo (H-170; H-F1-01, doc 84; el inicio de la
+        inicial es la fecha con la que se busca el IBC del mes anterior, H-F1-08).
+        La cadena sale del vinculo EXPLICITO ``Prórroga de`` (``hr.leave.l10n_co_ne_prorroga_de_id``) que marca quien registra la incapacidad con el certificado de la EPS: ya NO se encadena por
+        fechas, porque que dos incapacidades sean «la misma enfermedad o una relacionada» (Decreto 780 de 2016, art. 2.2.3.3.2, par. 1, sustituido por el art. 1 del Decreto 2126 de 2023) es un juicio medico que el modulo no puede hacer.
+        Una incapacidad sin vinculo es la inicial de su propia cadena. dias_previos = dias CALENDARIO reales de la cadena anteriores al inicio del tramo del recibo: ocupan las posiciones
+        1..previos, y los del recibo las siguientes (el dia 93 de una incapacidad es el 1-jun si empezo el 1-mar). Una prorroga cuya anterior NO esta aprobada no tiene posicion cierta: error claro."""
         self.ensure_one()
         _dias, detalle = self._ne_ausencia_calendario('CO_INC_COMUN')
         if not detalle:
             return []
-        interrupcion = int(self._rule_parameter(
-            'l10n_co_dias_interrupcion_prorroga', self._ne_fecha_parametros()))
         periodo_ini = self._ne_tramo_pagable_periodo()[0]
         tramo_ini = max(periodo_ini, self.contract_id.date_start)
-        todas = self.env['hr.leave'].search([
-            ('employee_id', '=', self.employee_id.id),
-            ('state', '=', 'validate'),
-            ('holiday_status_id.work_entry_type_id.code', '=', 'CO_INC_COMUN'),
-        ], order='request_date_from, id')
-        cadenas, actual = [], []
-        for leave in todas:
-            if actual and leave.request_date_from <= actual[-1].request_date_to + timedelta(
-                    days=1 + interrupcion):
-                actual.append(leave)
-            else:
-                if actual:
-                    cadenas.append(actual)
-                actual = [leave]
-        if actual:
-            cadenas.append(actual)
         en_periodo = {leave.id: dias for leave, dias, _ini, _fin in detalle}
+        cadenas = {}                # id de la inicial -> {'miembros': {id: leave}, 'inicial': leave} (la cadena es una lista: la inicial es el ultimo de la subida)
+        for leave, _dias_leave, _ini, _fin in detalle:
+            miembros, actual = [leave], leave
+            while actual.l10n_co_ne_prorroga_de_id:
+                actual = actual.l10n_co_ne_prorroga_de_id
+                if actual.state != 'validate':
+                    raise UserError(_(
+                        'La incapacidad de %(empleado)s del %(desde)s al %(hasta)s es prórroga de la del %(a_desde)s al %(a_hasta)s, que no está aprobada (estado «%(estado)s»). '
+                        'Sin la anterior no se sabe en qué posición de la cadena empieza esta (2 días del empleador, 3 a 90, 91 en adelante). Apruebe la anterior o quite el vínculo '
+                        '«Prórroga de» de la ausencia (Ausencias > la incapacidad).',
+                        empleado=self.employee_id.name, desde=leave.request_date_from, hasta=leave.request_date_to,
+                        a_desde=actual.request_date_from, a_hasta=actual.request_date_to,
+                        estado=dict(actual._fields['state']._description_selection(self.env)).get(actual.state, actual.state)))
+                miembros.append(actual)
+            cadena = cadenas.setdefault(miembros[-1].id, {'miembros': {}, 'inicial': miembros[-1]})
+            for miembro in miembros:
+                cadena['miembros'][miembro.id] = miembro
         resultado = []
-        for cadena in cadenas:
-            dias_periodo = sum(en_periodo.get(leave.id, 0) for leave in cadena)
-            if not dias_periodo:
-                continue
+        for cadena in cadenas.values():
+            dias_periodo = sum(en_periodo.get(leave_id, 0) for leave_id in cadena['miembros'])
             previos = 0
-            for leave in cadena:
+            for leave in cadena['miembros'].values():
                 fin = min(leave.request_date_to, tramo_ini - timedelta(days=1))
                 if fin >= leave.request_date_from:
                     previos += (fin - leave.request_date_from).days + 1
-            resultado.append((previos, dias_periodo))
+            resultado.append((previos, dias_periodo, cadena['inicial'].request_date_from))
         return resultado
 
     def _ne_ausencia_calendario(self, work_entry_code):
@@ -2171,6 +3382,25 @@ class HrPayslip(models.Model):
         return sum(self._ne_ausencia_habil(codigo, tramo_ini, tramo_fin)[0]
                    for codigo in sorted(codigos))
 
+    def _ne_liq_vacaciones_disfrutadas_aplican(self):
+        """Condición de ``CO_LIQ_VAC_DISFRUTADAS``: ¿hay días de vacaciones disfrutadas del último tramo que pagar? H-F1-12 (D1): si el contrato no causa vacaciones (aprendiz en etapa lectiva, columna
+        «causa prestaciones» de ``l10n_co_aprendiz_etapas``) y aun así tiene vacaciones validadas en el tramo, un error que nombra al empleado y las ausencias: ocultar la línea dejaría sin pagar los días que
+        ``_ne_dias_pagables`` resta del sueldo (la misma fuente: ``_ne_ausencia_habil_tramo``)."""
+        self.ensure_one()
+        dias, detalle = self._ne_ausencia_habil_tramo('CO_VAC')
+        if dias <= 0:
+            return False
+        if not self._ne_regimen_cotizante()['causa_prestaciones']:
+            ausencias = '; '.join(
+                _('«%(tipo)s» del %(desde)s al %(hasta)s', tipo=ausencia.holiday_status_id.name,
+                  desde=format_date(self.env, ausencia.request_date_from), hasta=format_date(self.env, ausencia.request_date_to))
+                for ausencia, *_resto in detalle)
+            raise UserError(_(
+                'El contrato de %(empleado)s no causa vacaciones (aprendiz en etapa lectiva, según el parámetro de nómina «Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato», código '
+                'l10n_co_aprendiz_etapas) y tiene vacaciones validadas en el último tramo de la liquidación: %(ausencias)s. Esos días se restarían del sueldo sin pagarse. Corrija o anule la ausencia en la '
+                'aplicación Ausencias, o revise el tipo de cotizante y el tipo de contrato en el contrato del empleado.', empleado=self.employee_id.name, ausencias=ausencias))
+        return True
+
     def _ne_ausencia_habil_tramo(self, work_entry_code):
         """Ausencias en dias HABILES acotadas al tramo pagable del recibo: lo que este documento
         paga y reporta. Un recibo de un solo mes: el periodo completo (igual que
@@ -2217,6 +3447,10 @@ class HrPayslip(models.Model):
         Devuelve (dias_totales, detalle) -- detalle = [(leave, dias, fecha_ini, fecha_fin)],
         mismo shape que _ne_ausencia_calendario() para que _dev_novedades()/
         _dev_prestaciones() los traten igual.
+
+        .300 (E2b): es la ÚNICA fuente de los días de estas ausencias: las líneas de días del recibo (``_ne_dias_ausencia_por_fecha``), el pago, el IBC, la
+        UGPP y el XML la leen. Cuenta FECHAS locales (zona del calendario) con entrada ``draft``/``validated`` de la ausencia; con el interruptor
+        ``l10n_co_ausencia_fraccion_dia`` encendido, la fracción del día (horas de la ausencia ÷ horas de todas las entradas de esa fecha).
         """
         self.ensure_one()
         desde = desde or self.date_from
@@ -2231,32 +3465,101 @@ class HrPayslip(models.Model):
         if not leaves:
             return 0, []
 
-        periodo_ini_dt = datetime.combine(desde, datetime.min.time())
-        periodo_fin_dt = datetime.combine(hasta + timedelta(days=1), datetime.min.time())
-        work_entries = self.env['hr.work.entry'].search([
-            ('employee_id', '=', self.employee_id.id),
-            ('leave_id', 'in', leaves.ids),
-            ('date_start', '<', periodo_fin_dt),
-            ('date_stop', '>', periodo_ini_dt),
-        ])
+        # .300 (E2b, doc 72 §3): la fecha de una entrada es la de su INICIO en la zona del calendario del contrato (como ``_ne_clasificar_fechas``, E2a), no la
+        # fecha UTC (un turno de 22:00 a 06:00 hora de Colombia cae en el día equivocado, y una entrada de las 22:00 del último día del periodo quedaba fuera), y solo
+        # cuentan las entradas ``draft`` y ``validated`` (los estados que cuenta el nativo; una entrada ``conflict`` o ``cancelled`` de una ausencia validada ya no suma).
+        por_fracciones = self._ne_ausencia_por_fracciones()
+        zona = self._ne_zona_calendario()
+        utc = _pytz_timezone('UTC')
+        inicio_utc = zona.localize(datetime.combine(desde, datetime.min.time())).astimezone(utc).replace(tzinfo=None)
+        fin_utc = zona.localize(datetime.combine(hasta, datetime.max.time())).astimezone(utc).replace(tzinfo=None)
+        dominio = [
+            ('employee_id', '=', self.employee_id.id), ('state', 'in', ('draft', 'validated')),
+            ('date_start', '>=', inicio_utc), ('date_start', '<=', fin_utc)]
+        WorkEntry = self.env['hr.work.entry']
+        work_entries = WorkEntry.search(dominio + [('leave_id', 'in', leaves.ids)])
 
-        entries_by_leave = defaultdict(list)
+        def fecha_local(momento):
+            return utc.localize(momento).astimezone(zona).date()
+
+        # Solo con el interruptor de fracciones encendido: las horas de TODAS las entradas de cada fecha (el denominador de la fracción).
+        horas_del_dia = defaultdict(float)
+        if por_fracciones:
+            for entry in WorkEntry.search(dominio):
+                horas_del_dia[fecha_local(entry.date_start)] += entry.duration
+
+        horas_de_la_ausencia = defaultdict(lambda: defaultdict(float))        # id de la ausencia -> {fecha local: horas de sus entradas}
         for entry in work_entries:
-            entries_by_leave[entry.leave_id.id].append(entry)
+            horas_de_la_ausencia[entry.leave_id.id][fecha_local(entry.date_start)] += entry.duration
 
         detalle = []
         dias_totales = 0
         for leave in leaves:
-            entries = entries_by_leave.get(leave.id)
-            if not entries:
+            fechas = horas_de_la_ausencia.get(leave.id)
+            if not fechas:
                 continue
-            dias = len({entry.date_start.date() for entry in entries})
+            if por_fracciones:
+                dias = sum(min(1.0, horas / horas_del_dia[fecha]) if horas_del_dia[fecha] else 1.0 for fecha, horas in fechas.items())
+            else:
+                dias = len(fechas)                                           # días ENTEROS: una fecha con entrada de la ausencia es 1 día
             if dias > 0:
                 ini = max(leave.request_date_from, desde)
                 fin = min(leave.request_date_to, hasta)
                 detalle.append((leave, dias, ini, fin))
                 dias_totales += dias
         return dias_totales, detalle
+
+    def _ne_ausencia_por_fracciones(self):
+        """Interruptor ``l10n_co_ausencia_fraccion_dia`` (``hr.rule.parameter``, 0 de fábrica; .300, E2b): ¿las ausencias de días hábiles cuentan la FRACCIÓN
+        de día? OBLIGATORIO: si falta el parámetro hay un error claro que dice dónde crearlo; nunca se asume un valor."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        try:
+            return bool(self._rule_parameter('l10n_co_ausencia_fraccion_dia', fecha))
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Ausencias de Días Hábiles por Fracción de Día» (código l10n_co_ausencia_fraccion_dia) para el %(fecha)s, '
+                'que se necesita para contar las vacaciones y licencias de %(empleado)s por fecha. Actualice el módulo de nómina electrónica o créelo en Nómina > '
+                'Configuración > Parámetros de reglas (0 = días enteros, 1 = fracciones de día).',
+                fecha=fecha, empleado=self.employee_id.name)) from None
+
+    def _ne_dias_ausencia_por_fecha(self, valores, codigo_por_tipo, nombre_por_tipo, no_remunerados):
+        """.300 (E2b, doc 72 §3): las líneas de vacaciones, licencias remuneradas y no remuneradas y tipos sin sueldo (los códigos que ``_ne_dias_pagables`` descuenta
+        del básico leyendo sus líneas) cuentan los días por FECHA con entrada de la ausencia (``_ne_ausencia_habil_tramo``), no por horas ÷ horas por día del nativo.
+        Solo cambian los DÍAS y el nombre de la línea (el nativo agrega « (Half-Day)» cuando horas/días < horas por día): las HORAS no se tocan, así que ``amount``, la
+        suma de los importes (``BASIC``) y ``sum_worked_hours`` quedan idénticos. Sin una ausencia validada que respalde la línea (entradas sueltas o una novedad manual)
+        queda como la calculó el nativo. ``CO_VAC``, ``CO_LIC_REM``, ``CO_BASICO``, ``CO_AUX_TRANS``, el IBC, la UGPP y el XML leen esta línea: quedan en fechas por herencia."""
+        self.ensure_one()
+        codigos = _NOVEDAD_AUSENCIA_WORKED_DAYS_CODES | no_remunerados
+        resultado = []
+        for valor in valores:
+            tipo_id = valor['work_entry_type_id']
+            codigo = codigo_por_tipo[tipo_id]
+            if codigo in codigos:
+                dias, detalle = self._ne_ausencia_habil_tramo(codigo)
+                if detalle:
+                    valor = dict(valor, number_of_days=dias, name=nombre_por_tipo[tipo_id])
+            resultado.append(valor)
+        return resultado
+
+    def _ne_avisos_ausencias_desactualizadas(self):
+        """.300 (E2b): textos de aviso (lista, vacía si todo coincide) cuando los días de una vacación o licencia de la pestaña «Días trabajados» no coinciden con las
+        FECHAS de las entradas de trabajo (un recibo calculado antes de .300, o cuyas entradas cambiaron): hay que recalcular la hoja. Una consulta por código de ausencia."""
+        self.ensure_one()
+        avisos = []
+        tipos = self.env['hr.work.entry.type']
+        for codigo in sorted(_NOVEDAD_AUSENCIA_WORKED_DAYS_CODES | self._ne_codigos_tipos_no_remunerados()):
+            dias, detalle = self._ne_ausencia_habil_tramo(codigo)
+            if not detalle:
+                continue
+            en_la_pestana = sum(self.worked_days_line_ids.filtered(lambda w: w.work_entry_type_id.code == codigo).mapped('number_of_days'))
+            if abs(en_la_pestana - dias) > 1e-6:
+                tipo = tipos.search([('code', '=', codigo)], limit=1)
+                avisos.append(_(
+                    'Los días de «%(ausencia)s» en «Días trabajados» (%(pestana)s) no coinciden con las fechas de las entradas de trabajo de %(empleado)s (%(fechas)s). '
+                    'Use «Recalcular la hoja entera» en el menú Acciones.',
+                    ausencia=tipo.name or codigo, pestana='%g' % round(en_la_pestana, 4), fechas='%g' % round(dias, 4), empleado=self.employee_id.name))
+        return avisos
 
     def _ne_dias_novedad_ausencia_e_input(self, work_entry_code, input_code, inputs, worked_days):
         """(días desde Ausencias, días desde el input manual) para un concepto de novedad en
@@ -2324,34 +3627,92 @@ class HrPayslip(models.Model):
         dias_ausencia, _detalle = self._ne_ausencia_calendario(work_entry_code)
         return self._ne_resolver_dias_novedad(dias_ausencia, input_code, inputs, work_entry_code)
 
-    def _ne_ultimo_ibc_anterior(self, contract, estructura=None, antes_de=None):
-        """Último IBC de seguridad social confirmado antes de esta nómina (H-017a,
-        2026-10-11, punto a del diseño -- decisión de David + Tech Lead).
-
-        Mismo patrón que Procedure2.action_calculate_retention_procedure2()
-        (hr_contract_retefuente.py): última nómina 'done' del mismo contrato y
-        estructura, antes del date_from de esta nómina, leyendo su línea
-        invisible CO_SS_BASE_IBC. Sin historial (primera nómina del contrato):
-        fallback a contract.wage -- confirmado el caso real de los 18 empleados
-        de Guapante hoy (ninguno tiene nómina previa).
-
-        Lectura literal (Tech Lead, 2026-10-11): si hubo un cambio de salario
-        entre el mes anterior y el de la novedad, se usa el IBC real del mes
-        anterior tal cual, NUNCA un valor prorrateado al salario nuevo.
-        """
+    def _ne_sueldo_de_respaldo(self, contrato, fecha=None):
+        """Sueldo MENSUAL con el que se reemplaza el IBC del mes anterior cuando el empleado no tiene IBC de ese mes (primer mes de contrato, base nueva o mes sin recibos confirmados).
+        UNA sola funcion (consultor v19, doc 89): en v18 el sueldo vive en el contrato y ``fecha`` se ignora; en v19 sera el de la version vigente en esa fecha. Salario integral: el factor
+        (``l10n_co_factor_integral_salary``, 70 %) del sueldo, como en ``_ne_ibc_salarial``. Quien lo use debe AVISAR (``_ne_aviso_ibc_mes_anterior``): nunca en silencio."""
         self.ensure_one()
-        # estructura / antes_de (opcionales): la liquidacion no tiene historial propio; su "ultimo
-        # IBC anterior" es el de la nomina general del contrato antes del tramo.
-        payslip_anterior = self.env['hr.payslip'].search([
-            ('contract_id', '=', contract.id),
-            ('struct_id', '=', (estructura or self.struct_id).id),
-            ('state', '=', 'done'),
-            ('date_from', '<', antes_de or self.date_from),
-        ], order='date_from desc', limit=1)
-        if not payslip_anterior:
-            return contract.wage
-        linea_ibc = payslip_anterior.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
-        return linea_ibc.total if linea_ibc else contract.wage
+        if contrato.l10n_co_ne_integral_salary:
+            return contrato.wage * self._rule_parameter('l10n_co_factor_integral_salary', self._ne_fecha_parametros())
+        return contrato.wage
+
+    def _ne_ibc_mes_anterior_datos(self, contract, antes_de=None):
+        """(ibc, mes, con_base): IBC del MES calendario anterior al mes de ``antes_de`` (por omision, el inicio de este recibo) -- H-F1-11, doc 89.
+        Reemplaza a ``_ne_ultimo_ibc_anterior`` (H-017a), que leia la linea CO_SS_BASE_IBC de UN solo recibo: con nomina quincenal era medio mes y con semanal una semana, y la base de
+        vacaciones, licencia remunerada y dias SLN salia de la mitad o menos. Decision del TL (22-nov, que conserva la de David del 10-nov: la incapacidad NO es salario, CST art. 192): la base es
+        la SUMA de CO_SS_BASE_IBC de los recibos confirmados del empleado cuyo ultimo dia cae en ese mes, escalada a un mes comercial por los dias que la sustentan: ibc = suma x 30 / dias. Dias que la
+        sustentan = dias de salud y pension (CO_DIAS_SP) menos los de suspension (SLN) y de incapacidad comun y laboral, que no entran a CO_SS_BASE_IBC (en el salario integral, que no los
+        excluye, todos los dias). Asi un mes con incapacidad da el equivalente al salario y no al 66,67 %, y un mes incompleto (ingreso a mitad de mes) tambien se lleva a mes completo; la semanal
+        (5 pagos de 7 = 35) se escala igual. NO usa ``ibc_sp`` del consolidado (que suma el valor pagado de la incapacidad, el exceso del 40 %, el piso y el techo). Sin base: el sueldo de
+        respaldo y ``con_base`` en falso (el recibo muestra el aviso)."""
+        self.ensure_one()
+        referencia = antes_de or self.date_from
+        mes = (referencia.replace(day=1) - timedelta(days=1)).replace(day=1)
+        ibc, con_base = self._ne_ibc_normalizado_de_mes(mes)
+        if con_base:
+            return ibc, mes, True
+        return self._ne_sueldo_de_respaldo(contract, mes), mes, False
+
+    def _ne_ibc_normalizado_de_mes(self, mes):
+        """(ibc, con_base): el IBC de UN mes calendario (``mes`` = su primer dia) del empleado de este recibo, escalado a mes comercial (ver ``_ne_ibc_mes_anterior_datos``, que lo usa para el mes
+        anterior; H-F1-08 P2 lo usa tambien para el promedio de los 12 meses previos). Sin recibos confirmados con ``CO_SS_BASE_IBC`` en ese mes: ``(0.0, False)``; NO cae al sueldo (quien lo
+        necesita decide)."""
+        self.ensure_one()
+        siguiente = (mes.replace(day=28) + timedelta(days=4)).replace(day=1)
+        recibos = self.env['hr.payslip'].sudo().search([
+            ('company_id', '=', self.company_id.id), ('employee_id', '=', self.employee_id.id), ('state', 'in', ('done', 'paid')),
+            ('date_to', '>=', mes), ('date_to', '<', siguiente)])
+        base = dias = 0.0
+        for recibo in recibos:
+            lineas_base = recibo.line_ids.filtered(lambda l: l.code == 'CO_SS_BASE_IBC')
+            if not lineas_base:
+                continue                              # p. ej. una liquidacion: su base salarial vive en otras reglas (hallazgo en la cola del F5)
+            base += sum(lineas_base.mapped('total'))
+            dias_recibo = sum(recibo.line_ids.filtered(lambda l: l.code == 'CO_DIAS_SP').mapped('total'))
+            if not recibo.contract_id.l10n_co_ne_integral_salary:
+                # Los dias de ESTE recibo ya confirmado, no los de las ausencias de hoy: una ausencia anulada o editada despues de confirmar no cambia la base que se pago. SLN: las worked_days
+                # guardadas (``_ne_dias_sln``, un recibo de un solo mes); incapacidad: la CANTIDAD de las lineas CO_INC_COMUN y CO_INC_LABORAL (``result_qty = dias``, dias CALENDARIO que se
+                # pagaron; las worked_days no sirven: cuentan dias habiles).
+                dias_recibo -= recibo._ne_dias_sln() + sum(
+                    recibo.line_ids.filtered(lambda l: l.code in _NOVEDAD_INCAPACIDAD_CODES).mapped('quantity'))
+            dias += dias_recibo
+        if base > 0 and dias > 0:
+            return base * self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros()) / dias, True
+        return 0.0, False
+
+    def _ne_ibc_incapacidad_datos(self, contract, antes_de=None):
+        """(ibc, mes, con_base, tope): la base de la incapacidad comun (H-F1-08), es decir, el IBC del mes anterior a ``antes_de`` (``_ne_ibc_mes_anterior_datos``) CON el limite del Decreto 780/2016, art.
+        2.2.3.4.5 (Decreto 2126 de 2023): «las variaciones en el Ingreso Base de Cotizacion [...] del mes anterior al inicio de la incapacidad que excedan el cuarenta por ciento (40%) respecto del
+        promedio de los doce (12) meses inmediatamente anteriores, o su fraccion de meses cuando este tiempo fuere menor, no seran tomadas en consideracion, en la parte que exceda de dicho
+        porcentaje». El promedio es el de los hasta ``l10n_co_incapacidad_meses_promedio`` meses INMEDIATAMENTE ANTERIORES al mes de referencia que tienen IBC (los meses sin recibos confirmados
+        no cuentan: «su fraccion de meses»); el tope es promedio x (1 + ``l10n_co_incapacidad_variacion_pct`` / 100). ``tope`` es ``None`` si no se aplico (sin base, sin meses previos o dentro del
+        limite) o un dict ``{'base', 'promedio', 'tope', 'meses'}`` si recorto la base. NO VERIFICADO: si «los doce meses inmediatamente anteriores» incluyen el mes de referencia (se toman los
+        anteriores a el). Solo la incapacidad comun lo usa; vacaciones, licencia remunerada y SLN siguen con ``_ne_ibc_mes_anterior``."""
+        self.ensure_one()
+        ibc, mes, con_base = self._ne_ibc_mes_anterior_datos(contract, antes_de=antes_de)
+        if not con_base:
+            return ibc, mes, False, None
+        fecha = self._ne_fecha_parametros()
+        porcentaje = self._rule_parameter('l10n_co_incapacidad_variacion_pct', fecha)
+        meses = int(self._rule_parameter('l10n_co_incapacidad_meses_promedio', fecha))
+        previos = []
+        mes_previo = mes
+        for _i in range(meses):
+            mes_previo = (mes_previo - timedelta(days=1)).replace(day=1)
+            base_previa, con_base_previa = self._ne_ibc_normalizado_de_mes(mes_previo)
+            if con_base_previa:
+                previos.append(base_previa)
+        if not previos:
+            return ibc, mes, True, None
+        promedio = sum(previos) / len(previos)
+        tope = promedio * (1 + porcentaje / 100.0)
+        if ibc > tope:
+            return tope, mes, True, {'base': ibc, 'promedio': promedio, 'tope': tope, 'meses': len(previos)}
+        return ibc, mes, True, None
+
+    def _ne_ibc_mes_anterior(self, contract, antes_de=None):
+        """El IBC del mes anterior (ver ``_ne_ibc_mes_anterior_datos``): base de los dias de vacaciones, licencia remunerada y SLN (H-017a)."""
+        return self._ne_ibc_mes_anterior_datos(contract, antes_de=antes_de)[0]
 
     def _ne_factor_dias_integral(self):
         """Fraccion del mes comercial que cubre este recibo, para prorratear el salario
@@ -2363,7 +3724,7 @@ class HrPayslip(models.Model):
 
     def _ne_ibc_salarial(self, categories, contract, inputs, worked_days):
         """Parte SALARIAL del IBC (H-017a): DEV_SAL + vacaciones y licencia remunerada
-        (base = ultimo IBC anterior, prorrateado por dias). Salario integral:
+        (base = IBC del mes anterior, prorrateado por dias). Salario integral:
         factor (70%) x salario. Ver _ne_ibc_seguridad_social para el alcance H-017a."""
         self.ensure_one()
         if contract.l10n_co_ne_integral_salary:
@@ -2378,14 +3739,15 @@ class HrPayslip(models.Model):
             dias = dias_ausencia or dias_input
             if dias > 0:
                 if ultimo_ibc is None:
-                    ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
+                    ultimo_ibc = self._ne_ibc_mes_anterior(contract)
                 ibc += (ultimo_ibc / dias_mes_comercial) * dias
         return ibc
 
     def _ne_ibc_incap(self, contract, result_rules, codigos=None):
         """Base de las ausencias de pago por tercero (maternidad/paternidad e
-        incapacidades): el valor del auxilio que la novedad ya pago (Decreto 780/2016
-        Art. 3.2.5.1; decision de David, 2026-11-10). Solo cuenta a salud y pension,
+        incapacidades): el valor del auxilio que la novedad ya pago (Decreto 780/2016,
+        arts. 3.2.1.10 y 3.2.5.1: «se tomara como Ingreso Base de Cotizacion el valor de la
+        incapacidad»; decision de David, 2026-11-10). Solo cuenta a salud y pension,
         no a ARL ni parafiscales; el descuento al empleado es el normal (Art.
         3.2.1.10), a diferencia de SLN. Integral: 0 (como H-017a).
         `codigos` permite acotar; por defecto los 4 de ausencia calendario.
@@ -2400,8 +3762,8 @@ class HrPayslip(models.Model):
         return sum(self._ne_total_regla(result_rules, codigo) for codigo in sorted(codigos))
 
     def _ne_ibc_seguridad_social(self, categories, contract, inputs, worked_days, result_rules):
-        """Base que guarda CO_SS_BASE_IBC y que _ne_ultimo_ibc_anterior() lee el mes
-        siguiente para prorratear vacaciones/licencia remunerada/SLN (H-017a): salario
+        """Base que guarda CO_SS_BASE_IBC (visible en «Calculo del salario»; hasta .305 la leia
+        el «ultimo IBC anterior» de vacaciones/licencia remunerada/SLN, hoy la SUMA de esta base del mes anterior escalada a 30 dias, H-F1-11): salario
         ordinario + maternidad/paternidad, SIN el auxilio de incapacidad (IGE/IRL), que no
         es salario (CST Art. 192; decision de David, 2026-11-10). El IBC de APORTES vive
         en CO_IBC_SP y si incluye la incapacidad."""
@@ -2429,11 +3791,7 @@ class HrPayslip(models.Model):
             dias = self._ne_ausencia_habil_tramo(work_entry_code)[0]
             if dias > 0:
                 if ultimo_ibc is None:
-                    ultimo_ibc = self._ne_ultimo_ibc_anterior(
-                        contract,
-                        estructura=self.env.ref(
-                            'l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
-                        antes_de=tramo_ini)
+                    ultimo_ibc = self._ne_ibc_mes_anterior(contract, antes_de=tramo_ini)
                 ibc += (ultimo_ibc / dias_mes) * dias
         return ibc
 
@@ -2502,31 +3860,51 @@ class HrPayslip(models.Model):
         if dias <= 0:
             return 0.0
         dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
+        # La liquidacion (H-168) no tiene historial propio: la base es el IBC del mes anterior al inicio del tramo (el mismo criterio que sus vacaciones); en la nomina general el tramo empieza
+        # con el recibo.
         tramo_ini = self._ne_tramo_pagable_periodo()[0]
-        if tramo_ini != self.date_from:
-            # Liquidacion (H-168): no tiene historial propio; la base es el ultimo IBC de la
-            # nomina general del contrato antes del tramo (mismo criterio que sus vacaciones).
-            ultimo_ibc = self._ne_ultimo_ibc_anterior(
-                contract,
-                estructura=self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina'),
-                antes_de=tramo_ini)
-        else:
-            ultimo_ibc = self._ne_ultimo_ibc_anterior(contract)
-        return ultimo_ibc / dias_mes * dias
+        return self._ne_ibc_mes_anterior(contract, antes_de=tramo_ini) / dias_mes * dias
+
+    def _ne_exceso_no_salarial(self, remuneracion, pactados):
+        """Exceso del 40% (Ley 1393/2010 Art. 30; SU 25185/2021): la parte de los pagos no salariales POR PACTO (``pactados``) que supera el porcentaje del
+        parámetro ``l10n_co_pct_tope_no_salarial`` del total de la remuneración (``remuneracion`` + ``pactados``). Ese exceso suma al IBC de salud, pensión
+        y ARL. .299: se extrajo de ``_ne_ibc_limites`` SIN cambiar su resultado, para mostrarlo en «Cálculo del salario» con la misma cuenta."""
+        self.ensure_one()
+        pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
+        return max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
+
+    def _ne_ibc_minimo(self, dias):
+        """Piso del IBC (``l10n_co_ibc_min_smmlv`` x SMMLV, prorrateado por ``dias`` del mes comercial). Lo usan ``_ne_ibc_limites`` y la base de parafiscales del aprendiz en la fase práctica (H-F1-09)."""
+        self.ensure_one()
+        fecha = self._ne_fecha_parametros()
+        return (self._rule_parameter('l10n_co_ibc_min_smmlv', fecha) * self._rule_parameter('l10n_co_smmlv', fecha)
+                / self._rule_parameter('l10n_co_dias_mes_comercial', fecha) * dias)
+
+    def _ne_ibc_parafiscales(self, salarial, dias=0):
+        """IBC de CCF, SENA e ICBF (.299, decisión del TL del 22-nov): SOLO lo salarial. Sin el excedente del 40%, sin el piso de 1 SMMLV y sin el techo
+        de 25 SMMLV. Ley 21/1982 art. 17 («nómina mensual de salarios»: los pagos por los elementos integrantes del salario, más los descansos
+        remunerados) y Ley 344/1996 art. 17 (los acuerdos sobre pagos que no constituyen salario, CST art. 128, y el auxilio de transporte no hacen parte de
+        la base de SENA, ICBF, ESAP y subsidio familiar, sin tope porcentual). El 40% del art. 30 de la Ley 1393/2010 es de salud, pensión y riesgos
+        laborales (``_ne_ibc_limites``), no de parafiscales. El salario integral entra por ``salarial`` con su 70% (``_ne_ibc_salarial``).
+        H-F1-09 (decisión del TL del 22-nov): el aprendiz en FASE PRÁCTICA cotiza como dependiente sobre un IBC de 1 SMMLV (Decreto 223/2026, art. 2.2.6.3.3.4 par. 2) y paga parafiscales sobre ese IBC, con la
+        exoneración del art. 114-1 E.T. (par. 1 del art. 2.2.6.3.3.6): su apoyo no es salarial (``salarial`` = 0), así que la base es el piso de ``dias``; es la base que la PILA liquida con el tipo 01. El
+        de la lectiva no paga parafiscales (``salarial`` = 0, sin piso). NO VERIFICADO: ninguna fuente fija esta base; es la decisión del TL."""
+        self.ensure_one()
+        if dias > 0 and self._ne_regimen_cotizante()['etapa'] == 'practica':
+            return max(salarial, self._ne_ibc_minimo(dias))
+        return salarial
 
     def _ne_ibc_limites(self, salarial, incap, remuneracion, pactados, dias):
         """IBC del recibo con regla del 40%, techo (sin prorratear) y piso (prorrateado
-        por dias). Ley 1393/2010 Art. 30; Ley 797/2003; SU 25185/2021."""
+        por dias). Ley 1393/2010 Art. 30; Ley 797/2003; SU 25185/2021. Es la base de salud, pensión y ARL; la de parafiscales es
+        ``_ne_ibc_parafiscales`` (.299)."""
         self.ensure_one()
         smmlv = self._rule_parameter('l10n_co_smmlv', self._ne_fecha_parametros())
-        pct = self._rule_parameter('l10n_co_pct_tope_no_salarial', self._ne_fecha_parametros())
-        minimo = self._rule_parameter('l10n_co_ibc_min_smmlv', self._ne_fecha_parametros())
         maximo = self._rule_parameter('l10n_co_ibc_max_smmlv', self._ne_fecha_parametros())
-        dias_mes = self._rule_parameter('l10n_co_dias_mes_comercial', self._ne_fecha_parametros())
-        excedente = max(0.0, pactados - pct / 100.0 * (remuneracion + pactados))
+        excedente = self._ne_exceso_no_salarial(remuneracion, pactados)
         ibc = min(salarial + incap + excedente, maximo * smmlv)
         if dias > 0:
-            ibc = max(ibc, minimo * smmlv / dias_mes * dias)
+            ibc = max(ibc, self._ne_ibc_minimo(dias))
         return ibc
 
     def _ne_dias_xml(self, valor):
@@ -2551,8 +3929,14 @@ class HrPayslip(models.Model):
     def _dev_basico_y_transporte(self, concept_lines, devengados):
         """Devengados: sueldo básico, transporte y viáticos."""
         # Sueldo básico
-        if 'Sueldo' in concept_lines:
-            sueldo_lines = concept_lines['Sueldo']
+        sueldo_lines = concept_lines.get('Sueldo', [])
+        # H-F1-09: el sueldo del contrato de un aprendiz es su apoyo (nodo ApoyoSost) y la línea del sueldo queda en 0 (arriba se omite); Basico es obligatorio en el XSD: va con sus días y
+        # SueldoTrabajado 0.00. Solo en los recibos que pagan sueldo (nómina y liquidación): un recibo de prima no suma días.
+        apoyo = (not sueldo_lines and self.line_ids.filtered(lambda l: l.code in self._NE_BASICO_CODES)
+                 and self._ne_regimen_cotizante()['es_aprendiz'])
+        if apoyo and self._ne_liq_pagado_hasta() and self._ne_dias_pagables() <= 0:
+            apoyo = False          # P0: liquidación sin días por pagar (la nómina del mes ya los pagó): sus días van en esos recibos
+        if sueldo_lines or apoyo:
             dias_pagables = self._ne_dias_pagables()
             if dias_pagables <= 0:
                 raise UserError(_(
@@ -2597,25 +3981,36 @@ class HrPayslip(models.Model):
                 l.total for l in concept_lines['ViaticoNS']
             )
 
-    # Porcentaje (tabla 5.5.5 del Anexo) de cada hora extra/recargo, derivado del MISMO factor
-    # hr.rule.parameter con el que se calcula el pago: (factor - 1) x 100 en las extras (el
-    # factor incluye la hora ordinaria) y factor x 100 en el recargo nocturno (solo el recargo).
-    # PENDIENTE (decision de David): los 4 conceptos dominicales/festivos (HEDDF, HRDDF, HENDF,
-    # HRNDF) -- la tabla 5.5.5 y la Ley 2466/2025 no coinciden; mientras tanto conservan line.rate.
+    # Porcentaje (tabla 5.5.5 del Anexo) de cada hora extra/recargo, derivado del MISMO factor hr.rule.parameter con el que se calcula el pago: (factor - 1) x 100 en las extras y en los 4
+    # conceptos dominicales/festivos (el factor incluye la hora ordinaria) y factor x 100 en el recargo nocturno (solo el recargo).
+    # H-F1-05 (decision del TL con la doctrina DIAN): los 4 conceptos dominicales/festivos (HEDDF, HRDDF, HENDF, HRNDF) salian con ``line.rate`` (100). El Concepto DIAN 13840 de 2025 dice que HRDDF
+    # informa el porcentaje de la tabla 5.5.5 (75 %) «que debe leerse en consonancia con la normatividad vigente» -- el 80 % de la Ley 2466/2025 desde 2025-07-01, 90 % desde 2026-07-01, 100 % desde
+    # 2027-07-01 -- y que varios porcentajes en un mismo mes no impiden generar ni validar el documento. Abril 2026: HEDDF 105, HRDDF 80, HENDF 155, HRNDF 115; desde 2026-07-01: 115, 90, 165, 125.
+    # La FECHA es la del pago, no una «fecha del trabajo» (no existe: las horas entran por novedad, sin fecha): las reglas CO_HED...CO_HRNDF leen el factor en ``payslip.date_from`` y el XML usa
+    # exactamente el mismo factor y la misma fecha, asi Porcentaje y Pago nunca difieren. Las vigencias cambian el dia 1 del mes: en recibos quincenales y mensuales no hay cruce. LIMITE CONOCIDO: un
+    # recibo semanal (u otro periodo irregular) que cruce el 1-jul usa el factor del dia de inicio para todas sus horas, en el pago y en el XML por igual (como la jornada del 15-jul, doc 67).
+    # Cambia el XML, NO el pago ni el neto.
     _NE_PORCENTAJE_HORA_FACTOR = {
         'HED': ('l10n_co_factor_hed', -1.0),
         'HEN': ('l10n_co_factor_hen', -1.0),
         'HRN': ('l10n_co_factor_hrn', 0.0),
+        'HEDDF': ('l10n_co_factor_heddf', -1.0),
+        'HRDDF': ('l10n_co_factor_hrddf', -1.0),
+        'HENDF': ('l10n_co_factor_hendf', -1.0),
+        'HRNDF': ('l10n_co_factor_hrndf', -1.0),
     }
 
-    def _ne_porcentaje_hora(self, concepto, line):
+    def _ne_porcentaje_hora_en(self, concepto, fecha):
+        """Porcentaje (tabla 5.5.5) del ``concepto`` de horas extra o recargo (uno de los 7 de ``HORA_EXTRA_CONCEPTS``) con el factor que ``hr.rule.parameter`` tiene en ``fecha``. UNICO lugar
+        del calculo: ``_ne_porcentaje_hora`` lo llama con la fecha del pago (``date_from`` del recibo)."""
         self.ensure_one()
-        parametro = self._NE_PORCENTAJE_HORA_FACTOR.get(concepto)
-        if not parametro:
-            return line.rate or 0.0
-        codigo, ajuste = parametro
-        factor = self._rule_parameter(codigo, self._ne_fecha_parametros())
-        return round((factor + ajuste) * 100.0, 2)
+        codigo, ajuste = self._NE_PORCENTAJE_HORA_FACTOR[concepto]
+        return round((self._rule_parameter(codigo, fecha) + ajuste) * 100.0, 2)
+
+    def _ne_porcentaje_hora(self, concepto, line):
+        """Porcentaje del XML de una linea de horas extra o recargo: el del factor vigente en ``date_from`` del recibo, la misma fecha con que las reglas calculan el pago (ver arriba)."""
+        self.ensure_one()
+        return self._ne_porcentaje_hora_en(concepto, self.date_from)
 
     def _dev_horas_extra(self, concept_lines, devengados):
         """Devengados: horas extras y recargos."""
@@ -2638,22 +4033,7 @@ class HrPayslip(models.Model):
         """Busca ausencias validadas del empleado en el periodo y las organiza por categoria."""
         def get_leave_category(leave):
             code = (leave.holiday_status_id.work_entry_type_id.code or leave.holiday_status_id.name or '').strip().upper()
-            if hasattr(self, '_LEAVE_CODE_MAP'):
-                return self._LEAVE_CODE_MAP.get(code)
-            # Copia defensiva de HrPayslipLeaveIntegration._LEAVE_CODE_MAP (hr_leave_ne.py)
-            # -- nunca se ejercita en producción porque ese mixin siempre está presente en
-            # este modelo heredado, pero debe quedar sincronizada para no divergir (H-014,
-            # revisión .78: se agregaron los 7 códigos CO_ al mapa real, ver ese archivo).
-            local_map = {
-                'INCAPACIDAD': 'incapacidad', 'SICK': 'incapacidad', 'INC_COMUN': 'incapacidad', 'INC_LABORAL': 'incapacidad',
-                'CO_INC_COMUN': 'incapacidad', 'CO_INC_LABORAL': 'incapacidad',
-                'MATERNIDAD': 'licencia_mat', 'MATERNITY': 'licencia_mat', 'PATERNIDAD': 'licencia_mat', 'PATERNITY': 'licencia_mat', 'LIC_MAT': 'licencia_mat', 'LIC_PAT': 'licencia_mat',
-                'CO_LIC_MAT': 'licencia_mat', 'CO_LIC_PAT': 'licencia_mat',
-                'VACACIONES': 'vacaciones', 'VACATION': 'vacaciones', 'VAC': 'vacaciones', 'CO_VAC': 'vacaciones',
-                'LICENCIA_REM': 'licencia_rem', 'LIC_REM': 'licencia_rem', 'PERMISO': 'licencia_rem', 'CO_LIC_REM': 'licencia_rem',
-                'LICENCIA_NR': 'licencia_nr', 'LIC_NR': 'licencia_nr', 'UNPAID': 'licencia_nr', 'SIN_SUELDO': 'licencia_nr', 'CO_LIC_NR': 'licencia_nr',
-            }
-            return local_map.get(code)
+            return self._LEAVE_CODE_MAP.get(code)
 
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', self.employee_id.id),
@@ -2757,7 +4137,9 @@ class HrPayslip(models.Model):
         if cesantias_lines or intereses_lines:
             devengados['Cesantias'] = {
                 'Pago': '%.2f' % sum(l.total for l in cesantias_lines),
-                'Porcentaje': '12.00' if intereses_lines else '0.00',
+                # H-F3-04 (decisión del TL del 22-nov): el porcentaje anual de los intereses (Ley 52/1975) es el MISMO parámetro con que se calculan (``l10n_co_pct_intereses_cesantias``: CO_PROV_INT_CES con la
+                # fecha del recibo y CO_LIQ_INT_CES con la de retiro, ambas por ``_ne_fecha_parametros``); sin intereses en el recibo, 0.
+                'Porcentaje': ('%.2f' % self._rule_parameter('l10n_co_pct_intereses_cesantias', self._ne_fecha_parametros())) if intereses_lines else '0.00',
                 'PagoIntereses': '%.2f' % sum(
                     l.total for l in intereses_lines
                 ),
@@ -3025,13 +4407,40 @@ class HrPayslip(models.Model):
                     l.total for l in concept_lines[concept_key]
                 )
 
+    @staticmethod
+    def _ne_porcentaje_de_lineas(lineas):
+        """Porcentaje (texto, 2 decimales) de un nodo de deducción del XML (Salud, FondoPension, FondoSP; H-F3-04, decisión del TL del 22-nov): el que usaron las reglas, no un literal. Cada regla fija
+        ``result_rate`` con el parámetro vigente (``l10n_co_pct_salud_empleado``, ``l10n_co_pct_pension_empleado`` y, en el FSP, el tramo del IBC), y la línea del recibo lo guarda en ``rate``: es la MISMA fuente
+        del cálculo. Un recibo trae una fecha y una tarifa, así que las líneas coinciden; si difirieran, el promedio ponderado por el valor absoluto. Sin líneas (la regla no se calculó: aprendiz lectivo,
+        pensionado, prima) no hay nodo y el constructor del XML escribe 0 en los dos obligatorios (Salud y FondoPension, ``minOccurs=1``; el porcentaje es un ``xsd:decimal`` sin mínimo)."""
+        total = sum(abs(linea.total) for linea in lineas)
+        if not total:
+            return '0.00'
+        return '%.2f' % (sum(abs(linea.total) * linea.rate for linea in lineas) / total)
+
+    def _ne_fondo_sp_xml(self, lineas):
+        """Nodo ``Deducciones/FondoSP`` en sus dos parejas (Anexo NIE167 a NIE170; H-F3-04, decisión del TL del 22-nov): ``Porcentaje`` y ``DeduccionSP`` son la SOLIDARIDAD; ``PorcentajeSub`` y ``DeduccionSub``,
+        la SUBSISTENCIA. Ley 797 de 2003, art. 8 (subroga el art. 27 de la Ley 100; texto leído en la Secretaría del Senado): la subcuenta de solidaridad recibe «el cincuenta por ciento (50%) de la cotización adicional
+        del 1%» y la de subsistencia el otro 50 % más 0,2 / 0,4 / 0,6 / 0,8 / 1,0 % desde 16 SMMLV. El porcentaje TOTAL es el de la regla (``rate`` de la línea: el tramo del IBC, ``l10n_co_fsp_pct_*``); el de la
+        solidaridad es el parámetro ``l10n_co_fsp_pct_solidaridad`` (0,5) y el de la subsistencia, el total menos la solidaridad. Las deducciones se reparten EN PROPORCIÓN a los porcentajes y su suma es exactamente lo
+        descontado (la línea ``CO_FSP``): el centavo de redondeo va a la subsistencia. Así cada deducción es el IBC por su porcentaje. NO VERIFICADO: qué espera la DIAN en ``Porcentaje`` (NIE167 dice solo «porcentaje
+        de deducción de fondo de seguridad pensional»; la decisión del TL es que lleve el de la solidaridad, en pareja con ``DeduccionSP``) y si valida esa aritmética."""
+        total_pct = Decimal(self._ne_porcentaje_de_lineas(lineas))
+        total_ded = Decimal('%.2f' % abs(sum(linea.total for linea in lineas)))
+        solidaridad = min(Decimal(str(self._rule_parameter('l10n_co_fsp_pct_solidaridad', self._ne_fecha_parametros()))), total_pct)
+        centavo = Decimal('0.01')
+        ded_sp = (total_ded * solidaridad / total_pct).quantize(centavo, rounding=ROUND_HALF_UP) if total_pct else Decimal('0.00')
+        return {
+            'Porcentaje': '%.2f' % solidaridad, 'DeduccionSP': str(ded_sp),
+            'PorcentajeSub': '%.2f' % (total_pct - solidaridad), 'DeduccionSub': str(total_ded - ded_sp)}
+
     def _build_deducciones(self, concept_lines):
         """Construye el dict <Deducciones> del XML a partir de concept_lines."""
         deducciones = {}
         # Salud
         if 'Salud' in concept_lines:
             deducciones['Salud'] = {
-                'Porcentaje': '4.00',
+                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['Salud']),
                 'Deduccion': '%.2f' % abs(sum(
                     l.total for l in concept_lines['Salud']
                 )),
@@ -3040,22 +4449,15 @@ class HrPayslip(models.Model):
         # Fondo de Pensión
         if 'FondoPension' in concept_lines:
             deducciones['FondoPension'] = {
-                'Porcentaje': '4.00',
+                'Porcentaje': self._ne_porcentaje_de_lineas(concept_lines['FondoPension']),
                 'Deduccion': '%.2f' % abs(sum(
                     l.total for l in concept_lines['FondoPension']
                 )),
             }
 
-        # Fondo de Solidaridad Pensional
+        # Fondo de Solidaridad Pensional: dos parejas, solidaridad y subsistencia (H-F3-04, decisión del TL del 22-nov; ver ``_ne_fondo_sp_xml``)
         if 'FondoSP' in concept_lines:
-            deducciones['FondoSP'] = {
-                'Porcentaje': '1.00',
-                'DeduccionSP': '%.2f' % abs(sum(
-                    l.total for l in concept_lines['FondoSP']
-                )),
-                'PorcentajeSub': '0.00',
-                'DeduccionSub': '0.00',
-            }
+            deducciones['FondoSP'] = self._ne_fondo_sp_xml(concept_lines['FondoSP'])
 
         # Sindicatos
         if 'Sindicato' in concept_lines:
@@ -3132,6 +4534,7 @@ class HrPayslip(models.Model):
 
     def action_payslip_cancel(self):
         colombia = self._ne_solo_colombia()
+        self._ne_rete_validar_anulacion(colombia)          # R-2: antes de reversar nada
         colombia._ne_aplicar_libranzas(revertir=True)
         res = super().action_payslip_cancel()
         colombia._ne_refrescar_ibc_mensual()

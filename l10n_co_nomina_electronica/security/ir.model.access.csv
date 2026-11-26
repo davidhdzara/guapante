@@ -4,6 +4,7 @@ access_l10n_co_nomina_ugpp_user,l10n_co_nomina.ugpp user,model_l10n_co_nomina_ug
 access_l10n_co_nomina_ugpp_wizard_manager,l10n_co_nomina.ugpp.wizard manager,model_l10n_co_nomina_ugpp_wizard,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_retefuente_uvt_manager,l10n_co_retefuente.uvt manager,model_l10n_co_retefuente_uvt,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_retefuente_uvt_user,l10n_co_retefuente.uvt user,model_l10n_co_retefuente_uvt,hr_payroll.group_hr_payroll_user,1,0,0,0
+access_l10n_co_retefuente_uvt_system,l10n_co_retefuente.uvt system,model_l10n_co_retefuente_uvt,base.group_system,1,1,1,1
 access_l10n_co_liquidacion_wizard_manager,l10n_co_liquidacion.wizard manager,model_l10n_co_hr_liquidacion_wizard,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_pila_wizard_v2_manager,l10n_co_pila.wizard.v2 manager,model_l10n_co_hr_pila_wizard_v2,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_l10n_co_payslip_send_manager,hr.payslip.send manager,model_hr_payslip_send,hr_payroll.group_hr_payroll_manager,1,1,1,1
@@ -30,3 +31,15 @@ access_l10n_co_ne_documento_intento_manager,l10n.co.ne.documento.intento manager
 access_l10n_co_ne_documento_intento_user,l10n.co.ne.documento.intento user,model_l10n_co_ne_documento_intento,hr_payroll.group_hr_payroll_user,1,0,0,0
 access_hr_payslip_registrar_pago_manager,hr.payslip.registrar.pago manager,model_hr_payslip_registrar_pago,hr_payroll.group_hr_payroll_manager,1,1,1,1
 access_hr_payslip_registrar_pago_user,hr.payslip.registrar.pago user,model_hr_payslip_registrar_pago,hr_payroll.group_hr_payroll_user,1,1,1,1
+access_l10n_co_payslip_ajuste_manager,l10n.co.payslip.ajuste manager,model_l10n_co_payslip_ajuste,hr_payroll.group_hr_payroll_manager,1,1,1,1
+access_l10n_co_payslip_ajuste_user,l10n.co.payslip.ajuste user,model_l10n_co_payslip_ajuste,hr_payroll.group_hr_payroll_user,1,0,0,0
+access_l10n_co_payslip_concepto_manager,l10n.co.payslip.concepto manager,model_l10n_co_payslip_concepto,hr_payroll.group_hr_payroll_manager,1,1,1,1
+access_l10n_co_payslip_concepto_user,l10n.co.payslip.concepto user,model_l10n_co_payslip_concepto,hr_payroll.group_hr_payroll_user,1,1,1,1
+access_l10n_co_payslip_calculo_manager,l10n.co.payslip.calculo manager,model_l10n_co_payslip_calculo,hr_payroll.group_hr_payroll_manager,1,0,0,0
+access_l10n_co_payslip_calculo_user,l10n.co.payslip.calculo user,model_l10n_co_payslip_calculo,hr_payroll.group_hr_payroll_user,1,0,0,0
+access_l10n_co_employee_pacto_manager,l10n.co.employee.pacto manager,model_l10n_co_employee_pacto,hr_payroll.group_hr_payroll_manager,1,1,1,1
+access_l10n_co_employee_pacto_user,l10n.co.employee.pacto user,model_l10n_co_employee_pacto,hr_payroll.group_hr_payroll_user,1,1,1,0
+access_l10n_co_employee_descanso_manager,l10n.co.employee.descanso manager,model_l10n_co_employee_descanso,hr_payroll.group_hr_payroll_manager,1,1,1,1
+access_l10n_co_employee_descanso_user,l10n.co.employee.descanso user,model_l10n_co_employee_descanso,hr_payroll.group_hr_payroll_user,1,1,1,0
+access_l10n_co_ne_consecutivo_manager,l10n.co.ne.consecutivo manager,model_l10n_co_ne_consecutivo,hr_payroll.group_hr_payroll_manager,1,0,0,0
+access_l10n_co_ne_consecutivo_user,l10n.co.ne.consecutivo user,model_l10n_co_ne_consecutivo,hr_payroll.group_hr_payroll_user,1,0,0,0

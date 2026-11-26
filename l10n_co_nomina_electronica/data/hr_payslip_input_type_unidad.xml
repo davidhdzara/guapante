@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 pieza 2a (.287): marca como cantidad y asigna la unidad (días u horas) a los tipos de novedad del módulo, solo donde la unidad
+         está vacía. Fuera de noupdate para re-aplicarse en -u; los tipos son noupdate, por eso se siembra con una función. -->
+    <function model="hr.payslip.input.type" name="_l10n_co_cargar_unidad"/>
+</odoo>

@@ -73,6 +73,12 @@ class ResConfigSettings(models.TransientModel):
         domain="[('code', 'like', 'l10n_co_nomina.')]",
     )
 
+    # .304 (doc 77): control manual del último consecutivo que viajó y contadores informativos
+    l10n_co_ne_ultimo_nomina = fields.Integer(related='company_id.l10n_co_ne_ultimo_nomina', readonly=False)
+    l10n_co_ne_ultimo_ajuste = fields.Integer(related='company_id.l10n_co_ne_ultimo_ajuste', readonly=False)
+    l10n_co_ne_consecutivos_usados = fields.Integer(related='company_id.l10n_co_ne_consecutivos_usados', readonly=True)
+    l10n_co_ne_consecutivos_rechazados = fields.Integer(related='company_id.l10n_co_ne_consecutivos_rechazados', readonly=True)
+
     # Ambiente (doc 22 §3)
     l10n_co_ne_test_environment = fields.Boolean(related='company_id.l10n_co_ne_test_environment', readonly=False)
     l10n_co_ne_certification_process = fields.Boolean(related='company_id.l10n_co_ne_certification_process', readonly=False)
@@ -98,6 +104,8 @@ class ResConfigSettings(models.TransientModel):
     l10n_co_ne_exoneration_1607 = fields.Boolean(related='company_id.l10n_co_ne_exoneration_1607', readonly=False)
     l10n_co_ne_pension_patronal_sln = fields.Boolean(related='company_id.l10n_co_ne_pension_patronal_sln', readonly=False)
     l10n_co_ne_febrero_modo = fields.Selection(related='company_id.l10n_co_ne_febrero_modo', readonly=False)
+    l10n_co_ne_pago_dominical_mensual = fields.Selection(related='company_id.l10n_co_ne_pago_dominical_mensual', readonly=False)
+    l10n_co_ne_segmentar_mes = fields.Boolean(related='company_id.l10n_co_ne_segmentar_mes', readonly=False)
     l10n_co_ne_fuente_fecha_pago = fields.Selection(related='company_id.l10n_co_ne_fuente_fecha_pago', readonly=False)
     l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
         related='company_id.l10n_co_ne_bloquear_extemporaneo', readonly=False)
@@ -170,6 +178,7 @@ class ResConfigSettings(models.TransientModel):
         Reemplaza el flujo del asistente (que enviaba todo en un solo ZIP y dependía de que el
         usuario regenerara a mano); el asistente sigue existiendo y el motor lo reutiliza.
         """
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         return self.env['l10n.co.ne.habilitacion'].start(self.company_id)
 

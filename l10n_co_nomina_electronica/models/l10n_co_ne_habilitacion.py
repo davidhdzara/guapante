@@ -50,6 +50,7 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     @api.model
     def start(self, company):
         """Inicia (o retoma) la habilitación de ``company``. Devuelve una notificación."""
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         company.ensure_one()
         self._check_puede_habilitar(company)
         if company.l10n_co_ne_hab_state == 'running':
@@ -78,16 +79,11 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     @api.model
     def _check_puede_habilitar(self, company):
         """H-022: ``start`` es público (RPC) y escribe con sudo y gasta cupo real del set de
-        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Mismo criterio del
-        asistente de certificación que este motor reutiliza: administrador de nómina o de
-        sistema, y solo sobre una compañía a la que el usuario pertenece."""
+        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Quién puede (administrador
+        de nómina o del sistema) lo decide ``_ne_exigir_administrador_de_nomina`` (H-F2-03: una sola
+        regla para todo lo que llega al certificado, la primera línea de ``start``); aquí queda
+        la otra mitad: solo sobre una compañía a la que el usuario pertenece."""
         user = self.env.user
-        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager')
-        if not (user.has_group('hr_payroll.group_hr_payroll_manager')
-                or user.has_group('base.group_system')):
-            raise AccessError(_(
-                'No tiene permiso para iniciar la habilitación DIAN. Solicite que le asignen '
-                'el rol "%(rol)s" o el de administrador del sistema.', rol=grupo.full_name))
         if company not in user.company_ids:
             raise AccessError(_(
                 'No puede iniciar la habilitación DIAN de la compañía "%(company)s": usted no '
@@ -242,9 +238,9 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _replace_failed(self, company):
-        """Regenera (consecutivo y CUNE nuevos) lo rechazado o incierto, para retomar tras una detención."""
+        """Regenera (consecutivo y CUNE nuevos) lo RECHAZADO, para retomar tras una detención. Un envío incierto no se regenera (H-DIAN-02): se concilia."""
         failed = self._set_slips(company).filtered(
-            lambda s: s.l10n_co_ne_state in ('rejected', 'uncertain'))
+            lambda s: s.l10n_co_ne_state == 'rejected')
         failed.action_regenerate_ne_xml()
         return len(failed)
 

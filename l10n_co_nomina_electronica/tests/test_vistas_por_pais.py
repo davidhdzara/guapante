@@ -68,6 +68,20 @@ class TestVistasPorPais(TransactionCase):
     def _grupos_del_menu(self, xmlid):
         return set(self.env.ref('l10n_co_nomina_electronica.%s' % xmlid).groups_id.get_external_id().values())
 
+    def test_el_pais_de_la_compania_de_la_asignacion_no_depende_de_un_campo_no_buscable(self):
+        """QA sobre .298: el aviso al cargar «Field 'res.company.country_id' in dependency of hr.salary.attachment.l10n_co_company_country_code should be searchable».
+        ``res.company.country_id`` es calculado, sin ``search`` ni almacenamiento: la dependencia pasa por el contacto de la compañía (almacenado) y da el mismo país."""
+        campo = self.env['hr.salary.attachment']._fields['l10n_co_company_country_code']
+        self.assertEqual(campo.related, 'company_id.partner_id.country_id.code')
+        pasos = self.env['hr.salary.attachment']._fields['company_id'], self.env['res.company']._fields['partner_id'], self.env['res.partner']._fields['country_id']
+        for paso in pasos:
+            self.assertTrue(paso.store or paso.search, 'El paso %s de la dependencia debe ser buscable o almacenado' % paso)
+        pais = self.env.ref('base.co')
+        compania = self.env['res.company'].create({'name': 'Compañía País Asignación', 'country_id': pais.id})
+        self.assertEqual(compania.country_id, pais, 'Premisa: el país de la compañía sale de su contacto')
+        asignacion = self.env['hr.salary.attachment'].new({'company_id': compania.id})
+        self.assertEqual(asignacion.l10n_co_company_country_code, 'CO')
+
     def test_menus_pila_y_retefuente_tienen_el_grupo_de_su_modelo(self):
         # Generar PILA Completo: el asistente solo da acceso al gerente de nómina.
         self.assertEqual(self._grupos_del_menu('menu_l10n_co_hr_pila_wizard_v2'),

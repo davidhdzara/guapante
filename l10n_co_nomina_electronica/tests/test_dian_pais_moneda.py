@@ -17,6 +17,7 @@ from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.l10n_co_nomina_electronica.services import dian_utils
+from .common_dane import ciudad_con_dane
 
 
 class _FakeCertificate:
@@ -56,11 +57,7 @@ class TestDianPaisMoneda(TransactionCase):
                 'code': 'PT',
                 'country_id': cls.co_country.id,
             })
-        cls.co_city = cls.env['res.city'].create({
-            'name': 'Ciudad Prueba Compañía',
-            'state_id': cls.co_state.id,
-            'country_id': cls.co_country.id,
-        })
+        cls.co_city = ciudad_con_dane(cls.env, cls.co_state, 'Ciudad Prueba Compañía')
         # H-018 (2026-10-11): la "Dirección de Trabajo" de un empleado por defecto es la
         # de la compañía (hr.employee.address_id, compute nativo) -- país, departamento y
         # municipio deben estar completos aquí para que _ne_lugar_trabajo_partner() no
@@ -172,11 +169,7 @@ class TestDianPaisMoneda(TransactionCase):
         otro_state = self.env['res.country.state'].search(
             [('country_id', '=', self.co_country.id), ('id', '!=', self.co_state.id)],
             limit=1) or self.co_state
-        otra_ciudad = self.env['res.city'].create({
-            'name': 'Ciudad Prueba Teletrabajador',
-            'state_id': otro_state.id,
-            'country_id': self.co_country.id,
-        })
+        otra_ciudad = ciudad_con_dane(self.env, otro_state, 'Ciudad Prueba Teletrabajador')
         work_address = self.env['res.partner'].create({
             'name': 'Dirección de Trabajo Teletrabajador',
             'country_id': self.co_country.id,

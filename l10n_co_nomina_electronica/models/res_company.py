@@ -15,7 +15,7 @@ electrónica.
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools import convert
 from odoo.tools.misc import str2bool
 
@@ -157,11 +157,21 @@ class ResCompany(models.Model):
         """Certificado usado para firmar nómina electrónica.
 
         Mismo criterio que Facturación Electrónica (l10n_co_dian):
-        el último certificado de la lista de la compañía, sin campo
+        el último certificado de la lista de la compañía (``certificates_sudo[-1]``), sin campo
         de selección explícita aparte.
+
+        H-F2-03 (defecto previo, decisión del TL del 22-nov): se lee con ``sudo``, SOLO el de la compañía
+        ``self``. ``certificate.certificate`` da permiso de acceso únicamente a ``base.group_system``
+        (``addons/certificate/security/ir.model.access.csv``), así que sin ``sudo`` el administrador de nómina,
+        que no es del sistema, no podía validar la configuración ni firmar. El ``sudo`` NO abre el modelo: nadie
+        más lee ``certificate.certificate`` directamente (la prueba lo confirma). El registro se devuelve (con
+        ``sudo``) únicamente a la validación de la configuración (``_l10n_co_ne_validar_config``) y a los
+        cargadores de la llave para firmar (``xml_signer.load_from_certificate``, en el mixin del recibo y en el
+        documento mensual): el método es privado (no se llama por RPC) y ningún campo, vista ni informe lo devuelve.
+        Quién puede GENERAR o TRANSMITIR lo decide ``_ne_exigir_administrador_de_nomina``, no este permiso.
         """
         self.ensure_one()
-        return self.l10n_co_ne_certificate_ids[-1:]
+        return self.sudo().l10n_co_ne_certificate_ids[-1:]
 
     def _l10n_co_ne_validar_config(self):
         """Valida la configuración de nómina electrónica DIAN de la compañía.
@@ -181,7 +191,7 @@ class ResCompany(models.Model):
         mode = company.l10n_co_ne_operation_mode_ids
         if not mode or not mode.software_id:
             missing.append(_('ID Software Nómina'))
-        if not mode or not mode.software_pin:
+        if not mode or not mode._ne_pin_del_software():
             missing.append(_('PIN Software Nómina'))
         if not company._get_ne_certificate():
             missing.append(_('Certificado Digital'))
@@ -413,6 +423,158 @@ class ResCompany(models.Model):
     )
 
     # ──────────────────────────────────────────────────────────────────
+    # .304 (doc 77, diseño del TL aprobado el 22-nov): protección de consecutivos de nómina electrónica
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_ne_ultimo_nomina = fields.Integer(
+        string='Último consecutivo de nómina que viajó (control manual)', default=0,
+        help='Número (solo la parte numérica, sin el prefijo) del último documento de nómina electrónica que viajó a la DIAN en el ambiente actual de la compañía. 0 = sin control '
+             'manual: solo cuenta lo que la base ya conoce. Es la única defensa tras restaurar una copia de la base: lo enviado DESPUÉS del respaldo no está en ella. Si la secuencia '
+             'queda por debajo de este número o de cualquier número ya enviado, no se genera un consecutivo (la DIAN rechaza un número repetido con el veredicto viejo).')
+    l10n_co_ne_ultimo_ajuste = fields.Integer(
+        string='Último consecutivo de nota de ajuste que viajó (control manual)', default=0,
+        help='Igual que el de nómina, para las notas de ajuste (otro prefijo, otra secuencia). 0 = sin control manual.')
+    l10n_co_ne_consecutivos_usados = fields.Integer(string='Consecutivos usados', compute='_compute_ne_consecutivos_contadores')
+    l10n_co_ne_consecutivos_rechazados = fields.Integer(string='Consecutivos rechazados', compute='_compute_ne_consecutivos_contadores')
+
+    def _compute_ne_consecutivos_contadores(self):
+        """Contadores informativos de Ajustes: números que viajaron a la DIAN en el ambiente actual y cuántos fueron rechazados (de ``l10n.co.ne.consecutivo``)."""
+        Consecutivo = self.env['l10n.co.ne.consecutivo'].sudo()
+        for compania in self:
+            dominio = [('company_id', '=', compania.id), ('ambiente', '=', compania._ne_ambiente_consecutivos() if compania.id else 'habilitacion')]
+            compania.l10n_co_ne_consecutivos_usados = Consecutivo.search_count(dominio) if compania.id else 0
+            compania.l10n_co_ne_consecutivos_rechazados = Consecutivo.search_count(dominio + [('estado', '=', 'rechazado')]) if compania.id else 0
+
+    def _ne_ambiente_consecutivos(self):
+        """``'produccion'`` si la compañía reporta en producción real (``_ne_en_produccion``) y ``'habilitacion'`` en cualquier otro caso: los números de habilitación no
+        cuentan contra los de producción (la DIAN los lleva por ambiente)."""
+        self.ensure_one()
+        return 'produccion' if self._ne_en_produccion() else 'habilitacion'
+
+    def _ne_prefijo_consecutivo(self, es_ajuste):
+        """Prefijo del consecutivo de la compañía: el de ajuste para una nota, el de nómina para un original. Sin prefijo es un error claro: no se inventa uno (antes caía en 'NE'
+        o 'NA' en silencio, .304)."""
+        self.ensure_one()
+        prefijo = self.l10n_co_ne_adjust_prefix if es_ajuste else self.l10n_co_ne_payroll_prefix
+        if not prefijo or not prefijo.strip():
+            raise UserError(_(
+                'La compañía "%(compania)s" no tiene prefijo de %(que)s. Configúrelo en Ajustes > Nómina (%(campo)s) antes de generar el documento.',
+                compania=self.name, que=_('notas de ajuste') if es_ajuste else _('nómina electrónica'),
+                campo=_('Prefijo Nota de Ajuste') if es_ajuste else _('Prefijo Nómina')))
+        return prefijo
+
+    def _ne_secuencia_consecutivo(self, es_ajuste):
+        """Secuencia del consecutivo: la de notas de ajuste (código ``l10n_co_nomina.ajuste``, primero la de la compañía y luego la sin compañía) o la de nómina de la compañía.
+        Sin secuencia es un error claro: no hay fallback silencioso (.304)."""
+        self.ensure_one()
+        if es_ajuste:
+            secuencia = self.env['ir.sequence'].search([
+                ('code', '=', 'l10n_co_nomina.ajuste'), '|', ('company_id', '=', self.id), ('company_id', '=', False)], order='company_id', limit=1)
+            if not secuencia:
+                raise UserError(_(
+                    'La compañía "%(compania)s" no tiene secuencia de notas de ajuste de nómina electrónica (código l10n_co_nomina.ajuste). Configúrela antes de generar la nota.',
+                    compania=self.name))
+            return secuencia
+        if not self.l10n_co_ne_sequence_id:
+            raise UserError(_(
+                'La compañía "%(compania)s" no tiene secuencia de nómina electrónica. Configúrela en Ajustes > Nómina antes de generar el documento.', compania=self.name))
+        return self.l10n_co_ne_sequence_id
+
+    def _ne_mayor_consecutivo_viajado(self, es_ajuste):
+        """Mayor número (solo la parte numérica) con el prefijo de este tipo que YA VIAJÓ a la DIAN en el ambiente actual de la compañía (aceptado, rechazado, pendiente), según
+        ``l10n.co.ne.consecutivo``, y el control manual de Ajustes; 0 si no hay ninguno. Los números de habilitación no cuentan en producción y los PRE-NOM temporales nunca viajan."""
+        self.ensure_one()
+        prefijo = self._ne_prefijo_consecutivo(es_ajuste)
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT COALESCE(MAX(valor), 0) FROM l10n_co_ne_consecutivo WHERE company_id = %s AND ambiente = %s AND prefijo = %s AND estado <> %s',
+            (self.id, self._ne_ambiente_consecutivos(), prefijo, 'fallido'))
+        de_la_base = self.env.cr.fetchone()[0] or 0
+        manual = (self.l10n_co_ne_ultimo_ajuste if es_ajuste else self.l10n_co_ne_ultimo_nomina) or 0
+        return max(de_la_base, manual)
+
+    def _ne_mayor_consecutivo_asignado(self, es_ajuste):
+        """Mayor número con el prefijo ASIGNADO a un recibo, nota o documento mensual de la compañía (haya viajado o no): para decir cuál es el siguiente disponible cuando el que
+        da la secuencia ya está en uso. Los PRE-NOM no empiezan con este prefijo."""
+        self.ensure_one()
+        prefijo = self._ne_prefijo_consecutivo(es_ajuste)
+        self.env.flush_all()
+        self.env.cr.execute("""
+            SELECT COALESCE(MAX(valor), 0) FROM (
+                SELECT NULLIF(substring(l10n_co_ne_consecutive FROM '(\\d+)$'), '')::bigint AS valor
+                  FROM hr_payslip WHERE company_id = %(c)s AND l10n_co_ne_consecutive LIKE %(p)s
+                 UNION ALL
+                SELECT NULLIF(substring(consecutive FROM '(\\d+)$'), '')::bigint AS valor
+                  FROM l10n_co_ne_documento WHERE company_id = %(c)s AND consecutive LIKE %(p)s
+            ) x""", {'c': self.id, 'p': prefijo.replace('%', '\\%').replace('_', '\\_') + '%'})
+        return max(self.env.cr.fetchone()[0] or 0, self._ne_mayor_consecutivo_viajado(es_ajuste))
+
+    def _ne_tomar_consecutivo(self, es_ajuste):
+        """UNICA función que toma el siguiente consecutivo oficial de nómina electrónica (recibo, nota de ajuste y documento mensual; .304, doc 77 con las decisiones del TL):
+        1. Sin secuencia o sin prefijo: error claro (C: no hay fallback).
+        2. Control B: si el siguiente número de la secuencia es menor o igual al mayor que YA VIAJÓ a la DIAN en este ambiente (o al control manual de Ajustes), error que nombra
+           la secuencia y el valor que debe tener; NO se corrige sola. Un número que viajó, también el rechazado, no se reutiliza jamás.
+        3. Control A: el número que daría la secuencia no puede estar ya asignado a otro recibo, nota o documento de la compañía (error claro, no el IntegrityError de la restricción).
+        Recién entonces consume la secuencia (no_gap: un fallo posterior la devuelve con el rollback)."""
+        self.ensure_one()
+        prefijo = self._ne_prefijo_consecutivo(es_ajuste)
+        secuencia = self._ne_secuencia_consecutivo(es_ajuste)
+        siguiente = self._ne_numero_siguiente(secuencia)
+        maximo = self._ne_mayor_consecutivo_viajado(es_ajuste)
+        if siguiente <= maximo:
+            raise UserError(_(
+                'La secuencia "%(secuencia)s" (código %(codigo)s) de la compañía "%(compania)s" va en %(siguiente)s, pero el consecutivo %(maximo)s ya viajó a la DIAN en %(ambiente)s '
+                '(o es el último que se anotó en Ajustes > Nómina, «Último consecutivo que viajó»). La DIAN rechaza un número repetido con el veredicto viejo (regla 90). Cambie «Siguiente '
+                'número» de esa secuencia a %(sugerido)s (Ajustes > Técnico > Secuencias); no se corrige sola. Consulte los números usados en Nómina > Consecutivos de nómina.',
+                secuencia=secuencia.name, codigo=secuencia.code, compania=self.name, siguiente=siguiente, maximo=maximo,
+                ambiente=_('producción') if self._ne_ambiente_consecutivos() == 'produccion' else _('habilitación'), sugerido=maximo + 1))
+        asignado = self._ne_mayor_consecutivo_asignado(es_ajuste)
+        if siguiente <= asignado and self._ne_consecutivo_asignado(secuencia.get_next_char(siguiente)):
+            raise UserError(_(
+                'La secuencia "%(secuencia)s" (código %(codigo)s) de la compañía "%(compania)s" daría el consecutivo %(numero)s, que ya está asignado a otro documento de la compañía. '
+                'El siguiente disponible es %(disponible)s: cambie «Siguiente número» de esa secuencia a %(sugerido)s (Ajustes > Técnico > Secuencias); no se corrige sola.',
+                secuencia=secuencia.name, codigo=secuencia.code, compania=self.name, numero=secuencia.get_next_char(siguiente), disponible=secuencia.get_next_char(asignado + 1),
+                sugerido=asignado + 1))
+        numero = secuencia.next_by_id()
+        secuencia.invalidate_recordset(['number_next_actual'])      # el consumo (SQL) no invalida lo que leyó el control: la próxima lectura, aun en esta transacción, ve el siguiente
+        return numero
+
+    @api.model
+    def _ne_numero_siguiente(self, secuencia):
+        """Siguiente número de la secuencia, leído de la base y no de la caché de la transacción. ``ir.sequence._get_number_next_actual`` no declara dependencias: ``number_next_actual``
+        queda en la caché y ``next_by_id`` (``_update_nogap``) solo invalida ``number_next``, así que con varios documentos en la MISMA transacción (generar el XML de varios recibos o
+        documentos, o las pruebas) el segundo leía el mismo número que el primero y el control A lo daba por «ya asignado» (N2 «cv»: 16 errores y 14 fallos de ahí)."""
+        secuencia.invalidate_recordset(['number_next', 'number_next_actual'])
+        return secuencia.number_next_actual
+
+    def _ne_exigir_numero_sin_viajar(self, numero, es_ajuste, payslip=None, documento=None):
+        """Control A antes de ENVIAR (.304): el número de este documento no puede haber viajado ya, en este ambiente, en OTRO recibo, nota o documento mensual de la compañía (la DIAN
+        devuelve el veredicto viejo o lo rechaza). El mismo documento no cuenta contra sí mismo. Error claro que dice cuál es el siguiente disponible; no corrige nada."""
+        self.ensure_one()
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT numero, origen FROM l10n_co_ne_consecutivo WHERE company_id = %(c)s AND ambiente = %(a)s AND numero = %(n)s AND estado <> %(f)s '
+            'AND NOT (origen = %(r)s AND payslip_id = %(p)s) AND NOT (origen = %(d)s AND documento_id = %(doc)s) LIMIT 1',
+            {'c': self.id, 'a': self._ne_ambiente_consecutivos(), 'n': numero, 'f': 'fallido', 'r': 'recibo', 'p': payslip.id if payslip else 0,
+             'd': 'documento', 'doc': documento.id if documento else 0})
+        if self.env.cr.fetchone():
+            secuencia = self._ne_secuencia_consecutivo(es_ajuste)
+            siguiente = self._ne_mayor_consecutivo_asignado(es_ajuste) + 1
+            raise UserError(_(
+                'El consecutivo %(numero)s ya viajó a la DIAN en %(ambiente)s en otro documento de la compañía "%(compania)s": no se envía otra vez con ese número (consulte Nómina > '
+                'Consecutivos de nómina). El siguiente disponible es %(disponible)s: genere el XML otra vez después de ajustar «Siguiente número» de la secuencia "%(secuencia)s" a %(sugerido)s.',
+                numero=numero, ambiente=_('producción') if self._ne_ambiente_consecutivos() == 'produccion' else _('habilitación'), compania=self.name,
+                disponible=secuencia.get_next_char(siguiente), secuencia=secuencia.name, sugerido=siguiente))
+
+    def _ne_consecutivo_asignado(self, numero):
+        """¿Ya hay un recibo, nota o documento mensual de la compañía con ESTE número exacto?"""
+        self.ensure_one()
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT 1 FROM hr_payslip WHERE company_id = %(c)s AND l10n_co_ne_consecutive = %(n)s UNION ALL SELECT 1 FROM l10n_co_ne_documento WHERE company_id = %(c)s AND consecutive = %(n)s LIMIT 1',
+            {'c': self.id, 'n': numero})
+        return bool(self.env.cr.fetchone())
+
+    # ──────────────────────────────────────────────────────────────────
     # Campos UGPP – Clasificación del aportante
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_representante_legal_id = fields.Many2one(
@@ -623,6 +785,26 @@ class ResCompany(models.Model):
              'febrero incluido, cuenta 30. No afecta el sueldo mensual ni los días de PILA.',
     )
 
+    l10n_co_ne_pago_dominical_mensual = fields.Selection(
+        selection=[
+            ('dia_mas_recargo', 'Valor de la hora + recargo del día de descanso'),
+            ('solo_recargo', 'Solo el recargo del día de descanso'),
+        ],
+        string='Pago del día de descanso obligatorio (dominical) con salario mensual', tracking=False,
+        help='Cómo se pagan las horas de la JORNADA ORDINARIA trabajadas en día de descanso obligatorio (dominical o festivo) a quien tiene salario mensual, cuyo sueldo ya cubre el día de descanso. '
+             '«Valor de la hora + recargo del día de descanso»: la hora se paga con el factor total (1,80 / 1,90 / 2,00), es decir el valor de la hora trabajada más el recargo: la lectura del concepto MinTrabajo 24429 de 2026, adicional a los 30 días de salario '
+             '(decisión D1 de David, 17-nov-2026). «Solo el recargo del día de descanso»: el factor menos 1 (0,80 / 0,90 / 1,00), es decir el recargo, porque el día de descanso ya está en el sueldo mensual: la lectura de la CSJ, SL3567-2019 («la remuneración '
+             'por trabajar un domingo o festivo está inmersa en el salario ordinario»). En las dos opciones el trabajo en día de descanso obligatorio lleva recargo (CST art. 179 num. 1, Ley 2466 de 2025, art. 14): ninguna lo trata como un día ordinario sin recargo. '
+             'Aplica a recargo diurno y nocturno dominical/festivo (HRDDF, HRNDF); las horas EXTRA dominicales (HEDDF, HENDF) no cambian porque el sueldo mensual no las cubre. '
+             'Es una decisión de la compañía, sin valor por defecto: sin elegirla, calcular horas de recargo dominical da un error que dice dónde elegirla (Ley 2466 de 2025, art. 14).')
+
+    l10n_co_ne_segmentar_mes = fields.Boolean(
+        string='Separar el mes en documentos por cambio de tipo de trabajador', default=False, copy=False,
+        help='Si el tipo de trabajador de un empleado cambia dentro del mes (por ejemplo un aprendiz que pasa de la etapa lectiva a la práctica), el mes se parte en un documento mensual por cada tramo: el segundo '
+             'y los siguientes llevan «Novedad» con el CUNE del anterior (Resolución DIAN 000013 de 2021, art. 3 y su parágrafo; Anexo Técnico NIE199 y NIE204). APAGADO por defecto y solo lo cambia el administrador '
+             'del sistema: NO VERIFICADO con la DIAN (doc 95 §4: si el cambio de tipo es una «novedad contractual», qué valores y fechas lleva el segundo documento, el orden de envío y si hay una regla de rechazo). '
+             'Apagado, el mes con cambio de tipo se detiene con un error claro, como antes. No cambia nada si ningún empleado cambia de tipo.')
+
     l10n_co_ne_bloquear_extemporaneo = fields.Boolean(
         string='Bloquear envío fuera de plazo', default=False,
         help='Si está marcado, un documento mensual (o nota de ajuste) cuyo plazo de transmisión ya venció no se encola '
@@ -655,6 +837,11 @@ class ResCompany(models.Model):
     )
 
     def write(self, vals):
+        if ('l10n_co_ne_segmentar_mes' in vals and not (self.env.su or self.env.user.has_group('base.group_system'))
+                and any(company.l10n_co_ne_segmentar_mes != bool(vals['l10n_co_ne_segmentar_mes']) for company in self)):      # guardar Ajustes con el mismo valor no es un cambio
+            raise AccessError(_(
+                'Solo el administrador del sistema cambia «Separar el mes en documentos por cambio de tipo de trabajador»: la DIAN todavía no ha verificado cómo recibe el segundo documento del mes '
+                '(doc 95 §4). Pídale que lo active cuando esté verificado.'))
         if 'l10n_co_pila_ccf_por_empleado' in vals and not vals['l10n_co_pila_ccf_por_empleado']:
             for company in self.filtered('l10n_co_pila_ccf_por_empleado'):
                 general = (

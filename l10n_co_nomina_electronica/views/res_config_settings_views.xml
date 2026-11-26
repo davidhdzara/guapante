@@ -109,6 +109,13 @@
                             <field name="l10n_co_ne_pre_sequence_id"
                                    string="Secuencia Temporal (PRE-NOM -- NO es la de Notas de Ajuste)"/>
                         </setting>
+                        <!-- .304 (doc 77, E): control manual tras restaurar una copia de la base y contadores de los números usados (lista: Nómina > Consecutivos de nómina). -->
+                        <setting string="Último consecutivo que viajó" help="Control manual para proteger los consecutivos tras restaurar una copia de la base: anote el último número que ya viajó a la DIAN en el ambiente actual. 0 = sin control manual.">
+                            <field name="l10n_co_ne_ultimo_nomina"/>
+                            <field name="l10n_co_ne_ultimo_ajuste"/>
+                            <field name="l10n_co_ne_consecutivos_usados"/>
+                            <field name="l10n_co_ne_consecutivos_rechazados"/>
+                        </setting>
                     </block>
                     <block title="Certificado Digital" id="l10n_co_ne_settings_certificate">
                         <setting class="w-100" help="Agregue sus certificados para firmar los documentos de nómina electrónica (XAdES-BES). Es la misma lista de certificados que usa facturación electrónica -- no requiere uno independiente. Nómina usa siempre el último certificado de la lista, igual que Facturación Electrónica.">
@@ -156,8 +163,14 @@
                         <setting help="En días de suspensión o licencia no remunerada la pensión patronal es opcional en el sector privado (Concepto Min. Protección Social 134658, CST art. 53).">
                             <field name="l10n_co_ne_pension_patronal_sln"/>
                         </setting>
+                        <setting string="Pago del día de descanso obligatorio (dominical) con salario mensual" help="Cómo se pagan las horas de la jornada ordinaria en día de descanso obligatorio a quien tiene salario mensual: el valor de la hora más el recargo del día de descanso (concepto MinTrabajo 24429 de 2026) o solo el recargo (CSJ SL3567-2019). En las dos el trabajo en día de descanso lleva recargo. Las horas extra dominicales no cambian. Sin elegir, calcular horas de recargo dominical da un error.">
+                            <field name="l10n_co_ne_pago_dominical_mensual"/>
+                        </setting>
                         <setting string="Febrero en prestaciones" help="Cómo se cuentan los días de febrero en prima, cesantías, intereses, indemnización y vacaciones de la liquidación. No afecta el sueldo mensual ni los días de PILA.">
                             <field name="l10n_co_ne_febrero_modo"/>
+                        </setting>
+                        <setting string="Separar el mes en documentos por cambio de tipo de trabajador" groups="base.group_system" help="Si el tipo de trabajador cambia dentro del mes (por ejemplo un aprendiz de la etapa lectiva a la práctica), el mes se parte en un documento por tramo; el segundo y los siguientes llevan «Novedad» con el CUNE del anterior. Apagado por defecto y solo para el administrador del sistema: NO VERIFICADO con la DIAN (doc 95 §4).">
+                            <field name="l10n_co_ne_segmentar_mes"/>
                         </setting>
                         <setting string="Fuente de la fecha de pago" help="De dónde sale la fecha de pago que decide el mes del documento de nómina electrónica: los pagos conciliados de Contabilidad o la fecha de pago del recibo (acción Registrar pago).">
                             <field name="l10n_co_ne_fuente_fecha_pago"/>

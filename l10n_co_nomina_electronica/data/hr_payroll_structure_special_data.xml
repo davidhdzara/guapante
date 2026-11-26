@@ -35,12 +35,16 @@
             <field name="amount_python_compute">
 # Base prima = salario mensual + auxilio de transporte (si aplica)
 # El auxilio de transporte se incluye en la base de prima siempre que
-# el salario no supere 2 SMMLV (Art. 7, Ley 1 de 1963)
+# el salario no supere el tope de SMMLV (parametro l10n_co_aux_transporte_tope_smmlv; hoy 2 SMMLV, Art. 7 Ley 1 de 1963,
+# fuente secundaria: pendiente de confirmar por David)
 _salario = contract.wage
+# H-F1-09: error si el recibo trae la novedad antigua del apoyo o si el contrato de un aprendiz tiene sueldo 0 (su sueldo es el apoyo).
+payslip._ne_es_aprendiz_validado()
 
 # Determinar si incluye auxilio de transporte
 _aux_transporte = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * 2 and not contract.l10n_co_ne_integral_salary:
+# H-F1-12: la misma decision del auxilio que CO_AUX_TRANS (payslip._ne_regimen_cotizante(), tabla l10n_co_aprendiz_etapas)
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_from) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_from) and not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux_transporte = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_from)
 
 # Si es salario integral, la base es el 100% del salario
@@ -72,7 +76,8 @@ else:
 # el resultado ya calculado vive en result_rules['CODE']['total'] (dict).
 # Bug historico, nunca ejercitado (0 payslips reales contra esta
 # estructura hasta el ciclo de doc 18/provisiones que lo destapo).
-result = result_rules.get('CO_PRIMA_BASE') and result_rules['CO_PRIMA_BASE']['total'] &gt; 0
+# H-F1-12: sin linea si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = result_rules.get('CO_PRIMA_BASE') and result_rules['CO_PRIMA_BASE']['total'] &gt; 0 and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -152,9 +157,9 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_prima"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Aplica si hay valor de prima y el empleado no es extranjero exento de pension
+# Aplica si hay valor de prima y el empleado cotiza a pension (no es extranjero exento ni tiene la AFP exceptuada; H-F1-06)
 result = (result_rules.get('CO_PRIMA_VALOR') and result_rules['CO_PRIMA_VALOR']['total'] &gt; 0
-          and not employee.l10n_co_ne_foreigner_no_pension)
+          and not payslip._ne_no_cotiza_pension())
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -191,8 +196,10 @@ _valor_prima = result_rules['CO_PRIMA_VALOR']['total']
 # .164 (CST Art. 307; ET arts. 55-56): la prima no lleva aportes de salud ni pension del
 # empleado, y los aportes obligatorios solo son ingreso no constitutivo cuando se pagan
 # efectivamente -> IBC 0: la base de retencion no resta aportes que no existieron.
+# R-2: la prima se retiene aparte, con el procedimiento y el porcentaje fijo del CONTRATO, sin aportes voluntarios
 _rete_result = _rete_cfg.compute_retefuente(
-    employee, _valor_prima, 0.0, 0.0, employee.company_id
+    employee, _valor_prima, 0.0, 0.0, employee.company_id,
+    contract=contract, payslip=payslip, fecha_mes=payslip.date_to, sin_aportes_voluntarios=True,
 )
 _valor = _rete_result.get('retencion_pesos', 0)
 result = -abs(_valor) if _valor &gt; 0 else 0
@@ -280,12 +287,71 @@ result = payslip._ne_neto_redondeado(result_rules, 'PREST')
 # abarcan varios meses/anos (contrato desde hace tiempo, retiro reciente).
 _dias = payslip._ne_dias_pagables()
 
-result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+# H-F1-09: para un aprendiz el sueldo del contrato es su apoyo (reglas del apoyo de esta estructura): aqui la linea queda en 0 con sus dias.
+result = 0.0 if payslip._ne_es_aprendiz_validado() else contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
 result_qty = _dias
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">Sueldo</field>
             <field name="l10n_co_ugpp_payment_type">tp_salarial</field>
+        </record>
+
+        <!-- ==================== CO_APOYO_SOST (liquidacion) ==================== -->
+        <record id="hr_salary_rule_co_liq_apoyo_sost" model="hr.salary.rule">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz SENA)</field>
+            <field name="code">CO_APOYO_SOST</field>
+            <field name="sequence">11</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: apoyo del aprendiz pendiente del ultimo tramo, en una etapa SIN prestaciones (lectiva). El sueldo del contrato es el apoyo; CO_LIQ_SALARIOS queda en 0.
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and not _regimen['causa_prestaciones']
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
+            <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
+            <field name="l10n_co_liq_tratamiento">salario</field>
+            <field name="note">Apoyo de sostenimiento del aprendiz (etapa sin prestaciones) dentro del último tramo del contrato.</field>
+        </record>
+
+        <!-- ==================== CO_APOYO_SOST_PRAC (liquidacion) ==================== -->
+        <record id="hr_salary_rule_co_liq_apoyo_sost_prac" model="hr.salary.rule">
+            <field name="name">Apoyo de Sostenimiento (Aprendiz, fase práctica)</field>
+            <field name="code">CO_APOYO_SOST_PRAC</field>
+            <field name="sequence">12</field>
+            <field name="category_id" ref="hr_salary_rule_category_devengados_no_salariales"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="True"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="True"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: apoyo del aprendiz pendiente del ultimo tramo, en una etapa que causa prestaciones (practica o dual). El sueldo del contrato es el apoyo; CO_LIQ_SALARIOS queda en 0.
+_regimen = payslip._ne_regimen_cotizante()
+result = _regimen['es_aprendiz'] and _regimen['causa_prestaciones']
+            </field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = contract.wage / payslip._rule_parameter('l10n_co_dias_mes_comercial', payslip.date_to)
+result_qty = payslip._ne_dias_pagables()
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="l10n_co_ne_dian_concept">ApoyoSost</field>
+            <field name="l10n_co_ugpp_payment_type">tp_estudiantes</field>
+            <field name="l10n_co_liq_tratamiento">salario</field>
+            <field name="note">Apoyo de sostenimiento del aprendiz (fase práctica o dual) dentro del último tramo del contrato.</field>
         </record>
 
         <!-- ==================== CO_LIQ_PRIMA ==================== -->
@@ -297,8 +363,8 @@ result_qty = _dias
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica para salario integral
-result = not contract.l10n_co_ne_integral_salary
+# No aplica para salario integral ni si la etapa del contrato no causa prestaciones (H-F1-12, parametro l10n_co_aprendiz_etapas)
+result = not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -313,7 +379,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * 2:
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to) and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux
@@ -353,8 +419,8 @@ result_qty = _dias
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica para salario integral
-result = not contract.l10n_co_ne_integral_salary
+# No aplica para salario integral ni si la etapa del contrato no causa prestaciones (H-F1-12, parametro l10n_co_aprendiz_etapas)
+result = not contract.l10n_co_ne_integral_salary and payslip._ne_regimen_cotizante()['causa_prestaciones']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -366,7 +432,7 @@ _salario = contract.wage
 
 # Auxilio de transporte en la base si aplica
 _aux = 0
-if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * 2:
+if _salario &lt;= payslip._rule_parameter('l10n_co_smmlv', payslip.date_to) * payslip._rule_parameter('l10n_co_aux_transporte_tope_smmlv', payslip.date_to) and payslip._ne_regimen_cotizante()['paga_auxilio_transporte']:
     _aux = payslip._rule_parameter('l10n_co_aux_transporte', payslip.date_to)
 
 _base = _salario + _aux
@@ -438,7 +504,8 @@ result_qty = _dias
             <field name="condition_python">
 # Dias habiles de esta ausencia dentro del tramo del ultimo mes (los de meses anteriores ya se
 # pagaron en su nomina) -- misma fuente con la que _ne_dias_pagables() los resta del sueldo.
-result = payslip._ne_ausencia_habil_tramo('CO_VAC')[0] &gt; 0
+# H-F1-12: si la etapa del contrato no causa vacaciones y hay dias en el tramo, el metodo da un error que nombra empleado y ausencia.
+result = payslip._ne_liq_vacaciones_disfrutadas_aplican()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -602,7 +669,11 @@ result = _pago / dias if dias else 0.0
             <field name="sequence">40</field>
             <field name="category_id" ref="hr_salary_rule_category_vacaciones"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-12: sin linea si la etapa del contrato no causa prestaciones (columna del parametro l10n_co_aprendiz_etapas).
+result = payslip._ne_regimen_cotizante()['causa_prestaciones']
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Vacaciones compensadas = valor dia x dias pendientes (Art. 186 y 189 CST).
@@ -737,7 +808,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
 
         <!-- ==================== CO_LIQ_SALUD ==================== -->
         <record id="hr_salary_rule_co_liq_dias_sp" model="hr.salary.rule">
-            <field name="name">Dias Cotizados Salud y Pension Liquidacion (interno)</field>
+            <field name="name">Dias Cotizados Salud y Pension Liquidacion</field>
             <field name="code">CO_DIAS_SP</field>
             <field name="sequence">89</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -750,7 +821,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_salarial" model="hr.salary.rule">
-            <field name="name">IBC Salarial Liquidacion (interno)</field>
+            <field name="name">IBC Salarial Liquidacion</field>
             <field name="code">CO_IBC_SALARIAL</field>
             <field name="sequence">90</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -763,7 +834,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_remuneracion" model="hr.salary.rule">
-            <field name="name">IBC Remuneracion Base 40% Liquidacion (interno)</field>
+            <field name="name">IBC Remuneracion Base 40% Liquidacion</field>
             <field name="code">CO_IBC_REMUN</field>
             <field name="sequence">92</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -776,7 +847,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_pactados" model="hr.salary.rule">
-            <field name="name">IBC Pactados No Salariales Liquidacion (interno)</field>
+            <field name="name">IBC Pactados No Salariales Liquidacion</field>
             <field name="code">CO_IBC_PACTADOS</field>
             <field name="sequence">93</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -789,7 +860,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_sln" model="hr.salary.rule">
-            <field name="name">IBC Suspension / Licencia No Remunerada Liquidacion (interno)</field>
+            <field name="name">IBC Suspension / Licencia No Remunerada Liquidacion</field>
             <field name="code">CO_IBC_SLN</field>
             <field name="sequence">88</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -802,7 +873,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_incap" model="hr.salary.rule">
-            <field name="name">IBC Incapacidades y Licencias MP Liquidacion (interno)</field>
+            <field name="name">IBC Incapacidades y Licencias MP Liquidacion</field>
             <field name="code">CO_IBC_INCAP</field>
             <field name="sequence">91</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -815,7 +886,7 @@ Para contrato indefinido: no requiere ningun input, el calculo diferencia entre 
         </record>
 
         <record id="hr_salary_rule_co_liq_ibc_sp" model="hr.salary.rule">
-            <field name="name">IBC Salud y Pension Liquidacion (interno)</field>
+            <field name="name">IBC Salud y Pension Liquidacion</field>
             <field name="code">CO_IBC_SP</field>
             <field name="sequence">94</field>
             <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
@@ -838,7 +909,11 @@ result = payslip._ne_ibc_limites(
             <field name="sequence">100</field>
             <field name="category_id" ref="hr_salary_rule_category_seguridad_social_emp"/>
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
-            <field name="condition_select">none</field>
+            <field name="condition_select">python</field>
+            <field name="condition_python">
+# H-F1-09: el aprendiz en etapa LECTIVA no paga salud (la paga la empresa en su integridad; Ley 2466/2025 art. 21)
+result = payslip._ne_regimen_cotizante()['etapa'] != 'lectiva'
+            </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 # Descuento salud sobre IBC (devengados salariales)
@@ -861,8 +936,8 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# No aplica si es extranjero no obligado a pension
-result = not employee.l10n_co_ne_foreigner_no_pension
+# No aplica si el empleado no cotiza a pension: extranjero no obligado o AFP no exigida por el tipo/subtipo de cotizante del contrato (H-F1-06)
+result = not payslip._ne_no_cotiza_pension()
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -885,29 +960,35 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Configuracion de retencion del ano (error claro si falta, .167)
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-result = bool(_rete_cfg)
+# R-2: la liquidacion siempre cierra el mes
+result = payslip._ne_resultado_retefuente(result_rules)['retiene']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Calculo de retencion en la fuente sobre la liquidacion
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-# Bruto total de la liquidacion
-_gross = categories['DEV'] if categories.get('DEV') else 0
-_ibc = categories.get('DEV_SAL', contract.wage)
-if contract.l10n_co_ne_integral_salary:
-    _ibc = contract.wage * payslip._rule_parameter('l10n_co_factor_integral_salary', payslip.date_to)
-
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _gross, _ibc, _ibc, employee.company_id
-)
-_valor = _rete_result.get('retencion_pesos', 0)
-result = -abs(_valor) if _valor &gt; 0 else 0
+# R-2 (doc 108): retencion del mes (esta liquidacion y los recibos confirmados del mes) menos lo ya retenido, con tope en lo disponible
+_res = payslip._ne_resultado_retefuente(result_rules)
+_valor = payslip._ne_rete_linea(result_rules, _res)
+result = -_valor if _valor &gt; 0 else 0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">RetencionFuente</field>
+        </record>
+
+        <record id="hr_salary_rule_co_liq_exento_pension_afc" model="hr.salary.rule">
+            <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
+            <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="sequence">111</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_liquidacion"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = payslip._ne_resultado_retefuente(result_rules)['retiene']</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_resultado_retefuente(result_rules)['exento']</field>
+            <field name="appears_on_payslip" eval="False"/>
         </record>
 
         <!-- ==================== CO_LIQ_EMBARGO / CO_LIQ_LIBRANZAS ====================
@@ -1053,10 +1134,10 @@ result_rate = payslip._rule_parameter('l10n_co_pct_salud_empleado', payslip.date
             <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Solo aplica si la bonificacion es salarial y no es extranjero exento
+# Solo aplica si la bonificacion es salarial y el empleado cotiza a pension (no es extranjero exento ni tiene la AFP exceptuada; H-F1-06)
 result = (payslip.l10n_co_ne_is_salarial
           and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
-          and not employee.l10n_co_ne_foreigner_no_pension)
+          and not payslip._ne_no_cotiza_pension())
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
@@ -1078,26 +1159,34 @@ result_rate = payslip._rule_parameter('l10n_co_pct_pension_empleado', payslip.da
             <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
             <field name="condition_select">python</field>
             <field name="condition_python">
-# Configuracion de retencion del ano (error claro si falta, .167)
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-result = bool(_rete_cfg) and result_rules.get('CO_BON_VALOR') and result_rules['CO_BON_VALOR']['total'] &gt; 0
+# R-2 (D1): la bonificacion retiene el saldo del mes solo si el cierre ya esta confirmado (Proc. 2: siempre)
+result = result_rules['CO_BON_VALOR']['total'] &gt; 0 and payslip._ne_resultado_retefuente(result_rules)['retiene']
             </field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-# Calculo de retencion en la fuente sobre la bonificacion
-_rete_cfg = payslip._ne_retefuente_config()  # UserError si falta la del año (.167)
-
-_valor_bon = result_rules['CO_BON_VALOR']['total']
-_ibc = _valor_bon if payslip.l10n_co_ne_is_salarial else 0
-
-_rete_result = _rete_cfg.compute_retefuente(
-    employee, _valor_bon, _ibc, _ibc, employee.company_id
-)
-_valor = _rete_result.get('retencion_pesos', 0)
-result = -abs(_valor) if _valor &gt; 0 else 0
+_res = payslip._ne_resultado_retefuente(result_rules)
+_valor = payslip._ne_rete_linea(result_rules, _res)
+result = -_valor if _valor &gt; 0 else 0
             </field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="l10n_co_ne_dian_concept">RetencionFuente</field>
+        </record>
+
+        <record id="hr_salary_rule_co_bon_exento_pension_afc" model="hr.salary.rule">
+            <field name="name">Exento Pensión Voluntaria + AFC (acumulador anual)</field>
+            <field name="code">CO_EXENTO_PENSION_AFC</field>
+            <field name="l10n_co_ne_ajustable" eval="False"/>
+            <field name="l10n_co_ne_vigilar_habitualidad" eval="False"/>
+            <field name="l10n_co_ne_base_prima_cesantias" eval="False"/>
+            <field name="l10n_co_ne_base_vacaciones" eval="False"/>
+            <field name="sequence">31</field>
+            <field name="category_id" ref="hr_salary_rule_category_acumuladores_internos"/>
+            <field name="struct_id" ref="hr_payroll_structure_co_bonificacion"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = payslip._ne_resultado_retefuente(result_rules)['retiene']</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = payslip._ne_resultado_retefuente(result_rules)['exento']</field>
+            <field name="appears_on_payslip" eval="False"/>
         </record>
 
         <!-- ==================== CO_BON_NETO ==================== -->
