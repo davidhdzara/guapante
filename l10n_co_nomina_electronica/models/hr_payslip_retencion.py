@@ -228,7 +228,7 @@ class HrPayslipRetencion(models.Model):
         base_previa, ibc_previo, salud_previa, pension_previa, retenido, exento_previo = previos
         calculo = config.compute_retefuente(
             self.employee_id, base + base_previa, ibc + ibc_previo, ibc + ibc_previo, self.employee_id.company_id,
-            contract=self.contract_id, payslip=self, fecha_mes=self.date_to if mensual else None,
+            contract=self.contract_id, payslip=self, fecha_mes=self.date_to if mensual or self._ne_es_liquidacion() else None,          # liquidación: su «Desde» es el ingreso (Art. 386 E.T., NO VERIFICADO contra fuente oficial)
             aporte_salud=salud + salud_previa, aporte_pension=pension + pension_previa)
         resultado.update(
             retiene=True, a_descontar=max(calculo['retencion_pesos'] - retenido, 0.0),

@@ -250,6 +250,20 @@ class TestLiquidacionRetiroConQuincena(TransactionCase):
                     liquidacion.write({'state': 'verify' if caso == 'sin confirmar' else 'cancel'})
                 self._recibo(contrato, date(2026, 5, 16), date(2026, 5, 31))._ne_liq_validar_nomina_posterior()
 
+    # ── Procedimiento 2: el semestre es el del retiro, no el del ingreso ─
+    def test_en_procedimiento_2_vale_el_porcentaje_del_semestre_del_retiro(self):
+        """El «Desde» de una liquidación es el ingreso: con él se pedía o se aplicaba el porcentaje de un semestre viejo."""
+        retenido = []
+        for al_ingreso, al_retiro in ((30.0, 10.0), (10.0, 30.0)):
+            contrato = self._contrato(l10n_co_ne_retention_procedure='2')
+            for inicio, porcentaje in ((date(2025, 1, 1), al_ingreso), (date(2026, 1, 1), al_retiro)):
+                self.env['l10n.co.retefuente.procedure2'].create({'contract_id': contrato.id, 'semester_start': inicio, 'fixed_percentage': porcentaje, 'months_considered': 12})
+            liquidacion = self._liq(contrato, date(2026, 5, 20))
+            liquidacion.compute_sheet()
+            retenido.append(liquidacion.l10n_co_ne_rete_a_descontar)
+        self.assertGreater(retenido[0], 0.0)
+        self.assertAlmostEqual(retenido[1], 3 * retenido[0], delta=2.0)
+
     # ── el asistente avisa ───────────────────────────────────────────
     def _aviso(self, contrato, retiro):
         asistente = self.env['l10n.co.hr.liquidacion.wizard'].new({'employee_id': contrato.employee_id.id, 'contract_id': contrato.id, 'date_end': retiro})
