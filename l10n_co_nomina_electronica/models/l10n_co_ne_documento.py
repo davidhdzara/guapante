@@ -47,6 +47,9 @@ _ESTADO_INTENTO_POR_VEREDICTO = {
     dian_respuesta.RECHAZADO: 'invoice_rejected',
     dian_respuesta.PENDIENTE: 'invoice_pending',
     dian_respuesta.ERROR_TRANSPORTE: 'invoice_sending_failed',
+    # H-DIAN-03: ninguno es un veredicto sobre el documento: nunca rechazo.
+    dian_respuesta.YA_PROCESADO: 'invoice_pending',
+    dian_respuesta.NO_CONOCIDO: 'invoice_pending',
 }
 
 
@@ -1267,17 +1270,32 @@ class L10nCoNeDocumento(models.Model):
         es "Envío fallido", reintentable con el MISMO consecutivo, CUNE y XML, nunca rechazo). Lanza UserError solo
         por precondiciones locales, antes de llamar. El ``state`` del documento se recalcula solo.
 
+        H-DIAN-03 (doc 107): si el último envío del mismo CUNE falló (pudo haber llegado), primero se consulta por CUNE y solo se reenvía si la DIAN contesta que no lo conoce. La regla 90 de un envío
+        no es un rechazo: se concilia por CUNE y, sin veredicto, el documento queda incierto.
+
         Returns:
-            ``l10n.co.ne.documento.intento`` creado.
+            ``l10n.co.ne.documento.intento`` creado (o el anterior, conciliado o aún fallido, cuando no se reenvió).
         """
         self.ensure_one()
         self._ne_precondiciones_envio()
         company = self.company_id
+        previo = self._ultimo_intento()
+        if previo and previo.state == 'invoice_sending_failed' and previo.identifier == self.cune and not company.l10n_co_ne_demo_mode:
+            consulta = self._ne_reconsultar_por_cune()
+            if previo.state != 'invoice_sending_failed':          # la DIAN ya tenía el veredicto
+                self.sending_data = False
+                return previo
+            if consulta.veredicto != dian_respuesta.NO_CONOCIDO:
+                self._ne_nota_una_vez(_(
+                    'No se reenvió: la consulta por CUNE no permite saber si la DIAN ya tiene este documento (%s). Solo se reenvía cuando la DIAN contesta que no lo conoce.',
+                    consulta.mensaje or consulta.veredicto), 'No se reenvió: la consulta por CUNE')
+                return previo
         xml = base64.b64decode(self.xml_attachment_id.datas)
         nit = (company.vat or 'SIN_NIT').replace('-', '').strip()
         filename = 'ne_%s_%s.xml' % (nit, self.consecutive)
         exchange = self.env['l10n.co.ne.exchange']
         respuesta = {}
+        ya_procesado = False
         if company.l10n_co_ne_demo_mode:
             # Modo Demo: validación local, sin transmitir (mismo criterio que el ciclo por recibo).
             estado, zip_key = 'invoice_accepted', ''
@@ -1293,6 +1311,7 @@ class L10nCoNeDocumento(models.Model):
                     'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT))
             resultado = dian_respuesta.interpretar_respuesta(respuesta, contexto=dian_respuesta.CONTEXTO_ENVIO)
             estado = _ESTADO_INTENTO_POR_VEREDICTO[resultado.veredicto]
+            ya_procesado = resultado.veredicto == dian_respuesta.YA_PROCESADO
             zip_key = resultado.zip_key
             message_json = dian_message.build_message_json(respuesta)
             exchange = self.env['l10n.co.ne.exchange'].create_exchange(
@@ -1314,7 +1333,23 @@ class L10nCoNeDocumento(models.Model):
         self.message_post(
             body=_('Envío a la DIAN: %s.', dict(intento._fields['state'].selection).get(estado)),
             message_type='comment', subtype_xmlid='mail.mt_note')
+        if ya_procesado:
+            self._ne_conciliar_ya_procesado(intento)
         return intento
+
+    def _ne_conciliar_ya_procesado(self, intento):
+        """H-DIAN-03 (b): la DIAN contestó que ya había procesado el documento. Se consulta por CUNE en el acto; sin veredicto queda INCIERTO (fuera de la cola, a conciliar), nunca rechazado."""
+        self.ensure_one()
+        try:
+            with self.env.cr.savepoint():
+                self._ne_reconsultar_por_cune()
+        except Exception:   # noqa: BLE001 -- el intento ya está registrado: pase lo que pase, queda incierto
+            _logger.exception('Documento %s: no se pudo consultar por CUNE tras la respuesta «procesado anteriormente»', self.id)
+        if intento.state not in ('invoice_accepted', 'invoice_rejected'):
+            self.incierto = True
+            self.message_post(body=_(
+                'La DIAN contestó que ya había procesado este documento y la consulta por CUNE no dio su veredicto: queda como envío incierto. Use «Consultar estado DIAN por CUNE»; no genere otro XML.'),
+                message_type='comment', subtype_xmlid='mail.mt_note')
 
     # Entrega de la representación gráfica y el XML al empleado (Frente 5, C6c). Solo tras la aceptación de la DIAN (patrón
     # de facturación: el correo sale después de la DIAN y solo si fue aceptado). Un fallo de correo NO cambia el estado DIAN.
@@ -1607,11 +1642,10 @@ class L10nCoNeDocumento(models.Model):
                                 'proximo': fields.Datetime.to_string(fields.Datetime.now() + timedelta(minutes=espera))}
                             contar('reintento')
                         else:
-                            doc.sending_data = False
-                            doc.message_post(body=_('Se agotaron los reintentos de envío: el documento queda como '
-                                                    'envío fallido.'), message_type='comment',
-                                             subtype_xmlid='mail.mt_note')
-                            contar('fallido')
+                            doc.write({'sending_data': False, 'incierto': True})          # H-DIAN-03: pudo haber llegado
+                            doc.message_post(body=_('Se agotaron los reintentos de envío: el documento queda como envío incierto. Use «Consultar estado DIAN por CUNE»: si la DIAN contesta que no lo conoce, '
+                                                    'podrá enviarse otra vez con el mismo XML.'), message_type='comment', subtype_xmlid='mail.mt_note')
+                            contar('incierto')
                     else:
                         contar({'invoice_accepted': 'aceptado', 'invoice_rejected': 'rechazado'}.get(
                             intento.state, 'pendiente'))
@@ -1787,6 +1821,10 @@ class L10nCoNeDocumento(models.Model):
         veredicto = resultado.veredicto
         if veredicto in (dian_respuesta.ERROR_TRANSPORTE, dian_respuesta.PENDIENTE):
             return resultado
+        if veredicto == dian_respuesta.NO_CONOCIDO:
+            if self.incierto and (not ultimo or ultimo.state != 'invoice_pending'):
+                self._ne_liberar_no_conocido(ultimo, respuesta, exchange)
+            return resultado
         if veredicto == dian_respuesta.NIVEL_SET:
             self._ne_nota_una_vez(_(
                 'La DIAN respondió sobre el SET de pruebas, no sobre este documento: %s. No se cambia el estado.',
@@ -1827,6 +1865,19 @@ class L10nCoNeDocumento(models.Model):
                 'state'].selection).get(estado)),
             message_type='comment', subtype_xmlid='mail.mt_note')
         return resultado
+
+    def _ne_liberar_no_conocido(self, ultimo, respuesta, exchange):
+        """H-DIAN-03: la DIAN contestó que no conoce el CUNE de un documento incierto: queda «Envío fallido» con su MISMO XML, consecutivo y CUNE, y puede enviarse otra vez."""
+        self.ensure_one()
+        if not ultimo or ultimo.identifier != self.cune or ultimo.state != 'invoice_sending_failed':
+            company = self.company_id
+            self.env['l10n.co.ne.documento.intento'].create({
+                'documento_id': self.id, 'datetime': fields.Datetime.now(), 'state': 'invoice_sending_failed', 'identifier': self.cune, 'numero': self.consecutive,
+                'attachment_id': self.xml_attachment_id.id, 'message_json': dian_message.build_message_json(respuesta), 'exchange_id': exchange.id or False,
+                'test_environment': company.l10n_co_ne_environment == '2', 'certification_process': bool(company.l10n_co_ne_certification_process)})
+        self.incierto = False
+        self.message_post(body=_('La DIAN contestó que no tiene registrado este CUNE: el documento puede enviarse otra vez con el mismo XML («Enviar y Procesar»).'),
+                          message_type='comment', subtype_xmlid='mail.mt_note')
 
     # ──────────────────────────────────────────────────────────────────
     # Cron de reconsulta del documento (doc 53 §23.17, 7c). El cron del RECIBO no se toca.

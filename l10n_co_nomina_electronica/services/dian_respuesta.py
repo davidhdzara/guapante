@@ -14,6 +14,7 @@ El mixin conserva sus 4 nombres (``_ne_response_text``, ``_ne_cune_candidates``,
 el comportamiento del recibo no cambia.
 """
 
+import re
 from typing import NamedTuple, Optional
 
 from . import soap_client
@@ -114,6 +115,12 @@ RECHAZADO = 'rechazado'
 PENDIENTE = 'pendiente'
 ERROR_TRANSPORTE = 'error_transporte'
 NIVEL_SET = 'nivel_set'
+YA_PROCESADO = 'ya_procesado'          # solo envío: la DIAN ya había procesado ese documento (regla 90); se concilia por CUNE
+NO_CONOCIDO = 'no_conocido'            # solo consulta: la DIAN dice que no conoce ese CUNE; es lo único que permite reenviar
+
+# H-DIAN-03: valores que fija la DIAN, medidos en HABILITACIÓN (E-1, doc 103 §8, y E-3, doc 107 §5.3, 24-nov-2026). En producción NO VERIFICADO: si contesta otra cosa no se reenvía.
+CODIGO_NO_CONOCIDO = '66'              # GetStatus: «TrackId no existe en los registros de la DIAN.»
+_REGLA_YA_PROCESADO = re.compile(r'regla:\s*90\b|procesado anteriormente', re.IGNORECASE)
 
 CONTEXTO_ENVIO = 'envio'
 CONTEXTO_CONSULTA = 'consulta'
@@ -126,7 +133,7 @@ DIAGNOSTICO_SALARIO = 'salario'
 
 class ResultadoDian(NamedTuple):
     """Veredicto neutral de una respuesta de la DIAN."""
-    veredicto: str                      # ACEPTADO | RECHAZADO | PENDIENTE | ERROR_TRANSPORTE | NIVEL_SET
+    veredicto: str                      # ACEPTADO | RECHAZADO | PENDIENTE | ERROR_TRANSPORTE | NIVEL_SET | YA_PROCESADO | NO_CONOCIDO
     mensaje: str                        # StatusDescription / StatusMessage, o el detalle de errores
     errores: tuple                      # ErrorMessages (o (ErrorMessage,)); () si no hay
     zip_key: str                        # ZipKey si viene, '' si no
@@ -143,6 +150,16 @@ def es_rechazo(response):
     incompleto NO es un rechazo.
     """
     return str(response.get('StatusCode', '')).strip() == '99' or bool(response.get('ErrorMessages'))
+
+
+def es_ya_procesado(response):
+    """True si el rechazo es la regla 90 («Documento procesado anteriormente»): la DIAN ya tenía ese documento."""
+    return str(response.get('StatusCode', '')).strip() == '99' and any(_REGLA_YA_PROCESADO.search(error) for error in _errores(response))
+
+
+def es_no_conocido(response):
+    """True SOLO con el código ``66`` explícito y sin aceptación: la DIAN no conoce ese CUNE. Cualquier otra respuesta no lo demuestra."""
+    return str(response.get('StatusCode', '')).strip() == CODIGO_NO_CONOCIDO and str(response.get('IsValid', '')).lower() != 'true'
 
 
 def _es_error_de_transporte(response):
@@ -220,10 +237,12 @@ def interpretar_respuesta(response, *, contexto):
     Orden de evaluación (§23.13):
       1. ``error_transporte``: no hay veredicto DIAN interpretable (ver ``_es_error_de_transporte``).
       2. ``nivel_set``: solo ``consulta`` y ``es_respuesta_de_set``.
-      3. ``aceptado``: ``IsValid`` en minúsculas es ``'true'`` ('true', 'True' y 'TRUE' son lo mismo;
+      3. ``no_conocido``: solo ``consulta`` y ``es_no_conocido``.
+      4. ``aceptado``: ``IsValid`` en minúsculas es ``'true'`` ('true', 'True' y 'TRUE' son lo mismo;
          cambio intencional frente al ``== 'true'`` exacto del envío por recibo, en dirección segura).
-      4. ``rechazado``: no válido y ``es_rechazo``.
-      5. ``pendiente``: cualquier otro caso (p. ej. "Batch en proceso de validación").
+      5. ``ya_procesado``: solo ``envio`` y ``es_ya_procesado`` (antes que rechazo: no lo es).
+      6. ``rechazado``: no válido y ``es_rechazo``.
+      7. ``pendiente``: cualquier otro caso (p. ej. "Batch en proceso de validación").
 
     Nunca devuelve ``rechazado`` para algo que la DIAN no procesó.
     """
@@ -242,8 +261,12 @@ def interpretar_respuesta(response, *, contexto):
         return resultado(ERROR_TRANSPORTE)
     if contexto == CONTEXTO_CONSULTA and es_respuesta_de_set(response):
         return resultado(NIVEL_SET)
+    if contexto == CONTEXTO_CONSULTA and es_no_conocido(response):
+        return resultado(NO_CONOCIDO)
     if str(response.get('IsValid', '')).lower() == 'true':
         return resultado(ACEPTADO)
+    if contexto == CONTEXTO_ENVIO and es_ya_procesado(response):
+        return resultado(YA_PROCESADO)
     if es_rechazo(response):
         return resultado(RECHAZADO, diagnosticar('; '.join(errores)))
     return resultado(PENDIENTE)
