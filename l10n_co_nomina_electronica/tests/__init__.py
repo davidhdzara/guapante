@@ -149,6 +149,7 @@ from . import test_documento_enviar
 from . import test_envio_ya_procesado
 from . import test_envio_por_recibo_incierto
 from . import test_codigos_dane_xml
+from . import test_liquidacion_retiro_con_quincena
 from . import test_nota_ajuste
 from . import test_nota_ajuste_crear
 from . import test_nota_ajuste_enviar

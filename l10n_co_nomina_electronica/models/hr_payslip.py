@@ -1100,6 +1100,7 @@ class HrPayslip(models.Model):
         res = True
         con_huella._ne_rete_validar_secuencias()        # R-2: nada de la base puede calcularse después de la retención
         con_huella._ne_rete_validar_pendientes()        # R-2: el recibo que retiene por el mes exige confirmados los que suman antes que él
+        con_huella._ne_liq_validar_mes()                # P0: la liquidación sabe qué días del mes están pagados, o no se calcula
         cifras_retencion = {}
         for company in self.company_id:
             recibos = self.filtered(lambda s, c=company: s.company_id == c).with_company(company)
@@ -1559,6 +1560,7 @@ class HrPayslip(models.Model):
         colombia._ne_validar_cuenta_neto()
         colombia._ne_validar_pacto_no_salarial()
         colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
+        colombia.filtered(lambda r: r.state in ('draft', 'verify'))._ne_liq_validar_mes()      # P0: otra vez al confirmar
         colombia._ne_validar_hoja_al_dia()        # C-24: despues de las anteriores y antes de crear el asiento o cambiar el estado
         colombia._ne_validar_retencion_conjunto()  # R-2: la retencion del mes no ve los recibos que se confirman a la vez
         colombia._ne_validar_retencion_incompleta()
@@ -2659,15 +2661,95 @@ class HrPayslip(models.Model):
         dentro de un mismo mes (el caso normal mensual) el resultado es el período completo
         tal cual. Compartido por _ne_dias_pagables() y _ne_ausencia_calendario() (H-014) --
         ambos deben recortar al mismo tramo para no descontar/pagar fuera de él.
+
+        P0 (doc 111 §1): la liquidación empieza además después del último «Hasta» que la nómina del mes ya pagó (``_ne_liq_pagado_hasta``); sin días por pagar el tramo queda vacío.
         """
         self._ne_validar_inicio_liquidacion()
         periodo_ini = self.date_from
         periodo_fin = self.date_to
         # M1-1 (doc 61): el recorte al mes de date_to es SOLO de la liquidacion (los meses anteriores ya se pagaron en
         # nominas regulares). Un periodo regular que cruza de mes (pagos los 5 y 20, semana que cruza) se paga completo.
-        if self._ne_es_liquidacion() and (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
-            periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+        if self._ne_es_liquidacion():
+            if (periodo_fin.year, periodo_fin.month) != (periodo_ini.year, periodo_ini.month):
+                periodo_ini = max(periodo_ini, periodo_fin.replace(day=1))
+            pagado = self._ne_liq_pagado_hasta()
+            if pagado:
+                periodo_ini = max(periodo_ini, pagado + timedelta(days=1)) if self._ne_liq_dias_pendientes(periodo_fin, pagado) else periodo_fin + timedelta(days=1)
         return periodo_ini, periodo_fin
+
+    # ── P0 (doc 111 §1): la liquidación no vuelve a pagar los días que la nómina del mes ya pagó ─────────
+    @api.model
+    def _ne_liq_recibos_del_mes(self, contrato, retiro):
+        """``(sin_confirmar, pagados)``: los recibos de nómina general del contrato que tocan el mes de ``retiro`` o pagan después de él. Pagados = confirmados netos de reembolsos confirmados, por fecha."""
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        recibos = self.sudo().search([
+            ('contract_id', '=', contrato.id), ('company_id', '=', contrato.company_id.id), ('struct_id', '=', general.id), ('state', '!=', 'cancel'),
+            ('l10n_co_ne_is_adjustment', '=', False), ('date_to', '>=', max(retiro.replace(day=1), contrato.date_start))])
+        fin_mes = retiro.replace(day=self._ne_dias_en_mes_calendario(retiro.year, retiro.month))
+        sin_confirmar = recibos.filtered(lambda r: r.state in ('draft', 'verify') and r.date_from <= fin_mes)
+        pagados = recibos.filtered(lambda r: r.state in ('done', 'paid') and not r.credit_note and not r._ne_rete_reembolsado(self.browse()))
+        return sin_confirmar, pagados.sorted(lambda r: (r.date_from, r.date_to))
+
+    def _ne_liq_pagados(self):
+        """Los recibos cuyos días resta esta liquidación: en borrador o en espera, los pagados de hoy; ya confirmada, los que guardó al calcularse (un recibo posterior no cambia lo que liquidó)."""
+        self.ensure_one()
+        if not (self.contract_id and self.date_to and self._ne_es_liquidacion()):
+            return self.browse()
+        if self.state in ('draft', 'verify'):
+            return self._ne_liq_recibos_del_mes(self.contract_id, self.date_to)[1]
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        desde = max(self.date_to.replace(day=1), self.contract_id.date_start)
+        return self.sudo().l10n_co_ne_rete_sumados_ids.filtered(
+            lambda r: r.struct_id == general and r.contract_id == self.contract_id and not r.credit_note and r.date_to >= desde)
+
+    def _ne_liq_pagado_hasta(self):
+        """El último «Hasta» que la liquidación da por pagado, o ``False``."""
+        self.ensure_one()
+        return max(self._ne_liq_pagados().mapped('date_to'), default=False)
+
+    def _ne_liq_dias_pendientes(self, fin, pagado_hasta):
+        """Días comerciales del mes de ``fin`` que faltan por pagar. Se cuentan por diferencia: el 31 tras pagar hasta el 30 no vale otro día y el 28 de febrero completa el mes."""
+        self.ensure_one()
+        inicio = max(fin.replace(day=1), self.contract_id.date_start)
+        return max(0, self._ne_contar_dias(inicio, fin) - self._ne_contar_dias(inicio, pagado_hasta))
+
+    def _ne_liq_validar_mes(self):
+        """Antes de calcular o confirmar una liquidación: nada se adivina. Detiene (nombrando recibos y fechas) un recibo del mes sin confirmar, un pago posterior al retiro, un hueco sin pagar antes del
+        último pago o una prima del semestre ya confirmada (la liquidación la calcula desde el inicio del semestre)."""
+        for liq in self.filtered(lambda r: not r.credit_note and r.contract_id and r.date_to and r._ne_es_liquidacion()):
+            contrato, retiro = liq.contract_id, liq.date_to
+            sin_confirmar, pagados = liq._ne_liq_recibos_del_mes(contrato, retiro)
+            encabezado = _('No se puede liquidar a %(empleado)s con retiro el %(retiro)s: ', empleado=liq.employee_id.name, retiro=retiro)
+            if sin_confirmar:
+                raise UserError(encabezado + _(
+                    'hay recibos de nómina de ese mes sin confirmar: %s. Confírmelos si ya se pagaron, o cancélelos: la liquidación paga solo los días que faltan.', sin_confirmar._ne_liq_nombres()))
+            posteriores = pagados.filtered(lambda r, retiro=retiro: r.date_to > retiro)
+            if posteriores:
+                raise UserError(encabezado + _(
+                    'hay recibos confirmados que pagan días posteriores al retiro: %s. Reembólselos (y confirme el reembolso) o corrija la fecha de retiro.', posteriores._ne_liq_nombres()))
+            siguiente = max(retiro.replace(day=1), contrato.date_start)
+            for recibo in pagados:
+                if recibo.date_from > siguiente:
+                    raise UserError(encabezado + _(
+                        'quedan días sin pagar del %(desde)s al %(hasta)s, antes de %(recibo)s. Páguelos en un recibo de nómina o corrija las fechas.',
+                        desde=siguiente, hasta=recibo.date_from - timedelta(days=1), recibo=recibo._ne_liq_nombres()))
+                siguiente = max(siguiente, recibo.date_to + timedelta(days=1))
+            prima = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_prima')
+            inicio_semestre = date(retiro.year, 1 if retiro.month <= 6 else 7, 1)
+            fin_semestre = date(retiro.year, 6, 30) if retiro.month <= 6 else date(retiro.year, 12, 31)
+            primas = self.sudo().search([
+                ('contract_id', '=', contrato.id), ('struct_id', '=', prima.id), ('state', 'in', ('done', 'paid')), ('credit_note', '=', False),
+                ('date_to', '>=', inicio_semestre), ('date_to', '<=', fin_semestre)]).filtered(lambda r: not r._ne_rete_reembolsado(self.browse()))
+            if primas:
+                raise UserError(encabezado + _(
+                    'ya hay una prima confirmada de ese semestre: %s. La liquidación calcula la prima desde el inicio del semestre y la pagaría otra vez. Reembólsela (y confirme el reembolso) antes de liquidar.',
+                    primas._ne_liq_nombres()))
+
+    def _ne_liq_nombres(self):
+        nombres = []
+        for recibo in self:
+            nombres.append(_('«%(recibo)s» (%(desde)s a %(hasta)s)', recibo=recibo.number or recibo.name, desde=recibo.date_from, hasta=recibo.date_to))
+        return ', '.join(nombres)
 
     def _ne_dias_corridos_en_tramo(self, fecha_ini, fecha_fin, tramo_ini, tramo_fin, dias_mes):
         """Días CALENDARIO corridos (lunes a domingo) de [fecha_ini, fecha_fin] que caen
@@ -2696,6 +2778,9 @@ class HrPayslip(models.Model):
         activo_ini, activo_fin = self._ne_rango_activo()
         if activo_ini > activo_fin:
             return 0
+        pagado = self._ne_liq_pagado_hasta()
+        if pagado:
+            return self._ne_liq_dias_pendientes(activo_fin, pagado)
         return self._ne_contar_dias(activo_ini, activo_fin)
 
     def _ne_codigos_tipos_no_remunerados(self):

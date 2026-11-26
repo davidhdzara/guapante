@@ -57,7 +57,8 @@ class HrPayslipRetencion(models.Model):
     l10n_co_ne_rete_autorizada_disponible = fields.Monetary(string='Disponible autorizado', readonly=True, copy=False)
     l10n_co_ne_rete_sumados_ids = fields.Many2many(
         'hr.payslip', 'l10n_co_ne_rete_sumado_rel', 'cierre_id', 'sumado_id', string='Recibos sumados en la retención del cierre', readonly=True, copy=False, check_company=True,
-        help='Técnico (R-2): los recibos confirmados del mes que sumó el cálculo de este cierre. Mientras el cierre esté confirmado no se cancelan ni se reembolsan.')
+        help='Técnico: los recibos confirmados del mes que tuvo en cuenta el cálculo de este recibo (los que sumó la retención del cierre y, en la liquidación, los días ya pagados). Mientras este recibo esté '
+             'confirmado no se cancelan ni se reembolsan.')
 
     # ── qué recibo retiene ───────────────────────────────────────────
     def _ne_rete_codigo(self):
@@ -259,7 +260,10 @@ class HrPayslipRetencion(models.Model):
                        or comparar(faltante, recibo.l10n_co_ne_rete_faltante))
             vals = {'l10n_co_ne_rete_a_descontar': a_descontar, 'l10n_co_ne_rete_disponible': disponible, 'l10n_co_ne_rete_faltante': faltante}
             suma_el_mes = recibo._ne_rete_es_cierre() and recibo._ne_rete_es_procedimiento_1()
-            vals['l10n_co_ne_rete_sumados_ids'] = [Command.set(recibo._ne_rete_confirmados_del_mes().ids if suma_el_mes else [])]
+            sumados = recibo._ne_rete_confirmados_del_mes() if suma_el_mes else recibo.browse()
+            if not recibo.credit_note:
+                sumados |= recibo._ne_liq_pagados()          # P0: los días que la liquidación no volvió a pagar (cualquier procedimiento)
+            vals['l10n_co_ne_rete_sumados_ids'] = [Command.set(sumados.ids)]
             borrar = recibo.l10n_co_ne_rete_autorizada and (
                 comparar(faltante, 0.0) <= 0 or comparar(a_descontar, recibo.l10n_co_ne_rete_autorizada_a_descontar)
                 or comparar(disponible, recibo.l10n_co_ne_rete_autorizada_disponible))
@@ -309,8 +313,8 @@ class HrPayslipRetencion(models.Model):
             cierre = cierres.filtered(lambda c: not c._ne_rete_reembolsado(reembolsos))[:1]
             if cierre:
                 raise UserError(_(
-                    'No se puede cancelar ni reembolsar «%(recibo)s» de %(empleado)s: la retención en la fuente de «%(cierre)s», ya confirmado, lo sumó. Cancele primero «%(cierre)s» (o reembólselo y '
-                    'confirme ese reembolso) y vuelva a intentarlo.', recibo=recibo.number or recibo.name, empleado=recibo.employee_id.name, cierre=cierre.number or cierre.name))
+                    'No se puede cancelar ni reembolsar «%(recibo)s» de %(empleado)s: «%(cierre)s», ya confirmado, lo tuvo en cuenta (retención en la fuente del mes, o días que la liquidación ya no pagó). '
+                    'Cancele primero «%(cierre)s» (o reembólselo y confirme ese reembolso) y vuelva a intentarlo.', recibo=recibo.number or recibo.name, empleado=recibo.employee_id.name, cierre=cierre.number or cierre.name))
 
     def _ne_validar_retencion_reembolso(self):
         """Confirmar un reembolso saca del mes lo que pagó su original: la misma regla que cancelarlo."""
