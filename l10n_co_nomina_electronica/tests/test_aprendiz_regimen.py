@@ -197,6 +197,7 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
                 ('Practica y Lectiva', ('01', 1.0), ('19', 0.75))):
             with self.subTest(nombre):
                 uno, smmlv = self._aprendiz(nombre, primero[0], '4', primero[1], desde=date(2026, 3, 1), hasta=date(2026, 3, 15))
+                uno.write({'state': 'done'})      # R-2: el recibo que cierra el mes exige confirmado el anterior
                 dos = self._segundo_recibo(uno, segundo[0], segundo[1], date(2026, 3, 16), date(2026, 3, 31))
                 (uno | dos).write({'state': 'done'})
                 practica = dos if segundo[0] == '01' else uno
@@ -216,6 +217,7 @@ class TestAprendizAportes(pension.TestPensionNoExigida):
         uno.contract_id.generate_work_entries(date(2026, 3, 1), date(2026, 3, 31))
         self._config_retefuente(2026)
         uno.compute_sheet()
+        uno.write({'state': 'done'})      # R-2: el recibo que cierra el mes exige confirmado el anterior
         dos = self.env['hr.payslip'].create({
             'name': 'Recibo 2 Normal', 'employee_id': empleado.id, 'contract_id': uno.contract_id.id, 'company_id': self.company.id, 'struct_id': self.nomina.id,
             'date_from': date(2026, 3, 16), 'date_to': date(2026, 3, 31)})

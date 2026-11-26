@@ -238,6 +238,7 @@ class TestDiasPorAsistencia(TransactionCase):
             self.assertEqual(self._dias_pagados(recibo), 15.0, desde)
             self.assertEqual(self._linea(recibo, 'CO_BASICO').quantity, 15.0, desde)
             self.assertEqual(recibo._ne_dias_pagables(), 15.0, desde)
+            recibo.write({'state': 'done'})      # R-2: la segunda quincena cierra el mes y exige confirmada la primera
 
     def test_semana_los_dias_del_desglose_suman_7_dias_pagados(self):
         """Pago semanal: 7 días calendario (sábado 2 a viernes 8 de mayo de 2026)."""

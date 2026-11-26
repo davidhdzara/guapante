@@ -285,6 +285,7 @@ class TestHojaAlDia(TransactionCase):
         recibo = self._recibo()
         copia = recibo.copy()
         self.assertTrue(copia.line_ids, 'Premisa: el duplicado trae las líneas del origen')
+        recibo.write({'state': 'cancel'})      # R-2: el duplicado reemplaza al original; dos abiertos del mismo mes no se calculan
         self.assertFalse(copia.l10n_co_ne_huella_calculo)
         self._no_se_confirma(copia)
         copia.compute_sheet()

@@ -106,7 +106,8 @@ class TestRetefuenteMes(TransactionCase):
         esperado = self._oraculo(segunda, base, ibc, fecha_mes=date(2026, 9, 30), **reales)
         self.assertGreater(esperado, 0.0)
         self.assertAlmostEqual(-self._total(segunda, 'CO_RETEFUENTE'), esperado, delta=1.0)
-        self.assertLess(esperado, self._oraculo(segunda, base, ibc, fecha_mes=date(2026, 9, 30)))
+        # Discrimina: con los aportes calculados sobre la base salarial saldría otro valor. No siempre mayor: en 150 UVT la tabla del art. 383 baja de 10,45 a 10 UVT.
+        self.assertNotAlmostEqual(esperado, self._oraculo(segunda, base, ibc, fecha_mes=date(2026, 9, 30)), delta=1.0)
 
     def _nuevo_valor(self, valor, desde=date(2026, 9, 1)):
         parametro = self.env.ref('l10n_co_nomina_electronica.rule_parameter_retefuente_base_mes')
@@ -369,7 +370,7 @@ class TestRetefuenteMes(TransactionCase):
     def test_liquidacion_retiene_el_mes_con_los_recibos_anteriores_y_sin_la_prima(self):
         contrato = self._contrato(salario=20000000.0, date_end=date(2026, 9, 30))
         primera = self._hecho(self._primera(contrato))
-        liquidacion = self._recibo(contrato, date(2026, 1, 1), date(2026, 9, 30), estructura=self.liquidacion)
+        liquidacion = self._recibo(contrato, contrato.date_start, date(2026, 9, 30), estructura=self.liquidacion)
         propia = sum(self._total(liquidacion, c) for c in liquidacion._ne_rete_codigos_base(self.liquidacion.rule_ids))
         salarial = sum(liquidacion.line_ids.filtered(lambda l: l.category_id.code in ('DEV_SAL', 'HEX')).mapped('total'))
         reales = self._aportes(primera)
