@@ -574,9 +574,10 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         zip_key = response.get('ZipKey', '')
         if zip_key:
             self.l10n_co_ne_zip_key = zip_key
-        is_valid = response.get('IsValid', '') == 'true'
+        # H-DIAN-02: el mismo intérprete del documento mensual; solo un veredicto de la DIAN acepta o rechaza.
+        veredicto = dian_respuesta.interpretar_respuesta(response, contexto=dian_respuesta.CONTEXTO_ENVIO).veredicto
 
-        if is_valid:
+        if veredicto == dian_respuesta.ACEPTADO:
             self.l10n_co_ne_state = 'accepted'
             if self.l10n_co_ne_consecutive:
                 self.number = self.l10n_co_ne_consecutive
@@ -587,7 +588,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 self.l10n_co_ne_cune,
             )
 
-        else:
+        elif veredicto == dian_respuesta.RECHAZADO:
             self.l10n_co_ne_state = 'rejected'
             error_messages = response.get('ErrorMessages', [])
             detail = '; '.join(error_messages) if error_messages else response.get('ErrorMessage', 'Sin detalle')
@@ -624,7 +625,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 f'<summary>🔧 Detalle técnico de la DIAN</summary>'
                 f'<pre>{detail}</pre>'
                 f'</details><br/>'
-                f'Por favor corrija el dato y use <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo.'
+                f'Por favor corrija el dato y use <b>"Regenerar XML"</b>, que toma un consecutivo nuevo: el rechazado no se reenvía.'
             )
             
             self.message_post(
@@ -633,7 +634,50 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 subtype_xmlid='mail.mt_note'
             )
 
+        else:
+            self.l10n_co_ne_state = 'uncertain'
+            self.message_post(body=_(
+                'La DIAN no dio un veredicto de este envío (consecutivo %s): el recibo queda como envío incierto. Use «Consultar Estado»; no regenere el XML.', self.l10n_co_ne_consecutive),
+                message_type='comment', subtype_xmlid='mail.mt_note')
+            if veredicto == dian_respuesta.YA_PROCESADO:          # la DIAN ya lo tenía: se concilia en el acto
+                try:
+                    with self.env.cr.savepoint():
+                        self._ne_consultar_por_cune()
+                except Exception:   # noqa: BLE001 -- el envío ya quedó registrado como incierto
+                    _logger.exception('Recibo %s: no se pudo consultar por CUNE tras la respuesta «procesado anteriormente»', self.id)
+
         return True
+
+    def _ne_consultar_por_cune(self):
+        """H-DIAN-02: concilia un recibo incierto sin ZipKey (``GetStatus`` por CUNE). Solo aplica un veredicto que identifique ESTE CUNE; con «no conocido» explícito el recibo vuelve a «XML Generado»
+        (mismo XML, consecutivo y CUNE) y puede enviarse; cualquier otra respuesta lo deja incierto. Siempre guarda la evidencia."""
+        self.ensure_one()
+        company = self.company_id
+        llave, cert_pem, _der, _cert_obj, _cadena = xml_signer.load_from_certificate(company._get_ne_certificate())
+        endpoint = company._ne_dian_endpoint()
+        respuesta = soap_client.get_status(
+            track_id=self.l10n_co_ne_cune, private_key=llave, cert_pem=cert_pem, endpoint=endpoint,
+            timeout=company._ne_config_int_param('l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT))
+        veredicto = dian_respuesta.interpretar_respuesta(respuesta, contexto=dian_respuesta.CONTEXTO_CONSULTA).veredicto
+        self._ne_store_exchange('get_status', endpoint, respuesta)
+        if self.l10n_co_ne_state != 'uncertain':
+            return veredicto
+        if veredicto == dian_respuesta.NO_CONOCIDO:
+            self.l10n_co_ne_state = 'generated'
+            self.message_post(body=_('La DIAN contestó que no tiene registrado este CUNE: puede enviarse otra vez el mismo XML («Enviar a DIAN»).'), message_type='comment', subtype_xmlid='mail.mt_note')
+            return veredicto
+        concluyente = veredicto in (dian_respuesta.ACEPTADO, dian_respuesta.RECHAZADO) and len(respuesta.get('DianResponses') or []) <= 1 \
+            and self.l10n_co_ne_cune in dian_respuesta.candidatos_cune(respuesta)
+        if concluyente and veredicto == dian_respuesta.ACEPTADO:
+            self.l10n_co_ne_state = 'accepted'
+            if self.l10n_co_ne_consecutive:
+                self.number = self.l10n_co_ne_consecutive
+            self._ne_marcar_original_eliminado()
+        elif concluyente:
+            self.l10n_co_ne_state = 'rejected'
+        self.message_post(body=_('Consulta a la DIAN por CUNE: %s.', dict(self._fields['l10n_co_ne_state'].selection).get(self.l10n_co_ne_state)),
+                          message_type='comment', subtype_xmlid='mail.mt_note')
+        return veredicto
 
     def action_create_adjustment(self):
         """
@@ -908,6 +952,11 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                     'No se puede regenerar el XML de %s: ya fue enviado o aceptado por la DIAN.',
                     slip.name,
                 ))
+            if slip.l10n_co_ne_state == 'uncertain':
+                raise UserError(_(
+                    'No se puede regenerar el XML de %s: el envío está incierto (la DIAN puede tenerlo). Primero consulte su estado («Consultar Estado»): regenerar gasta otro consecutivo y puede duplicar el reporte.',
+                    slip.name,
+                ))
             slip.write({
                 'l10n_co_ne_state': 'draft',
                 'l10n_co_ne_consecutive': False,
@@ -928,9 +977,14 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         if len(companies) != 1:
             raise UserError(_('Seleccione nóminas de una sola compañía para consultar DIAN.'))
         company = companies
-        missing = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
-        if missing:
-            raise UserError(_('Hay nóminas sin ZipKey; no se consultan por CUNE porque no es un trackId válido.'))
+        sin_zip = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
+        if sin_zip.filtered(lambda slip: slip.l10n_co_ne_state != 'uncertain' or not slip.l10n_co_ne_cune):
+            raise UserError(_('Hay nóminas sin ZipKey que no están en «Envío incierto»: no hay con qué consultarlas.'))
+        for slip in sin_zip:          # H-DIAN-02: un envío síncrono incierto se concilia por CUNE
+            slip._ne_consultar_por_cune()
+        con_zip = self - sin_zip
+        if not con_zip:
+            return True
         private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
@@ -940,8 +994,8 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
             'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
 
         summaries = []
-        for track_id in set(self.mapped('l10n_co_ne_zip_key')):
-            records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
+        for track_id in set(con_zip.mapped('l10n_co_ne_zip_key')):
+            records = con_zip.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
             response = soap_client.get_status_zip(
                 track_id=track_id, private_key=private_key, cert_pem=cert_pem,
                 endpoint=endpoint, timeout=timeout,

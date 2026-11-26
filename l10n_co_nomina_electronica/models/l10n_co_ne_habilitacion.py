@@ -238,9 +238,9 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _replace_failed(self, company):
-        """Regenera (consecutivo y CUNE nuevos) lo rechazado o incierto, para retomar tras una detención."""
+        """Regenera (consecutivo y CUNE nuevos) lo RECHAZADO, para retomar tras una detención. Un envío incierto no se regenera (H-DIAN-02): se concilia."""
         failed = self._set_slips(company).filtered(
-            lambda s: s.l10n_co_ne_state in ('rejected', 'uncertain'))
+            lambda s: s.l10n_co_ne_state == 'rejected')
         failed.action_regenerate_ne_xml()
         return len(failed)
 
