@@ -3914,6 +3914,8 @@ class HrPayslip(models.Model):
         # SueldoTrabajado 0.00. Solo en los recibos que pagan sueldo (nómina y liquidación): un recibo de prima no suma días.
         apoyo = (not sueldo_lines and self.line_ids.filtered(lambda l: l.code in self._NE_BASICO_CODES)
                  and self._ne_regimen_cotizante()['es_aprendiz'])
+        if apoyo and self._ne_liq_pagado_hasta() and self._ne_dias_pagables() <= 0:
+            apoyo = False          # P0: liquidación sin días por pagar (la nómina del mes ya los pagó): sus días van en esos recibos
         if sueldo_lines or apoyo:
             dias_pagables = self._ne_dias_pagables()
             if dias_pagables <= 0:

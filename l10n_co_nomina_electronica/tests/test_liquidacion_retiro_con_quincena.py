@@ -87,6 +87,17 @@ class TestLiquidacionRetiroConQuincena(TransactionCase):
         self.assertEqual(self._total(liquidacion, 'CO_LIQ_SALARIOS'), 0.0)
         self.assertEqual(self._total(liquidacion, 'CO_DIAS_SP'), 0)
 
+    def test_con_todo_pagado_el_xml_no_pide_dias_ni_al_aprendiz(self):
+        casos = (('dependiente', {}), ('aprendiz', {'l10n_co_pila_tipo_cotizante': '19', 'l10n_co_ne_contract_type': '4', 'wage': 1750905.0}))
+        for nombre, datos in casos:
+            with self.subTest(nombre):
+                contrato = self._contrato(**datos)
+                self._pagado(contrato, date(2026, 5, 1), date(2026, 5, 15))
+                liquidacion = self._liq(contrato, date(2026, 5, 15))
+                liquidacion.compute_sheet()
+                devengados, _deducciones = liquidacion._map_salary_rules_to_xml()
+                self.assertNotIn('Basico', devengados)          # los días van en el recibo que los pagó: el documento del mes los suma
+
     def test_un_recibo_semanal_que_cruza_el_mes(self):
         contrato = self._contrato()
         self._pagado(contrato, date(2026, 4, 27), date(2026, 5, 3))
