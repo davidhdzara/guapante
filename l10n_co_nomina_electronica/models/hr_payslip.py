@@ -1098,6 +1098,7 @@ class HrPayslip(models.Model):
         # Cada recibo se calcula en el contexto de SU compania: los parametros (hr.rule.parameter,
         # por pais) y env.company salen de la compania del recibo, no de la activa en el selector.
         res = True
+        con_huella._ne_liq_validar_nomina_posterior()   # P0: una nómina no vuelve a pagar días que una liquidación confirmada cerró
         con_huella._ne_rete_validar_secuencias()        # R-2: nada de la base puede calcularse después de la retención
         con_huella._ne_rete_validar_pendientes()        # R-2: el recibo que retiene por el mes exige confirmados los que suman antes que él
         con_huella._ne_liq_validar_mes()                # P0: la liquidación sabe qué días del mes están pagados, o no se calcula
@@ -1560,7 +1561,9 @@ class HrPayslip(models.Model):
         colombia._ne_validar_cuenta_neto()
         colombia._ne_validar_pacto_no_salarial()
         colombia._ne_validar_afiliaciones()       # H-F1-06: la afiliación completa, aun sin cuenta contable en las reglas
-        colombia.filtered(lambda r: r.state in ('draft', 'verify'))._ne_liq_validar_mes()      # P0: otra vez al confirmar
+        sin_confirmar = colombia.filtered(lambda r: r.state in ('draft', 'verify'))
+        sin_confirmar._ne_liq_validar_nomina_posterior()          # P0: no se paga dos veces lo que una liquidación confirmada cerró
+        sin_confirmar._ne_liq_validar_mes()                       # P0: la liquidación se comprueba otra vez al confirmar
         colombia._ne_validar_hoja_al_dia()        # C-24: despues de las anteriores y antes de crear el asiento o cambiar el estado
         colombia._ne_validar_retencion_conjunto()  # R-2: la retencion del mes no ve los recibos que se confirman a la vez
         colombia._ne_validar_retencion_incompleta()
@@ -2744,6 +2747,23 @@ class HrPayslip(models.Model):
                 raise UserError(encabezado + _(
                     'ya hay una prima confirmada de ese semestre: %s. La liquidación calcula la prima desde el inicio del semestre y la pagaría otra vez. Reembólsela (y confirme el reembolso) antes de liquidar.',
                     primas._ne_liq_nombres()))
+
+    def _ne_liq_validar_nomina_posterior(self):
+        """El sentido inverso (P0): con una liquidación confirmada, una nómina general del mismo contrato no se calcula ni se confirma si paga días del mes del retiro hasta la fecha de retiro: ya los pagó
+        la liquidación o un recibo que ella restó."""
+        general = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
+        liquidacion = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_liquidacion')
+        for recibo in self.filtered(lambda r: r.struct_id == general and r.contract_id and r.date_to and not r.credit_note and not r.l10n_co_ne_is_adjustment):
+            confirmadas = self.sudo().search([
+                ('contract_id', '=', recibo.contract_id.id), ('company_id', '=', recibo.company_id.id), ('struct_id', '=', liquidacion.id), ('state', 'in', ('done', 'paid')),
+                ('credit_note', '=', False), ('l10n_co_ne_is_adjustment', '=', False), ('date_to', '>=', recibo.date_from)])
+            for liq in confirmadas:
+                desde = max(liq.date_to.replace(day=1), recibo.contract_id.date_start)
+                if recibo.date_to >= desde and not liq._ne_rete_reembolsado(self.browse()):
+                    raise UserError(_(
+                        'No se puede calcular ni confirmar «%(recibo)s» de %(empleado)s: la liquidación %(liquidacion)s, ya confirmada, cerró los días del %(desde)s al %(hasta)s de ese contrato (los pagó '
+                        'ella o los recibos que restó) y se pagarían dos veces. Cancele este recibo; si hay que corregir, cancele primero la liquidación (o reembólsela y confirme ese reembolso).',
+                        recibo=recibo.number or recibo.name, empleado=recibo.employee_id.name, liquidacion=liq._ne_liq_nombres(), desde=desde, hasta=liq.date_to))
 
     def _ne_liq_nombres(self):
         nombres = []

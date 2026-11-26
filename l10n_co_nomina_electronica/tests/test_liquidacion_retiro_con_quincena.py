@@ -197,8 +197,58 @@ class TestLiquidacionRetiroConQuincena(TransactionCase):
         liquidacion = self._liq(contrato, date(2026, 5, 20))
         liquidacion.compute_sheet()
         liquidacion.write({'state': 'done'})
-        self._pagado(contrato, date(2026, 5, 16), date(2026, 5, 18))          # confirmado después: el XML de la liquidación no cambia
+        self._pagado(contrato, date(2026, 5, 16), date(2026, 5, 18))          # forzado por fuera (por la vía normal ya no se puede): el XML de la liquidación no cambia
         self.assertEqual(liquidacion._ne_dias_pagables(), 5)
+
+    # ── el sentido inverso: con la liquidación confirmada no se vuelve a pagar ──
+    def _liquidado(self, retiro=date(2026, 5, 20), quincena=True):
+        contrato = self._contrato()
+        if quincena:
+            self._pagado(contrato, date(2026, 5, 1), date(2026, 5, 15))
+        liquidacion = self._liq(contrato, retiro)
+        liquidacion.compute_sheet()
+        liquidacion.write({'state': 'done'})
+        return contrato, liquidacion
+
+    def _nombra(self, liquidacion):
+        return re.escape(liquidacion.number or liquidacion.name)
+
+    def test_una_nomina_que_paga_dias_liquidados_no_se_calcula(self):
+        casos = (('segunda quincena', True, date(2026, 5, 16), date(2026, 5, 31)), ('empieza el día del retiro', True, date(2026, 5, 20), date(2026, 5, 31)),
+                 ('quincena que liquidó la propia liquidación', False, date(2026, 5, 1), date(2026, 5, 15)), ('semana que viene del mes anterior', False, date(2026, 4, 27), date(2026, 5, 3)))
+        for nombre, quincena, desde, hasta in casos:
+            with self.subTest(nombre):
+                contrato, liquidacion = self._liquidado(quincena=quincena)
+                recibo = self._recibo(contrato, desde, hasta)
+                with self.assertRaisesRegex(UserError, self._nombra(liquidacion)):
+                    recibo.compute_sheet()
+                self.assertFalse(recibo.line_ids)
+
+    def test_una_nomina_que_paga_dias_liquidados_no_se_confirma(self):
+        contrato, liquidacion = self._liquidado()
+        recibo = self._recibo(contrato, date(2026, 5, 16), date(2026, 5, 31))
+        for nombre in ('_ne_validar_cuenta_neto', '_ne_validar_pacto_no_salarial', '_ne_validar_afiliaciones'):
+            self.patch(type(recibo), nombre, lambda s: None)
+        with self.assertRaisesRegex(UserError, self._nombra(liquidacion)):
+            recibo.action_payslip_done()
+        self.assertEqual(recibo.state, 'draft')
+
+    def test_lo_que_no_paga_dias_liquidados_pasa(self):
+        contrato, _liquidacion = self._liquidado()
+        self._recibo(contrato, date(2026, 4, 16), date(2026, 4, 30))._ne_liq_validar_nomina_posterior()          # otro mes
+        self._recibo(contrato, date(2026, 5, 21), date(2026, 5, 31))._ne_liq_validar_nomina_posterior()          # después del retiro: no paga días liquidados
+        self._recibo(contrato, date(2026, 5, 1), date(2026, 5, 15), credit_note=True)._ne_liq_validar_nomina_posterior()          # un reembolso
+        self._recibo(self._contrato(), date(2026, 5, 16), date(2026, 5, 31))._ne_liq_validar_nomina_posterior()          # otro contrato
+
+    def test_una_liquidacion_sin_confirmar_cancelada_o_reembolsada_no_bloquea(self):
+        for caso in ('sin confirmar', 'cancelada', 'reembolsada'):
+            with self.subTest(caso):
+                contrato, liquidacion = self._liquidado(quincena=False)
+                if caso == 'reembolsada':
+                    self._pagado(contrato, liquidacion.date_from, liquidacion.date_to, estructura=self.liquidacion, credit_note=True)
+                else:
+                    liquidacion.write({'state': 'verify' if caso == 'sin confirmar' else 'cancel'})
+                self._recibo(contrato, date(2026, 5, 16), date(2026, 5, 31))._ne_liq_validar_nomina_posterior()
 
     # ── el asistente avisa ───────────────────────────────────────────
     def _aviso(self, contrato, retiro):
