@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 # Part of InSoTech. See LICENSE file for full copyright and licensing details.
 """H-170: el tramo de la incapacidad comun se cuenta desde el INICIO de la incapacidad (y sus
-prorrogas), no desde el inicio de cada recibo. H-F1-01 (doc 84): la cadena la dan los vinculos
-«Prórroga de» que marca quien registra la incapacidad, no la contiguidad de las fechas.
+prorrogas contiguas), no desde el inicio de cada recibo.
 
 Antes _ne_pago_ausencia_calendario(codigo, dias) solo recibia los dias del recibo y el tramo
 (2 dias empleador, 3-90 EPS, 91+) reiniciaba en cada quincena. Caso de aceptacion de QA
@@ -44,15 +43,12 @@ class TestIncapacidadTramoProrroga(TransactionCase):
         contract.generate_work_entries(date(2026, 1, 1), date(2026, 6, 30))
         return employee, contract
 
-    def _incapacidad(self, employee, desde, hasta, prorroga_de=None):
-        """Crea y aprueba la incapacidad; ``prorroga_de`` es el vinculo explicito (H-F1-01)."""
-        vals = {'employee_id': employee.id, 'holiday_status_id': self.tipo.id, 'request_date_from': desde, 'request_date_to': hasta}
-        if prorroga_de:
-            vals['l10n_co_ne_prorroga_de_id'] = prorroga_de.id
-        leave = self.env['hr.leave'].create(vals)
+    def _incapacidad(self, employee, desde, hasta):
+        leave = self.env['hr.leave'].create({
+            'employee_id': employee.id, 'holiday_status_id': self.tipo.id,
+            'request_date_from': desde, 'request_date_to': hasta})
         leave.action_validate()
         self.assertEqual(leave.state, 'validate')
-        return leave
 
     def _pago(self, employee, contract, desde, hasta):
         slip = self.env['hr.payslip'].create({
@@ -83,18 +79,18 @@ class TestIncapacidadTramoProrroga(TransactionCase):
             self._pago(employee, contract, date(2026, 5, 16), date(2026, 5, 31)),
             14 * VALOR_DIA * PCT + VALOR_DIA * 0.5, delta=0.01)
 
-    def test_la_prorroga_vinculada_continua_el_conteo(self):
-        """1-mar a 5-jun (97 dias) y prorroga 6 a 20 de junio MARCADA como prorroga de la primera: en la quincena 1-15 de junio van los
+    def test_la_prorroga_contigua_continua_el_conteo(self):
+        """1-mar a 5-jun (97 dias) y prorroga 6 a 20 de junio: en la quincena 1-15 de junio van los
         dias 93-107 de la misma incapacidad: 5 de la primera y 10 de la prorroga, todos al 50 %."""
         employee, contract = self._empleado('Prorroga')
-        primera = self._incapacidad(employee, date(2026, 3, 1), date(2026, 6, 5))
-        self._incapacidad(employee, date(2026, 6, 6), date(2026, 6, 20), prorroga_de=primera)
+        self._incapacidad(employee, date(2026, 3, 1), date(2026, 6, 5))
+        self._incapacidad(employee, date(2026, 6, 6), date(2026, 6, 20))
         self.assertAlmostEqual(
             self._pago(employee, contract, date(2026, 6, 1), date(2026, 6, 15)),
             15 * VALOR_DIA * 0.5, delta=0.01)
 
-    def test_una_incapacidad_sin_vinculo_empieza_su_propio_conteo(self):
-        """1-mar a 31-may (92 dias) y otra del 5 al 15 de junio SIN el vinculo «Prórroga de» (hay 4 dias libres entre
+    def test_una_incapacidad_no_contigua_empieza_su_propio_conteo(self):
+        """1-mar a 31-may (92 dias) y otra distinta del 5 al 15 de junio (hay 4 dias libres entre
         las dos): la nueva cuenta desde 1: 11 dias (2 empleador + 9 EPS, todos al 66,67 %)."""
         employee, contract = self._empleado('NoContigua')
         self._incapacidad(employee, date(2026, 3, 1), date(2026, 5, 31))
@@ -111,12 +107,16 @@ class TestIncapacidadTramoProrroga(TransactionCase):
         pago = self._pago(employee, contract, date(2026, 6, 1), date(2026, 6, 15))
         self.assertLess(pago, 15 * VALOR_DIA * PCT)
 
-    def test_la_prorroga_vinculada_con_dias_libres_admitidos_continua_el_conteo(self):
-        """Las incapacidades del 1-mar al 31-may y del 5 al 15 de junio (4 dias libres entre ellas) vinculadas (parametro = 30): son UNA: la
-        quincena 1-15 de junio ocupa las posiciones 93-103 (92 previos + 11 dias), todas al 50 %: 11 x 200.000 x 0,5 = 1.100.000."""
+    def test_la_interrupcion_maxima_de_la_prorroga_es_un_parametro(self):
+        """Con l10n_co_dias_interrupcion_prorroga = 4, las incapacidades del 1-mar al 31-may y del
+        5 al 15 de junio (4 dias libres entre ellas) son UNA: la quincena 1-15 de junio ocupa las
+        posiciones 93-103 (92 previos + 11 dias), todas al 50 %: 11 x 200.000 x 0,5 = 1.100.000."""
+        self.env.ref(
+            'l10n_co_nomina_electronica.rule_parameter_dias_interrupcion_prorroga_2024'
+        ).parameter_value = '4'
         employee, contract = self._empleado('ParamProrroga')
-        primera = self._incapacidad(employee, date(2026, 3, 1), date(2026, 5, 31))
-        self._incapacidad(employee, date(2026, 6, 5), date(2026, 6, 15), prorroga_de=primera)
+        self._incapacidad(employee, date(2026, 3, 1), date(2026, 5, 31))
+        self._incapacidad(employee, date(2026, 6, 5), date(2026, 6, 15))
         self.assertAlmostEqual(
             self._pago(employee, contract, date(2026, 6, 1), date(2026, 6, 15)),
             11 * VALOR_DIA * 0.5, delta=0.01)

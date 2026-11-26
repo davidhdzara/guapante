@@ -18,7 +18,7 @@
         <field name="arch" type="xml">
             <list string="Modos de Operación">
                 <field name="software_id"/>
-                <field name="software_pin" groups="hr_payroll.group_hr_payroll_manager"/>
+                <field name="software_pin"/>
                 <field name="test_set_id"/>
             </list>
         </field>
@@ -32,7 +32,7 @@
                 <sheet>
                     <group>
                         <field name="software_id"/>
-                        <field name="software_pin" groups="hr_payroll.group_hr_payroll_manager"/>
+                        <field name="software_pin"/>
                         <field name="test_set_id"/>
                     </group>
                 </sheet>

@@ -183,7 +183,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         Aceptadas, solo devuelve el resumen final (el botón queda
         invisible en pantalla en ese caso, ver la vista).
         """
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         if self.habilitacion_stage == 'fase1':
             return self.action_iniciar_habilitacion_individual()
@@ -346,7 +345,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         botón") si todavía no están fijados en el wizard -- ver
         ``_auto_select_period``/``_auto_select_employees``.
         """
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         if not self.date_from or not self.date_to:
             self.date_from, self.date_to = self._auto_select_period()
@@ -397,7 +395,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
 
     def action_send_individual(self):
         """Envía a la DIAN las individuales listas -- consume cupo real."""
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         records = self.payslip_individual_ids.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
@@ -411,7 +408,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
 
     def action_check_individual_status(self):
         """Consulta el estado DIAN de cada nómina individual enviada."""
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         records = self.payslip_individual_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'sent'
@@ -432,7 +428,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         exige predecesor en estado 'accepted' -- por eso esta fase solo
         avanza sobre lo que Fase 1 ya tenga aceptado por la DIAN.
         """
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         accepted = self.payslip_individual_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'accepted'
@@ -493,7 +488,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
 
     def action_send_ajuste(self):
         """Envía a la DIAN las notas de ajuste listas -- consume cupo real."""
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         records = self.payslip_ajuste_ids.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
@@ -507,7 +501,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
 
     def action_check_ajuste_status(self):
         """Consulta el estado DIAN de cada nota de ajuste enviada."""
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         records = self.payslip_ajuste_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'sent'
@@ -549,7 +542,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         No re-prepara si ya hay individuales cargadas (idempotente) --
         repetir el clic solo reintenta enviar/consultar lo pendiente.
         """
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         if not self.payslip_individual_ids:
             self.action_prepare_individual()
@@ -592,7 +584,6 @@ class L10nCoNeCertificationWizard(models.TransientModel):
         ``action_create_adjustment()``, no de este wizard). No re-prepara
         Notas de Ajuste ya referenciadas (idempotente).
         """
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         accepted_individual = self.payslip_individual_ids.filtered(
             lambda p: p.l10n_co_ne_state == 'accepted'

@@ -4,37 +4,10 @@
          Mismo patron que hr_payroll para recibo/linea/lote: reglas globales
          company_id in company_ids. La configuracion de retencion admite ademas filas
          compartidas (company_id vacio, M2). -->
-    <!-- H-F2-03 (G1, decisión del TL del 22-nov): las filas COMPARTIDAS de la configuración de retención (sin compañía; de ellas depende la retención de TODAS las compañías) las LEEN todos, pero
-         solo las crea, edita y borra el administrador del sistema; el administrador de nómina, solo las de su compañía. Una regla por modo: la de lectura es global; las de escritura, creación y
-         borrado son de grupo (se unen con O: quien es las dos cosas ve la unión). Los valores legales siguen viniendo de datos (-u). El modelo (``hr_retefuente.py``) avisa con un mensaje claro. -->
     <record id="rule_l10n_co_retefuente_uvt_company" model="ir.rule">
-        <field name="name">Configuración de retención: compañías autorizadas y compartidas (lectura)</field>
+        <field name="name">Configuración de retención: compañías autorizadas y compartidas</field>
         <field name="model_id" ref="model_l10n_co_retefuente_uvt"/>
         <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
-        <field name="perm_read" eval="True"/>
-        <field name="perm_write" eval="False"/>
-        <field name="perm_create" eval="False"/>
-        <field name="perm_unlink" eval="False"/>
-    </record>
-    <record id="rule_l10n_co_retefuente_uvt_escritura_nomina" model="ir.rule">
-        <field name="name">Configuración de retención: el administrador de nómina escribe solo la de su compañía</field>
-        <field name="model_id" ref="model_l10n_co_retefuente_uvt"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
-        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
-        <field name="perm_read" eval="False"/>
-        <field name="perm_write" eval="True"/>
-        <field name="perm_create" eval="True"/>
-        <field name="perm_unlink" eval="True"/>
-    </record>
-    <record id="rule_l10n_co_retefuente_uvt_escritura_sistema" model="ir.rule">
-        <field name="name">Configuración de retención: el administrador del sistema escribe la compartida y la de su compañía</field>
-        <field name="model_id" ref="model_l10n_co_retefuente_uvt"/>
-        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
-        <field name="groups" eval="[(4, ref('base.group_system'))]"/>
-        <field name="perm_read" eval="False"/>
-        <field name="perm_write" eval="True"/>
-        <field name="perm_create" eval="True"/>
-        <field name="perm_unlink" eval="True"/>
     </record>
     <record id="rule_l10n_co_retefuente_procedure2_company" model="ir.rule">
         <field name="name">Retención Procedimiento 2: compañías autorizadas</field>

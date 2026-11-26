@@ -53,7 +53,6 @@ class TestPeriodosIbcSemanal(TransactionCase):
             'name': 'Recibo IBC %s' % fin, 'employee_id': empleado.id, 'contract_id': contrato.id,
             'company_id': self.company.id, 'struct_id': self.estructura.id, 'date_from': ini, 'date_to': fin})
         recibo.compute_sheet()
-        recibo.state = 'done'      # R-2: el recibo que cierra el mes exige confirmados los anteriores
         return recibo
 
     def _consolidado(self, empleado, recibos, mes):

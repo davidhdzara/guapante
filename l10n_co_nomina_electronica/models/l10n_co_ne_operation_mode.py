@@ -40,9 +40,7 @@ class L10nCoNeOperationMode(models.Model):
     software_pin = fields.Char(
         string='Software PIN',
         required=True,
-        groups='hr_payroll.group_hr_payroll_manager',
-        help='PIN del software de nómina electrónica asignado por la DIAN. Es una credencial: solo la ve el administrador de nómina (H-F2-03); el sistema la lee con '
-             '``_ne_pin_del_software`` para el CUNE y el código de seguridad del software cuando un oficial genera o envía un documento.',
+        help='PIN del software de nómina electrónica asignado por la DIAN.',
     )
     test_set_id = fields.Char(
         string='ID de Pruebas',
@@ -57,11 +55,6 @@ class L10nCoNeOperationMode(models.Model):
         default=lambda self: self.env.company,
         ondelete='cascade',
     )
-
-    def _ne_pin_del_software(self):
-        """PIN del software ante la DIAN, para el CUNE y el código de seguridad del software (``SoftwareSC``). El campo solo lo lee el administrador de nómina (``groups``): quien genera o envía un
-        documento es muchas veces un oficial, y el cálculo no puede fallar por eso, así que se lee con ``sudo`` SOLO aquí (única lectura del PIN del módulo). Devuelve el valor tal cual (falso si no hay)."""
-        return self.sudo().software_pin
 
     _sql_constraints = [
         (

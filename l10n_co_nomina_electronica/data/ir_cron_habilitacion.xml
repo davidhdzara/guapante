@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data noupdate="1">
-        <!-- 22-nov (decisión del TL, igual que v19): una instalación NUEVA nace con este cron INACTIVO (``active`` False): no envía ni consulta nada a la DIAN hasta que un administrador lo
-             active a propósito (Ajustes > Técnico > Acciones planificadas). El archivo es ``noupdate="1"``: una actualización (``-u``) NO cambia el estado de una base que ya lo tiene
-             (producción, con los envíos pausados a mano, queda igual; staging, con el cron activo, también). Con el cron inactivo, ``ir.cron._trigger`` descarta los disparos
-             inmediatos: encolar un envío no lo ejecuta hasta activarlo. -->
         <!-- Avanza la habilitación DIAN automática una etapa por ejecución; el propio método se
              re-programa con ir.cron._trigger mientras queda trabajo. Sin trabajo pendiente no hace nada. -->
         <record id="ir_cron_ne_habilitacion" model="ir.cron">
@@ -14,7 +10,7 @@
             <field name="code">model._cron_step()</field>
             <field name="interval_number">1</field>
             <field name="interval_type">days</field>
-            <field name="active" eval="False"/>
+            <field name="active" eval="True"/>
         </record>
     </data>
 </odoo>

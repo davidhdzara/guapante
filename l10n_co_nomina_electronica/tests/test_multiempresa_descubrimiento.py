@@ -12,7 +12,6 @@ from datetime import date
 from odoo.tests.common import TransactionCase, tagged
 
 MODULO = 'l10n_co_nomina_electronica'
-CATALOGOS_SIN_COMPANIA = ('l10n.co.pila.ciiu',)      # codigos CIIU: catalogo compartido a proposito (doc 59 §3)
 
 
 def _modelos_propios(env):
@@ -49,25 +48,17 @@ class TestMultiempresaDescubrimiento(TransactionCase):
         for esperado in ('l10n.co.ne.documento', 'l10n.co.ibc.mensual', 'l10n.co.pila.planilla'):
             self.assertIn(esperado, modelos)
 
-    def test_todo_modelo_propio_persistente_tiene_regla_por_compania(self):
-        """H-F2-03 (G4, B1): TODO modelo propio persistente, tenga o no ``company_id`` propio (pacto y dia de descanso cuelgan del empleado: su regla es ``employee_id.company_id``), exige una regla cuyo
-        dominio mencione la compania. Solo se exceptuan los catalogos compartidos a proposito, que NO tienen compania ni empleado (y la prueba lo comprueba)."""
+    def test_todo_modelo_propio_con_compania_tiene_regla_por_compania(self):
         sin_regla = []
         for modelo in _modelos_propios(self.env):
-            if modelo in CATALOGOS_SIN_COMPANIA:
+            if 'company_id' not in self.env[modelo]._fields:
                 continue
             reglas = self.env['ir.rule'].sudo().search([('model_id.model', '=', modelo)])
             if not any('company_id' in (r.domain_force or '') for r in reglas):
                 sin_regla.append(modelo)
         self.assertFalse(
-            sin_regla, 'Modelos propios SIN ir.rule por compania (agregarla en security/ o, si es un catalogo compartido, a CATALOGOS_SIN_COMPANIA): %s'
+            sin_regla, 'Modelos propios con company_id SIN ir.rule por compania (agregarla en security/): %s'
             % ', '.join(sin_regla))
-
-    def test_los_catalogos_exceptuados_no_tienen_compania_ni_empleado(self):
-        for modelo in CATALOGOS_SIN_COMPANIA:
-            campos = self.env[modelo]._fields
-            self.assertNotIn('company_id', campos, modelo)
-            self.assertNotIn('employee_id', campos, modelo)
 
     def test_todo_modelo_propio_persistente_tiene_permiso_de_acceso(self):
         sin_acl = [

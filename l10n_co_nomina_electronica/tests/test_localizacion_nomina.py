@@ -21,45 +21,6 @@ from lxml import etree
 from odoo.addons.base.models.ir_model import MODULE_UNINSTALL_FLAG
 from odoo.tests.common import TransactionCase, tagged
 from odoo.tools.safe_eval import safe_eval
-from psycopg2 import sql
-
-
-def _borrar_filas_con_dependientes(env, tabla, ids, visitadas):
-    """Borra por SQL las filas ``ids`` de ``tabla`` y, antes, las filas de cualquier tabla que las referencie con una clave foránea que no se anula ni se propaga (el catálogo de
-    PostgreSQL las enumera), recursivamente: p. ej. una asignación salarial en curso referenciada por el reparto por tercero de un recibo de QA."""
-    if not ids or (tabla, tuple(ids)) in visitadas:
-        return
-    visitadas.add((tabla, tuple(ids)))
-    env.cr.execute("""
-        SELECT c.conrelid::regclass::text, a.attname
-          FROM pg_constraint c
-          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-         WHERE c.contype = 'f' AND c.confrelid = %s::regclass AND c.confdeltype IN ('r', 'a')""", [tabla])
-    for hija, columna in env.cr.fetchall():
-        env.cr.execute(sql.SQL('SELECT id FROM {} WHERE {} = ANY(%s)').format(sql.SQL(hija), sql.Identifier(columna)), [list(ids)])
-        _borrar_filas_con_dependientes(env, hija, [fila[0] for fila in env.cr.fetchall()], visitadas)
-    env.cr.execute(sql.SQL('DELETE FROM {} WHERE id = ANY(%s)').format(sql.SQL(tabla)), [list(ids)])
-
-
-def _borrar_tipo_sembrado(env, xmlid):
-    """Borra DENTRO de la transacción (se revierte) un tipo de novedad sembrado por el módulo, sin depender de los datos de la base (N2 «cx»: en staging_dev QA ya había creado
-    novedades con el tipo de embargo civil y el borrado lanzaba ForeignKeyViolation en ``hr_payslip_input``). Se borran, por SQL, las filas que lo referencian con una clave foránea
-    que no se anula ni se propaga (hoy ``hr_payslip_input`` y ``hr_salary_attachment``) y, recursivamente, las que referencian a esas (N1 del 22-nov: el reparto por tercero de un
-    recibo de QA referencia la asignación). No por el ORM: ``hr.salary.attachment.unlink`` rechaza una asignación en curso («You cannot delete a running salary attachment!»). Las
-    claves que solo se anulan las anula PostgreSQL al borrar el tipo."""
-    tipo = env.ref(xmlid)
-    env.flush_all()
-    env.cr.execute("""
-        SELECT c.conrelid::regclass::text, a.attname
-          FROM pg_constraint c
-          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-         WHERE c.contype = 'f' AND c.confrelid = 'hr_payslip_input_type'::regclass AND c.confdeltype IN ('r', 'a')""")
-    visitadas = set()
-    for tabla, columna in env.cr.fetchall():
-        env.cr.execute(sql.SQL('SELECT id FROM {} WHERE {} = %s').format(sql.SQL(tabla), sql.Identifier(columna)), [tipo.id])
-        _borrar_filas_con_dependientes(env, tabla, [fila[0] for fila in env.cr.fetchall()], visitadas)
-    env.invalidate_all()
-    tipo.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
 
 
 @tagged('post_install', '-at_install')
@@ -136,11 +97,11 @@ class TestReloadPayrollPackage(TransactionCase):
         Recargar debe recrearlo, usando el mismo mecanismo real de un
         -u (odoo.tools.convert.convert_file), no una copia reescrita."""
         xmlid = 'l10n_co_nomina_electronica.input_l10n_co_embargo_civil'
+        tipo = self.env.ref(xmlid)
         # hr.payslip.input.type prohíbe borrar registros con xmlid de un módulo ("You cannot
         # delete ... as it is used in another module"); el flag de desinstalación es la vía
-        # estándar de Odoo para simular el borrado que Recargar debe reparar. Los dependientes
-        # (novedades de QA, asignaciones) se borran antes, dentro de la transacción.
-        _borrar_tipo_sembrado(self.env, xmlid)
+        # estándar de Odoo para simular el borrado que Recargar debe reparar.
+        tipo.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         self.assertFalse(self.env.ref(xmlid, raise_if_not_found=False))
 
         self.company._l10n_co_ne_reload_payroll_package()
@@ -171,7 +132,7 @@ class TestReloadPayrollPackage(TransactionCase):
     def test_action_reload_delega_en_la_compania(self):
         settings = self.env['res.config.settings'].create({'company_id': self.company.id})
         xmlid = 'l10n_co_nomina_electronica.input_l10n_co_embargo_cooperativa'
-        _borrar_tipo_sembrado(self.env, xmlid)
+        self.env.ref(xmlid).with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         result = settings.action_reload_payroll_package()
         self.env.invalidate_all()
         self.assertTrue(self.env.ref(xmlid, raise_if_not_found=False))

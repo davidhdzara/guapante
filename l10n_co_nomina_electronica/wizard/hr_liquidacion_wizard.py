@@ -136,26 +136,7 @@ class L10nCoHrLiquidacionWizard(models.TransientModel):
                     ('employee_id', '=', self.employee_id.id),
                 ],
             },
-            **(self._onchange_ne_pagado_del_mes() or {}),
         }
-
-    @api.onchange('contract_id', 'date_end')
-    def _onchange_ne_pagado_del_mes(self):
-        """P0 (doc 111 §1): antes de crear la liquidación, hasta cuándo está pagado el mes del retiro y qué falta confirmar (los errores salen al calcularla)."""
-        contrato = self.contract_id._origin
-        if not contrato or not self.date_end:
-            return None
-        sin_confirmar, pagados = self.env['hr.payslip']._ne_liq_recibos_del_mes(contrato, self.date_end)
-        lineas = []
-        if pagados:
-            ultimo = pagados.sorted('date_to')[-1]
-            lineas.append(_('La nómina del mes del retiro ya está pagada hasta el %(hasta)s: %(recibo)s. La liquidación paga solo los días que falten.',
-                            hasta=ultimo.date_to, recibo=ultimo._ne_liq_nombres()))
-        if sin_confirmar:
-            lineas.append(_('Hay recibos de nómina de ese mes sin confirmar: %s. Confírmelos o cancélelos antes de calcular la liquidación.', sin_confirmar._ne_liq_nombres()))
-        if not lineas:
-            return None
-        return {'warning': {'title': _('Nómina del mes del retiro'), 'message': '\n'.join(lineas)}}
 
     @api.depends('contract_id', 'contract_id.l10n_co_ne_contract_type')
     def _compute_requires_dias_restantes(self):

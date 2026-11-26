@@ -126,4 +126,5 @@ class TestCicloReciboProduccion(DocumentoFixture, TransactionCase):
 
     def test_el_cron_del_recibo_no_se_toca(self):
         cron = self.env.ref('l10n_co_nomina_electronica.ir_cron_ne_dian_status_recheck')
-        self.assertEqual(cron.code, 'model._cron_recheck_sent_status()')           # el estado ``active`` es dato de cada base (22-nov: nace inactivo en una instalación nueva)
+        self.assertEqual(cron.code, 'model._cron_recheck_sent_status()')
+        self.assertTrue(cron.active)

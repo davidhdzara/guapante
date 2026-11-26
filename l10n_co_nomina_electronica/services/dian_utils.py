@@ -351,46 +351,6 @@ def get_city_code(city_record) -> str:
     return str(zipcode) if zipcode else ''
 
 
-# Longitud del código DANE de un municipio: departamento + municipio (Tabla 5.4.3 del Anexo Técnico DIAN; DIVIPOLA del DANE). La parte del
-# departamento mide lo que mida el código del propio departamento: no hay un «2» ni un «3» escritos en la partición (H-F4-08).
-DANE_MUNICIPIO_LONGITUD = 5
-
-
-def get_pila_municipality_code(department_code, city_dane_code) -> str:
-    """Campo 10 del registro tipo 2 de PILA (código del municipio de ubicación laboral): la parte del MUNICIPIO dentro de su
-    departamento (H-F4-08, doc 99 §2; Anexo Técnico 2 de la Res. 2388/2016, campos 9 y 10).
-
-    El campo 9 lleva el departamento y el 10 solo el resto del código DANE de la ciudad (``11001`` -> departamento ``11``, municipio
-    ``001``). NO se usa ``get_city_code`` para esto: cae a ``zipcode`` cuando la ciudad no tiene código DANE y un código postal no es
-    DIVIPOLA. Aquí el código DANE se EXIGE, y el municipio solo se acepta si empieza por el código de su departamento.
-
-    Args:
-        department_code: código de 2 dígitos del departamento (``get_department_code``), o '' si no hay.
-        city_dane_code: ``l10n_co_edi_code`` de la ciudad (entero sin el cero a la izquierda, o texto), o falsy si no hay.
-
-    Returns:
-        La parte del municipio (3 dígitos con el código de 5 y el departamento de 2).
-
-    Raises:
-        ValueError: el único argumento es el MOTIVO, para que quien llama arme el mensaje con el empleado y la ciudad:
-            ``departamento_sin_codigo`` (vacío o no numérico, p. ej. el código alfabético de Odoo), ``ciudad_sin_codigo``,
-            ``ciudad_codigo_invalido`` (no es numérico o es más largo que un código DANE) o ``ciudad_otro_departamento``
-            (el código de la ciudad no empieza por el del departamento: dato inconsistente).
-    """
-    departamento = str(department_code or '').strip()
-    if not departamento.isdigit() or len(departamento) >= DANE_MUNICIPIO_LONGITUD:
-        raise ValueError('departamento_sin_codigo')
-    crudo = str(city_dane_code or '').strip()
-    if not crudo:
-        raise ValueError('ciudad_sin_codigo')
-    dane = crudo.zfill(DANE_MUNICIPIO_LONGITUD)
-    if not dane.isdigit() or len(dane) != DANE_MUNICIPIO_LONGITUD:
-        raise ValueError('ciudad_codigo_invalido')
-    if not dane.startswith(departamento):
-        raise ValueError('ciudad_otro_departamento')
-    return dane[len(departamento):]
-
-
 # =====================================================================
 # Separación de nombre en formato colombiano
 # =====================================================================

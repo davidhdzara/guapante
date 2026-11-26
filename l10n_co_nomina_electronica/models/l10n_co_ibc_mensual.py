@@ -142,19 +142,12 @@ class L10nCoIbcMensual(models.Model):
             return dias_mes / total if ref._ne_es_semanal() and total > dias_mes else 1.0
         f_sp, f_arl, f_paraf = escala('CO_DIAS_SP'), escala('CO_DIAS_ARL'), escala('CO_DIAS_PARAF')
         ibc_sp = ref._ne_ibc_limites(salarial * f_sp, incap * f_sp, remuneracion * f_sp, pactados * f_sp, dias_sp)
-
-        def ibc_paraf_del_recibo(recibo):
-            """H-F1-09 (decisión del TL del 22-nov, opción a): la base de parafiscales depende de la ETAPA del aprendiz y la etapa es del recibo (un otrosí de cambio de contrato deja en el mes un recibo de
-            lectiva y otro de práctica): el piso de 1 SMMLV de la práctica se aplica a los días de SU recibo, no a la suma de los días de todos. Así la base del consolidado es la suma de las líneas
-            CO_IBC_PARAF (``diferencia_paraf`` en 0); en el semanal ambos factores escalan por igual (30 / días pagados)."""
-            return recibo._ne_ibc_parafiscales(
-                sum(l.total for l in recibo.line_ids if l.code == 'CO_IBC_SALARIAL') * f_paraf,
-                sum(l.total for l in recibo.line_ids if l.code == 'CO_DIAS_PARAF') * f_paraf)
         vals = {
             'payslip_ids': [(6, 0, slips.ids)],
             'ibc_sp': ibc_sp,
             'ibc_arl': ref._ne_ibc_limites(salarial * f_arl, 0.0, remuneracion * f_arl, pactados * f_arl, dias_arl),
-            'ibc_paraf': sum(ibc_paraf_del_recibo(s) for s in slips),      # .299: solo lo salarial (sin 40 %, piso ni techo); H-F1-09: el aprendiz en practica, el piso, recibo por recibo
+            'ibc_paraf': ref._ne_ibc_limites(
+                salarial * f_paraf, 0.0, remuneracion * f_paraf, pactados * f_paraf, dias_paraf),
             'dias_sp': dias_sp, 'dias_arl': dias_arl, 'dias_paraf': dias_paraf,
             **self._valores_sln(slips, ibc_sp, dias_sp),
             'ibc_recibos_sp': suma('CO_IBC_SP'),

@@ -22,9 +22,9 @@ class L10nCoPayslipTercero(models.Model):
     company_id = fields.Many2one(related='slip_id.company_id', store=True)
     currency_id = fields.Many2one(related='slip_id.company_id.currency_id')
     rule_code = fields.Char(required=True)
-    partner_id = fields.Many2one('res.partner', string='Tercero', check_company=True)       # H-F2-03 (C5)
+    partner_id = fields.Many2one('res.partner', string='Tercero')
     attachment_id = fields.Many2one(
-        'hr.salary.attachment', string='Asignación Salarial', ondelete='restrict', check_company=True)
+        'hr.salary.attachment', string='Asignación Salarial', ondelete='restrict')
     amount = fields.Monetary(string='Descontado', currency_field='currency_id')
     arrears_paid = fields.Monetary(
         string='Atraso Recuperado', currency_field='currency_id',

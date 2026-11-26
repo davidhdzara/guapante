@@ -64,9 +64,9 @@ class TestLiquidacionPrimaIbc(TransactionCase):
         self.assertAlmostEqual(self._total(slip, 'CO_IBC_SP'), ibc_sp, delta=0.01)
         self.assertAlmostEqual(self._total(slip, 'CO_LIQ_SALUD'), salud, delta=0.01)
         self.assertAlmostEqual(self._total(slip, 'CO_LIQ_PENSION'), pension, delta=0.01)
-        # El neto solo cambia en el valor de la prima: los descuentos de salud y pension no dependen de ella y, desde R-2
-        # (doc 108 D2), la retencion tampoco (la prima sale de su base): neto_con - neto_sin = prima + (retencion_con - retencion_sin).
-        self.assertAlmostEqual(rete_con, self._total(slip, 'CO_LIQ_RETE'), delta=0.01)
+        # El neto solo cambia en el valor de la prima y en la retencion en la fuente (que si
+        # depende de la prima; los descuentos de salud y pension, arriba, no): neto_con - neto_sin
+        # = prima + (retencion_con - retencion_sin), con la retencion en negativo.
         rete_sin = self._total(slip, 'CO_LIQ_RETE')
         self.assertAlmostEqual(
             neto_con - self._total(slip, 'CO_LIQ_NETO'), prima + (rete_con - rete_sin), delta=0.01)

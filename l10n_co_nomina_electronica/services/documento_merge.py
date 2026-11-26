@@ -171,41 +171,12 @@ def fusionar_devengados(recibos):
     return salida
 
 
-def _fusionar_fondo_sp(recibos):
-    """``FondoSP`` del mes, en sus dos parejas (H-F3-04): ``Porcentaje``/``DeduccionSP`` (solidaridad) y ``PorcentajeSub``/``DeduccionSub`` (subsistencia). Los porcentajes salen de ``rate`` de la regla y de
-    ``l10n_co_fsp_pct_solidaridad``: el de la subsistencia es el TRAMO del IBC de cada recibo menos la solidaridad, e informativo (el Anexo no lo valida contra la deduccion; en el XSD es opcional): dos recibos
-    del mes pueden caer en tramos distintos (p. ej. una quincena con una bonificacion) y detenerse ahi bloquearia un documento legitimo. Si coinciden, ese valor; si no, el promedio ponderado por lo deducido de
-    SU pareja (``DeduccionSP`` para ``Porcentaje``, ``DeduccionSub`` para ``PorcentajeSub``). Las deducciones se suman como siempre."""
-    nodos = [d.get('deducciones', {}).get('FondoSP') for d in recibos if d.get('deducciones', {}).get('FondoSP')]
-    if not nodos:
-        return None
-    parejas = (('Porcentaje', 'DeduccionSP'), ('PorcentajeSub', 'DeduccionSub'))
-    porcentajes = {porcentaje for porcentaje, _deduccion in parejas}
-    acum = None
-    for nodo in nodos:
-        acum = _sumar_nodo('FondoSP', acum, {campo: valor for campo, valor in nodo.items() if campo not in porcentajes})
-    for porcentaje, deduccion in parejas:
-        valores = [(nodo.get(porcentaje), _dec(nodo.get(deduccion))) for nodo in nodos if nodo.get(porcentaje) not in (None, '')]
-        if not valores:
-            continue
-        distintos = {str(valor) for valor, _peso in valores}
-        total = sum(peso for _valor, peso in valores)
-        if len(distintos) == 1 or not total:
-            acum[porcentaje] = valores[0][0]
-        else:
-            acum[porcentaje] = _dinero(sum(_dec(valor) * peso for valor, peso in valores) / total)
-    return acum
-
-
 def fusionar_deducciones(recibos):
     salida = {}
     for nombre in UNICOS_DEDUCCIONES:
-        if nombre == 'FondoSP':
-            acum = _fusionar_fondo_sp(recibos)
-        else:
-            acum = None
-            for datos in recibos:
-                acum = _sumar_nodo(nombre, acum, datos.get('deducciones', {}).get(nombre))
+        acum = None
+        for datos in recibos:
+            acum = _sumar_nodo(nombre, acum, datos.get('deducciones', {}).get(nombre))
         if acum is not None:
             salida[nombre] = acum
     for nombre in LISTAS_DEDUCCIONES:
@@ -235,16 +206,6 @@ def fusionar_documento(recibos, fechas_pagos, periodo, periodo_nomina='5'):
     if not fechas_pagos:
         raise ErrorFusion('Falta la fecha de pago: FechasPagos exige al menos una (1..N).')
     base = recibos[0]
-    # H-F1-09 (decision del TL del 22-nov): un aprendiz que cambia de etapa dentro del mes (lectiva -> practica) cambia de TipoTrabajador; el documento mensual exige uno solo. Error claro que nombra al
-    # empleado y los dos tipos. La decision de fondo (un documento o dos por mes) queda para la lectura del Anexo Tecnico (hallazgo del F3).
-    trabajador_base = base.get('trabajador') or {}
-    for otro in recibos[1:]:
-        tipo_base, tipo_otro = trabajador_base.get('TipoTrabajador'), (otro.get('trabajador') or {}).get('TipoTrabajador')
-        if tipo_base and tipo_otro and tipo_base != tipo_otro:
-            nombre = ' '.join(filter(None, (trabajador_base.get('PrimerNombre'), trabajador_base.get('PrimerApellido')))) or '(sin nombre)'
-            raise ErrorFusion(
-                "El empleado %s (documento %s) cambia de tipo de trabajador dentro del mes (%s y %s, por ejemplo de la etapa lectiva a la practica de un aprendiz): el documento mensual exige un solo "
-                "TipoTrabajador, asi que esos recibos no se pueden fusionar en uno." % (nombre, trabajador_base.get('NumeroDocumento', ''), tipo_base, tipo_otro))
     for seccion in SECCIONES_IGUALES:
         for otro in recibos[1:]:
             if otro.get(seccion) != base.get(seccion):

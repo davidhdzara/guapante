@@ -2,7 +2,6 @@
 from odoo.tests.common import TransactionCase, tagged
 from odoo import fields
 from datetime import datetime, date
-from .common_dane import ciudad_con_dane
 
 
 @tagged('post_install', '-at_install')
@@ -14,11 +13,7 @@ class TestHrPayslipLeaveIntegration(TransactionCase):
         self.company = self.env.company
         # La compania activa debe ser colombiana: la logica del modulo solo corre para Colombia.
         self.company.partner_id.country_id = self.env.ref('base.co')
-        # H-F3-06: el XML exige códigos DANE en la dirección de la compañía (también es la de trabajo del empleado).
-        departamento = self.env['res.country.state'].search([('country_id', '=', self.env.ref('base.co').id)], limit=1)
-        self.company.partner_id.write({'state_id': departamento.id, 'city_id': ciudad_con_dane(self.env, departamento, 'Ciudad Prueba Ausencias XML').id,
-                                       'street': 'Calle Prueba Ausencias # 1-1'})
-
+        
         # En Odoo 18, busquemos el país Colombia de forma robusta
         co_country = self.env['res.country'].search([('code', '=', 'CO')], limit=1)
         if not co_country:

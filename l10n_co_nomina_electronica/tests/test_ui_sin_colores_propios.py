@@ -44,20 +44,17 @@ class TestUiSinColoresPropios(TransactionCase):
     def test_banners_payslip_sin_iconos_fa(self):
         arch = self._arch('l10n_co_nomina_electronica.view_payslip_form_ne')
         banners = arch.xpath("//div[contains(@class, 'alert')]")
-        # Los 3 banners de estado NE (sent/uncertain/rejected) se identifican por su modificador `l10n_co_ne_state`; los avisos (que no bloquean) por el campo de su `invisible`: periodicidad (E-2, recibo de
-        # 7 dias en un contrato no semanal), afiliacion incompleta (H-F1-06), IBC del mes anterior (H-F1-11/H-F1-08) tipo de trabajador del aprendiz (H-F1-09), dia de descanso (H-F1-07) recibo que no cabe en el documento de su segmento (H-F3-04) y retención que no cabe (R-2).
+        # Los 3 banners de estado NE (sent/uncertain/rejected) se identifican por su modificador `l10n_co_ne_state`; el aviso de
+        # periodicidad (E-2, recibo de 7 dias en un contrato no semanal) por `l10n_co_ne_aviso_periodicidad`.
         de_estado = [b for b in banners if 'l10n_co_ne_state' in (b.get('invisible') or '')]
-        avisos = {campo: [b for b in banners if campo in (b.get('invisible') or '')]
-                  for campo in ('l10n_co_ne_aviso_periodicidad', 'l10n_co_ne_aviso_afiliacion', 'l10n_co_ne_aviso_ibc_anterior', 'l10n_co_ne_aviso_tipo_trabajador', 'l10n_co_ne_aviso_descanso', 'l10n_co_ne_aviso_segmento', 'l10n_co_ne_rete_faltante')}
+        de_periodicidad = [b for b in banners if 'l10n_co_ne_aviso_periodicidad' in (b.get('invisible') or '')]
         self.assertEqual(len(de_estado), 3, 'Se esperaban los 3 banners de estado NE (sent/uncertain/rejected).')
-        for campo, encontrados in avisos.items():
-            self.assertEqual(len(encontrados), 1, 'Se esperaba un solo aviso con el campo %s.' % campo)
-        self.assertEqual(len(banners), len(de_estado) + sum(len(b) for b in avisos.values()), 'Hay un banner sin clasificar.')
-        for encontrados in avisos.values():
-            for banner in encontrados:      # los avisos nuevos tambien son 100 % nativos: sin estilos ni colores propios
-                self.assertIsNone(banner.get('style'))
-                self.assertFalse(banner.xpath(".//*[@style]"))
-                self.assertNotIn('text-muted', etree.tostring(banner, encoding='unicode'))
+        self.assertEqual(len(de_periodicidad), 1, 'Se esperaba el aviso de periodicidad (E-2).')
+        self.assertEqual(len(banners), len(de_estado) + len(de_periodicidad), 'Hay un banner sin clasificar.')
+        for banner in de_periodicidad:      # el aviso nuevo tambien es 100 % nativo: sin estilos ni colores propios
+            self.assertIsNone(banner.get('style'))
+            self.assertFalse(banner.xpath(".//*[@style]"))
+            self.assertNotIn('text-muted', etree.tostring(banner, encoding='unicode'))
         for banner in banners:
             iconos_fa = [
                 i for i in banner.findall('.//i')
@@ -105,7 +102,7 @@ class TestUiSinColoresPropios(TransactionCase):
         self._sin_estilo_propio('l10n_co_nomina_electronica.hr_payslip_send_view_form')
 
     def test_la_colilla_y_sus_bloques_comunes_sin_estilos_propios(self):
-        for xmlid in ('report_payslip_ne', 'ne_comprobante_encabezado', 'ne_colilla_tabla'):
+        for xmlid in ('report_payslip_ne', 'ne_comprobante_encabezado', 'ne_comprobante_conceptos'):
             self._sin_estilo_propio('l10n_co_nomina_electronica.' + xmlid)
 
     def test_el_comprobante_agrupado_sin_estilos_propios(self):

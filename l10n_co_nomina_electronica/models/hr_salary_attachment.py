@@ -28,12 +28,8 @@ class HrSalaryAttachment(models.Model):
 
     _inherit = 'hr.salary.attachment'
 
-    # QA sobre .298 (pedido del TL): ``res.company.country_id`` es un campo CALCULADO sin ``search`` ni almacenamiento (viene de la dirección del contacto de la
-    # compañía), y Odoo avisaba al cargar «Field 'res.company.country_id' in dependency of hr.salary.attachment.l10n_co_company_country_code should be searchable».
-    # Se pasa por el contacto (``res.company.partner_id``, almacenado; su ``country_id`` es almacenado y buscable): el mismo dato, porque ``country_id`` de la compañía
-    # se calcula de ahí (``res.company._compute_address``).
     l10n_co_company_country_code = fields.Char(
-        related='company_id.partner_id.country_id.code', string='País de la compañía',
+        related='company_id.country_id.code', string='País de la compañía',
         help='Solo para ocultar en la vista lo colombiano fuera de Colombia.')
 
     l10n_co_embargo_porcentaje = fields.Float(

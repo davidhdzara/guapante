@@ -353,13 +353,6 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
                         '- %s: La Caja de Compensación no tiene Codigo PILA.' % emp_name
                     )
 
-            # Validar la ubicación laboral (campos 9 y 10): mismo patrón que la CCF (H-F4-08, doc 99 §2; decisión del TL, Q2). Un
-            # empleado sin ciudad o departamento con código DANE, o con una ciudad que no es de su departamento, se nombra aquí.
-            try:
-                payslip._ne_ubicacion_laboral_pila()
-            except UserError as err:
-                errors.append('- %s: %s' % (emp_name, err.args[0]))
-
             # Validar número de identificación
             if not emp.identification_id:
                 errors.append(
@@ -740,10 +733,15 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
         }
         tipo_doc_pila = PILA_DOC_MAP.get(doc_type_code, 'CC')
 
-        # Campos 9 y 10: departamento y municipio de la UBICACIÓN LABORAL (no del domicilio) del cotizante, Anexo Técnico 2 de la
-        # Res. 2388/2016. Misma fuente que los LugarTrabajo* del XML (la Dirección de Trabajo); sin dato, error que nombra al empleado.
-        # H-F4-08 (doc 99): antes leía ``address_home_id``, que no existe en Odoo 18, y salían en blanco para todos.
-        dept_code, city_code = payslip._ne_ubicacion_laboral_pila()
+        # Departamento y municipio del domicilio
+        dept_code = ''
+        city_code = ''
+        if hasattr(employee, 'address_home_id') and employee.address_home_id:
+            partner = employee.address_home_id
+            dept_code = dian_utils.get_department_code(
+                partner.state_id) if partner.state_id else ''
+            city_code = dian_utils.get_city_code(
+                getattr(partner, 'city_id', None))
 
         # Función auxiliar para obtener valor de línea de nómina
         def get_line(code):
@@ -960,7 +958,7 @@ class L10nCoHrPilaWizardV2(models.TransientModel):
 
             # Campos finales
             'ibc_otros_parafiscales': ibc_paraf,
-            'horas_laboradas': contract._ne_horas_laboradas_pila(dias_paraf, payslip.date_from),      # H-F2-02: del horario del contrato; vacio si no hay (opcional)
+            'horas_laboradas': dias_paraf * 8,
             'fecha_radicacion_exterior': str(
                 getattr(employee, 'l10n_co_pila_fecha_radicacion_ext', '')
                 or '') if getattr(

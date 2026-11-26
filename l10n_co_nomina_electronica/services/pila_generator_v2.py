@@ -326,7 +326,7 @@ _TIPO_02_FIELDS = [
 
     # --- Campos finales (campos 95-98) ---
     ('ibc_otros_parafiscales', 'amount'),  # IBC otros parafiscales
-    ('horas_laboradas', 'int_opcional'),  # Número horas laboradas (campo 96, opcional: vacío si no hay dato)
+    ('horas_laboradas', 'int'),           # Número horas laboradas
     ('fecha_radicacion_exterior', 'date'),  # Fecha radicación exterior
     ('actividad_economica_arl', 'str'),  # Código actividad económica ARL
 ]
@@ -368,8 +368,6 @@ def generate_tipo_02(data: dict) -> str:
             campos.append(_fmt_text(value))
         elif field_type == 'int':
             campos.append(_fmt_int(value))
-        elif field_type == 'int_opcional':
-            campos.append('' if value is None or value == '' else _fmt_int(value))     # un opcional sin dato va vacío, no «0»
         elif field_type == 'amount':
             campos.append(_fmt_amount(value, decimals=0))
         elif field_type == 'rate':

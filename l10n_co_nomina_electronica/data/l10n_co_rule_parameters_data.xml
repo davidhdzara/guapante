@@ -73,8 +73,7 @@ Ejemplo real vigente (2026): <strong>1750905</strong>.</p>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html">
 <p>Auxilio de transporte mensual, fijado anualmente por Decreto. Aplica a
-trabajadores con salario hasta el tope en SMMLV (parámetro <code>l10n_co_aux_transporte_tope_smmlv</code>, hoy 2)
-que no devenguen salario integral.</p>
+trabajadores con salario &lt;= 2 SMMLV que no devenguen salario integral.</p>
 <h3 class="mt-5">Fuente</h3>
 <p>correcciones_normativas_2026/00_INDICE.md</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
@@ -96,25 +95,6 @@ Ejemplo real vigente (2026): <strong>249095</strong>.</p>
         <field name="parameter_value">249095</field>
         <field name="rule_parameter_id" ref="rule_parameter_aux_transporte"/>
         <field name="date_from" eval="datetime(2026, 1, 1).date()"/>
-    </record>
-
-    <record id="rule_parameter_aux_transporte_tope_smmlv" model="hr.rule.parameter">
-        <field name="name">Colombia: Tope del Auxilio de Transporte (SMMLV)</field>
-        <field name="code">l10n_co_aux_transporte_tope_smmlv</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Múltiplo de SMMLV hasta el cual (inclusive) un trabajador que no devenga salario
-integral tiene derecho al auxilio de transporte. Por encima de ese salario el auxilio no se paga ni entra a la base de prima,
-cesantías y sus provisiones.</p>
-<h3 class="mt-5">Fuente</h3>
-<p>Art. 7 Ley 1/1963 (fuente secundaria; pendiente de confirmar por David).</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de veces el SMMLV, <strong>NO</strong> un valor en pesos:
-escriba <strong>2</strong> para representar "2 SMMLV". Valor vigente: <strong>2</strong>.</p></field>
-    </record>
-    <record id="rule_parameter_aux_transporte_tope_smmlv_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">2</field>
-        <field name="rule_parameter_id" ref="rule_parameter_aux_transporte_tope_smmlv"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
     <record id="rule_parameter_uvt" model="hr.rule.parameter">
@@ -399,93 +379,6 @@ fecha de vigencia; no edite el anterior.</p></field>
         <field name="date_from" eval="datetime(2017, 1, 1).date()"/>
     </record>
 
-    <!-- H-F1-06 (doc 87, decisión del TL del 22-nov): qué entidades de la seguridad social NO se exigen según el tipo y el subtipo de cotizante del contrato. Versionado por fecha. -->
-    <record id="rule_parameter_afiliaciones_no_exigidas" model="hr.rule.parameter">
-        <field name="name">Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante</field>
-        <field name="code">l10n_co_afiliaciones_no_exigidas</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Lista de excepciones a la validación de la afiliación del empleado (EPS, AFP, Caja de Compensación y ARL) al calcular y confirmar el recibo:
-tuplas <code>(tipo de cotizante, subtipo de cotizante, entidad)</code> con <code>'*'</code> como comodín y la entidad <code>'eps'</code>, <code>'afp'</code>, <code>'ccf'</code> o <code>'arl'</code>. La
-entidad que aparezca para el tipo y el subtipo del contrato NO se exige.</p>
-<h3 class="mt-5">Valor vigente y norma</h3>
-<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>. <strong>Desde el 1-ago-2025</strong> (la lectiva se reporta con el tipo 19, Concepto MinSalud 2025310001925691): <code>[('19', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</code>.
-<strong>Pensionado</strong> (subtipo 01 y 02, pensionado por vejez activo): Ley 100 de 1993, art. 17 (modificado por la Ley 797 de 2003, art. 4): «La obligación de cotizar cesa al momento en que el afiliado reúna los requisitos para acceder a la pensión mínima de vejez, o cuando el afiliado se pensione por invalidez o anticipadamente.»
-<strong>Aprendiz en etapa lectiva</strong> (tipo 12 hasta jul-2025, tipo 19 desde ago-2025): Ley 2466 de 2025, art. 21 (modifica el art. 81 del CST): «Durante la fase lectiva, el aprendiz estará cubierto por el sistema de seguridad social en salud y riesgos laborales, pagado plenamente por la empresa como dependiente.»;
-en la fase práctica o la formación dual SÍ se exige la pensión (EPS, AFP y ARL), así que el tipo de la etapa práctica no aparece aquí. Si la norma o la PILA cambian, cree un valor nuevo con su fecha de vigencia; no edite el anterior.</p></field>
-    </record>
-    <record id="rule_parameter_afiliaciones_no_exigidas_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('12', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</field>
-        <field name="rule_parameter_id" ref="rule_parameter_afiliaciones_no_exigidas"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <!-- H-F1-09 (doc 88; decisión del TL del 22-nov): desde el 1-ago-2025 el aprendiz en etapa LECTIVA se reporta en PILA con el tipo de cotizante 19 y el tipo 12 se restringe (Concepto MinSalud 2025310001925691
-         del 22-jul-2025, que transcribe la Circular MinTrabajo 083 del 18-jul-2025: «el tipo de cotizante “19 - Aprendiz en etapa productiva” en el tipo de planilla “E - empleados”»; «restringir el tipo de
-         cotizante “12- Aprendiz en etapa lectiva”» desde el periodo de salud de agosto de 2025). Antes de esa fecha el 19 era la etapa productiva (con pensión). Esquema PROVISIONAL «mientras el Ministerio de Salud y
-         Protección Social expide el acto administrativo» de ajuste de la PILA: si cambia, se cambia por datos (un valor nuevo con su fecha). -->
-    <record id="rule_parameter_afiliaciones_no_exigidas_2025_08" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('19', '*', 'afp'), ('*', '01', 'afp'), ('*', '02', 'afp')]</field>
-        <field name="rule_parameter_id" ref="rule_parameter_afiliaciones_no_exigidas"/>
-        <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
-    </record>
-
-    <!-- H-F1-09 (doc 88): la ETAPA del aprendiz (lectiva / práctica) y el TipoTrabajador de la DIAN que le corresponde, por el tipo de cotizante y el tipo de contrato del contrato del recibo. Versionado por fecha. -->
-    <record id="rule_parameter_aprendiz_etapas" model="hr.rule.parameter">
-        <field name="name">Colombia: Etapa del Aprendiz por Tipo de Cotizante y Tipo de Contrato</field>
-        <field name="code">l10n_co_aprendiz_etapas</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Tabla que dice cuándo un contrato es de un aprendiz y en qué etapa está: tuplas <code>(tipo de cotizante PILA, tipo de contrato DIAN, etapa, TipoTrabajador DIAN, paga auxilio de transporte, causa prestaciones)</code> con
-<code>'*'</code> como comodín del tipo de contrato; la etapa es <code>'lectiva'</code> o <code>'practica'</code>; las dos últimas columnas son <code>True</code> o <code>False</code>. Un contrato que no aparece NO es de aprendiz.
-De ella salen: qué regla del apoyo de sostenimiento se calcula (no salarial en la lectiva; base de las prestaciones en la práctica), el TipoTrabajador del XML, el régimen de aportes (lectiva: salud y riesgos pagados
-por la empresa, sin pensión; práctica: como dependiente con IBC de 1 SMMLV), si el auxilio de transporte aplica (con el tope de siempre, solo si la fila lo dice: nómina, base de prima y prima y cesantías de la
-liquidación) y si las estructuras de prima y de liquidación calculan prima, cesantías, intereses y vacaciones, y la nómina las provisiona (solo si la fila lo dice).</p>
-<p><strong>El apoyo de sostenimiento es el sueldo del contrato del aprendiz</strong> (no una novedad): regístrelo en el contrato; la etapa decide cómo se clasifica. Un contrato por etapa: con recibos confirmados de una
-etapa sin prestaciones, el contrato no puede pasar a un régimen que las causa (práctica, dual o empleado): cree un contrato nuevo (la antigüedad sale de su fecha de inicio; Decreto 223 de 2026, art. 2.2.6.3.3.6, par. 3).</p>
-<h3 class="mt-5">Prestaciones sociales (prima, cesantías, intereses y vacaciones)</h3>
-<p><strong>Lectiva: no se causan; práctica y formación dual: sí</strong> (Decreto 223 de 2026, art. 2.2.6.3.3.6: num. 1, la fase lectiva trae salud y riesgos laborales pagados por la empresa; num. 2, la fase práctica o toda la
-formación dual traen «todas las prestaciones, auxilios y demás derechos propios del contrato laboral»; Circular MinTrabajo 083 de 2025, num. 4: en la lectiva únicamente apoyo de sostenimiento, salud y riesgos). Con una fila
-que no las causa, si el empleado tiene vacaciones validadas en el último tramo de su liquidación, el cálculo se detiene y lo dice. <strong>NO VERIFICADO:</strong> el texto literal del art. 21 de la Ley 2466 de 2025 y la decisión
-para los periodos anteriores a esa ley.</p>
-<h3 class="mt-5">Auxilio de transporte</h3>
-<p><strong>Lectiva: no se paga; práctica y formación dual: sí</strong> (Circular MinTrabajo 083 del 18-jul-2025, numeral 4, Cuadro 1: la etapa lectiva de la formación tradicional trae «el pago del apoyo de
-sostenimiento mensual, así como las afiliaciones a salud y riesgos laborales», sin auxilio de transporte; la etapa práctica y la formación dual traen «prestaciones, auxilios y demás derechos propios de un contrato de
-trabajo», con «Auxilio de transporte» en la lista). Es una circular (instructivo), no la ley: el texto literal del art. 21 de la Ley 2466 de 2025 NO está verificado. La formación dual se reporta con el tipo de cotizante 01 y el
-contrato «4 - Aprendizaje», que esta tabla ya trata como práctica: por eso recibe el auxilio también en la etapa lectiva de la dual. Si un caso necesita otra cosa, cree un valor nuevo con su fecha.
-<strong>NO VERIFICADO:</strong> el valor anterior al 1-ago-2025 (esquema de los tipos 12 y 19) conserva la misma decisión; no se leyó una norma de ese periodo.</p>
-<h3 class="mt-5">Valores y norma</h3>
-<p><strong>Hasta el 31-jul-2025:</strong> <code>[('12', '*', 'lectiva', '12', False, False), ('19', '*', 'practica', '19', True, True)]</code> (12 = etapa lectiva, 19 = etapa productiva).
-<strong>Desde el 1-ago-2025:</strong> <code>[('19', '*', 'lectiva', '12', False, False), ('01', '4', 'practica', '19', True, True)]</code>: la lectiva se reporta con el tipo 19 y la práctica o la formación dual con el tipo 01 (dependiente) y el tipo de
-contrato «4 - Aprendizaje» (Concepto MinSalud 2025310001925691 del 22-jul-2025 y Circular MinTrabajo 083 del 18-jul-2025; Ley 2466 de 2025, art. 21, que modifica el art. 81 del CST; Decreto 223 de 2026, arts. 2.2.6.3.3.4 y 2.2.6.3.3.6).
-Esquema <strong>PROVISIONAL</strong> «mientras el Ministerio de Salud y Protección Social expide el acto administrativo» de ajuste de la PILA: si cambia, cree un valor nuevo con su fecha de vigencia; no edite este.</p></field>
-    </record>
-    <record id="rule_parameter_aprendiz_etapas_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('12', '*', 'lectiva', '12', False, False), ('19', '*', 'practica', '19', True, True)]</field>
-        <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <record id="rule_parameter_aprendiz_etapas_2025_08" model="hr.rule.parameter.value">
-        <field name="parameter_value">[('19', '*', 'lectiva', '12', False, False), ('01', '4', 'practica', '19', True, True)]</field>
-        <field name="rule_parameter_id" ref="rule_parameter_aprendiz_etapas"/>
-        <field name="date_from" eval="datetime(2025, 8, 1).date()"/>
-    </record>
-
-    <!-- R-2 (doc 108 §9; decisión del TL del 25-nov, QA 60q §2): qué entra en la base de la retención en la fuente del mes. Versionado por fecha. -->
-    <record id="rule_parameter_retefuente_base_mes" model="hr.rule.parameter">
-        <field name="name">Colombia: Base de la Retención en la Fuente del Mes</field>
-        <field name="code">l10n_co_retefuente_base_mes</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Diccionario con tres listas de códigos, las tres obligatorias: <code>categorias</code> (categorías de reglas salariales cuyos valores forman la base, con sus
-subcategorías), <code>reglas_excluidas</code> (reglas de esas categorías que no entran) y <code>reglas_adicionales_liquidacion</code> (reglas de otra categoría que entran solo en la liquidación).</p>
-<p>Los pagos de la relación laboral están gravados salvo exención expresa (E.T. art. 206, inciso 1): por eso entra <code>DEV_NOSAL</code>, incluidos los conceptos que cree la empresa. El auxilio de
-transporte, alimentación, viáticos no salariales, dotación, teletrabajo y la bonificación por retiro y la indemnización de la nómina quedan excluidos porque su tratamiento propio NO está verificado.
-Las cesantías y sus intereses se mantienen en la liquidación mientras no se verifique si llevan retención propia. La prima se retiene aparte.</p>
-<p>Un cambio se registra como un valor nuevo con su fecha de vigencia; no edite uno anterior.</p></field>
-    </record>
-    <record id="rule_parameter_retefuente_base_mes_2023" model="hr.rule.parameter.value">
-        <field name="parameter_value">{'categorias': ['DEV_SAL', 'VAC', 'INC', 'DEV_NOSAL'], 'reglas_excluidas': ['CO_AUX_TRANS', 'CO_AUX_ALIM', 'CO_VIATICOS_NOSAL', 'CO_DOTACION', 'CO_TELETRABAJO', 'CO_BONIF_RET', 'CO_INDEMNIZ'], 'reglas_adicionales_liquidacion': ['CO_LIQ_CESANTIAS', 'CO_LIQ_INT_CES']}</field>
-        <field name="rule_parameter_id" ref="rule_parameter_retefuente_base_mes"/>
-        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
-    </record>
-
     <record id="rule_parameter_aviso_anio_siguiente_desde_mes" model="hr.rule.parameter">
         <field name="name">Colombia: Aviso de Parámetros del Año Siguiente (Desde el Mes)</field>
         <field name="code">l10n_co_aviso_anio_siguiente_desde_mes</field>
@@ -570,19 +463,11 @@ los parámetros "% ..." de este módulo, este SÍ se ingresa como fracción): es
         <field name="name">Colombia: Plazo de Transmisión de Nómina Electrónica (días hábiles)</field>
         <field name="code">l10n_co_ne_dias_plazo_transmision</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Días del mes siguiente dentro de los cuales se transmite el documento
-de nómina electrónica del mes y sus notas de ajuste. Día hábil: día con jornada en el calendario laboral del contrato (o de la
-compañía) y no festivo de la compañía. La vigencia se evalúa en el primer día del mes siguiente al periodo del documento.</p>
+        <field name="description" type="html"><p>Días hábiles del mes siguiente dentro de los cuales se transmite el documento
+de nómina electrónica del mes (Resolución DIAN 000013 de 2021, art. 8: los 10 primeros días hábiles). Día hábil: día con
+jornada en el calendario laboral y no festivo.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de días. Valor vigente: <strong>10</strong>. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p>
-<h3 class="mt-5">Norma</h3>
-<p>Resolución DIAN 000013 de 2021, art. 8 (Diario Oficial 51.585 del 11-feb-2021; compilado como art. 1.5.3.4.1.1 de la Resolución DIAN 227 de 2025): «…dentro de los diez (10) primeros días del mes siguiente
-al cual corresponde el pago o abono en cuenta…». <strong>NO VERIFICADO:</strong> que sean días HÁBILES: el texto leído dice «primeros días», sin «hábiles»; el módulo los cuenta hábiles (doc 53 §4.4, D10) y no se leyó el
-texto compilado de la Resolución 227 de 2025.</p>
-<p>Fundamento de los días HÁBILES (decisión del Tech Lead, D10): Ley 4 de 1913, art. 62: «En los plazos de días que se señalen en las leyes y actos oficiales, se entienden suprimidos los feriados y de vacantes,
-a menos de expresarse lo contrario. Los de meses y años se computan según el calendario; pero si el último día fuere feriado o de vacante, se extenderá el plazo hasta el primer día hábil.» (texto leído en la
-Secretaría del Senado, <code>secretariasenado.gov.co/senado/basedoc/ley_0004_1913_pr001.html</code>). <strong>NO VERIFICADO:</strong> la vigencia del artículo (la página del Senado no muestra notas de vigencia en el
-texto leído) y que aplique tal cual a una resolución de la DIAN que dice «primeros días» sin «hábiles».</p></field>
+<p>Escriba el número entero de días. Valor vigente: <strong>10</strong>.</p></field>
     </record>
     <record id="rule_parameter_dias_plazo_transmision_ne_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">10</field>
@@ -646,10 +531,7 @@ en <code>l10n_co_pct_incapacidad_empleador</code>.</p>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario que el empleador paga en los primeros días
 de incapacidad por enfermedad general (los de <code>l10n_co_dias_incapacidad_empleador</code>).
-H-013 paso 3 (2026-11-09, norma confirmada por David): antes se pagaban al 100%. Fundamento: CST art. 227 («las dos
-terceras (2/3) partes del salario durante los primeros noventa (90) días»). El porcentaje de estos dos días es NO
-VERIFICADO: un concepto de MinSalud (2024424001742752, orientador) dice a la vez 66,6 % y que los asume el
-empleador «en su totalidad»; si la empresa decide pagarlos al 100 %, basta cambiar este valor.</p>
+H-013 paso 3 (2026-11-09, norma confirmada por David): antes se pagaban al 100%.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>66.67</strong> para representar 66.67% (no 0.6667).
@@ -666,8 +548,7 @@ Valor vigente: <strong>66.67</strong>.</p></field>
         <field name="code">l10n_co_pct_incapacidad_3_90</field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS entre el día 3 y el día 90 de
-incapacidad por enfermedad general (CST art. 227: las dos terceras partes del salario durante los primeros noventa días;
-nunca menos de un salario mínimo, Sentencia C-543/2007). La EPS paga desde el tercer día (Decreto 780 de 2016, art. 3.2.1.10, parágrafo 1).</p>
+incapacidad por enfermedad general (Decreto 1406/1999, Art. 3).</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>66.67</strong> para representar 66.67% (no 0.6667).
@@ -684,8 +565,7 @@ Valor vigente: <strong>66.67</strong>.</p></field>
         <field name="code">l10n_co_pct_incapacidad_91_mas</field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Porcentaje del salario pagado por la EPS a partir del día 91 de
-incapacidad por enfermedad general (CST art. 227: «la mitad del salario por el tiempo restante», hasta 180 días; nunca menos de un
-salario mínimo, Sentencia C-543/2007).</p>
+incapacidad por enfermedad general.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
 <p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
 decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.50).
@@ -703,7 +583,7 @@ Valor vigente: <strong>50.0</strong>.</p></field>
         <field name="country_id" ref="base.co"/>
         <field name="description" type="html"><p>Último día del tramo "3 a 90" de incapacidad por enfermedad general
 pagado por la EPS a l10n_co_pct_incapacidad_3_90% -- a partir del día siguiente aplica
-l10n_co_pct_incapacidad_91_mas% (CST art. 227: 2/3 los primeros 90 días y la mitad el tiempo restante, hasta 180 días). AUD-DIAN-34 (2026-10-05):
+l10n_co_pct_incapacidad_91_mas% (Decreto 1406/1999, Art. 3). AUD-DIAN-34 (2026-10-05):
 antes el "90" estaba escrito dos veces en la fórmula de CO_INC_COMUN; es un umbral legal
 propio, no debe confundirse con ningún otro parámetro de días.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
@@ -719,55 +599,18 @@ propio, no debe confundirse con ningún otro parámetro de días.</p>
         <field name="name">Colombia: Incapacidad Común, Interrupción Máxima para Prórroga (Días)</field>
         <field name="code">l10n_co_dias_interrupcion_prorroga</field>
         <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Días calendario de interrupción máxima entre dos incapacidades por enfermedad general del mismo trabajador
-para que la segunda pueda marcarse como PRÓRROGA de la primera (campo «Prórroga de» de la ausencia): la misma enfermedad o lesión, o una que tenga relación
-directa con ella aunque cambie el código CIE, «siempre que no haya una interrupción mayor a treinta (30) días calendario»
-(Decreto 780 de 2016, art. 2.2.3.3.2, parágrafo 1, sustituido por el artículo 1 del Decreto 2126 de 2023; antes Decreto 1333 de 2018, art. 3, publicado el 27-jul-2018). El tramo de pago (2 días del
-empleador, 3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la INICIAL de la cadena, no desde cada incapacidad ni cada recibo (H-170). El módulo no
-decide si dos incapacidades son «la misma enfermedad»: lo marca quien registra la ausencia con el certificado de la EPS, y este parámetro solo
-rechaza un vínculo con más días libres (H-F1-01, doc 84).</p>
+        <field name="description" type="html"><p>Días libres máximos entre dos incapacidades por enfermedad general
+del mismo trabajador para contarlas como UNA sola (prórroga): el tramo de pago (2 días del empleador,
+3 a 90 EPS, 91 en adelante) se cuenta desde el inicio de la primera, no desde cada incapacidad ni
+cada recibo (H-170). Con 0 solo se encadenan las incapacidades contiguas (la siguiente empieza el día
+posterior al fin de la anterior). La norma de prórroga puede admitir más días: valor a confirmar por el
+área normativa.</p>
 <h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de días. Valor vigente: <strong>30</strong>.</p></field>
+<p>Escriba el número entero de días. Valor vigente: <strong>0</strong>.</p></field>
     </record>
     <record id="rule_parameter_dias_interrupcion_prorroga_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">30</field>
+        <field name="parameter_value">0</field>
         <field name="rule_parameter_id" ref="rule_parameter_dias_interrupcion_prorroga"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-
-    <record id="rule_parameter_incapacidad_variacion_pct" model="hr.rule.parameter">
-        <field name="name">Colombia: Incapacidad Común, Variación Máxima del IBC del Mes Anterior (%)</field>
-        <field name="code">l10n_co_incapacidad_variacion_pct</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>La base de la incapacidad común es el IBC del mes anterior al inicio de la incapacidad inicial (Decreto 780 de 2016,
-art. 2.2.3.3.1, sustituido por el artículo 1 del Decreto 2126 de 2023). Su art. 2.2.3.4.5 limita esa base: «las variaciones en el Ingreso Base de Cotización [...] del mes
-anterior al inicio de la incapacidad que excedan el cuarenta por ciento (40%) respecto del promedio de los doce (12) meses inmediatamente anteriores, o su fracción de
-meses cuando este tiempo fuere menor, no serán tomadas en consideración, en la parte que exceda de dicho porcentaje». Este parámetro es ese 40 %; los 12 meses están en
-<code>l10n_co_incapacidad_meses_promedio</code>. Solo aplica a la incapacidad común (H-F1-08, doc 106).</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción
-decimal equivalente: escriba <strong>40</strong> para representar 40% (no 0.40).
-Valor vigente: <strong>40.0</strong>.</p></field>
-    </record>
-    <record id="rule_parameter_incapacidad_variacion_pct_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">40.0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_incapacidad_variacion_pct"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-
-    <record id="rule_parameter_incapacidad_meses_promedio" model="hr.rule.parameter">
-        <field name="name">Colombia: Incapacidad Común, Meses del Promedio del IBC</field>
-        <field name="code">l10n_co_incapacidad_meses_promedio</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Cantidad de meses inmediatamente anteriores al mes de referencia con los que se promedia el IBC para el límite de la incapacidad común
-(Decreto 780 de 2016, art. 2.2.3.4.5, Decreto 2126 de 2023: «el promedio de los doce (12) meses inmediatamente anteriores, o su fracción de meses cuando este tiempo fuere menor»). Se
-promedian los meses que tienen IBC (recibos confirmados). El porcentaje del límite está en <code>l10n_co_incapacidad_variacion_pct</code>.</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero de meses. Valor vigente: <strong>12</strong>.</p></field>
-    </record>
-    <record id="rule_parameter_incapacidad_meses_promedio_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">12</field>
-        <field name="rule_parameter_id" ref="rule_parameter_incapacidad_meses_promedio"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
@@ -837,41 +680,6 @@ escriba <strong>790</strong> para "790 UVT anuales". Valor vigente desde 2023: <
     <record id="rule_parameter_max_renta_exenta_uvt_anual_2023" model="hr.rule.parameter.value">
         <field name="parameter_value">790.0</field>
         <field name="rule_parameter_id" ref="rule_parameter_max_renta_exenta_uvt_anual"/>
-        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
-    </record>
-
-    <record id="rule_parameter_limite_global_pct" model="hr.rule.parameter">
-        <field name="name">Colombia: Límite Global de Rentas Exentas y Deducciones (%)</field>
-        <field name="code">l10n_co_limite_global_pct</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Porcentaje máximo de las rentas exentas y deducciones de la cédula general sobre el ingreso menos los
-ingresos no constitutivos de renta (Art. 336 num. 3 ET, sustituido por el Art. 7 de la Ley 2277 de 2022; Decreto 1625 de 2016 Art. 1.2.1.20.4, modificado por el
-Art. 5 del Decreto 2231 de 2023). En la retención en la fuente lo aplica el parágrafo 3 del Art. 1.2.4.1.6 del Decreto 1625 de 2016 (Art. 9 del Decreto 2231 de 2023):
-«las rentas exentas y deducciones no pueden superar los límites particulares de cada beneficio, ni el límite del cuarenta por ciento (40%) y el valor absoluto de mil
-trescientas cuarenta (1.340) UVT anuales». No aplica a los numerales 6, 7, 8 y 9 del Art. 206 ET, ni a la prima especial ni a la prima de costo de vida (Art. 206-1).</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el porcentaje: escriba <strong>40</strong> para el 40 %. Valor vigente desde 2023: <strong>40</strong>.</p></field>
-    </record>
-    <record id="rule_parameter_limite_global_pct_2023" model="hr.rule.parameter.value">
-        <field name="parameter_value">40.0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_limite_global_pct"/>
-        <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
-    </record>
-
-    <record id="rule_parameter_limite_global_uvt_anual" model="hr.rule.parameter">
-        <field name="name">Colombia: Límite Global de Rentas Exentas y Deducciones (UVT/año)</field>
-        <field name="code">l10n_co_limite_global_uvt_anual</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Valor absoluto ANUAL, en UVT, del límite global de las rentas exentas y deducciones de la cédula general (Art. 336 num. 3 ET, Ley 2277
-de 2022; Decreto 1625 de 2016 Art. 1.2.4.1.6 par. 3, Decreto 2231 de 2023 Art. 9). En la retención en la fuente, que se depura por mes, el tope mensual es este valor dividido en 12
-(como el 790 del 25 %): sin acumulado anual ni prorrateo por quincena (decisión del TL, doc 90).</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número de UVT <strong>por año</strong>, <strong>NO</strong> un valor en pesos ni mensual: escriba <strong>1340</strong> para "1.340 UVT anuales".
-Valor vigente desde 2023: <strong>1340</strong>.</p></field>
-    </record>
-    <record id="rule_parameter_limite_global_uvt_anual_2023" model="hr.rule.parameter.value">
-        <field name="parameter_value">1340.0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_limite_global_uvt_anual"/>
         <field name="date_from" eval="datetime(2023, 1, 1).date()"/>
     </record>
 
@@ -987,27 +795,6 @@ Valor vigente: <strong>1.0</strong>.</p></field>
     <record id="rule_parameter_fsp_pct_base_2024" model="hr.rule.parameter.value">
         <field name="parameter_value">1.0</field>
         <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_base"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-
-    <!-- H-F3-04 (decisión del TL del 22-nov): la parte de SOLIDARIDAD del aporte al FSP, para dividir el total por tramo en las dos parejas del nodo FondoSP del XML (Ley 797/2003 art. 8). -->
-    <record id="rule_parameter_fsp_pct_solidaridad" model="hr.rule.parameter">
-        <field name="name">Colombia: FSP - % Subcuenta de Solidaridad</field>
-        <field name="code">l10n_co_fsp_pct_solidaridad</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Parte del aporte al FSP que va a la subcuenta de SOLIDARIDAD (el resto del total por tramo va a la de subsistencia). Solo divide el nodo
-<code>FondoSP</code> del XML de nómina electrónica en sus dos parejas (<code>Porcentaje</code>/<code>DeduccionSP</code> = solidaridad; <code>PorcentajeSub</code>/<code>DeduccionSub</code> = subsistencia): el valor que se
-descuenta lo siguen fijando <code>FSP - % Base</code> y los tramos.</p>
-<h3 class="mt-5">Cómo ingresar el valor</h3>
-<p>Escriba el número entero (o decimal) del porcentaje, <strong>NO</strong> la fracción decimal equivalente: escriba <strong>0.5</strong> para representar 0,5 % (no 0.005). Valor vigente: <strong>0.5</strong>.</p>
-<h3 class="mt-5">Norma</h3>
-<p>Ley 797 de 2003, art. 8 (subroga el art. 27 de la Ley 100 de 1993; texto leído en la Secretaría del Senado): la subcuenta de solidaridad recibe «el cincuenta por ciento (50%) de la cotización adicional del 1% sobre
-la base de cotización» de los afiliados con IBC igual o superior a 4 SMMLV (0,5 % del IBC) y la de subsistencia el otro 50 % más 0,2 / 0,4 / 0,6 / 0,8 / 1,0 % desde 16 SMMLV. <strong>NO VERIFICADO:</strong> qué espera la
-DIAN en <code>Porcentaje</code> (Anexo NIE167: «porcentaje de deducción de fondo de seguridad pensional»); la decisión del Tech Lead es que lleve el de la solidaridad, en pareja con <code>DeduccionSP</code>.</p></field>
-    </record>
-    <record id="rule_parameter_fsp_pct_solidaridad_2024" model="hr.rule.parameter.value">
-        <field name="parameter_value">0.5</field>
-        <field name="rule_parameter_id" ref="rule_parameter_fsp_pct_solidaridad"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 
@@ -1598,94 +1385,6 @@ decimal equivalente: escriba <strong>50</strong> para representar 50% (no 0.5). 
     <record id="rule_parameter_dias_trabajados_ocultar_v" model="hr.rule.parameter.value">
         <field name="parameter_value">['FEST', 'DESCANSO']</field>
         <field name="rule_parameter_id" ref="rule_parameter_dias_trabajados_ocultar"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-
-    <!-- ════════════════════════════════════════════════════════════════
-         .300 (E2b, doc 72 §3): INTERRUPTOR de fracciones de día en las ausencias de días hábiles (vacaciones, licencias remuneradas y no remuneradas y los
-         tipos sin sueldo). 0 de fábrica = días ENTEROS: una fecha con entrada de la ausencia cuenta 1 día (decisión del TL del 21-nov: no hay caso conocido
-         de medio día). 1 = cuenta la FRACCIÓN: las horas de las entradas de la ausencia ÷ las horas de todas las entradas de esa fecha (medio día = 0,5).
-         OBLIGATORIO: sin este parámetro el cálculo de una ausencia falla con un error claro (nunca un valor por defecto en silencio). Para activarlo NO se
-         edita el valor de fábrica (se reescribe en cada actualización del módulo): se agrega un valor nuevo con la fecha desde la que rige.
-         ════════════════════════════════════════════════════════════════ -->
-    <record id="rule_parameter_ausencia_fraccion_dia" model="hr.rule.parameter">
-        <field name="name">Colombia: Ausencias de Días Hábiles por Fracción de Día</field>
-        <field name="code">l10n_co_ausencia_fraccion_dia</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: escriba 0 para contar las ausencias (vacaciones, licencias, tipos sin sueldo) en días ENTEROS (una fecha con entrada de la ausencia es 1 día) o 1 para contar la FRACCIÓN del día (las horas de la ausencia sobre las horas de todas las entradas de esa fecha; un medio día es 0,5). De fábrica 0. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_ausencia_fraccion_dia_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_ausencia_fraccion_dia"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <!-- .301 (decisión del TL, 22-nov): cuántos meses calendario seguidos, contando el mes del recibo, hacen «habitual» un pago no salarial. No hay norma que fije la
-         cifra: es un criterio prudencial del equipo. Solo alimenta un aviso (no cambia el cálculo); el art. 127 CST define el salario por lo que retribuye el servicio. -->
-    <record id="rule_parameter_no_salarial_meses_habitualidad" model="hr.rule.parameter">
-        <field name="name">Colombia: Meses de Habitualidad de Pagos No Salariales</field>
-        <field name="code">l10n_co_no_salarial_meses_habitualidad</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: escriba la cantidad de meses calendario seguidos, contando el mes del recibo, en que un concepto no salarial vigilado (auxilio de alimentación, bonificaciones y viáticos no salariales) se paga para que el recibo avise que podría ser habitual. De fábrica 3: si se pagó en septiembre, octubre y noviembre, el recibo de noviembre avisa. Escriba 0 para apagar el aviso. Solo es un aviso: no cambia el cálculo. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_no_salarial_meses_habitualidad_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">3</field>
-        <field name="rule_parameter_id" ref="rule_parameter_no_salarial_meses_habitualidad"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <!-- .302 (doc 76 §2.3, decisión del TL del 22-nov): ¿se exige el pacto escrito de desalarización al CONFIRMAR un recibo con un pago no salarial por pacto? De fábrica 0:
-         hasta que el usuario cargue los pactos (pestaña Nómina del empleado) el recibo solo avisa; con 1 la confirmación se rechaza con un error que dice qué completar. -->
-    <record id="rule_parameter_exigir_pacto_no_salarial" model="hr.rule.parameter">
-        <field name="name">Colombia: Exigir el Pacto de los Pagos No Salariales</field>
-        <field name="code">l10n_co_exigir_pacto_no_salarial</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: escriba 0 para que el recibo solo AVISE cuando trae un pago no salarial por pacto de desalarización (auxilio de alimentación, bonificación no salarial) y el empleado no tiene registrado el pacto, o 1 para EXIGIR el pacto al confirmar el recibo (la confirmación se rechaza con un error que dice qué completar). De fábrica 0: póngalo en 1 cuando ya haya cargado los pactos firmados en la pestaña Nómina de cada empleado. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_exigir_pacto_no_salarial_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">0</field>
-        <field name="rule_parameter_id" ref="rule_parameter_exigir_pacto_no_salarial"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <!-- .303 (doc 78, decisión del TL del 22-nov): los divisores de las provisiones de prima y cesantías salen de las fórmulas a parámetros con vigencia (doc 10: si lo puede
-         cambiar una ley, no va en el código). Prima: 30 días de salario por año (CST art. 306, Ley 1788/2016) = un mes por año ÷ 12 meses. Cesantías: un mes de salario por año
-         (CST art. 249) ÷ 12. Hoy coinciden en 12 pero son dos normas distintas: dos parámetros, para que un cambio de una no mueva la otra. -->
-    <record id="rule_parameter_divisor_prov_prima" model="hr.rule.parameter">
-        <field name="name">Colombia: Divisor de la Provisión de Prima de Servicios</field>
-        <field name="code">l10n_co_divisor_prov_prima</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: escriba el número por el que se divide lo devengado en el periodo (la base de prima y cesantías del recibo) para obtener la provisión de la prima de servicios. De fábrica 12: la prima son 30 días de salario por año (CST art. 306, Ley 1788 de 2016), es decir un mes por año, y cada periodo provisiona su fracción de la doceava parte. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_divisor_prov_prima_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">12</field>
-        <field name="rule_parameter_id" ref="rule_parameter_divisor_prov_prima"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-    <record id="rule_parameter_divisor_prov_cesantias" model="hr.rule.parameter">
-        <field name="name">Colombia: Divisor de la Provisión de Cesantías</field>
-        <field name="code">l10n_co_divisor_prov_cesantias</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: escriba el número por el que se divide lo devengado en el periodo (la base de prima y cesantías del recibo) para obtener la provisión de las cesantías. De fábrica 12: un mes de salario por año de servicios (CST art. 249), y cada periodo provisiona su fracción de la doceava parte. Los intereses de las cesantías salen de esta provisión con su propio porcentaje (12 % anual, Ley 50 de 1990 art. 99). Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_divisor_prov_cesantias_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">12</field>
-        <field name="rule_parameter_id" ref="rule_parameter_divisor_prov_cesantias"/>
-        <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
-    </record>
-
-    <!-- H-F2-02 (decisión del TL del 22-nov): los tipos de cotizante para los que el número de horas laboradas de la PILA (registro tipo 2, campo 96) es obligatorio: sin horario de trabajo en el contrato, error. -->
-    <record id="rule_parameter_pila_horas_laboradas_tipos" model="hr.rule.parameter">
-        <field name="name">Colombia: Tipos de Cotizante que Exigen las Horas Laboradas en la PILA</field>
-        <field name="code">l10n_co_pila_horas_laboradas_tipos</field>
-        <field name="country_id" ref="base.co"/>
-        <field name="description" type="html"><p>Formato del dato: una lista con los códigos de tipo de cotizante PILA para los que el campo «Número de horas laboradas» (registro tipo 2, campo 96) es obligatorio, por ejemplo
-<code>['51']</code>. Para los demás tipos el campo es opcional: se envía con las horas semanales del horario de trabajo del contrato, dividido por 7 y por los días cotizados, y vacío si el contrato no tiene horario o es de horas flexibles. Si el tipo
-del contrato está en la lista y no hay horario, el asistente de PILA se detiene con un error que nombra al empleado.</p>
-<h3 class="mt-5">Norma</h3>
-<p>Resolución 980 de 2017, art. 2 (modifica el Anexo Técnico 2 de la Resolución 2388 de 2016): campo 96, tres posiciones, numérico, lo suministra el aportante. <strong>NO VERIFICADO:</strong> qué tipos lo exigen según el texto
-consolidado vigente del Anexo (modificado en 2020, 2022 y 2023); el valor de fábrica (51, tiempo parcial) es la decisión del Tech Lead. Para cambiarlo agregue un valor nuevo con la fecha desde la que rige: no edite el de fábrica.</p></field>
-    </record>
-    <record id="rule_parameter_pila_horas_laboradas_tipos_v" model="hr.rule.parameter.value">
-        <field name="parameter_value">['51']</field>
-        <field name="rule_parameter_id" ref="rule_parameter_pila_horas_laboradas_tipos"/>
         <field name="date_from" eval="datetime(2024, 1, 1).date()"/>
     </record>
 </odoo>

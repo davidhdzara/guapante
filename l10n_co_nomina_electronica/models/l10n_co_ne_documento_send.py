@@ -46,25 +46,23 @@ class L10nCoNeDocumentoSend(models.AbstractModel):
             clave = (slip.company_id.id, slip.employee_id.id, periodo)
             grupo = grupos.setdefault(clave, {
                 'company': slip.company_id, 'employee': slip.employee_id, 'period': periodo,
-                'recibos': self.env['hr.payslip'], 'documento': Documento, 'documentos': Documento, 'motivos': []})
+                'recibos': self.env['hr.payslip'], 'documento': Documento, 'motivos': []})
             grupo['recibos'] |= slip
             if motivo:
                 grupo['motivos'].append(motivo)
         for grupo in grupos.values():
             if grupo['period']:
-                # H-F3-04: con el mes separado por tipo de trabajador hay un documento por segmento; ``documento`` es el del primer segmento (como siempre) y ``documentos`` son todos.
-                grupo['documentos'] = Documento.search([
+                grupo['documento'] = Documento.search([
                     ('company_id', '=', grupo['company'].id), ('employee_id', '=', grupo['employee'].id),
                     ('period', '=', grupo['period']), ('is_adjustment', '=', False), ('legacy', '=', False),
-                    ('eliminado', '=', False)], order='segmento, id')
-                grupo['documento'] = grupo['documentos'][:1]
+                    ('eliminado', '=', False)], limit=1)
         resultado = list(grupos.values())
-        ya = {d.id for g in resultado for d in g['documentos']}
+        ya = {g['documento'].id for g in resultado if g['documento']}
         for doc in documentos:
             if doc.id in ya:
                 continue
             resultado.append({'company': doc.company_id, 'employee': doc.employee_id, 'period': doc.period,
-                              'recibos': doc.payslip_ids, 'documento': doc, 'documentos': doc, 'motivos': []})
+                              'recibos': doc.payslip_ids, 'documento': doc, 'motivos': []})
         return resultado
 
     @api.model
@@ -78,38 +76,26 @@ class L10nCoNeDocumentoSend(models.AbstractModel):
             alertas.append({'key': key, 'level': level, 'message': message, 'confirmable': confirmable,
                             'confirma': confirma})
 
-        company, periodo = grupo['company'], grupo['period']
+        company, doc, periodo = grupo['company'], grupo['documento'], grupo['period']
         for motivo in grupo['motivos']:
             alerta('sin_fecha', 'danger', motivo)
         if not self._ne_es_produccion(company):
             alerta('habilitacion', 'danger', _(
                 'La compañía "%s" está en habilitación: el documento mensual solo se transmite en Producción (en '
                 'habilitación el ciclo es por recibo).', company.name))
-        for doc in grupo['documentos']:
-            if doc.state in ('invoice_pending', 'invoice_accepted') and not doc.is_adjustment:
-                nota = doc._ne_nota_abierta() if doc.state == 'invoice_accepted' else doc.browse()
-                alerta('ya_enviado', 'info', _('El documento "%(doc)s" ya fue enviado a la DIAN (%(estado)s).',
-                                               doc=doc.display_name,
-                                               estado=dict(doc._fields['state'].selection).get(doc.state)))
-                if doc.state == 'invoice_accepted':
-                    nuevos = grupo['recibos'].filtered(lambda s: not s.l10n_co_ne_documento_id)
-                    if company.l10n_co_ne_segmentar_mes:
-                        nuevos = nuevos & doc._ne_recibos_del_segmento()      # H-F3-04: solo los de SU segmento
-                    if nuevos and not nota:
-                        alerta('recibo_tardio', 'warning', _(
-                            'Hay recibos nuevos del mes y el documento ya fue aceptado: cree una nota de ajuste Reemplazar '
-                            'para incluirlos.'))
-            if doc.eliminado or doc.legacy:
-                alerta('no_aplica', 'danger', _('El documento "%s" está eliminado o migrado: no se envía.', doc.display_name))
-            if doc.segmento > 1 and not doc.is_adjustment and not doc.state:
-                # H-F3-04 (Q7 del TL): el segundo documento espera, sin error, a que el anterior sea aceptado. ``warning``, no ``danger``: un problema del segmento 2 no debe bloquear el envío del 1.
-                try:
-                    espera = doc._ne_espera_anterior()
-                except UserError as error:
-                    alerta('segmento_no_sale', 'warning', str(error))
-                else:
-                    if espera:
-                        alerta('segmento_espera', 'info', espera)
+        if doc and doc.state in ('invoice_pending', 'invoice_accepted') and not doc.is_adjustment:
+            nota = doc._ne_nota_abierta() if doc.state == 'invoice_accepted' else doc.browse()
+            alerta('ya_enviado', 'info', _('El documento "%(doc)s" ya fue enviado a la DIAN (%(estado)s).',
+                                           doc=doc.display_name,
+                                           estado=dict(doc._fields['state'].selection).get(doc.state)))
+            if doc.state == 'invoice_accepted':
+                nuevos = grupo['recibos'].filtered(lambda s: not s.l10n_co_ne_documento_id)
+                if nuevos and not nota:
+                    alerta('recibo_tardio', 'warning', _(
+                        'Hay recibos nuevos del mes y el documento ya fue aceptado: cree una nota de ajuste Reemplazar '
+                        'para incluirlos.'))
+        if doc and (doc.eliminado or doc.legacy):
+            alerta('no_aplica', 'danger', _('El documento "%s" está eliminado o migrado: no se envía.', doc.display_name))
         if periodo and not any(a['level'] == 'danger' for a in alertas):
             fin = (periodo.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
             del_mes = self.env['l10n.co.ne.documento']._ne_recibos_del_mes(company, grupo['employee'], periodo)
@@ -206,10 +192,9 @@ class L10nCoNeDocumentoSend(models.AbstractModel):
             if grupo['recibos'] and grupo['period']:
                 docs |= Documento._ne_preparar(grupo['recibos'])['documentos'].filtered(
                     lambda d, g=grupo: d.period == g['period'] and d.employee_id == g['employee'])
-            elif grupo['documentos']:
-                for existente in grupo['documentos']:
-                    existente._ne_validar()
-                    docs |= existente
+            elif grupo['documento']:
+                grupo['documento']._ne_validar()
+                docs |= grupo['documento']
         preparados = docs.ids
         if enviar:
             confirmados = {id(g) for g in grupos if bloqueo.get(id(g)) != 'preparar'}
@@ -218,7 +203,7 @@ class L10nCoNeDocumentoSend(models.AbstractModel):
                 if id(grupo) in confirmados and bloqueo.get(id(grupo)) is not True:
                     permitidos |= docs.filtered(lambda d, g=grupo: d.period == g['period']
                                                 and d.employee_id == g['employee'])
-            for doc in permitidos.sorted(lambda d: (d.period, d.employee_id.id, d.segmento, d.id)):       # H-F3-04: en orden de segmento (el segundo lleva el CUNE del primero)
+            for doc in permitidos:
                 try:
                     with self.env.cr.savepoint():
                         if doc.state in (False, 'invoice_sending_failed') and not doc.is_being_sent:

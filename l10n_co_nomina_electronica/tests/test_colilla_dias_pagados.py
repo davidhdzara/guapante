@@ -84,10 +84,8 @@ class TestColillaDiasPagados(TransactionCase):
         basico = slip.line_ids.filtered(lambda l: l.code == 'CO_BASICO')
         self.assertEqual(len(basico), 1)
         self.assertEqual(basico.quantity, 30.0)
-        # .284 (E2a): «Asistencia» son los días laborados; con los festivos trabajados, los descansos y el ajuste del mes suman los pagados.
-        pagados = sum(slip.worked_days_line_ids.filtered(
-            lambda w: w.code in ('WORK100', 'CO_FEST_TRAB', 'CO_DESCANSO_REM', 'CO_AJUSTE_MES')).mapped('number_of_days'))
-        self.assertEqual(pagados, 30.0, 'Las líneas del desglose suman los días pagados (.280, .284)')
+        work100 = sum(slip.worked_days_line_ids.filtered(lambda w: w.code == 'WORK100').mapped('number_of_days'))
+        self.assertEqual(work100, 30.0, 'La línea Asistencia muestra los días pagados (.280)')
         self.assertEqual(self._dias_impresos(self._html(slip)), 30.0)
 
     def test_liquidacion_imprime_la_cantidad_guardada_de_co_liq_salarios(self):

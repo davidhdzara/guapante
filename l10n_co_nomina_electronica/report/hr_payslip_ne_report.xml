@@ -6,249 +6,148 @@
          Es un comprobante INTERNO de pago: no es una representación del documento de la DIAN, así que no lleva QR,
          CUNE, estado DIAN ni referencias a la Resolución 13 (la representación oficial es una pieza aparte).
 
-         Genérico y multicliente: la fuente sale de las hojas de estilo de informes y el pie de página es el de la compañía del recibo (hasta .298 el logo y
-         los colores salían de ``web.external_layout``; desde H-QA-044 el layout es ``ne_comprobante_layout``); sin estilos en línea, solo clases nativas de Bootstrap; sin textos ni datos
+         Genérico y multicliente: el logo, los colores y la fuente salen del diseño de documentos de la compañía del
+         recibo (``web.external_layout``); sin estilos en línea, solo clases nativas de Bootstrap; sin textos ni datos
          de un cliente; el nombre de cada concepto es el de la regla salarial; los importes usan la moneda de la
-         compañía.
-
-         E11 pieza 5a (.291, doc 74 §4; decisión de David del 21-nov): la colilla es SIEMPRE de MEDIA PÁGINA (A5 horizontal,
-         210 x 148 mm; nunca carta completa) y cada recibo va en su propia media página (cada recibo llama a su propio
-         ``web.external_layout``). Por eso la tabla es COMPACTA: letra menor (clase nativa ``small``), solo filas con valor y
-         solo las columnas que alguna fila usa (sin Cantidad y Unidad cuando ninguna fila lleva unidad; sin «%» cuando todas
-         son 100). Lleva los datos de la empresa (nombre, NIT y dirección) y el mismo diseño de «Conceptos de pago»
-         (secciones Devengados y Deducciones; las deducciones con su signo, en una sola columna). No lleva «Observaciones»
-         (es la nota interna nativa), ni el ajuste de la empresa, ni el costo de la empresa. El mismo encabezado y la misma
-         tabla los usa el comprobante agrupado (E11 pieza 5b, .292), una vez por cada origen del grupo.
-
-         H-QA-043 y H-QA-044 (QA sobre .298, regla fija de David: UNA media página): la colilla daba DOS páginas (la segunda solo con el neto) y el encabezado
-         nativo de la compañía (logo y 6 líneas de datos, ``web.external_layout``) era más alto que el margen superior de la media página y se encimaba al
-         título. Ahora: (1) un layout PROPIO y compacto (``ne_comprobante_layout``: sin el encabezado nativo; solo el pie de la compañía del recibo, si lo
-         tiene), (2) el encabezado de la empresa y del empleado en pocas líneas, (3) devengados y deducciones LADO A LADO en dos tablas y los totales y el neto en
-         UNA fila, (4) letra y relleno menores con clases nativas de Bootstrap (``small`` anidado, ``py-0``, ``lh-sm``). Sin estilos en línea ni CSS propio.
+         compañía. Los dos bloques ``ne_comprobante_encabezado`` y ``ne_comprobante_conceptos`` los reutiliza el
+         comprobante único por empleado y fecha de pago.
          =================================================================== -->
-
-    <!-- Formato de papel de MEDIA PÁGINA, propio de los comprobantes de pago (colilla por recibo y comprobante agrupado): no cambia el formato
-         de papel de la compañía ni el de otros informes. Se define aquí, en el primer archivo de informes que carga el manifiesto, porque
-         lo referencian dos acciones. -->
-    <record id="paperformat_comprobante_pago" model="report.paperformat">
-        <field name="name">Comprobante de pago (A5 horizontal)</field>
-        <field name="default" eval="False"/>
-        <field name="format">A5</field>
-        <field name="orientation">Landscape</field>
-        <!-- H-QA-044: sin encabezado nativo (layout propio ``ne_comprobante_layout``) el margen superior ya no reserva el espacio del logo y las 6 líneas de la
-             compañía (30 mm con 24 de separación): queda el margen mínimo y todo el alto es del cuerpo. El pie de la compañía, si lo tiene, va en el margen inferior. -->
-        <field name="margin_top">8</field>
-        <field name="margin_bottom">12</field>
-        <field name="margin_left">8</field>
-        <field name="margin_right">8</field>
-        <field name="header_spacing">0</field>
-        <field name="dpi">90</field>
-    </record>
-
     <record id="action_report_payslip_ne" model="ir.actions.report">
         <field name="name">Comprobante de pago</field>
         <field name="model">hr.payslip</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">l10n_co_nomina_electronica.report_payslip_ne</field>
         <field name="report_file">l10n_co_nomina_electronica.report_payslip_ne</field>
-        <field name="paperformat_id" ref="paperformat_comprobante_pago"/>
         <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
         <field name="binding_type">report</field>
     </record>
 
-    <!-- Layout PROPIO de los comprobantes de pago (H-QA-044): el bloque ``article`` que Odoo reparte en una página por documento (como ``web.basic_layout``, pero
-         SIN el ``html_container`` para poder repetirlo por recibo) y, al pie, el pie de página de la compañía DEL RECIBO si lo tiene (``report_footer``). No lleva el
-         encabezado nativo de ``web.external_layout`` (logo y 6 líneas de datos, más alto que el margen de la media página): los datos de la empresa los imprime
-         ``ne_comprobante_encabezado`` en dos líneas. Parámetro: ``o`` (el recibo; en el comprobante agrupado, el primero del grupo). -->
-    <template id="ne_comprobante_layout">
-        <t t-set="company" t-value="o.company_id.sudo()"/>
-        <div class="article" t-att-data-oe-model="o and o._name" t-att-data-oe-id="o and o.id" t-att-data-oe-lang="o and o.env.context.get('lang')">
-            <t t-out="0"/>
-        </div>
-        <div t-if="company.report_footer" class="footer">
-            <div class="text-center small" t-field="company.report_footer"/>
-        </div>
-    </template>
-
-    <!-- Encabezado COMPACTO (media página, H-QA-044): una línea con la empresa (nombre, NIT y dirección, de la compañía del recibo y de su contacto) y el título, y
-         un recuadro de tres columnas con el empleado, el contrato y el periodo. Parámetros: ``o`` (recibo), ``fecha_pago`` (la fecha de pago que se imprime: la del
-         recibo en la colilla, la del GRUPO en el comprobante agrupado) y ``agrupado`` (True en el comprobante agrupado: sin «No.» ni periodo ni días trabajados, que
-         son de cada origen y salen en el título de su sección). ``dias_pagados`` (id del recibo -> línea de sueldo) solo lo usa la colilla por recibo. -->
+    <!-- Encabezado: título, referencia del recibo y datos del empleado y del periodo. Parámetro: ``o`` (recibo). -->
     <template id="ne_comprobante_encabezado">
-        <div class="small">
-            <t t-set="direccion" t-value="o.company_id.partner_id._display_address(without_company=True).strip().replace('\n', ', ')"/>
-            <div class="row mb-1">
-                <div class="col-9">
-                    <strong>Empleador:</strong>
-                    <span t-field="o.company_id.name"/>
-                    <t t-if="o.company_id.vat">
-                        - <strong>NIT:</strong>
-                        <span t-field="o.company_id.vat"/>
-                    </t>
-                    <t t-if="direccion">
-                        - <strong>Dirección:</strong>
-                        <span t-out="direccion"/>
-                    </t>
-                </div>
-                <div class="col-3 text-end">
-                    <strong>Comprobante de pago</strong>
-                </div>
+        <div class="row mb-3">
+            <div class="col-8">
+                <h3>Comprobante de pago</h3>
             </div>
-            <div class="row border rounded mb-1 lh-sm">
-                <div class="col-4">
-                    <p class="mb-0">
-                        <strong>Empleado:</strong>
-                        <span t-field="o.employee_id.name"/>
-                    </p>
-                    <p class="mb-0">
-                        <strong>Documento:</strong>
-                        <span t-field="o.employee_id.identification_id"/>
-                    </p>
-                    <p class="mb-0" t-if="o.employee_id.job_title">
-                        <strong>Cargo:</strong>
-                        <span t-field="o.employee_id.job_title"/>
-                    </p>
-                </div>
-                <div class="col-4">
-                    <p class="mb-0">
-                        <strong>Salario:</strong>
-                        <span t-field="o.contract_id.wage"
-                              t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/>
-                    </p>
-                    <p class="mb-0">
-                        <strong>Tipo de contrato:</strong>
-                        <span t-field="o.contract_id.l10n_co_ne_contract_type"/>
-                    </p>
-                    <!-- H-QA-034: los días con que se PAGÓ el recibo (cantidad guardada de su línea de sueldo; los entrega
-                         report.l10n_co_nomina_electronica.report_payslip_ne). Sin esa línea (prima, bonificación) el campo no sale. -->
-                    <t t-set="linea_dias" t-value="dias_pagados and dias_pagados.get(o.id)"/>
-                    <p class="mb-0" t-if="linea_dias and not agrupado">
-                        <strong>Días trabajados:</strong>
-                        <span t-field="linea_dias.quantity"/>
-                    </p>
-                </div>
-                <div class="col-4">
-                    <p class="mb-0" t-if="not agrupado">
-                        <strong>No.:</strong>
-                        <span t-out="o.number or o.name"/>
-                    </p>
-                    <p class="mb-0" t-if="not agrupado">
-                        <strong>Periodo:</strong>
-                        <span t-field="o.date_from"/> - <span t-field="o.date_to"/>
-                    </p>
-                    <p class="mb-0" t-if="fecha_pago">
-                        <strong>Fecha de pago:</strong>
-                        <span t-out="fecha_pago" t-options='{"widget": "date"}'/>
-                    </p>
-                </div>
+            <div class="col-4 text-end">
+                <p class="mb-0">
+                    <strong>No.:</strong>
+                    <span t-out="o.number or o.name"/>
+                </p>
+                <p class="mb-0" t-if="o.paid_date">
+                    <strong>Fecha de pago:</strong>
+                    <span t-field="o.paid_date"/>
+                </p>
+            </div>
+        </div>
+        <div class="row border rounded p-2 mb-3">
+            <div class="col-6">
+                <p class="mb-1">
+                    <strong>Empleado:</strong>
+                    <span t-field="o.employee_id.name"/>
+                </p>
+                <p class="mb-1">
+                    <strong>Documento:</strong>
+                    <span t-field="o.employee_id.identification_id"/>
+                </p>
+                <p class="mb-1">
+                    <strong>Cargo:</strong>
+                    <span t-field="o.employee_id.job_title"/>
+                </p>
+                <p class="mb-1">
+                    <strong>Departamento:</strong>
+                    <span t-field="o.employee_id.department_id.name"/>
+                </p>
+            </div>
+            <div class="col-6">
+                <p class="mb-1">
+                    <strong>Periodo:</strong>
+                    <span t-field="o.date_from"/> - <span t-field="o.date_to"/>
+                </p>
+                <p class="mb-1">
+                    <strong>Salario:</strong>
+                    <span t-field="o.contract_id.wage"
+                          t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/>
+                </p>
+                <!-- H-QA-034: los días con que se PAGÓ el recibo (cantidad guardada de su línea de sueldo; los entrega
+                     report.l10n_co_nomina_electronica.report_payslip_ne). Sin esa línea (prima, bonificación) el campo no sale. -->
+                <t t-set="linea_dias" t-value="dias_pagados and dias_pagados.get(o.id)"/>
+                <p class="mb-1" t-if="linea_dias">
+                    <strong>Días trabajados:</strong>
+                    <span t-field="linea_dias.quantity"/>
+                </p>
+                <p class="mb-1">
+                    <strong>Tipo de contrato:</strong>
+                    <span t-field="o.contract_id.l10n_co_ne_contract_type"/>
+                </p>
             </div>
         </div>
     </template>
 
-    <!-- Una MITAD de la colilla (H-QA-043): la sección Devengados o la de Deducciones, con la tabla compacta de siempre. Parámetros: ``s`` (la sección de
-         ``hr.payslip._ne_colilla``), ``con_unidad``, ``con_porcentaje``, ``columnas`` y ``moneda``. ``py-0`` quita el relleno vertical de cada celda (clase nativa). -->
-    <template id="ne_colilla_lado">
-        <table class="table table-sm table-bordered small mb-0 lh-sm">
+    <!-- Tabla de conceptos con totales y neto. Parámetros: ``lineas`` (líneas del recibo a imprimir), ``neto`` (valor) y
+         ``moneda`` (moneda de la compañía). Devengado = líneas positivas, deducción = negativas (en positivo). -->
+    <template id="ne_comprobante_conceptos">
+        <table class="table table-sm table-bordered">
             <thead>
-                <tr class="table-light fw-bold">
-                    <th class="py-0" t-att-colspan="columnas">
-                        <span t-out="s['titulo']"/>
-                    </th>
-                </tr>
                 <tr class="table-light">
-                    <th class="py-0 w-50">Concepto</th>
-                    <t t-if="con_unidad">
-                        <th class="py-0 text-end">Cantidad</th>
-                        <th class="py-0">Unidad</th>
-                    </t>
-                    <th t-if="con_porcentaje" class="py-0 text-end">%</th>
-                    <th class="py-0 text-end">Importe</th>
-                    <th class="py-0 text-end">Total</th>
+                    <th>Código</th>
+                    <th class="w-50">Concepto</th>
+                    <th class="text-end">Devengado</th>
+                    <th class="text-end">Deducción</th>
                 </tr>
             </thead>
             <tbody>
-                <tr t-foreach="s['filas']" t-as="f">
-                    <td class="py-0">
-                        <span t-out="f['nombre']"/>
-                    </td>
-                    <t t-if="con_unidad">
-                        <td class="py-0 text-end">
-                            <span t-if="f['cantidad'] is not False" t-out="f['cantidad']" t-options='{"widget": "float", "precision": 2}'/>
+                <t t-foreach="lineas" t-as="line">
+                    <tr>
+                        <td>
+                            <span t-field="line.code"/>
                         </td>
-                        <td class="py-0">
-                            <span t-out="f['unidad']"/>
+                        <td>
+                            <span t-field="line.name"/>
                         </td>
-                    </t>
-                    <td t-if="con_porcentaje" class="py-0 text-end">
-                        <span t-if="f['porcentaje'] is not False" t-out="f['porcentaje']" t-options='{"widget": "float", "precision": 2}'/>
-                    </td>
-                    <td class="py-0 text-end">
-                        <span t-out="f['importe']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                    <td class="py-0 text-end">
-                        <span t-out="f['total']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </template>
-
-    <!-- Colilla COMPACTA (E11 pieza 5a; H-QA-043: dos columnas). Parámetros: ``colilla`` (de ``hr.payslip._ne_colilla``) y ``moneda``. Devengados a la izquierda y
-         Deducciones a la derecha, lado a lado (una tabla de maquetación de dos celdas: funciona en cualquier motor de PDF, a diferencia de las cajas flexibles), y debajo
-         UNA fila con Total devengado, Total deducciones y Neto a pagar. Columnas opcionales, las mismas en las dos mitades: Cantidad y Unidad solo si alguna fila lleva
-         unidad; «%» solo si alguna fila es distinta de 100. -->
-    <template id="ne_colilla_tabla">
-        <t t-set="con_unidad" t-value="any(f['unidad'] for s in colilla['secciones'] for f in s['filas'])"/>
-        <t t-set="con_porcentaje" t-value="any(f['porcentaje'] is not False for s in colilla['secciones'] for f in s['filas'])"/>
-        <t t-set="columnas" t-value="3 + (2 if con_unidad else 0) + (1 if con_porcentaje else 0)"/>
-        <div class="small">
-            <table class="w-100 mb-1">
-                <tr>
-                    <t t-foreach="['devengados', 'deducciones']" t-as="clave">
-                        <td t-attf-class="w-50 align-top #{'pe-1' if clave == 'devengados' else 'ps-1'}">
-                            <t t-foreach="[s for s in colilla['secciones'] if s['seccion'] == clave]" t-as="s">
-                                <t t-call="l10n_co_nomina_electronica.ne_colilla_lado"/>
+                        <td class="text-end">
+                            <t t-if="line.total &gt;= 0">
+                                <span t-out="line.total" t-options='{"widget": "monetary", "display_currency": moneda}'/>
                             </t>
                         </td>
-                    </t>
-                </tr>
-            </table>
-            <table class="table table-sm table-bordered small mb-0 lh-sm">
-                <!-- Si la tabla no cuadra con el neto la diferencia se IMPRIME (criterio del Frente 5: no se oculta ni se bloquea). -->
-                <tr t-if="colilla['diferencia']">
-                    <td class="py-0" colspan="5">Diferencia sin clasificar</td>
-                    <td class="py-0 text-end">
-                        <span t-out="colilla['diferencia']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                </tr>
+                        <td class="text-end">
+                            <t t-if="line.total &lt; 0">
+                                <span t-out="abs(line.total)" t-options='{"widget": "monetary", "display_currency": moneda}'/>
+                            </t>
+                        </td>
+                    </tr>
+                </t>
+            </tbody>
+            <tfoot>
                 <tr class="fw-bold">
-                    <td class="py-0">Total devengado</td>
-                    <td class="py-0 text-end">
-                        <span t-out="colilla['total_devengado']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
+                    <td colspan="2">Totales</td>
+                    <td class="text-end">
+                        <span t-out="sum(l.total for l in lineas if l.total &gt;= 0)"
+                              t-options='{"widget": "monetary", "display_currency": moneda}'/>
                     </td>
-                    <td class="py-0">Total deducciones</td>
-                    <td class="py-0 text-end">
-                        <span t-out="colilla['total_deducciones']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
-                    </td>
-                    <td class="py-0 table-light">Neto a pagar</td>
-                    <td class="py-0 text-end table-light">
-                        <span t-out="colilla['neto']" t-options='{"widget": "monetary", "display_currency": moneda}'/>
+                    <td class="text-end">
+                        <span t-out="abs(sum(l.total for l in lineas if l.total &lt; 0))"
+                              t-options='{"widget": "monetary", "display_currency": moneda}'/>
                     </td>
                 </tr>
-            </table>
-        </div>
+                <tr class="table-light fw-bold">
+                    <td colspan="3">Neto a pagar</td>
+                    <td class="text-end">
+                        <span t-out="neto" t-options='{"widget": "monetary", "display_currency": moneda}'/>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
     </template>
 
     <template id="report_payslip_ne">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
-                <t t-call="l10n_co_nomina_electronica.ne_comprobante_layout">
+                <t t-call="web.external_layout">
                     <div class="page">
-                        <t t-set="fecha_pago" t-value="o.paid_date"/>
-                        <t t-set="agrupado" t-value="False"/>
                         <t t-call="l10n_co_nomina_electronica.ne_comprobante_encabezado"/>
-                        <t t-call="l10n_co_nomina_electronica.ne_colilla_tabla">
-                            <t t-set="colilla" t-value="colillas[o.id]"/>
+                        <t t-call="l10n_co_nomina_electronica.ne_comprobante_conceptos">
+                            <t t-set="lineas" t-value="o._ne_pdf_lineas()"/>
+                            <t t-set="neto" t-value="o._ne_pdf_neto()"/>
                             <t t-set="moneda" t-value="o.company_id.currency_id"/>
                         </t>
                     </div>

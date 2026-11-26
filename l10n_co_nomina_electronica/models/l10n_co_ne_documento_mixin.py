@@ -24,7 +24,7 @@ from pytz import timezone as _pytz_timezone
 from lxml import etree as _etree
 
 from odoo import api, fields, models, _
-from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 from ..services import (
     cune as cune_service,
@@ -363,28 +363,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                     payslip.number or payslip.name,
                 ))
 
-    @api.model
-    def _ne_exigir_administrador_de_nomina(self):
-        """H-F2-03 (decisión del TL del 22-nov): TODO método público que llega al certificado —generar, firmar, transmitir o consultar a la DIAN— lo hace el administrador de nómina (o el del sistema, como
-        ya exigía el motor de habilitación y como lo exige el permiso de ``certificate.certificate``), en TODOS los modos (habilitación y producción): coherente con los botones «Generar XML», «Regenerar XML»,
-        «Enviar a DIAN», «Enviar y Procesar» y «Consultar Estado» del recibo, que son solo suyos. El oficial de nómina calcula y confirma, pero no transmite. Un botón con ``groups`` solo se oculta; esta es la
-        barrera real. La prueba ``test_guarda_de_transmision`` recorre la cadena de llamadas y falla si un método público nuevo llega a ``_get_ne_certificate`` sin llamarla. El superusuario (crons, motor de
-        habilitación y datos) no se restringe.
-
-        El error nombra el ROL tal como el usuario lo ve en la ficha de usuarios (``full_name`` del grupo, sin el nombre técnico), como lo hacía el motor de habilitación (H-022): el mensaje se arma SOLO aquí. Si el
-        grupo no existe, un error que lo dice (nunca un nombre escrito a mano)."""
-        if self.env.su or self.env.user.has_group('hr_payroll.group_hr_payroll_manager') or self.env.user.has_group('base.group_system'):
-            return
-        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager', raise_if_not_found=False)
-        if not grupo:
-            raise UserError(_(
-                'Falta el grupo «hr_payroll.group_hr_payroll_manager» (administrador de nómina), que decide quién puede generar o transmitir el XML de nómina electrónica. Actualice el módulo de nómina de Odoo '
-                'o avise al administrador del sistema.'))
-        raise AccessError(_(
-            'Solo el administrador de nómina (o el del sistema) puede generar, transmitir o consultar a la DIAN el XML de nómina electrónica (recibos y documentos mensuales), también en habilitación. '
-            'Si necesita hacerlo, solicite que le asignen el rol "%(rol)s" o el de administrador del sistema. '
-            'El oficial de nómina calcula y confirma los recibos, pero no los transmite: pídale el envío al administrador de nómina.', rol=grupo.full_name))
-
     def action_generate_ne_xml(self):
         """
         Genera el XML de nómina electrónica firmado.
@@ -401,7 +379,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         9. Actualiza estado a ``generated``.
         """
         self.ensure_one()
-        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         self._validate_ne_prerequisites()
 
@@ -445,7 +422,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
             nit_ne=dian_utils.clean_nit(company.vat),
             doc_trab=valores['doc_trab'],
             cl_ne='103' if self.l10n_co_ne_is_adjustment else '102',
-            software_pin=company.l10n_co_ne_operation_mode_ids._ne_pin_del_software() or '',
+            software_pin=company.l10n_co_ne_operation_mode_ids.software_pin or '',
             tipo_amb=company.l10n_co_ne_environment or '2',
         )
         self.l10n_co_ne_cune = cune_value
@@ -499,7 +476,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         5. Actualiza estado según resultado (accepted/rejected).
         """
         self.ensure_one()
-        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         if self.l10n_co_ne_state not in ('generated', 'rejected'):
             raise UserError(_(
@@ -518,7 +494,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
         company = self.company_id
         self._validate_company_ne_config(company)
-        self._ne_exigir_numero_no_reusado()
 
         if company.l10n_co_ne_demo_mode:
             # Doc 37: Modo Demo -- equivalente a _send_bill_sync() del
@@ -574,10 +549,9 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         zip_key = response.get('ZipKey', '')
         if zip_key:
             self.l10n_co_ne_zip_key = zip_key
-        # H-DIAN-02: el mismo intérprete del documento mensual; solo un veredicto de la DIAN acepta o rechaza.
-        veredicto = dian_respuesta.interpretar_respuesta(response, contexto=dian_respuesta.CONTEXTO_ENVIO).veredicto
+        is_valid = response.get('IsValid', '') == 'true'
 
-        if veredicto == dian_respuesta.ACEPTADO:
+        if is_valid:
             self.l10n_co_ne_state = 'accepted'
             if self.l10n_co_ne_consecutive:
                 self.number = self.l10n_co_ne_consecutive
@@ -588,7 +562,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 self.l10n_co_ne_cune,
             )
 
-        elif veredicto == dian_respuesta.RECHAZADO:
+        else:
             self.l10n_co_ne_state = 'rejected'
             error_messages = response.get('ErrorMessages', [])
             detail = '; '.join(error_messages) if error_messages else response.get('ErrorMessage', 'Sin detalle')
@@ -625,7 +599,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 f'<summary>🔧 Detalle técnico de la DIAN</summary>'
                 f'<pre>{detail}</pre>'
                 f'</details><br/>'
-                f'Por favor corrija el dato y use <b>"Regenerar XML"</b>, que toma un consecutivo nuevo: el rechazado no se reenvía.'
+                f'Por favor corrija el dato y use <b>"Enviar y Procesar"</b> para retransmitir con el mismo consecutivo.'
             )
             
             self.message_post(
@@ -634,50 +608,7 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
                 subtype_xmlid='mail.mt_note'
             )
 
-        else:
-            self.l10n_co_ne_state = 'uncertain'
-            self.message_post(body=_(
-                'La DIAN no dio un veredicto de este envío (consecutivo %s): el recibo queda como envío incierto. Use «Consultar Estado»; no regenere el XML.', self.l10n_co_ne_consecutive),
-                message_type='comment', subtype_xmlid='mail.mt_note')
-            if veredicto == dian_respuesta.YA_PROCESADO:          # la DIAN ya lo tenía: se concilia en el acto
-                try:
-                    with self.env.cr.savepoint():
-                        self._ne_consultar_por_cune()
-                except Exception:   # noqa: BLE001 -- el envío ya quedó registrado como incierto
-                    _logger.exception('Recibo %s: no se pudo consultar por CUNE tras la respuesta «procesado anteriormente»', self.id)
-
         return True
-
-    def _ne_consultar_por_cune(self):
-        """H-DIAN-02: concilia un recibo incierto sin ZipKey (``GetStatus`` por CUNE). Solo aplica un veredicto que identifique ESTE CUNE; con «no conocido» explícito el recibo vuelve a «XML Generado»
-        (mismo XML, consecutivo y CUNE) y puede enviarse; cualquier otra respuesta lo deja incierto. Siempre guarda la evidencia."""
-        self.ensure_one()
-        company = self.company_id
-        llave, cert_pem, _der, _cert_obj, _cadena = xml_signer.load_from_certificate(company._get_ne_certificate())
-        endpoint = company._ne_dian_endpoint()
-        respuesta = soap_client.get_status(
-            track_id=self.l10n_co_ne_cune, private_key=llave, cert_pem=cert_pem, endpoint=endpoint,
-            timeout=company._ne_config_int_param('l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT))
-        veredicto = dian_respuesta.interpretar_respuesta(respuesta, contexto=dian_respuesta.CONTEXTO_CONSULTA).veredicto
-        self._ne_store_exchange('get_status', endpoint, respuesta)
-        if self.l10n_co_ne_state != 'uncertain':
-            return veredicto
-        if veredicto == dian_respuesta.NO_CONOCIDO:
-            self.l10n_co_ne_state = 'generated'
-            self.message_post(body=_('La DIAN contestó que no tiene registrado este CUNE: puede enviarse otra vez el mismo XML («Enviar a DIAN»).'), message_type='comment', subtype_xmlid='mail.mt_note')
-            return veredicto
-        concluyente = veredicto in (dian_respuesta.ACEPTADO, dian_respuesta.RECHAZADO) and len(respuesta.get('DianResponses') or []) <= 1 \
-            and self.l10n_co_ne_cune in dian_respuesta.candidatos_cune(respuesta)
-        if concluyente and veredicto == dian_respuesta.ACEPTADO:
-            self.l10n_co_ne_state = 'accepted'
-            if self.l10n_co_ne_consecutive:
-                self.number = self.l10n_co_ne_consecutive
-            self._ne_marcar_original_eliminado()
-        elif concluyente:
-            self.l10n_co_ne_state = 'rejected'
-        self.message_post(body=_('Consulta a la DIAN por CUNE: %s.', dict(self._fields['l10n_co_ne_state'].selection).get(self.l10n_co_ne_state)),
-                          message_type='comment', subtype_xmlid='mail.mt_note')
-        return veredicto
 
     def action_create_adjustment(self):
         """
@@ -726,7 +657,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_mass_generate_ne_xml(self):
         """Genera XML de nómina electrónica para múltiples nóminas."""
-        self._ne_exigir_administrador_de_nomina()
         records = self.filtered(
             lambda p: p.state == 'done'
             and p.l10n_co_ne_state in ('draft', False)
@@ -752,7 +682,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_mass_send_ne_dian(self):
         """Envía múltiples XMLs firmados a la DIAN."""
-        self._ne_exigir_administrador_de_nomina()
         records = self.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'rejected')
         )
@@ -783,7 +712,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         reenviable tal cual, sin regenerar) y las envía como un set de
         pruebas al endpoint de habilitación.
         """
-        self._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self._ne_bloquear_si_va_en_documento()
         records = self.filtered(
             lambda p: p.l10n_co_ne_state in ('generated', 'uncertain')
@@ -927,34 +855,17 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
             },
         }
 
-    def _ne_exigir_numero_no_reusado(self):
-        """.304 (doc 77, A y F): ANTES de enviar un recibo o una nota. (F) Un número que ya viajó y fue RECHAZADO no se reutiliza jamás: la DIAN devuelve el veredicto viejo (regla 90);
-        se genera el XML otra vez, que toma uno nuevo. (A) El número no pudo haber viajado ya, en este ambiente, en OTRO documento de la compañía."""
-        self.ensure_one()
-        if self.l10n_co_ne_consecutive and self.l10n_co_ne_state == 'rejected' and self.env['l10n.co.ne.consecutivo'].sudo().search_count([
-                ('payslip_id', '=', self.id), ('numero', '=', self.l10n_co_ne_consecutive), ('estado', '=', 'rechazado')]):
-            raise UserError(_(
-                'La DIAN rechazó el consecutivo %(numero)s de %(nombre)s: ese número no se reenvía (devolvería el veredicto viejo). Use «Regenerar XML», que toma un consecutivo nuevo.',
-                numero=self.l10n_co_ne_consecutive, nombre=self.name))
-        self.company_id._ne_exigir_numero_sin_viajar(self.l10n_co_ne_consecutive, self.l10n_co_ne_is_adjustment, payslip=self)
-
     def action_regenerate_ne_xml(self):
         """Regenera el XML con consecutivo y CUNE nuevos (no para documentos enviados/aceptados).
 
         Un documento rechazado o con el SoftwareID/TestSetId desactualizado no se puede reenviar
         tal cual: la DIAN devolvería el mismo veredicto viejo (regla 90, "procesado anteriormente").
         """
-        self._ne_exigir_administrador_de_nomina()
         self._ne_bloquear_si_va_en_documento()
         for slip in self:
             if slip.l10n_co_ne_state in ('sent', 'accepted'):
                 raise UserError(_(
                     'No se puede regenerar el XML de %s: ya fue enviado o aceptado por la DIAN.',
-                    slip.name,
-                ))
-            if slip.l10n_co_ne_state == 'uncertain':
-                raise UserError(_(
-                    'No se puede regenerar el XML de %s: el envío está incierto (la DIAN puede tenerlo). Primero consulte su estado («Consultar Estado»): regenerar gasta otro consecutivo y puede duplicar el reporte.',
                     slip.name,
                 ))
             slip.write({
@@ -969,7 +880,6 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
 
     def action_check_dian_status(self):
         """Consulta una vez por ZipKey y distribuye solo resultados inequívocos."""
-        self._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         if not self:
             return True
         self._ne_bloquear_si_va_en_documento(consulta=True)
@@ -977,14 +887,9 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         if len(companies) != 1:
             raise UserError(_('Seleccione nóminas de una sola compañía para consultar DIAN.'))
         company = companies
-        sin_zip = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
-        if sin_zip.filtered(lambda slip: slip.l10n_co_ne_state != 'uncertain' or not slip.l10n_co_ne_cune):
-            raise UserError(_('Hay nóminas sin ZipKey que no están en «Envío incierto»: no hay con qué consultarlas.'))
-        for slip in sin_zip:          # H-DIAN-02: un envío síncrono incierto se concilia por CUNE
-            slip._ne_consultar_por_cune()
-        con_zip = self - sin_zip
-        if not con_zip:
-            return True
+        missing = self.filtered(lambda slip: not slip.l10n_co_ne_zip_key)
+        if missing:
+            raise UserError(_('Hay nóminas sin ZipKey; no se consultan por CUNE porque no es un trackId válido.'))
         private_key, cert_pem, cert_der, _cert_obj, _cert_chain = (
             xml_signer.load_from_certificate(company._get_ne_certificate())
         )
@@ -994,8 +899,8 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
             'l10n_co_nomina_electronica.soap_timeout_seconds', soap_client.SOAP_TIMEOUT)
 
         summaries = []
-        for track_id in set(con_zip.mapped('l10n_co_ne_zip_key')):
-            records = con_zip.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
+        for track_id in set(self.mapped('l10n_co_ne_zip_key')):
+            records = self.filtered(lambda slip: slip.l10n_co_ne_zip_key == track_id)
             response = soap_client.get_status_zip(
                 track_id=track_id, private_key=private_key, cert_pem=cert_pem,
                 endpoint=endpoint, timeout=timeout,
@@ -1364,25 +1269,64 @@ class L10nCoNeDocumentoMixin(models.AbstractModel):
         pero que no es PRE-NOM pasaba como si fuera válido. Defensa en
         profundidad: el consecutivo solo se considera válido si tiene
         el prefijo que corresponde a este tipo de documento.
-
-        .304: sin prefijo configurado es un error claro (antes caía en 'NE'/'NA' en silencio).
         """
         self.ensure_one()
-        return self.company_id._ne_prefijo_consecutivo(self.l10n_co_ne_is_adjustment)
+        company = self.company_id
+        if self.l10n_co_ne_is_adjustment:
+            return company.l10n_co_ne_adjust_prefix or 'NA'
+        return company.l10n_co_ne_payroll_prefix or 'NE'
 
     def _get_next_ne_consecutive(self):
         """
-        Consecutivo oficial de nómina electrónica de este recibo o nota: el que ya tiene si
-        lleva el prefijo que corresponde a su tipo; si no (temporal PRE-NOM o el prefijo de
-        ajuste/nómina equivocado), uno nuevo de ``res.company._ne_tomar_consecutivo`` (.304:
-        ÚNICA función que toma consecutivos; sin secuencia o sin prefijo es un error claro,
-        ya no hay un fallback silencioso por prefijo por defecto y ``zfill``).
+        Genera el siguiente consecutivo de nómina electrónica para la empresa
+        utilizando las secuencias configuradas en la compañía.
         """
         self.ensure_one()
+        company = self.company_id
+
+        # Si ya tiene un consecutivo asignado con el prefijo correcto para
+        # este tipo de documento, lo reutilizamos -- cualquier otro caso
+        # (temporal PRE-NOM, o el prefijo de ajuste/nómina equivocado) se
+        # reasigna.
         expected_prefix = self._ne_expected_prefix()
         if self.l10n_co_ne_consecutive and self.l10n_co_ne_consecutive.startswith(expected_prefix):
             return self.l10n_co_ne_consecutive
-        return self.company_id._ne_tomar_consecutivo(self.l10n_co_ne_is_adjustment)
+
+        if self.l10n_co_ne_is_adjustment:
+            seq = self.env['ir.sequence'].search([
+                ('code', '=', 'l10n_co_nomina.ajuste'),
+                ('|'),
+                ('company_id', '=', company.id),
+                ('company_id', '=', False)
+            ], order='company_id', limit=1)  # la propia de la compania primero (NULL al final)
+            if seq:
+                return seq.next_by_id()
+            prefix = company.l10n_co_ne_adjust_prefix or 'NA'
+        else:
+            if company.l10n_co_ne_sequence_id:
+                return company.l10n_co_ne_sequence_id.next_by_id()
+            prefix = company.l10n_co_ne_payroll_prefix or 'NE'
+
+        # Fallback manual por si no hay secuencia configurada
+        last_payslip = self.search(
+            [
+                ('company_id', '=', company.id),
+                ('l10n_co_ne_consecutive', '!=', False),
+                ('l10n_co_ne_consecutive', '=like', prefix + '%'),
+            ],
+            order='l10n_co_ne_consecutive desc',
+            limit=1,
+        )
+        if last_payslip and last_payslip.l10n_co_ne_consecutive and not last_payslip.l10n_co_ne_consecutive.startswith('PRE-NOM'):
+            last_num_str = last_payslip.l10n_co_ne_consecutive[len(prefix):]
+            try:
+                next_num = int(last_num_str) + 1
+            except ValueError:
+                next_num = 1
+        else:
+            next_num = 1
+
+        return '%s%s' % (prefix, str(next_num).zfill(8))
 
     def _get_ne_xml_filename(self):
         """Genera el nombre del archivo XML de nómina electrónica."""

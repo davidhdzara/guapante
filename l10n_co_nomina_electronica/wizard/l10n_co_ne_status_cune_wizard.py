@@ -45,7 +45,6 @@ class L10nCoNeStatusCuneWizard(models.TransientModel):
         return payslip
 
     def action_check_status(self):
-        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
         cune = (self.cune or '').strip()
         # Un CUNE de un documento mensual se consulta con ``GetStatus`` por CUNE (doc 53 §23.17, 7a); el resto sigue

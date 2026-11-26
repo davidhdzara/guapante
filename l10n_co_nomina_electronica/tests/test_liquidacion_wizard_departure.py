@@ -190,7 +190,6 @@ class TestLiquidacionWizardDeparture(TransactionCase):
         payslip_manual = self.env['hr.payslip'].browse(
             wizard_manual.action_create_liquidacion()['res_id'])
         payslip_manual.compute_sheet()
-        payslip_manual.write({'state': 'cancel'})      # R-2: dos liquidaciones abiertas del mismo mes no se calculan; se comparan las líneas de la cancelada
 
         wizard_prellenado = self._new_wizard()
         wizard_prellenado.employee_id = employee

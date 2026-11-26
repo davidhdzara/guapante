@@ -32,8 +32,6 @@
                             <field name="employee_id" readonly="legacy or state"/>
                             <field name="contract_id" readonly="legacy or state"/>
                             <field name="period" readonly="legacy or state"/>
-                            <field name="segmento" invisible="segmento &lt;= 1" readonly="1"/>
-                            <field name="novedad_de_id" invisible="not novedad_de_id" readonly="1"/>
                             <field name="fecha_limite"/>
                             <field name="state" widget="account_document_state" invisible="not state"/>
                         </group>
@@ -111,7 +109,6 @@
                 <field name="company_id" groups="base.group_multi_company"/>
                 <field name="employee_id"/>
                 <field name="period"/>
-                <field name="segmento" optional="show"/>
                 <field name="etapa"/>
                 <field name="state" widget="account_document_state"/>
                 <field name="incierto" optional="show"/>

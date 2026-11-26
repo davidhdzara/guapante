@@ -92,7 +92,6 @@ class TestUgppDias(TransactionCase):
         # U4 (doc 57): una fila por empleado y mes; los días salen del consolidado del mes, no de cada recibo.
         employee, contract = self._empleado()
         s1 = self._recibo(employee, contract, date(2026, 9, 1), date(2026, 9, 15))
-        s1.state = 'done'      # R-2: el segundo cierra el mes y exige el primero confirmado
         s2 = self._recibo(employee, contract, date(2026, 9, 16), date(2026, 9, 30))
         self._confirmar(s1, s2)
         filas = self._filas(s1 | s2)

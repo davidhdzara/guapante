@@ -46,7 +46,6 @@ from datetime import date, datetime
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
-from .common_dane import ciudad_con_dane
 
 
 @tagged('post_install', '-at_install')
@@ -90,7 +89,11 @@ class TestAusenciasNomina(TransactionCase):
                 'code': 'PA',
                 'country_id': co_country.id,
             })
-        co_city = ciudad_con_dane(cls.env, co_state, 'Ciudad Prueba Ausencias')
+        co_city = cls.env['res.city'].create({
+            'name': 'Ciudad Prueba Ausencias',
+            'state_id': co_state.id,
+            'country_id': co_country.id,
+        })
         cls.company.partner_id.write({
             'country_id': co_country.id,
             'state_id': co_state.id,
@@ -275,8 +278,8 @@ class TestAusenciasNomina(TransactionCase):
         self.assertLess(round(basico, 2), round(wage, 2))
 
     def test_incapacidad_comun_sin_doble_pago(self):
-        """Incapacidad corta (2 días) -- H-013 paso 3 (2026-11-09; quien paga: Decreto 780/2016
-        Art. 3.2.1.10 par. 1; porcentaje: CST Art. 227): los 2 primeros días los paga el empleador al 66.67% (antes 100%).
+        """Incapacidad corta (2 días) -- H-013 paso 3 (2026-11-09, Decreto 780/2016 Art.
+        3.2.1.10 par. 1): los 2 primeros días los paga el empleador al 66.67% (antes 100%).
         Ya no rige "básico + novedad = sueldo" para este concepto: el 33.33% restante de
         esos días NO se paga. Lo que sí debe seguir cumpliéndose: sin doble pago (el básico
         descuenta exactamente los días de la incapacidad)."""
@@ -1033,10 +1036,12 @@ class TestAusenciasNomina(TransactionCase):
         self.assertEqual(round(abs(salud), 2), 72000.0)
         self.assertEqual(round(abs(pension), 2), 72000.0)
 
-    def test_ibc_ss_usa_el_ibc_del_mes_anterior_no_salario_actual(self):
-        """Punto (a) del diseño: con historial, la base es el IBC del mes anterior (H-F1-11: la suma de CO_SS_BASE_IBC de los recibos 'done' de ese
-        mes, escalada a 30 días; hasta .305 era la del último recibo), NO el salario actual -- lectura literal de la regla de David, confirmada por Tech Lead incluso con cambio
-        salarial reciente entre el mes anterior y el de la novedad."""
+    def test_ibc_ss_usa_ultimo_ibc_de_nomina_anterior_no_salario_actual(self):
+        """Punto (a) del diseño: con historial, "último IBC anterior" se lee de
+        CO_SS_BASE_IBC de la última nómina 'done' del mismo contrato/estructura, NO
+        del salario actual -- lectura literal de la regla de David, confirmada por
+        Tech Lead incluso con cambio salarial reciente entre el mes anterior y el de
+        la novedad."""
         employee, contract = self._make_contract(
             'IbcHistorial', wage=2500000.0, date_start=date(2024, 1, 1))
 
@@ -1058,7 +1063,7 @@ class TestAusenciasNomina(TransactionCase):
         payslip = self._make_payslip(employee, contract, date(2026, 9, 1), date(2026, 9, 30))
         payslip.compute_sheet()
 
-        ultimo_ibc = payslip._ne_ibc_mes_anterior(contract)
+        ultimo_ibc = payslip._ne_ultimo_ibc_anterior(contract)
         self.assertEqual(ultimo_ibc, 2500000.0)
         self.assertNotEqual(ultimo_ibc, contract.wage)
 

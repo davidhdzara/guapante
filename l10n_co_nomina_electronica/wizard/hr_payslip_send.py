@@ -11,7 +11,7 @@ Permite procesamiento masivo e individual desde el formulario de nómina y la vi
 
 import logging
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -145,9 +145,8 @@ class HrPayslipSend(models.TransientModel):
         produccion = self.payslip_ids.filtered(lambda s: Envio._ne_es_produccion(s.company_id))
         habilitacion = self.payslip_ids - produccion
         resultado_docs = {'preparados': [], 'encolados': [], 'bloqueados': []}
-        if produccion or self.documento_ids or (habilitacion and self.checkbox_send_dian):
-            # H-F2-03: generar o transmitir el XML exige al administrador de nómina en TODOS los modos (también en habilitación), como el botón «Generar XML» del recibo.
-            self.env['hr.payslip']._ne_exigir_administrador_de_nomina()
+        if (produccion or self.documento_ids) and not self.env.user.has_group('hr_payroll.group_hr_payroll_manager'):
+            raise AccessError(_('Solo el administrador de nómina puede preparar y enviar documentos mensuales.'))
         if produccion or self.documento_ids:
             # Producción: el documento mensual (preparar y, si se marca "Enviar a la DIAN", generar y encolar).
             if self.checkbox_send_dian:

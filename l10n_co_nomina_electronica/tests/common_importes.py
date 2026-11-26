@@ -10,9 +10,7 @@ _VALOR = re.compile(r'<span class="oe_currency_value">([^<]+)</span>')
 def a_numero(texto):
     """'3.000.000,00' o '3,000,000.00' (o sin decimales) -> 3000000.0. Si el último separador va seguido de exactamente
     dos dígitos es el decimal; si no, todos los separadores son de miles."""
-    # El widget monetario de Odoo escribe un negativo como '-' + U+FEFF (espacio de ancho cero sin separación) y el espacio de no separación
-    # entre el símbolo y el valor; el signo menos tipográfico (U+2212) se trata como '-'.
-    texto = texto.strip().replace('\xa0', '').replace('\ufeff', '').replace('\u2212', '-').replace(' ', '')
+    texto = texto.strip().replace('\xa0', '').replace(' ', '')
     negativo = texto.startswith('-')
     texto = texto.lstrip('-')
     decimal = re.search(r'[.,](\d{2})$', texto)

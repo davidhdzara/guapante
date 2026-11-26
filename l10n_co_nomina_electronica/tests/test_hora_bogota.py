@@ -24,7 +24,6 @@ from odoo.tests.common import TransactionCase, tagged
 from odoo.addons.l10n_co_nomina_electronica.services import soap_client, xml_signer
 
 from .test_documento_enviar import ACEPTADA
-from .common_dane import ciudad_con_dane
 
 MODULO = 'odoo.addons.l10n_co_nomina_electronica'
 _SIGN_XML_REAL = xml_signer.sign_xml      # la función real, antes de que el setUp la parchee
@@ -53,7 +52,10 @@ class TestHoraBogota(TransactionCase):
         env = cls.env
         pais = env.ref('base.co')
         estado = env['res.country.state'].search([('country_id', '=', pais.id)], limit=1)
-        ciudad = ciudad_con_dane(env, estado, 'Ciudad Prueba Hora Bogotá')
+        ciudad = env['res.city'].search([('country_id', '=', pais.id), ('state_id', '=', estado.id)], limit=1)
+        if not ciudad:
+            ciudad = env['res.city'].create({
+                'name': 'Ciudad Prueba', 'country_id': pais.id, 'state_id': estado.id, 'zipcode': '11001'})
         cls.company = env['res.company'].create({
             'name': 'Empresa Hora Bogotá', 'country_id': pais.id, 'vat': '900123456-8',
             'street': 'Calle 1 # 2-3', 'state_id': estado.id,

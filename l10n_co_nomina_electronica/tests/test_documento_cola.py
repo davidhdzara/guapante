@@ -57,7 +57,6 @@ class TestDocumentoCola(DocumentoFixture, TransactionCase):
         self._patch(nomina_xml_builder, 'build_nomina_individual_v2', lambda datos: XML_STUB)
         self.soap = MagicMock(name='send_nomina_sync', return_value=ACEPTADA)
         self._patch(soap_client, 'send_nomina_sync', self.soap)
-        self._patch(soap_client, 'get_status', MagicMock(name='get_status', return_value={'IsValid': 'false', 'StatusCode': '66', 'ErrorMessages': [], 'XmlDocumentKey': ''}))
         self.trigger = MagicMock(name='_trigger')
         self._patch(type(self.env['ir.cron']), '_trigger', self.trigger)
         self.bus = MagicMock(name='_sendone')
@@ -179,7 +178,6 @@ class TestDocumentoCola(DocumentoFixture, TransactionCase):
         self.assertEqual(doc.state, 'invoice_sending_failed')
         self.assertFalse(doc.is_being_sent)
         self.assertTrue(doc.message_ids.filtered(lambda m: 'agotaron los reintentos' in str(m.body)))
-        self.assertTrue(doc.incierto, 'H-DIAN-03: pudo haber llegado a la DIAN: se concilia por CUNE antes de otro envío')
 
     def test_no_procesa_antes_de_proximo(self):
         doc = self._encolados(1)

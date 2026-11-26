@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <!-- E11 pieza 3 (.289): genera las filas de «Conceptos de pago» de los recibos ya calculados que no las tienen (solo vista, sin recalcular).
-         Fuera de noupdate para re-aplicarse en -u; va después de los datos de las estructuras (que traen el interruptor). -->
-    <function model="hr.payslip" name="_ne_generar_conceptos_pendientes"/>
-</odoo>
