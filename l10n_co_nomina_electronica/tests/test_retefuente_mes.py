@@ -34,6 +34,7 @@ class TestRetefuenteMes(TransactionCase):
             'l10n_co_pila_tipo_aportante': '1', 'l10n_co_pila_forma_presentacion': 'U', 'country_id': cls.env.ref('base.co').id, 'l10n_co_pila_clase_riesgo': '1',
             'l10n_co_ne_febrero_modo': 'real', 'l10n_co_ne_redondeo_dias': 'DOWN', 'name': 'Compañía Retención del Mes'})
         cls.env = cls.company.with_company(cls.company).env
+        cls.env.user.groups_id = [Command.link(cls.env.ref('hr_payroll.group_hr_payroll_manager').id)]          # cancelar un recibo confirmado lo exige
         cls.config = cls.env['l10n.co.retefuente.uvt'].create({'year': '2026', 'company_id': cls.company.id, 'procedure': '1'})
         cls.tipos = {
             periodicidad: cls.env['hr.payroll.structure.type'].create({
@@ -217,7 +218,11 @@ class TestRetefuenteMes(TransactionCase):
         self._ausencia(contrato, 'hr_leave_type_co_inc_comun', date(2026, 9, 7), date(2026, 9, 11))
         primera = self._hecho(self._primera(contrato))
         self.assertGreater(self._total(primera, 'CO_INC_COMUN'), 0.0, 'Premisa: la quincena paga incapacidad')
-        self._comprobar_mes_con_aportes_reales(primera, self._segunda(contrato))
+        segunda = self._segunda(contrato)
+        self._comprobar_mes_con_aportes_reales(primera, segunda)
+        # A mano (UVT 52.374): básico 4.000.000 + incapacidad 1.333.400 (5 días x 400.000 x 66,67 %) + segunda quincena 6.000.000 = 11.333.400; salud y pensión 453.336 + 453.336; 25 % de 10.426.728 = 2.606.682;
+        # base 7.820.046 = 149,3116 UVT; (149,3116 - 95) x 19 % = 10,3192 UVT = 540.458. Con aportes sobre los 10.000.000 salariales: base 7.900.050 = 150,8392 UVT = 10 + 0,8392 x 28 % = 536.046 (salto en 150).
+        self.assertAlmostEqual(-self._total(segunda, 'CO_RETEFUENTE'), 540458.0, delta=1.0)
 
     def test_el_exceso_del_40_por_ciento_resta_sus_aportes(self):
         recibo = self._recibo(self._contrato(periodicidad='monthly'), date(2026, 9, 1), date(2026, 9, 30), novedades=[('CO_BONIF_NOSAL', 20000000.0)])
@@ -314,6 +319,109 @@ class TestRetefuenteMes(TransactionCase):
         with self.assertRaisesRegex(UserError, 'uno por uno'):
             self._confirmar(cierre | bono)
 
+    # ── un cierre confirmado no deja anular lo que sumó ──────────────
+    def _mes_cerrado(self):
+        contrato = self._contrato()
+        return self._hecho(self._primera(contrato)), self._hecho(self._segunda(contrato))
+
+    def _reembolso_de(self, recibo):
+        return self.env['hr.payslip'].search([
+            ('contract_id', '=', recibo.contract_id.id), ('struct_id', '=', recibo.struct_id.id), ('date_from', '=', recibo.date_from), ('date_to', '=', recibo.date_to), ('credit_note', '=', True)])
+
+    def _no_se_anula(self, recibo, cierre):
+        """Ni cancelar ni reembolsar: error que nombra el cierre, y el recibo queda como estaba."""
+        estado = recibo.state
+        for operacion in ('action_payslip_cancel', 'refund_sheet'):
+            with self.subTest(operacion=operacion), self.assertRaisesRegex(UserError, re.escape(cierre.number)):
+                getattr(recibo, operacion)()
+        self.assertEqual(recibo.state, estado)
+        self.assertFalse(self._reembolso_de(recibo))
+
+    def test_el_cierre_guarda_los_recibos_que_sumo_y_nadie_los_escribe_por_fuera(self):
+        primera, segunda = self._mes_cerrado()
+        self.assertEqual(segunda.l10n_co_ne_rete_sumados_ids, primera)
+        self.assertFalse(primera.l10n_co_ne_rete_sumados_ids)
+        with self.assertRaises(UserError):
+            segunda.write({'l10n_co_ne_rete_sumados_ids': [Command.clear()]})
+
+    def test_no_se_cancela_ni_se_reembolsa_un_recibo_que_el_cierre_confirmado_sumo(self):
+        primera, segunda = self._mes_cerrado()
+        self._no_se_anula(primera, segunda)
+
+    def test_el_cierre_pagado_tambien_bloquea(self):
+        primera, segunda = self._mes_cerrado()
+        segunda.write({'state': 'paid'})
+        self._no_se_anula(primera, segunda)
+
+    def test_el_cierre_en_borrador_no_bloquea(self):
+        contrato = self._contrato()
+        primera = self._hecho(self._primera(contrato))
+        self._segunda(contrato)
+        primera.action_payslip_cancel()
+        self.assertEqual(primera.state, 'cancel')
+
+    def test_la_bonificacion_que_el_cierre_sumo_no_se_anula_y_la_posterior_si(self):
+        contrato = self._contrato()
+        self._hecho(self._primera(contrato))
+        antes = self._hecho(self._bono(contrato))
+        segunda = self._hecho(self._segunda(contrato))
+        despues = self._hecho(self._bono(contrato, dia=25))
+        self._no_se_anula(antes, segunda)
+        despues.action_payslip_cancel()
+        self.assertEqual(despues.state, 'cancel')
+
+    def test_el_propio_cierre_se_cancela_y_despues_lo_que_sumo(self):
+        primera, segunda = self._mes_cerrado()
+        segunda.action_payslip_cancel()
+        primera.action_payslip_cancel()
+        self.assertEqual((primera | segunda).mapped('state'), ['cancel', 'cancel'])
+
+    def test_con_el_cierre_reembolsado_se_permite(self):
+        primera, segunda = self._mes_cerrado()
+        segunda.refund_sheet()
+        self._no_se_anula(primera, segunda)          # el reembolso del cierre sin confirmar todavía no lo anula
+        self._hecho(self._reembolso_de(segunda))
+        primera.refund_sheet()
+        self.assertTrue(self._reembolso_de(primera))
+        primera.action_payslip_cancel()
+        self.assertEqual(primera.state, 'cancel')
+
+    def test_la_misma_operacion_que_incluye_el_cierre_no_se_bloquea(self):
+        primera, segunda = self._mes_cerrado()
+        (primera | segunda).refund_sheet()
+        self.assertTrue(self._reembolso_de(primera) and self._reembolso_de(segunda))
+        primera, segunda = self._mes_cerrado()
+        (primera | segunda).action_payslip_cancel()
+        self.assertEqual((primera | segunda).mapped('state'), ['cancel', 'cancel'])
+
+    def test_un_reembolso_creado_antes_del_cierre_no_se_confirma_sin_el_del_cierre(self):
+        contrato = self._contrato()
+        primera = self._hecho(self._primera(contrato))
+        segunda = self._segunda(contrato)
+        primera.refund_sheet()                       # el cierre aún no está confirmado
+        self._hecho(segunda)
+        reembolso = self._reembolso_de(primera)
+        with self.assertRaisesRegex(UserError, re.escape(segunda.number)):
+            self._confirmar(reembolso)
+        segunda.refund_sheet()
+        self.assertTrue(self._confirmar(reembolso | self._reembolso_de(segunda)).called)
+
+    def test_en_procedimiento_2_no_se_bloquea(self):
+        contrato = self._contrato(l10n_co_ne_retention_procedure='2')
+        self.env['l10n.co.retefuente.procedure2'].create({
+            'contract_id': contrato.id, 'semester_start': date(2026, 7, 1), 'fixed_percentage': 10.0, 'months_considered': 12})
+        primera = self._hecho(self._primera(contrato))
+        segunda = self._hecho(self._segunda(contrato))
+        self.assertFalse(segunda.l10n_co_ne_rete_sumados_ids)
+        primera.action_payslip_cancel()
+        self.assertEqual(primera.state, 'cancel')
+
+    def test_en_una_compania_no_colombiana_no_se_bloquea(self):
+        primera, _segunda = self._mes_cerrado()
+        with patch.object(type(self.company), '_ne_es_colombia', lambda compania: False):
+            primera.action_payslip_cancel()
+        self.assertEqual(primera.state, 'cancel')
+
     # ── huella (C-24) ────────────────────────────────────────────────
     def test_cancelar_un_recibo_anterior_deja_el_cierre_desactualizado(self):
         contrato = self._contrato()
@@ -381,6 +489,8 @@ class TestRetefuenteMes(TransactionCase):
         self.assertGreater(esperado, 0.0)
         self.assertAlmostEqual(liquidacion.l10n_co_ne_rete_a_descontar, esperado, delta=1.0)
         self.assertGreater(self._total(liquidacion, 'CO_LIQ_PRIMA'), 0.0, 'Premisa: la liquidación trae prima')
+        self._hecho(liquidacion)
+        self._no_se_anula(primera, liquidacion)
 
     # ── la retención no cabe en el recibo de cierre ──────────────────
     def _no_cabe(self):

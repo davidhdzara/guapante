@@ -1563,6 +1563,7 @@ class HrPayslip(models.Model):
         colombia._ne_validar_retencion_conjunto()  # R-2: la retencion del mes no ve los recibos que se confirman a la vez
         colombia._ne_validar_retencion_incompleta()
         colombia._ne_validar_neto_no_negativo()
+        colombia._ne_validar_retencion_reembolso()
         res = super(HrPayslip, self).action_payslip_done()
         colombia._ne_aplicar_libranzas()
         colombia._ne_refrescar_ibc_mensual()
@@ -4401,6 +4402,7 @@ class HrPayslip(models.Model):
 
     def action_payslip_cancel(self):
         colombia = self._ne_solo_colombia()
+        self._ne_rete_validar_anulacion(colombia)          # R-2: antes de reversar nada
         colombia._ne_aplicar_libranzas(revertir=True)
         res = super().action_payslip_cancel()
         colombia._ne_refrescar_ibc_mensual()

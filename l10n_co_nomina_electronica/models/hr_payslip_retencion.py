@@ -6,13 +6,15 @@ Procedimiento 1: la retención se calcula con ``compute_retefuente`` (sin cambio
 retienen y no hay reintegros. La liquidación siempre cierra; una bonificación retiene el saldo solo si el cierre ya está confirmado. Qué entra en la base lo dice el parámetro versionado
 ``l10n_co_retefuente_base_mes``. Procedimiento 2: cada recibo retiene su porcentaje sobre sus propios pagos.
 
+Mientras un cierre esté confirmado no se cancela ni se reembolsa un recibo que ese cierre sumó: su retención quedaría por más o por menos y no se recalcula sola.
+
 Si lo que toca descontar no cabe en el recibo (devengado menos aportes obligatorios del trabajador), se retiene lo disponible y confirmar exige la autorización del administrador de nómina.
 Ningún recibo colombiano se confirma con neto negativo."""
 
 from calendar import monthrange
 from datetime import timedelta
 
-from odoo import _, api, fields, models
+from odoo import Command, _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools import formatLang
 
@@ -26,7 +28,7 @@ _ABIERTOS = ('draft', 'verify')
 _AUTORIZACION = 'l10n_co_ne_rete_autorizada'
 _DEL_SISTEMA = (
     'l10n_co_ne_rete_a_descontar', 'l10n_co_ne_rete_disponible', 'l10n_co_ne_rete_faltante', 'l10n_co_ne_rete_autorizada_por', 'l10n_co_ne_rete_autorizada_fecha',
-    'l10n_co_ne_rete_autorizada_a_descontar', 'l10n_co_ne_rete_autorizada_disponible')
+    'l10n_co_ne_rete_autorizada_a_descontar', 'l10n_co_ne_rete_autorizada_disponible', 'l10n_co_ne_rete_sumados_ids')
 _SIN_AUTORIZACION = {
     _AUTORIZACION: False, 'l10n_co_ne_rete_autorizada_por': False, 'l10n_co_ne_rete_autorizada_fecha': False,
     'l10n_co_ne_rete_autorizada_a_descontar': 0.0, 'l10n_co_ne_rete_autorizada_disponible': 0.0}
@@ -53,6 +55,9 @@ class HrPayslipRetencion(models.Model):
     l10n_co_ne_rete_autorizada_fecha = fields.Datetime(string='Fecha de la autorización', readonly=True, copy=False)
     l10n_co_ne_rete_autorizada_a_descontar = fields.Monetary(string='Retención por descontar autorizada', readonly=True, copy=False)
     l10n_co_ne_rete_autorizada_disponible = fields.Monetary(string='Disponible autorizado', readonly=True, copy=False)
+    l10n_co_ne_rete_sumados_ids = fields.Many2many(
+        'hr.payslip', 'l10n_co_ne_rete_sumado_rel', 'cierre_id', 'sumado_id', string='Recibos sumados en la retención del cierre', readonly=True, copy=False, check_company=True,
+        help='Técnico (R-2): los recibos confirmados del mes que sumó el cálculo de este cierre. Mientras el cierre esté confirmado no se cancelan ni se reembolsan.')
 
     # ── qué recibo retiene ───────────────────────────────────────────
     def _ne_rete_codigo(self):
@@ -86,6 +91,9 @@ class HrPayslipRetencion(models.Model):
             ('date_to', '>=', inicio), ('date_to', '<=', fin), ('state', '!=', 'cancel')])
         return otros.filtered(lambda r: r._ne_rete_codigo())
 
+    def _ne_rete_confirmados_del_mes(self):
+        return self._ne_rete_otros_del_mes().filtered(lambda r: r.state in _CONFIRMADOS)
+
     def _ne_rete_es_procedimiento_1(self):
         return (self.contract_id.l10n_co_ne_retention_procedure or self._ne_retefuente_config().procedure) == '1'
 
@@ -97,7 +105,7 @@ class HrPayslipRetencion(models.Model):
             return False
         if codigo != 'CO_BON_RETE':
             return self._ne_rete_es_cierre()
-        cierres = self._ne_rete_otros_del_mes().filtered(lambda r: r.state in _CONFIRMADOS and r._ne_rete_es_cierre())
+        cierres = self._ne_rete_confirmados_del_mes().filtered(lambda r: r._ne_rete_es_cierre())
         return sum(-1 if cierre.credit_note else 1 for cierre in cierres) > 0
 
     def _ne_rete_validar_pendientes(self):
@@ -214,7 +222,7 @@ class HrPayslipRetencion(models.Model):
         if mensual:
             if not self._ne_rete_retiene_mes():
                 return resultado
-            for recibo in self._ne_rete_otros_del_mes().filtered(lambda r: r.state in _CONFIRMADOS):
+            for recibo in self._ne_rete_confirmados_del_mes():
                 previos = [suma + valor for suma, valor in zip(previos, self._ne_rete_cifras_de(recibo))]
         base_previa, ibc_previo, salud_previa, pension_previa, retenido, exento_previo = previos
         calculo = config.compute_retefuente(
@@ -243,13 +251,15 @@ class HrPayslipRetencion(models.Model):
         return formatLang(self.env, valor, currency_obj=self.currency_id)
 
     def _ne_rete_guardar_cifras(self, cifras):
-        """Al terminar el cálculo: guarda las tres cifras, borra la autorización si ya no corresponden y deja nota en el historial. Escribe por debajo de este ``write`` (``super``)."""
+        """Al terminar el cálculo: guarda las tres cifras y, en un cierre, los recibos que sumó; borra la autorización si ya no corresponden y deja nota en el historial. Escribe por debajo de este ``write`` (``super``)."""
         for recibo in self:
             a_descontar, disponible, faltante = cifras.get(recibo.id, (0.0, 0.0, 0.0))
             comparar = recibo.currency_id.compare_amounts
             cambian = (comparar(a_descontar, recibo.l10n_co_ne_rete_a_descontar) or comparar(disponible, recibo.l10n_co_ne_rete_disponible)
                        or comparar(faltante, recibo.l10n_co_ne_rete_faltante))
             vals = {'l10n_co_ne_rete_a_descontar': a_descontar, 'l10n_co_ne_rete_disponible': disponible, 'l10n_co_ne_rete_faltante': faltante}
+            suma_el_mes = recibo._ne_rete_es_cierre() and recibo._ne_rete_es_procedimiento_1()
+            vals['l10n_co_ne_rete_sumados_ids'] = [Command.set(recibo._ne_rete_confirmados_del_mes().ids if suma_el_mes else [])]
             borrar = recibo.l10n_co_ne_rete_autorizada and (
                 comparar(faltante, 0.0) <= 0 or comparar(a_descontar, recibo.l10n_co_ne_rete_autorizada_a_descontar)
                 or comparar(disponible, recibo.l10n_co_ne_rete_autorizada_disponible))
@@ -273,12 +283,49 @@ class HrPayslipRetencion(models.Model):
         cierra = self._ne_rete_es_cierre()
         if not cierra and codigo != 'CO_BON_RETE':
             return [False, []]
-        confirmados = self._ne_rete_otros_del_mes().filtered(lambda r: r.state in _CONFIRMADOS)
+        confirmados = self._ne_rete_confirmados_del_mes()
         return [cierra, sorted([r.id] + [round(valor, 2) for valor in self._ne_rete_cifras_de(r)] for r in confirmados)]
+
+    # ── un cierre confirmado no deja anular lo que sumó ──────────────
+    def _ne_rete_mismo_pago(self):
+        """Dominio del recibo y sus reembolsos: el nativo no los enlaza; los reconoce por estos datos (``has_refund_slip``)."""
+        self.ensure_one()
+        return [('employee_id', '=', self.employee_id.id), ('company_id', '=', self.company_id.id), ('contract_id', '=', self.contract_id.id), ('struct_id', '=', self.struct_id.id),
+                ('date_from', '=', self.date_from), ('date_to', '=', self.date_to)]
+
+    def _ne_rete_reembolsado(self, reembolsos):
+        """¿Los reembolsos confirmados de este recibo, o los que van en ``reembolsos``, ya lo anulan?"""
+        self.ensure_one()
+        dominio = self._ne_rete_mismo_pago()
+        cuentan = self.sudo().search(dominio + [('state', 'in', _CONFIRMADOS)]) | reembolsos.sudo().filtered_domain(dominio)
+        return sum(-1 if recibo.credit_note else 1 for recibo in cuentan) <= 0
+
+    def _ne_rete_validar_anulacion(self, afectados, reembolsos=None):
+        """``self``: los recibos de la operación (un cierre que va en ella no bloquea). ``afectados``: aquellos cuyos valores salen del mes. ``reembolsos``: los que se están confirmando."""
+        reembolsos = self.browse() if reembolsos is None else reembolsos
+        for recibo in afectados.filtered(lambda r: r.state in _CONFIRMADOS):
+            cierres = self.sudo().search([
+                ('l10n_co_ne_rete_sumados_ids', 'in', recibo.ids), ('state', 'in', _CONFIRMADOS), ('credit_note', '=', False), ('id', 'not in', self.ids)])
+            cierre = cierres.filtered(lambda c: not c._ne_rete_reembolsado(reembolsos))[:1]
+            if cierre:
+                raise UserError(_(
+                    'No se puede cancelar ni reembolsar «%(recibo)s» de %(empleado)s: la retención en la fuente de «%(cierre)s», ya confirmado, lo sumó. Cancele primero «%(cierre)s» (o reembólselo y '
+                    'confirme ese reembolso) y vuelva a intentarlo.', recibo=recibo.number or recibo.name, empleado=recibo.employee_id.name, cierre=cierre.number or cierre.name))
+
+    def _ne_validar_retencion_reembolso(self):
+        """Confirmar un reembolso saca del mes lo que pagó su original: la misma regla que cancelarlo."""
+        reembolsos = self.filtered(lambda r: r.credit_note and r.state in _ABIERTOS)
+        for reembolso in reembolsos:
+            originales = self.sudo().search(reembolso._ne_rete_mismo_pago() + [('credit_note', '=', False), ('state', 'in', _CONFIRMADOS)])
+            self._ne_rete_validar_anulacion(originales, reembolsos)
+
+    def refund_sheet(self):
+        self._ne_rete_validar_anulacion(self._ne_solo_colombia())
+        return super().refund_sheet()
 
     # ── autorización y protección de los campos ──────────────────────
     def _ne_rete_rechazar_externa(self):
-        raise UserError(_('Las cifras de la retención y los datos de su autorización los pone el sistema: no se pueden crear ni modificar a mano.'))
+        raise UserError(_('Las cifras de la retención, los recibos que sumó y los datos de su autorización los pone el sistema: no se pueden crear ni modificar a mano.'))
 
     @api.model_create_multi
     def create(self, vals_list):
