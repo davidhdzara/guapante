@@ -12,16 +12,9 @@ dependencias de Odoo.
 """
 
 import hashlib
-import math
 from typing import Union
 
-
-def _truncate_amount(value: Union[str, float]) -> str:
-    """Formatea un monto truncando (no redondeando) a 2 decimales.
-
-    El Anexo Técnico exige decimales *truncados* a dos dígitos.
-    """
-    return '%.2f' % (math.trunc(float(value) * 100) / 100)
+from .montos import format_amount
 
 
 def compute_cune(
@@ -80,9 +73,9 @@ def compute_cune(
         96
     """
     # Montos con 2 decimales truncados (Anexo Técnico DIAN)
-    val_dev_str = _truncate_amount(val_dev)
-    val_ded_str = _truncate_amount(val_ded)
-    val_tol_str = _truncate_amount(val_tol)
+    val_dev_str = format_amount(val_dev)
+    val_ded_str = format_amount(val_ded)
+    val_tol_str = format_amount(val_tol)
 
     raw = (
         str(num_ne)

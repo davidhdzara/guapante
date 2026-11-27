@@ -20,11 +20,43 @@ Referencia: Anexo Técnico – Documento Soporte de Pago de Nómina Electrónica
 V1.0, secciones 6.2.8 (Trabajador) y 6.2.9 (Pago).
 """
 
-from odoo import api, fields, models, _
+from odoo import api, fields, models, _, _lt
 from odoo.exceptions import UserError, ValidationError
 
 from ..services import dian_utils
 from .res_company import NE_MEDIOS_PAGO
+
+# H-F1-06 (doc 87): DÓNDE se completan las afiliaciones, en UN solo sitio (el consultor v19 lo porta sin rediseño). ``NE_EMPLEADO_PAGINA`` es el ``name`` de la página nativa de Nómina en la
+# vista del empleado (v18: ``hr_payroll`` de ``hr_payroll``; lo usa el xpath de ``views/hr_employee_views.xml`` y una prueba compara los dos); ``NE_EMPLEADO_PESTANA`` y
+# ``NE_EMPLEADO_GRUPO_AFILIACION`` son los textos que ve el usuario (el grupo es el ``string`` de esa vista; la misma prueba lo compara).
+NE_EMPLEADO_PAGINA = 'hr_payroll'
+NE_EMPLEADO_PESTANA = _lt('Nómina')                                       # traducibles en el momento de usarse (``_lt``: los mensajes los arman con ``%(...)s``)
+NE_EMPLEADO_GRUPO_AFILIACION = _lt('PILA - Administradoras')
+NE_UBICACION_AJUSTES_PILA = _lt('Nómina > Configuración > Ajustes, bloque PILA')
+
+
+# Anexo Técnico de nómina electrónica V1.0 (Res. DIAN 000013/2021), tablas 5.5.3 y 5.5.4: los códigos que admite el XML.
+NE_TIPOS_TRABAJADOR_DIAN = [
+    ('01', '01 - Dependiente'),
+    ('02', '02 - Servicio doméstico'),
+    ('04', '04 - Madre comunitaria'),
+    ('12', '12 - Aprendices del SENA en etapa lectiva'),
+    ('18', '18 - Funcionarios públicos sin tope máximo de IBC'),
+    ('19', '19 - Aprendices del SENA en etapa productiva'),
+    ('21', '21 - Estudiantes de postgrado en salud'),
+    ('22', '22 - Profesor de establecimiento particular'),
+    ('23', '23 - Estudiantes aportes solo riesgos laborales'),
+    ('30', '30 - Dependiente entidades o universidades públicas con régimen especial en salud'),
+    ('31', '31 - Cooperados o precooperativas de trabajo asociado'),
+    ('47', '47 - Trabajador dependiente de entidad beneficiaria del Sistema General de Participaciones - aportes patronales'),
+    ('51', '51 - Trabajador de tiempo parcial'),
+    ('54', '54 - Prepensionado de entidad en liquidación'),
+    ('56', '56 - Prepensionado con aporte voluntario a salud'),
+    ('58', '58 - Estudiantes de prácticas laborales en el sector público'),
+]
+NE_SUBTIPOS_TRABAJADOR_DIAN = [('00', '00 - No aplica'), ('01', '01 - Dependiente pensionado por vejez activo')]
+# La ficha conserva ademas el 02 (no esta en la tabla 5.5.4 y el XML no lo admite): no se retira mientras no este verificado que hace una actualizacion con el valor ya guardado.
+NE_SUBTIPOS_DE_LA_FICHA = NE_SUBTIPOS_TRABAJADOR_DIAN + [('02', '02 - Dependiente Pensionado por Vejez – Alto Riesgo (no lo admite la DIAN)')]
 
 
 class HrEmployee(models.Model):
@@ -146,17 +178,72 @@ class HrEmployee(models.Model):
             if not self.l10n_co_pila_ccf_id:
                 raise UserError(_(
                     'El empleado %(employee)s no tiene Caja de Compensación y la empresa '
-                    '%(company)s maneja la caja por empleado. Complétela en la pestaña '
-                    'Nómina Colombia del empleado.',
-                    employee=self.name, company=company.name))
+                    '%(company)s maneja la caja por empleado. Complétela en la ficha del empleado, '
+                    'pestaña %(pestana)s, grupo «%(grupo)s».',
+                    employee=self.name, company=company.name, pestana=NE_EMPLEADO_PESTANA, grupo=NE_EMPLEADO_GRUPO_AFILIACION))
             return self.l10n_co_pila_ccf_id
         if not company.l10n_co_pila_ccf_id:
             raise UserError(_(
-                'La empresa %(company)s no tiene Caja de Compensación general (Nómina > '
-                'Configuración > Ajustes, bloque PILA). Se necesita para el empleado '
-                '%(employee)s.',
-                company=company.name, employee=self.name))
+                'La empresa %(company)s no tiene Caja de Compensación general (%(ubicacion)s). '
+                'Se necesita para el empleado %(employee)s.',
+                company=company.name, employee=self.name, ubicacion=NE_UBICACION_AJUSTES_PILA))
         return company.l10n_co_pila_ccf_id
+
+    def _ne_afiliaciones_no_exigidas(self, fecha):
+        """Lista versionada ``[(tipo de cotizante, subtipo, entidad)]`` (``*`` = cualquiera) que el parametro ``l10n_co_afiliaciones_no_exigidas`` exceptua a ``fecha``. Sin el parametro, un error que lo
+        nombra y dice que hacer: nunca se asume que todo se exige ni que nada."""
+        self.ensure_one()
+        try:
+            return self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_afiliaciones_no_exigidas', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Afiliaciones que No se Exigen por Tipo de Cotizante» (código l10n_co_afiliaciones_no_exigidas) para el %(fecha)s, que se necesita '
+                'para revisar la afiliación a la seguridad social del empleado %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
+                fecha=fecha, empleado=self.name)) from None
+
+    def _ne_entidad_exigida(self, entidad, contrato, fecha, no_exigidas=None):
+        """¿Se exige la afiliación Y la cotización a ``entidad`` (``'eps'``, ``'afp'``, ``'ccf'``, ``'arl'``) para el tipo y el subtipo de cotizante del CONTRATO a ``fecha``? Falso si el parámetro
+        versionado ``l10n_co_afiliaciones_no_exigidas`` la exceptua. FUENTE ÚNICA (H-F1-06): la usan el aviso y el error de la afiliación (``_ne_afiliaciones_faltantes``) Y las reglas que calculan la
+        cotización (pensión del empleado y de la empresa y FSP, vía ``HrPayslip._ne_no_cotiza_pension``): quitar la fila del parámetro vuelve a exigir la afiliación y a calcular la cotización,
+        sin tocar código. Base del régimen por tipo de cotizante de H-F1-09 (aprendiz: lectiva = sin AFP). No mira lo que cotice otra entidad: el IBC de salud y de las demás no cambia."""
+        self.ensure_one()
+        if no_exigidas is None:
+            no_exigidas = self._ne_afiliaciones_no_exigidas(fecha)
+        tipo = contrato.l10n_co_pila_tipo_cotizante or ''
+        subtipo = contrato.l10n_co_pila_subtipo_cotizante or ''
+        return not any(
+            clave_entidad == entidad and clave_tipo in ('*', tipo) and clave_subtipo in ('*', subtipo)
+            for clave_tipo, clave_subtipo, clave_entidad in no_exigidas)
+
+    def _ne_afiliaciones_faltantes(self, contrato, fecha):
+        """H-F1-06 (doc 87): LO QUE FALTA de la afiliación a la seguridad social del empleado, como ``[(etiqueta, nivel)]`` (``nivel`` = ``'empleado'`` o ``'compañía'``); vacío si está completa.
+        FUENTE ÚNICA del aviso del recibo, del error al confirmar y del mensaje del asiento; independiente de que las reglas tengan cuenta contable. Exige EPS y AFP del empleado, la Caja
+        (la del empleado si la empresa la maneja por empleado, si no la general de la empresa) y la ARL de la compañía, SALVO lo que el parámetro versionado ``l10n_co_afiliaciones_no_exigidas``
+        (``hr.rule.parameter``, lista de ``(tipo de cotizante, subtipo, entidad)`` con ``*`` de comodín) exceptúe para el tipo y el subtipo de cotizante del CONTRATO: nada de la norma está
+        en el código. Los empleados de prueba de la habilitación DIAN no tienen afiliación real y no se validan."""
+        self.ensure_one()
+        if self.l10n_co_ne_is_habilitacion_test:
+            return []
+        no_exigidas = self._ne_afiliaciones_no_exigidas(fecha)
+
+        def _exigida(entidad):
+            return self._ne_entidad_exigida(entidad, contrato, fecha, no_exigidas)
+
+        compania = self.company_id
+        faltan = []
+        if _exigida('eps') and not self.l10n_co_pila_eps_id:
+            faltan.append((self._fields['l10n_co_pila_eps_id'].string, 'empleado'))
+        if _exigida('afp') and not self.l10n_co_pila_afp_id:
+            faltan.append((self._fields['l10n_co_pila_afp_id'].string, 'empleado'))
+        if _exigida('ccf'):
+            if compania.l10n_co_pila_ccf_por_empleado:
+                if not self.l10n_co_pila_ccf_id:
+                    faltan.append((self._fields['l10n_co_pila_ccf_id'].string, 'empleado'))
+            elif not compania.l10n_co_pila_ccf_id:
+                faltan.append((_('Caja de Compensación general de la empresa'), 'compañía'))
+        if _exigida('arl') and not compania.l10n_co_pila_arl_id:
+            faltan.append((compania._fields['l10n_co_pila_arl_id'].string, 'compañía'))
+        return faltan
 
     def _ne_valor_obligatorio(self, campo):
         """Valor de un campo que el empleado debe tener para el XML: sin el, error claro."""
@@ -314,32 +401,17 @@ class HrEmployee(models.Model):
     # Tipo y Subtipo de Trabajador
     # ──────────────────────────────────────────────────────────────────
     l10n_co_ne_worker_type = fields.Selection(
-        selection=[
-            ('01', '01 - Trabajador Dependiente'),
-            ('02', '02 - Servicio Doméstico'),
-            ('04', '04 - Madre Comunitaria'),
-            ('12', '12 - Aprendiz del SENA en Etapa Lectiva'),
-            ('19', '19 - Aprendiz del SENA en Etapa Productiva'),
-            ('22', '22 - Profesor de Establecimiento Particular'),
-            ('23', '23 - Estudiante de Práctica o Pasantía'),
-            ('30', '30 - Dependiente de Entidad No Obligada a Cotizar SENA e ICBF'),
-            ('31', '31 - Cooperado o Precooperativa de Trabajo Asociado'),
-            ('51', '51 - Trabajador de Tiempo Parcial'),
-        ],
+        selection=NE_TIPOS_TRABAJADOR_DIAN,
         string='Tipo Trabajador',
         help='Tipo de trabajador según el anexo técnico de nómina '
-             'electrónica de la DIAN. Determina las reglas de cotización '
-             'a seguridad social.',
+             'electrónica de la DIAN. El XML lo toma del contrato del '
+             'recibo (Tipo Cotizante); si difieren, el recibo lo avisa.',
     )
     l10n_co_ne_worker_subtype = fields.Selection(
-        selection=[
-            ('00', '00 - No Aplica'),
-            ('01', '01 - Dependiente Pensionado por Vejez Activo'),
-            ('02', '02 - Dependiente Pensionado por Vejez – Alto Riesgo'),
-        ],
+        selection=NE_SUBTIPOS_DE_LA_FICHA,
         string='Subtipo Trabajador',
-        help='Subtipo del trabajador. Aplica para pensionados activos '
-             'y pensionados de alto riesgo.',
+        help='Subtipo del trabajador. El XML lo toma del contrato del '
+             'recibo (Subtipo Cotizante); si difieren, el recibo lo avisa.',
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -407,23 +479,54 @@ class HrEmployee(models.Model):
     # datos.
 
     # ──────────────────────────────────────────────────────────────────
+    # .302 (doc 76 §2.3): pactos de desalarización del empleado (modelo l10n.co.employee.pacto)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_pacto_ids = fields.One2many(
+        'l10n.co.employee.pacto', 'employee_id', string='Pactos de desalarización', copy=False,
+        help='Pactos escritos de desalarización del empleado (art. 128 CST y art. 17 Ley 344/1996): uno por concepto no salarial pactado, con su fecha de firma, fecha de fin '
+             'opcional y el documento firmado. Cubren los recibos cuyo «Hasta» cae entre la firma y el fin, aunque el contrato se renueve.')
+
+    # ──────────────────────────────────────────────────────────────────
+    # H-F1-07 (doc 92): día de descanso pactado por escrito (Ley 2466 de 2025, art. 14, par. 3; modelo l10n.co.employee.descanso)
+    # ──────────────────────────────────────────────────────────────────
+    l10n_co_descanso_ids = fields.One2many(
+        'l10n.co.employee.descanso', 'employee_id', string='Día de descanso pactado', copy=False,
+        help='Pactos por escrito de un día de descanso distinto del domingo (Ley 2466 de 2025, art. 14, par. 3): uno por vigencia, con el documento firmado. Sin un pacto vigente con el documento, el día de '
+             'descanso es el domingo (presunción de la ley).')
+
+    def _ne_dia_de_descanso(self, fecha):
+        """Día de la semana (``date.weekday()``: 0 = lunes ... 6 = domingo) que es el día de descanso obligatorio del empleado en ``fecha``: el del registro ``l10n.co.employee.descanso`` que la cubre CON el
+        documento firmado; sin uno, el DOMINGO por la presunción del par. 3 del art. 14 de la Ley 2466 de 2025 («si no se pacta expresamente en el contrato u otrosí, se presume que es el domingo»), no por un
+        valor por defecto del código. Un festivo también es día de descanso obligatorio (par. 2): este método no lo mira. FUENTE ÚNICA del aviso del recibo y de E2c cuando se codifique."""
+        self.ensure_one()
+        registro = self.env['l10n.co.employee.descanso']._vigente(self, fecha)
+        return int(registro.dia_semana) if registro and registro.attachment_ids else 6
+
+    def _ne_descanso_sin_soporte(self, fecha):
+        """¿Hay un día de descanso pactado que rige ``fecha`` pero sin el documento firmado (pacto sin soporte)? Entonces NO cubre y rige el domingo."""
+        self.ensure_one()
+        registro = self.env['l10n.co.employee.descanso']._vigente(self, fecha)
+        return bool(registro) and not registro.attachment_ids
+
+    # ──────────────────────────────────────────────────────────────────
     # PILA — Administradoras de Seguridad Social
     # ──────────────────────────────────────────────────────────────────
+    # H-F1-06 (doc 87): ``tracking=True`` en las tres afiliaciones: el chatter del empleado deja quién cambió cuál y cuándo.
     l10n_co_pila_eps_id = fields.Many2one(
         'res.partner', string='EPS',
-        domain=[('l10n_co_entity_type', '=', 'eps')],
+        domain=[('l10n_co_entity_type', '=', 'eps')], tracking=True,
         help='Contacto de la EPS del empleado. El código PILA se toma del '
              'contacto.',
     )
     l10n_co_pila_afp_id = fields.Many2one(
         'res.partner', string='AFP',
-        domain=[('l10n_co_entity_type', '=', 'afp')],
+        domain=[('l10n_co_entity_type', '=', 'afp')], tracking=True,
         help='Contacto del Fondo de Pensiones del empleado. También es el '
              'tercero del Fondo de Solidaridad Pensional.',
     )
     l10n_co_pila_ccf_id = fields.Many2one(
         'res.partner', string='Caja de Compensación',
-        domain=[('l10n_co_entity_type', '=', 'ccf')],
+        domain=[('l10n_co_entity_type', '=', 'ccf')], tracking=True,
         help='Contacto de la Caja de Compensación Familiar del empleado.',
     )
     l10n_co_pila_ccf_por_empleado = fields.Boolean(

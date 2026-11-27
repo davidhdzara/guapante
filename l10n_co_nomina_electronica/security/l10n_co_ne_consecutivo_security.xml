@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- .304: la lista de consecutivos es de solo lectura y cada compañía ve los suyos (la vista SQL trae company_id). -->
+    <record id="rule_l10n_co_ne_consecutivo_company" model="ir.rule">
+        <field name="name">Consecutivos de nómina: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_ne_consecutivo"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

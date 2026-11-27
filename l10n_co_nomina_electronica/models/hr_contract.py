@@ -14,6 +14,7 @@ V1.0, sección 6.2.8, atributos TipoContrato y SalarioIntegral.
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_round
 from odoo.tools.misc import format_amount
 
 from .res_company import NE_CLASES_RIESGO
@@ -156,7 +157,49 @@ class HrContract(models.Model):
         contratos._ne_validar_piso_integral()
         return contratos
 
+    def _ne_validar_cambio_de_etapa(self, vals):
+        """H-F1-09 (D3, doc 88; Decreto 223 de 2026, art. 2.2.6.3.3.6, par. 3: solo la fase práctica o la formación dual cuentan como tiempo de servicio). La antigüedad para prima, cesantías y vacaciones sale de la
+        fecha de inicio del contrato: un contrato con recibos confirmados de una etapa de aprendiz SIN prestaciones no puede pasar a NINGÚN régimen que las cause (práctica, formación dual o empleado). Un
+        contrato por etapa. Se mira ANTES de escribir: la etapa de cada recibo confirmado con los datos actuales del contrato y el régimen nuevo con los datos que llegan, hoy."""
+        Recibo = self.env['hr.payslip'].sudo()      # quien edita contratos (Empleados) no tiene por qué leer recibos ni parámetros de nómina: solo se usa para decidir y dar el error
+        for contrato in self.filtered(lambda c: c.company_id._ne_es_colombia()):
+            actual = (contrato.l10n_co_pila_tipo_cotizante or '', contrato.l10n_co_ne_contract_type or '')
+            nuevo = (vals.get('l10n_co_pila_tipo_cotizante', actual[0]) or '', vals.get('l10n_co_ne_contract_type', actual[1]) or '')
+            if nuevo == actual:
+                continue
+            if not Recibo._ne_regimen_de(nuevo[0], nuevo[1], fields.Date.context_today(contrato), contrato.employee_id.name)['causa_prestaciones']:
+                continue
+            for recibo in Recibo.search([('contract_id', '=', contrato.id), ('state', 'in', ('done', 'paid'))]):
+                anterior = recibo._ne_regimen_cotizante()
+                if anterior['es_aprendiz'] and not anterior['causa_prestaciones']:
+                    raise UserError(_(
+                        'El contrato «%(contrato)s» de %(empleado)s tiene recibos confirmados de una etapa de aprendiz sin prestaciones (por ejemplo «%(recibo)s») y no puede pasar a un régimen que las causa '
+                        '(práctica, formación dual o empleado): la antigüedad para prima, cesantías y vacaciones sale de la fecha de inicio del contrato y contaría esa etapa (Decreto 223 de 2026, art. '
+                        '2.2.6.3.3.6, parágrafo 3). Cierre este contrato y cree un contrato nuevo, con su fecha de inicio y el sueldo que le corresponde (en la práctica, el apoyo de esa etapa).',
+                        contrato=contrato.name, empleado=contrato.employee_id.name, recibo=recibo.name))
+
+    def _ne_validar_tipo_con_recibos(self, vals):
+        """H-F3-04 (doc 117): la nómina electrónica y la PILA leen el tipo y el subtipo de cotizante del contrato de cada recibo, así que no se reescriben en un
+        contrato colombiano con recibos confirmados o pagados: un cambio es un contrato nuevo. Completar un dato vacío sí se permite."""
+        Recibo = self.env['hr.payslip'].sudo()      # quien edita contratos no tiene por qué leer recibos: solo se usa para decidir y dar el error
+        for contrato in self.filtered(lambda c: c.company_id._ne_es_colombia()):
+            cambiados = [campo for campo in ('l10n_co_pila_tipo_cotizante', 'l10n_co_pila_subtipo_cotizante')
+                         if campo in vals and contrato[campo] and (vals[campo] or False) != contrato[campo]]
+            if not cambiados:
+                continue
+            recibo = Recibo.search([('contract_id', '=', contrato.id), ('state', 'in', ('done', 'paid'))], limit=1)
+            if recibo:
+                raise UserError(_(
+                    'El contrato «%(contrato)s» de %(empleado)s tiene recibos confirmados (por ejemplo «%(recibo)s») y no se le puede cambiar «%(campos)s»: la nómina '
+                    'electrónica y la PILA toman ese dato del contrato de cada recibo. Cierre este contrato y cree un contrato nuevo desde la fecha del cambio.',
+                    contrato=contrato.name, empleado=contrato.employee_id.name, recibo=recibo.name,
+                    campos=', '.join(contrato._fields[campo].string for campo in cambiados)))
+
     def write(self, vals):
+        if {'l10n_co_pila_tipo_cotizante', 'l10n_co_ne_contract_type'} & set(vals):
+            self._ne_validar_cambio_de_etapa(vals)
+        if {'l10n_co_pila_tipo_cotizante', 'l10n_co_pila_subtipo_cotizante'} & set(vals):
+            self._ne_validar_tipo_con_recibos(vals)
         resultado = super().write(vals)
         if {'wage', 'l10n_co_ne_integral_salary', 'date_start'} & set(vals):
             # Un cambio solo de salario se valida con el SMMLV de hoy; si se toca el ingreso o
@@ -209,6 +252,42 @@ class HrContract(models.Model):
                 'bloque PILA) la tienen configurada.',
                 employee=self.employee_id.name, company=self.company_id.name))
         return clase
+
+    def _ne_horas_semanales(self):
+        """Horas semanales del HORARIO DE TRABAJO del contrato: la suma de las asistencias de trabajo de UNA semana (``resource.calendar._get_global_attendances``: sin la pausa del almuerzo, sin las secciones y sin las
+        asistencias con fechas propias ni de un recurso); en un horario de dos semanas, la suma de las dos dividida por 2. Cero si el contrato no tiene horario o es de horas flexibles (sin jornada que sumar). Odoo 18 no
+        trae un campo de horas semanales en el calendario (``hours_per_day`` es el promedio por día con jornada y ``full_time_required_hours`` es la jornada completa de la compañía)."""
+        self.ensure_one()
+        calendario = self.resource_calendar_id
+        if not calendario or calendario.flexible_hours:
+            return 0.0
+        horas = sum(asistencia.hour_to - asistencia.hour_from for asistencia in calendario._get_global_attendances())
+        return horas / 2 if calendario.two_weeks_calendar else horas
+
+    def _ne_horas_laboradas_pila(self, dias, fecha):
+        """Número de horas laboradas del registro tipo 2 de la PILA (campo 96; H-F2-02, decisión del TL del 22-nov, corregida por él mismo): UNA sola fuente, sin el 8 fijo de antes. Son las horas SEMANALES del horario de
+        trabajo del contrato (``_ne_horas_semanales``) / 7 por los días cotizados ``dias`` (los de CCF/SENA/ICBF, ``CO_DIAS_PARAF``), redondeado a entero: la misma jornada de 42 h da 180 en 30 días trabaje 5 o 6 días a la
+        semana (una fórmula de horas por día × días cotizados cuenta como trabajados los días de descanso). Sin horario, o con horario de horas flexibles, el campo va VACÍO: es opcional para la mayoría de los tipos
+        de cotizante y no se inventa un valor. Si el tipo de cotizante del contrato es de los que lo exigen (parámetro ``l10n_co_pila_horas_laboradas_tipos``, p. ej. el 51 de tiempo parcial) y no hay de dónde sacarlo, error
+        claro que nombra al empleado y qué completar. Devuelve un entero o ``''``. NO VERIFICADO: la lista de tipos que lo exigen (Resolución 980 de 2017, art. 2; texto consolidado del Anexo Técnico 2 sin leer) y
+        qué espera el operador PILA en el campo."""
+        self.ensure_one()
+        semanales = self._ne_horas_semanales()
+        if semanales > 0:
+            return int(float_round(semanales / 7 * dias, precision_digits=0))
+        try:
+            exigidos = self.env['hr.rule.parameter']._get_parameter_from_code('l10n_co_pila_horas_laboradas_tipos', fecha)
+        except UserError:
+            raise UserError(_(
+                'Falta el parámetro de nómina «Colombia: Tipos de Cotizante que Exigen las Horas Laboradas en la PILA» (código l10n_co_pila_horas_laboradas_tipos) para el %(fecha)s, que se necesita para '
+                'armar el campo de horas laboradas de %(empleado)s. Actualice el módulo de nómina electrónica o créelo en Nómina > Configuración > Parámetros de reglas.',
+                fecha=fecha, empleado=self.employee_id.name)) from None
+        if self.l10n_co_pila_tipo_cotizante in exigidos:
+            raise UserError(_(
+                'El tipo de cotizante %(tipo)s de %(empleado)s exige el número de horas laboradas en la PILA (campo 96) y el contrato %(contrato)s no tiene un horario de trabajo con jornada: no hay horario '
+                'o es de horas flexibles. Asigne al contrato un horario de trabajo con sus horas de la semana (no flexible).',
+                tipo=self.l10n_co_pila_tipo_cotizante, empleado=self.employee_id.name, contrato=self.name))
+        return ''
 
     def _ne_centro_trabajo(self):
         """Centro de trabajo ARL efectivo (contrato -> empresa). Sin ninguno: UserError."""

@@ -26,3 +26,19 @@ def insertar_cune_y_qr(xml_bytes, cune_value, qr_host):
     if qr_el is not None:
         qr_el.text = qr_url
     return etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
+
+
+def cunenov_de_xml(xml_bytes):
+    """``Novedad/@CUNENov`` de un XML de nómina (H-F3-04: el CUNE del documento anterior del mes al que este le informa la novedad), o '' si no lleva ``Novedad``.
+
+    Lanza ``lxml.etree.XMLSyntaxError`` si el XML no se puede leer: quien llama decide cómo tratarlo."""
+    raiz = etree.fromstring(xml_bytes)
+    novedad = raiz.find('{*}Novedad')
+    return novedad.get('CUNENov', '') if novedad is not None else ''
+
+
+def fechas_de_pago_de_xml(xml_bytes):
+    """Las ``FechaPago`` de un XML de nómina (``FechasPagos``) como textos 'AAAA-MM-DD'; vacío si no lleva ninguna.
+
+    Lanza ``lxml.etree.XMLSyntaxError`` si el XML no se puede leer: quien llama decide cómo tratarlo."""
+    return {(nodo.text or '').strip() for nodo in etree.fromstring(xml_bytes).iter('{*}FechaPago')} - {''}

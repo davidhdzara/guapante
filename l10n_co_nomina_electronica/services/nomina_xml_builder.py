@@ -18,11 +18,11 @@ Dependencias externas:
 Sin dependencias de Odoo.
 """
 
-import math
 from typing import Any, Optional, Union
 from lxml import etree
 
 from ._dict_to_xml import dict_to_xml
+from .montos import format_amount
 
 # =====================================================================
 # Namespaces
@@ -167,9 +167,7 @@ def _fmt(value: Union[int, float, str, None], decimals: int = 2) -> str:
     """
     if value is None or value == '':
         return '0.' + '0' * decimals
-    factor = 10 ** decimals
-    truncated = math.trunc(float(value) * factor) / factor
-    return ('%%.%df' % decimals) % truncated
+    return format_amount(value, decimals)
 
 
 def _dias_trabajados_requerido(basico: dict) -> str:
@@ -807,7 +805,7 @@ def _add_deducciones(parent: etree._Element, data: dict) -> None:
     salud = data.get('Salud', {})
     _attr(
         ded, 'Salud',
-        Porcentaje=_fmt(salud.get('Porcentaje', 4)),
+        Porcentaje=_fmt(salud.get('Porcentaje', 0)),      # H-F3-04: sin nodo = la regla no se calculó (0 %), no un 4 % fijo
         Deduccion=_fmt(salud.get('Deduccion', 0)),
     )
 
@@ -815,7 +813,7 @@ def _add_deducciones(parent: etree._Element, data: dict) -> None:
     pension = data.get('FondoPension', {})
     _attr(
         ded, 'FondoPension',
-        Porcentaje=_fmt(pension.get('Porcentaje', 4)),
+        Porcentaje=_fmt(pension.get('Porcentaje', 0)),
         Deduccion=_fmt(pension.get('Deduccion', 0)),
     )
 
@@ -1712,11 +1710,11 @@ def _get_deducciones_node(data: dict) -> dict:
 
     node = {
         'Salud': {
-            'Porcentaje': _fmt(salud.get('Porcentaje', 4)),
+            'Porcentaje': _fmt(salud.get('Porcentaje', 0)),
             'Deduccion': _fmt(salud.get('Deduccion', 0)),
         },
         'FondoPension': {
-            'Porcentaje': _fmt(pension.get('Porcentaje', 4)),
+            'Porcentaje': _fmt(pension.get('Porcentaje', 0)),
             'Deduccion': _fmt(pension.get('Deduccion', 0)),
         },
         'FondoSP': {

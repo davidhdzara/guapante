@@ -20,6 +20,7 @@ from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.l10n_co_nomina_electronica.services import nomina_xml_builder
+from .common_dane import ciudad_con_dane
 
 
 class _FakeCertificate:
@@ -52,8 +53,7 @@ class TestNotaAjusteEliminar(TransactionCase):
         if not state:
             state = cls.env['res.country.state'].create({
                 'name': 'Departamento Prueba Eliminar', 'code': 'PE', 'country_id': co.id})
-        city = cls.env['res.city'].create({
-            'name': 'Ciudad Prueba Eliminar', 'state_id': state.id, 'country_id': co.id})
+        city = ciudad_con_dane(cls.env, state, 'Ciudad Prueba Eliminar')
         cls.company.partner_id.write({
             'country_id': co.id, 'state_id': state.id, 'city_id': city.id,
             'street': 'Calle Prueba Eliminar # 1-1',

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_payslip_dias_prestaciones_view_form" model="ir.ui.view">
+        <field name="name">hr.payslip.dias.prestaciones.form</field>
+        <field name="model">hr.payslip.dias.prestaciones</field>
+        <field name="arch" type="xml">
+            <form string="Días de prima y vacaciones compensadas">
+                <div class="alert alert-info" role="alert">
+                    La nómina electrónica informa cuántos días se pagan. Registrarlos no cambia ningún valor del recibo.
+                </div>
+                <group>
+                    <field name="payslip_id" force_save="1"/>
+                    <field name="paga_prima" invisible="1"/>
+                    <field name="paga_vacaciones" invisible="1"/>
+                    <field name="dias_prima" invisible="not paga_prima"/>
+                    <field name="dias_vacaciones" invisible="not paga_vacaciones"/>
+                </group>
+                <footer>
+                    <button string="Registrar días" name="action_registrar_dias" type="object" class="btn-primary" data-hotkey="q"/>
+                    <button string="Descartar" class="btn-secondary" special="cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

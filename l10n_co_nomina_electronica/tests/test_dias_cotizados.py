@@ -61,18 +61,18 @@ class TestDiasCotizados(TransactionCase):
         self.assertEqual(dias['arl'], 15)      # ARL: 30 - 10 (IGE) - 5 (SLN)
         self.assertEqual(dias['paraf'], 15)
 
-    def test_ibc_sln_es_ibc_anterior_prorrateado_por_dias(self):
+    def test_ibc_sln_es_ibc_del_mes_anterior_prorrateado_por_dias(self):
         slip = self._payslip('Sln', date(2026, 9, 1), date(2026, 9, 30))
         cls = type(slip)
         with mock.patch.object(cls, '_ne_dias_sln', return_value=5), \
-                mock.patch.object(cls, '_ne_ultimo_ibc_anterior', return_value=3000000.0):
+                mock.patch.object(cls, '_ne_ibc_mes_anterior', return_value=3000000.0):
             self.assertAlmostEqual(slip._ne_ibc_sln(slip.contract_id), 500000.0, delta=0.01)
 
     def test_sin_sln_no_consulta_ibc_anterior(self):
         slip = self._payslip('SinSln', date(2026, 9, 1), date(2026, 9, 30))
         cls = type(slip)
         with mock.patch.object(cls, '_ne_dias_sln', return_value=0), \
-                mock.patch.object(cls, '_ne_ultimo_ibc_anterior', side_effect=AssertionError):
+                mock.patch.object(cls, '_ne_ibc_mes_anterior', side_effect=AssertionError):
             self.assertEqual(slip._ne_ibc_sln(slip.contract_id), 0.0)
 
     def test_compute_sheet_febrero_completo_reporta_30_dias_y_el_salario_como_ibc(self):

@@ -14,7 +14,10 @@ re-programa a sí mismo avanza una etapa por tick, patrón nativo ``ir.cron._tri
 3. Con las individuales aceptadas, prepara las Notas de Ajuste sobre ellas y repite 1 y 2.
 4. Si algún documento es rechazado el proceso se DETIENE y muestra la regla: no reintenta
    solo, porque la DIAN cierra el set de pruebas tras varios rechazos. Al presionar de nuevo
-   el botón, los rechazados se regeneran (consecutivo y CUNE nuevos) y se continúa.
+   el botón, los rechazados se regeneran (consecutivo y CUNE nuevos) y se continúa. Un envío
+   incierto detiene el proceso y no se regenera: se consulta.
+5. Si la DIAN responde que el set ya está Aceptado, la habilitación está completa aunque falte
+   la meta de Ajustes: no se regenera ni se reenvía nada (H-DIAN-01).
 
 Los documentos se identifican por ``l10n_co_ne_hab_set_id`` (TestSetId con el que se
 prepararon): un set nuevo ignora los de sets anteriores.
@@ -22,12 +25,13 @@ prepararon): un set nuevo ignora los de sets anteriores.
 
 import base64
 import logging
+import re
 from datetime import timedelta
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 
-from ..services import habilitacion_test_data, soap_client
+from ..services import dian_respuesta, habilitacion_test_data, soap_client
 
 _logger = logging.getLogger(__name__)
 
@@ -37,6 +41,8 @@ _CRON_XMLID = 'l10n_co_nomina_electronica.ir_cron_ne_habilitacion'
 # estas 2 constantes quedan solo como el default de ese parámetro, no se usan directo.
 _TICK_SECONDS = 20
 _TIMEOUT_MINUTES = 45
+# H-DIAN-01: texto de la respuesta de nivel set de GetStatusZip («Set de prueba con identificador ... se encuentra Aceptado.», H-012). Otro texto no completa la habilitación.
+_SET_ACEPTADO = re.compile(r'se encuentra\s+aceptado', re.IGNORECASE)
 
 
 class L10nCoNeHabilitacion(models.AbstractModel):
@@ -50,6 +56,7 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     @api.model
     def start(self, company):
         """Inicia (o retoma) la habilitación de ``company``. Devuelve una notificación."""
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         company.ensure_one()
         self._check_puede_habilitar(company)
         if company.l10n_co_ne_hab_state == 'running':
@@ -78,16 +85,11 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     @api.model
     def _check_puede_habilitar(self, company):
         """H-022: ``start`` es público (RPC) y escribe con sudo y gasta cupo real del set de
-        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Mismo criterio del
-        asistente de certificación que este motor reutiliza: administrador de nómina o de
-        sistema, y solo sobre una compañía a la que el usuario pertenece."""
+        pruebas de la DIAN; el ``invisible`` de la vista no es seguridad. Quién puede (administrador
+        de nómina o del sistema) lo decide ``_ne_exigir_administrador_de_nomina`` (H-F2-03: una sola
+        regla para todo lo que llega al certificado, la primera línea de ``start``); aquí queda
+        la otra mitad: solo sobre una compañía a la que el usuario pertenece."""
         user = self.env.user
-        grupo = self.env.ref('hr_payroll.group_hr_payroll_manager')
-        if not (user.has_group('hr_payroll.group_hr_payroll_manager')
-                or user.has_group('base.group_system')):
-            raise AccessError(_(
-                'No tiene permiso para iniciar la habilitación DIAN. Solicite que le asignen '
-                'el rol "%(rol)s" o el de administrador del sistema.', rol=grupo.full_name))
         if company not in user.company_ids:
             raise AccessError(_(
                 'No puede iniciar la habilitación DIAN de la compañía "%(company)s": usted no '
@@ -144,6 +146,10 @@ class L10nCoNeHabilitacion(models.AbstractModel):
     def _step(self, company):
         """Ejecuta UNA etapa. Devuelve True cuando el proceso terminó (completo o detenido)."""
         mode = company.l10n_co_ne_operation_mode_ids
+        slips = self._set_slips(company)
+        set_aceptado = self._ne_set_aceptado(slips)
+        if set_aceptado:          # H-DIAN-01: la DIAN ya aceptó el set; no hay nada más que enviar ni consultar
+            return self._finish(company, 'done', self._ne_mensaje_set_aceptado(slips, set_aceptado))
         started = company.l10n_co_ne_hab_started
         timeout_minutes = company._ne_config_int_param(
             'l10n_co_nomina_electronica.habilitacion_timeout_minutes', _TIMEOUT_MINUTES)
@@ -152,7 +158,6 @@ class L10nCoNeHabilitacion(models.AbstractModel):
                 'La DIAN no resolvió los documentos en %d minutos. '
                 'Presione "Iniciar Proceso de Habilitación" para continuar.', timeout_minutes))
 
-        slips = self._set_slips(company)
         ind = slips.filtered(lambda s: not s.l10n_co_ne_is_adjustment)
         aj = slips - ind
         target_ind = company.l10n_co_ne_num_nomina_certificar or 0
@@ -242,9 +247,12 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _replace_failed(self, company):
-        """Regenera (consecutivo y CUNE nuevos) lo rechazado o incierto, para retomar tras una detención."""
-        failed = self._set_slips(company).filtered(
-            lambda s: s.l10n_co_ne_state in ('rejected', 'uncertain'))
+        """Regenera (consecutivo y CUNE nuevos) lo RECHAZADO, para retomar tras una detención. Un envío incierto no se regenera (H-DIAN-02): se concilia. Con el set ya Aceptado no se regenera nada."""
+        slips = self._set_slips(company)
+        if self._ne_set_aceptado(slips):
+            return 0
+        failed = slips.filtered(
+            lambda s: s.l10n_co_ne_state == 'rejected')
         failed.action_regenerate_ne_xml()
         return len(failed)
 
@@ -269,33 +277,77 @@ class L10nCoNeHabilitacion(models.AbstractModel):
 
     @api.model
     def _failure_message(self, failed):
-        lines = []
+        """Un renglón y un paso por causa (H-DIAN-01): rechazo (se regenera al reintentar), respuesta sobre el set o envío sin veredicto (se consultan, no se regeneran)."""
+        lines, rechazados, inciertos = [], False, False
         for slip in failed:
             label = slip.l10n_co_ne_consecutive or slip.name
-            if slip.l10n_co_ne_state == 'uncertain':
-                lines.append(_('%s: envío incierto (la DIAN no confirmó la recepción).', label))
-            else:
+            if slip.l10n_co_ne_state == 'rejected':
+                rechazados = True
                 lines.append(_('%(doc)s rechazado: %(why)s',
                                doc=label, why=self._rejection_reasons(slip) or _('sin detalle')))
-        return _('Proceso detenido. %s\nCorrija la causa y presione de nuevo '
-                 '"Iniciar Proceso de Habilitación": se regenerarán con consecutivo nuevo.',
-                 '\n'.join(lines))
+                continue
+            inciertos = True
+            del_set = self._ne_respuesta_del_set(slip)
+            if del_set:
+                lines.append(_('%(doc)s: la DIAN respondió sobre el set de pruebas, no sobre el documento: «%(desc)s»', doc=label, desc=del_set))
+            else:
+                lines.append(_('%s: envío incierto, la DIAN no devolvió veredicto.', label))
+        pasos = []
+        if rechazados:
+            pasos.append(_('Corrija la causa de los rechazos y presione de nuevo "Iniciar Proceso de Habilitación": los rechazados se regeneran con consecutivo nuevo.'))
+        if inciertos:
+            pasos.append(_('Los envíos inciertos no se regeneran: use «Consultar Estado» en cada uno y después presione de nuevo "Iniciar Proceso de Habilitación".'))
+        return _('Proceso detenido. %(detalle)s\n%(pasos)s', detalle='\n'.join(lines), pasos='\n'.join(pasos))
 
     @api.model
-    def _rejection_reasons(self, slip):
+    def _ne_ultima_consulta(self, slip):
+        """La respuesta de la última consulta ``GetStatusZip`` del ZipKey del recibo, leída de la evidencia guardada; ``{}`` si no hay."""
+        if not slip.l10n_co_ne_zip_key:
+            return {}
         exchange = self.env['l10n.co.ne.exchange'].sudo().search([
+            ('company_id', '=', slip.company_id.id),
             ('operation', '=', 'get_status_zip'),
             ('queried_zip_key', '=', slip.l10n_co_ne_zip_key),
         ], order='id desc', limit=1)
         if not exchange or not exchange.response_payload:
-            return ''
+            return {}
         try:
-            parsed = soap_client._parse_response(base64.b64decode(exchange.response_payload))
-        except Exception:  # noqa: BLE001 -- el motivo es informativo; nunca debe romper el proceso
+            return soap_client._parse_response(base64.b64decode(exchange.response_payload))
+        except Exception:  # noqa: BLE001 -- una evidencia ilegible no debe romper el proceso
+            return {}
+
+    @api.model
+    def _ne_respuesta_del_set(self, slip):
+        """La descripción de la DIAN si el recibo quedó incierto porque su última consulta fue sobre el SET de pruebas y no sobre el documento; ``''`` en cualquier otro caso."""
+        if slip.l10n_co_ne_state != 'uncertain':
             return ''
+        respuesta = self._ne_ultima_consulta(slip)
+        if not respuesta or not dian_respuesta.es_respuesta_de_set(respuesta):
+            return ''
+        return respuesta.get('StatusDescription') or ''
+
+    @api.model
+    def _ne_set_aceptado(self, slips):
+        """La descripción de la DIAN si alguno de estos recibos recibió que el set ya está Aceptado; ``''`` si ninguno."""
+        for slip in slips:
+            descripcion = self._ne_respuesta_del_set(slip)
+            if _SET_ACEPTADO.search(descripcion):
+                return descripcion
+        return ''
+
+    @api.model
+    def _ne_mensaje_set_aceptado(self, slips, descripcion):
+        aceptados = slips.filtered(lambda s: s.l10n_co_ne_state == 'accepted')
+        ajustes = aceptados.filtered('l10n_co_ne_is_adjustment')
+        return _(
+            'Habilitación completa. La DIAN informa: «%(desc)s» y no procesa más documentos de ese set. Aceptados: %(i)d nómina(s) individual(es) y %(a)d nota(s) de ajuste; %(otros)d documento(s) '
+            'sin resolver o rechazados no se regeneran ni se reenvían.', desc=descripcion, i=len(aceptados - ajustes), a=len(ajustes), otros=len(slips - aceptados))
+
+    @api.model
+    def _rejection_reasons(self, slip):
         return '; '.join(
             message
-            for response in parsed.get('DianResponses', [])
+            for response in self._ne_ultima_consulta(slip).get('DianResponses', [])
             for message in response.get('ErrorMessages', [])
         )
 

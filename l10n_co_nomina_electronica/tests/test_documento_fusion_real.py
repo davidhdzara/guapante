@@ -46,6 +46,7 @@ class TestDocumentoFusionReal(TransactionCase):
                 'company_id': self.company.id, 'struct_id': self.est.id,
                 'date_from': date(2026, mes, ini), 'date_to': date(2026, mes, fin)})
             recibo.compute_sheet()
+            recibo.write({'state': 'done'})      # R-2: el recibo que cierra el mes exige confirmado el anterior
             recibos |= recibo
         return recibos
 

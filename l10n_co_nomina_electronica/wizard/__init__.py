@@ -6,3 +6,4 @@ from . import l10n_co_ne_certification_wizard
 
 from . import l10n_co_ne_status_cune_wizard
 from . import hr_payslip_registrar_pago
+from . import hr_payslip_dias_prestaciones

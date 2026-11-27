@@ -77,6 +77,34 @@ class TestRepresentacionGraficaInforme(DocumentoFixture, TransactionCase):
         self.assertIn('NE10', html)
         self.assertIn('a' * 96, html)                                                   # CUNE del documento que modifica
 
+    def test_una_sola_tabla_compacta_con_las_secciones_y_los_totales_en_el_orden_de_la_colilla(self):
+        """E11 pieza 5c (.295, doc 74 §4.5): la misma estructura de tabla que la colilla (clases nativas compactas, filas de sección «Devengados» y
+        «Deducciones», cada una con su total y, al final, el valor total), con las denominaciones del art. 5 y los datos del XML sin cambio."""
+        html = self._html(self._aceptado())
+        cuerpo = html.split('class="page"', 1)[1].split('class="footer', 1)[0]
+        self.assertEqual(cuerpo.count('<table'), 1, 'Una sola tabla de conceptos')
+        self.assertIn('table table-sm table-bordered small', cuerpo)
+        orden = ['Devengados', 'Total devengado', 'Deducciones', 'Total deducido', 'Valor total (devengado menos deducido)']
+        posiciones = [cuerpo.index(texto) for texto in orden]
+        self.assertEqual(posiciones, sorted(posiciones), 'Orden: devengados, su total, deducciones, su total y el valor total')
+        for texto in ('>Concepto<', '>Valor<'):
+            self.assertIn(texto, cuerpo)
+        valores = valores_monetarios(cuerpo)
+        for esperado in (3000000.0, 200000.0, 120000.0, 3200000.0, 240000.0, 2960000.0):
+            self.assertIn(esperado, valores, esperado)
+        self.assertNotIn('<img', cuerpo, 'El QR vive solo en el pie')
+
+    def test_la_nota_de_eliminar_sigue_sin_tabla_de_conceptos(self):
+        base = _xml().decode()
+        nota = base.replace('<NominaIndividual xmlns="dian:gov:co:facturaelectronica:NominaIndividual">',
+                            '<NominaIndividual xmlns="dian:gov:co:facturaelectronica:NominaIndividual"><Eliminar>') \
+                   .replace('</NominaIndividual>', '</Eliminar></NominaIndividual>')
+        html = self._html(self._aceptado(xml=nota.encode()))
+        cuerpo = html.split('class="page"', 1)[1].split('class="footer', 1)[0]
+        self.assertIn('Eliminar', cuerpo)
+        self.assertNotIn('<table', cuerpo)
+        self.assertNotIn('Total devengado', cuerpo)
+
     def test_el_informe_es_nativo_sin_estilos_ni_textos_de_un_cliente(self):
         html = self._html(self._aceptado())
         self.assertNotIn('style=', html.split('class="article', 1)[1].split('class="footer', 1)[0])

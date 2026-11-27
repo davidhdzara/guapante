@@ -236,7 +236,7 @@ _TIPO_02_FIELDS = [
     ('nov_vac', 'str'),                  # Vacaciones / licencia remunerada
     ('nov_avp', 'str'),                  # Aporte voluntario pensión
     ('nov_vct', 'str'),                  # Variación centros de trabajo
-    ('nov_irl', 'str'),                  # IRL (incapacidad riesgo laboral)
+    ('nov_irl', 'int'),                  # IRL (incapacidad riesgo laboral): 0 o los días
 
     # --- Códigos administradoras (campos 31-35) ---
     ('codigo_afp', 'str'),              # Código fondo de pensiones
@@ -326,7 +326,7 @@ _TIPO_02_FIELDS = [
 
     # --- Campos finales (campos 95-98) ---
     ('ibc_otros_parafiscales', 'amount'),  # IBC otros parafiscales
-    ('horas_laboradas', 'int'),           # Número horas laboradas
+    ('horas_laboradas', 'int_opcional'),  # Número horas laboradas (campo 96, opcional: vacío si no hay dato)
     ('fecha_radicacion_exterior', 'date'),  # Fecha radicación exterior
     ('actividad_economica_arl', 'str'),  # Código actividad económica ARL
 ]
@@ -368,6 +368,8 @@ def generate_tipo_02(data: dict) -> str:
             campos.append(_fmt_text(value))
         elif field_type == 'int':
             campos.append(_fmt_int(value))
+        elif field_type == 'int_opcional':
+            campos.append('' if value is None or value == '' else _fmt_int(value))     # un opcional sin dato va vacío, no «0»
         elif field_type == 'amount':
             campos.append(_fmt_amount(value, decimals=0))
         elif field_type == 'rate':

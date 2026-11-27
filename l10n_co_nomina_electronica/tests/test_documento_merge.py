@@ -54,6 +54,34 @@ class TestDocumentoMerge(TransactionCase):
         self.assertEqual(doc['fechas_pagos'], ['2026-03-15', '2026-03-31'])
         self.assertEqual(doc['periodo'], PERIODO)
 
+    def test_cada_lista_de_devengados_y_deducciones_con_un_recibo_y_con_dos(self):
+        """.335 (clase A): comisiones, pagos a terceros, anticipos y otras deducciones son importes sueltos y la fusion se caia con ValueError; ademas no entraban en la conciliacion de totales."""
+        horas = {'Cantidad': '2', 'Porcentaje': '25.00', 'Pago': '100.00'}
+        elementos = {
+            'devengados': dict(
+                {nombre: horas for nombre in ('HEDs', 'HENs', 'HRNs', 'HEDDFs', 'HRDDFs', 'HENDFs', 'HRNDFs')},
+                Incapacidades={'Cantidad': '1', 'Tipo': '1', 'Pago': '100.00'}, Bonificaciones={'BonificacionS': '100.00'}, Auxilios={'AuxilioNS': '100.00'},
+                HuelgasLegales={'Cantidad': '1'}, OtrosConceptos={'DescripcionConcepto': 'Otro', 'ConceptoS': '100.00'},
+                Compensaciones={'CompensacionO': '60.00', 'CompensacionE': '40.00'}, BonoEPCTVs={'PagoS': '100.00'},
+                Comisiones='100.00', PagosTerceros='100.00', Anticipos='100.00'),
+            'deducciones': {
+                'Sindicatos': {'Porcentaje': '1.00', 'Deduccion': '100.00'}, 'Sanciones': {'SancionPublic': '0.00', 'SancionPriv': '100.00'},
+                'Libranzas': {'Descripcion': 'Banco', 'Deduccion': '100.00'}, 'PagosTerceros': '100.00', 'Anticipos': '100.00', 'OtrasDeducciones': '100.00'}}
+        self.assertEqual(set(elementos['devengados']), set(dm.LISTAS_DEVENGADOS), 'Premisa: una muestra por cada lista')
+        self.assertEqual(set(elementos['deducciones']), set(dm.LISTAS_DEDUCCIONES), 'Premisa: una muestra por cada lista')
+        for seccion, muestras in elementos.items():
+            for nombre, muestra in muestras.items():
+                for cuantos in (1, 2):
+                    with self.subTest(seccion=seccion, lista=nombre, recibos=cuantos):
+                        recibos = [_recibo() for _i in range(cuantos)]
+                        for recibo in recibos:
+                            recibo[seccion][nombre] = [copy.deepcopy(muestra)]
+                            recibo['%s_total' % seccion] += 0.0 if nombre == 'HuelgasLegales' else 100.0
+                        doc = self._doc(recibos)
+                        self.assertEqual(doc[seccion][nombre], [muestra] * cuantos)
+                        self.assertEqual(dm.conciliar_fusion(recibos, doc), [])
+                        self.assertEqual(dm.diferencias_nodos(doc), (0, 0))
+
     def test_las_listas_se_concatenan_sin_colapsar(self):
         a, b = _recibo(), _recibo()
         a['devengados']['HEDs'] = [{'Cantidad': '4', 'Porcentaje': '25.00', 'Pago': '48000.00'}]

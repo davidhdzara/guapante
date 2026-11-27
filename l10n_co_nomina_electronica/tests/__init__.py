@@ -44,11 +44,25 @@ from . import test_terceros_deducciones_contrato
 from . import test_libranzas_tope
 from . import test_asiento_tercero
 from . import test_embargos_refactor
+from . import test_embargo_nombre_linea
+from . import test_formatos_de_mensajes
+from . import test_porcentaje_horas_dominicales
+from . import test_validacion_afiliacion
+from . import test_pension_no_exigida
+from . import test_aprendiz_regimen
+from . import test_aprendiz_prestaciones
+from . import test_aprendiz_apoyo
+from . import test_pago_dominical_mensual
+from . import test_dia_de_descanso
 from . import test_liquidacion_embargo_libranza
 from . import test_ibc_unico
 from . import test_dias_cotizados
 from . import test_ibc_mensual
+from . import test_ibc_mes_anterior
 from . import test_pila_planilla
+from . import test_pila_horas_laboradas
+from . import test_pila_ubicacion_laboral
+from . import test_pila_cotizantes
 from . import test_ne_consecutivo_sin_huecos
 from . import test_habilitacion_permisos
 from . import test_nombres_empleado
@@ -77,6 +91,8 @@ from . import test_liquidacion_prima_ibc
 from . import test_jornada_15_julio_parametros
 from . import test_retefuente_config_anio
 from . import test_renta_exenta_tope
+from . import test_retefuente_limite_global
+from . import test_retefuente_regla_unica
 from . import test_migracion_max_renta_exenta
 from . import test_contrato_integral_piso
 from . import test_multiempresa_inercia
@@ -84,6 +100,10 @@ from . import test_secuencias_por_compania
 from . import test_retefuente_config_compartida
 from . import test_multiempresa_aislamiento
 from . import test_multiempresa_descubrimiento
+from . import test_multiempresa_seguridad
+from . import test_oficial_genera_xml
+from . import test_guarda_de_transmision
+from . import test_porcentajes_deducciones_xml
 from . import test_oficial_alcance
 from . import test_informes_compania_del_recibo
 from . import test_inercia_informes
@@ -104,6 +124,9 @@ from . import test_aviso_anio_siguiente
 from . import test_defaults_sin_asumir
 from . import test_tabla_marginal_parametros
 from . import test_incapacidad_misma_enfermedad
+from . import test_incapacidad_prorroga_vinculo
+from . import test_incapacidad_base_ibc
+from . import test_incapacidad_variacion_ibc
 from . import test_constantes_184
 from . import test_ajustes_compania_mexicana
 from . import test_documento_mixin_carga
@@ -124,12 +147,18 @@ from . import test_dian_respuesta
 from . import test_company_validar_config
 from . import test_neutralize
 from . import test_documento_enviar
+from . import test_envio_ya_procesado
+from . import test_envio_por_recibo_incierto
+from . import test_codigos_dane_xml
+from . import test_liquidacion_retiro_con_quincena
+from . import test_habilitacion_set_aceptado
 from . import test_nota_ajuste
 from . import test_nota_ajuste_crear
 from . import test_nota_ajuste_enviar
 from . import test_documento_cune
 from . import test_payslip_send_correo
 from . import test_documento_cola
+from . import test_documento_segmentos
 from . import test_documento_reconsulta
 from . import test_documento_asistente
 from . import test_historia_habilitacion
@@ -147,3 +176,30 @@ from . import test_neto_entradas_multiples
 from . import test_colilla_dias_pagados
 from . import test_provisiones_periodo
 from . import test_dias_por_asistencia
+from . import test_novedades_recalculan_hoja
+from . import test_e11_pieza_1a
+from . import test_novedades_formulario
+from . import test_hoja_al_dia
+from . import test_e11_pieza_2a
+from . import test_ajuste_concepto_recibo
+from . import test_conceptos_de_pago
+from . import test_colilla_conceptos
+from . import test_calculo_del_salario
+from . import test_diario_de_las_pruebas
+from . import test_ausencia_por_fecha
+from . import test_habitualidad_no_salarial
+from . import test_pacto_desalarizacion
+from . import test_consecutivos_proteccion
+from . import test_crons_inactivos
+from . import test_retefuente_mes             # R-2 (doc 108)
+from . import test_liquidacion_aux_y_prestaciones_ajustables
+from . import test_montos_truncado          # Q-10 (.332)
+from . import test_periodo_nomina_xml       # Q-17 (.332)
+from . import test_fecha_pago_neto_cero     # CC-08 (.332)
+from . import test_tipo_trabajador_del_contrato   # H-F3-04 (.332)
+from . import test_dias_prima_vacaciones          # Q-19 (.332)
+from . import test_contrato_del_recibo             # Q-15 (.332)
+from . import test_lote_volver_a_borrador       # .333
+from . import test_retefuente_fecha_del_mes       # F2 (.334)
+from . import test_pago_anulado       # .335 clase A
+from . import test_pago_anulado_documento     # .335 clase A (QA P5, P9, N4 y N5)

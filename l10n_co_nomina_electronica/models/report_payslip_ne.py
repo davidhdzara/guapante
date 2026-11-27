@@ -38,12 +38,14 @@ class ReportPayslipNe(models.AbstractModel):
     def _get_report_values(self, docids, data=None):
         docs = self.env['hr.payslip'].browse(docids)
         docs.company_id._ne_exigir_colombia()   # el informe esta en el menu Imprimir de todo recibo: inerte fuera de CO
-        for payslip in docs:
-            payslip._ne_pdf_neto()
+        # La tabla se arma AQUI y no en la plantilla: ``_ne_colilla`` llama a ``_ne_pdf_neto``, que sin linea de neto lanza un error claro, y un error
+        # lanzado dentro del QWeb lo envolveria Odoo como error de plantilla (E11 pieza 5a, .291).
+        colillas = {payslip.id: payslip._ne_colilla() for payslip in docs}
         return {
             'doc_ids': docids,
             'doc_model': 'hr.payslip',
             'docs': docs,
             'data': data,
+            'colillas': colillas,   # id del recibo -> tabla de la colilla (secciones, totales, neto, diferencia)
             'dias_pagados': {payslip.id: self._ne_linea_dias_pagados(payslip) for payslip in docs},   # id del recibo -> línea de sueldo
         }

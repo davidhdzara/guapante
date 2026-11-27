@@ -9,12 +9,12 @@ dependen de modelos Odoo (partner_to_dian_dict, get_partner_doc_type).
 """
 
 import logging
-import math
 import re
 from datetime import date as _date_type
 from typing import Optional, Union
 
 from . import cune as _cune_module
+from .montos import format_amount  # noqa: F401 -- se publica también desde aquí
 
 _logger = logging.getLogger(__name__)
 
@@ -106,34 +106,6 @@ def get_doc_type_code(l10n_co_document_code: str) -> str:
         return '13'  # Default: Cédula
     code = str(l10n_co_document_code).lower().strip()
     return DOC_TYPE_MAP.get(code, code)
-
-
-# =====================================================================
-# Formateo de montos para CUNE
-# =====================================================================
-
-def format_amount(value: Union[int, float, str]) -> str:
-    """Formatea un valor numérico a string con 2 decimales truncados.
-
-    El cálculo del CUNE requiere que los montos se representen con
-    exactamente 2 decimales *truncados* (no redondeados) según el
-    Anexo Técnico DIAN.
-
-    Args:
-        value: Valor numérico (int, float o string numérico).
-
-    Returns:
-        String con 2 decimales truncados (ej: '1500000.00').
-
-    Examples:
-        >>> format_amount(1500000)
-        '1500000.00'
-        >>> format_amount('25000.5')
-        '25000.50'
-        >>> format_amount('25000.999')
-        '25000.99'
-    """
-    return '%.2f' % (math.trunc(float(value) * 100) / 100)
 
 
 # =====================================================================
@@ -248,55 +220,6 @@ def parse_positive_int(raw_value, default: int, param_name: str = '') -> int:
 
 
 # =====================================================================
-# Período de Nómina DIAN
-# =====================================================================
-
-def get_periodo_nomina(date_from, date_to) -> str:
-    """Determina el código de período de nómina según la DIAN.
-
-    Los códigos de período están definidos en el Anexo Técnico:
-        1 = Semanal   (≤ 7 días)
-        2 = Decenal   (≤ 10 días)
-        3 = Catorcenal (≤ 14 días)
-        4 = Quincenal  (15–16 días)
-        5 = Mensual    (28–31 días)
-        6 = Otro
-
-    Args:
-        date_from: Fecha inicio del período (date o str 'YYYY-MM-DD').
-        date_to:   Fecha fin del período (date o str 'YYYY-MM-DD').
-
-    Returns:
-        Código de período como string ('1' a '6').
-
-    Examples:
-        >>> from datetime import date
-        >>> get_periodo_nomina(date(2024, 1, 1), date(2024, 1, 7))
-        '1'
-        >>> get_periodo_nomina('2024-01-01', '2024-01-31')
-        '5'
-    """
-    if isinstance(date_from, str):
-        date_from = _date_type.fromisoformat(date_from)
-    if isinstance(date_to, str):
-        date_to = _date_type.fromisoformat(date_to)
-
-    delta_days = (date_to - date_from).days + 1  # inclusivo
-
-    if delta_days <= 7:
-        return '1'   # Semanal
-    if delta_days <= 10:
-        return '2'   # Decenal
-    if delta_days <= 14:
-        return '3'   # Catorcenal
-    if delta_days <= 16:
-        return '4'   # Quincenal
-    if 28 <= delta_days <= 31:
-        return '5'   # Mensual
-    return '6'        # Otro
-
-
-# =====================================================================
 # Códigos geográficos DANE
 # =====================================================================
 
@@ -349,6 +272,46 @@ def get_city_code(city_record) -> str:
         return str(edi_code).zfill(5)
     zipcode = getattr(city_record, 'zipcode', None)
     return str(zipcode) if zipcode else ''
+
+
+# Longitud del código DANE de un municipio: departamento + municipio (Tabla 5.4.3 del Anexo Técnico DIAN; DIVIPOLA del DANE). La parte del
+# departamento mide lo que mida el código del propio departamento: no hay un «2» ni un «3» escritos en la partición (H-F4-08).
+DANE_MUNICIPIO_LONGITUD = 5
+
+
+def get_pila_municipality_code(department_code, city_dane_code) -> str:
+    """Campo 10 del registro tipo 2 de PILA (código del municipio de ubicación laboral): la parte del MUNICIPIO dentro de su
+    departamento (H-F4-08, doc 99 §2; Anexo Técnico 2 de la Res. 2388/2016, campos 9 y 10).
+
+    El campo 9 lleva el departamento y el 10 solo el resto del código DANE de la ciudad (``11001`` -> departamento ``11``, municipio
+    ``001``). NO se usa ``get_city_code`` para esto: cae a ``zipcode`` cuando la ciudad no tiene código DANE y un código postal no es
+    DIVIPOLA. Aquí el código DANE se EXIGE, y el municipio solo se acepta si empieza por el código de su departamento.
+
+    Args:
+        department_code: código de 2 dígitos del departamento (``get_department_code``), o '' si no hay.
+        city_dane_code: ``l10n_co_edi_code`` de la ciudad (entero sin el cero a la izquierda, o texto), o falsy si no hay.
+
+    Returns:
+        La parte del municipio (3 dígitos con el código de 5 y el departamento de 2).
+
+    Raises:
+        ValueError: el único argumento es el MOTIVO, para que quien llama arme el mensaje con el empleado y la ciudad:
+            ``departamento_sin_codigo`` (vacío o no numérico, p. ej. el código alfabético de Odoo), ``ciudad_sin_codigo``,
+            ``ciudad_codigo_invalido`` (no es numérico o es más largo que un código DANE) o ``ciudad_otro_departamento``
+            (el código de la ciudad no empieza por el del departamento: dato inconsistente).
+    """
+    departamento = str(department_code or '').strip()
+    if not departamento.isdigit() or len(departamento) >= DANE_MUNICIPIO_LONGITUD:
+        raise ValueError('departamento_sin_codigo')
+    crudo = str(city_dane_code or '').strip()
+    if not crudo:
+        raise ValueError('ciudad_sin_codigo')
+    dane = crudo.zfill(DANE_MUNICIPIO_LONGITUD)
+    if not dane.isdigit() or len(dane) != DANE_MUNICIPIO_LONGITUD:
+        raise ValueError('ciudad_codigo_invalido')
+    if not dane.startswith(departamento):
+        raise ValueError('ciudad_otro_departamento')
+    return dane[len(departamento):]
 
 
 # =====================================================================

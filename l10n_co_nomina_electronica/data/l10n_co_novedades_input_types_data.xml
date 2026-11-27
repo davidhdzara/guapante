@@ -161,6 +161,23 @@
             <field name="country_id" ref="base.co"/>
         </record>
 
+        <!-- Q-19 (doc 116, .332): días que la nómina electrónica informa de la prima y las vacaciones compensadas en pesos. Sin regla: no cambian valores. -->
+        <record id="input_co_prima_dias" model="hr.payslip.input.type">
+            <field name="name">Prima de Servicios: días</field>
+            <field name="code">CO_PRIMA_DIAS</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="is_quantity" eval="True"/>
+            <field name="l10n_co_ne_unidad">dias</field>
+        </record>
+
+        <record id="input_co_vac_comp_dias" model="hr.payslip.input.type">
+            <field name="name">Vacaciones Compensadas: días</field>
+            <field name="code">CO_VAC_COMP_DIAS</field>
+            <field name="country_id" ref="base.co"/>
+            <field name="is_quantity" eval="True"/>
+            <field name="l10n_co_ne_unidad">dias</field>
+        </record>
+
         <record id="input_co_sindicato" model="hr.payslip.input.type">
             <field name="name">Cuota Sindical</field>
             <field name="code">CO_SINDICATO</field>
@@ -203,5 +220,10 @@
             <field name="country_id" ref="base.co"/>
         </record>
 
+    </data>
+    <!-- H-F1-09 (doc 88, D2 del TL): el apoyo de sostenimiento del aprendiz es el sueldo del contrato; la novedad deja de ofrecerse. Los registros de arriba son noupdate="1", así que se archiva con
+         una función (el campo ``active`` es nativo: hr_payroll/models/hr_payslip_input_type.py:17, Odoo 18). Los recibos que ya la traen la conservan y su cálculo pide borrarla. -->
+    <data>
+        <function model="hr.payslip.input.type" name="_ne_retirar_tipos_reemplazados"/>
     </data>
 </odoo>

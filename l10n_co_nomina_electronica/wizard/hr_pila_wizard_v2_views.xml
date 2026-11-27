@@ -82,8 +82,7 @@
                             <group>
                                 <field name="summary_total_employees"
                                        string="Total Cotizantes"/>
-                                <field name="summary_total_nomina"
-                                       string="Total Nomina"/>
+                                <field name="summary_total_nomina"/>
                                 <field name="summary_total_ibc"
                                        string="Total IBC Pension"/>
                             </group>

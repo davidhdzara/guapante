@@ -19,6 +19,7 @@ from datetime import date
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
+from .common_dane import ciudad_con_dane
 
 
 @tagged('post_install', '-at_install')
@@ -166,11 +167,7 @@ class TestTipoDocumentoDian(TransactionCase):
                 'code': 'PD',
                 'country_id': self.co_country.id,
             })
-        co_city = self.env['res.city'].create({
-            'name': 'Ciudad Prueba TipoDocumento',
-            'state_id': co_state.id,
-            'country_id': self.co_country.id,
-        })
+        co_city = ciudad_con_dane(self.env, co_state, 'Ciudad Prueba TipoDocumento')
         # H-018: _ne_lugar_trabajo_partner() exige la Dirección de Trabajo completa
         # (aquí, la de la compañía, que hereda el empleado por defecto) antes de
         # llegar a TipoDocumento dentro de la misma _ne_trabajador().
@@ -209,11 +206,7 @@ class TestTipoDocumentoDian(TransactionCase):
                 'code': 'PE',
                 'country_id': self.co_country.id,
             })
-        co_city = self.env['res.city'].create({
-            'name': 'Ciudad Prueba Default Tipo',
-            'state_id': co_state.id,
-            'country_id': self.co_country.id,
-        })
+        co_city = ciudad_con_dane(self.env, co_state, 'Ciudad Prueba Default Tipo')
         self.company.partner_id.write({
             'state_id': co_state.id,
             'city_id': co_city.id,

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- E11 pieza 3 (.289): las filas de «Conceptos de pago» son una vista del recibo: misma visibilidad que el recibo (patrón de
+         security/l10n_co_payslip_ajuste_security.xml). El usuario de nómina puede editar las filas de novedades; el ajuste de una fila calculada
+         lo exige el modelo de ajuste (solo gerente). -->
+    <record id="rule_l10n_co_payslip_concepto_company" model="ir.rule">
+        <field name="name">Conceptos de pago: compañías autorizadas</field>
+        <field name="model_id" ref="model_l10n_co_payslip_concepto"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_l10n_co_payslip_concepto_oficial" model="ir.rule">
+        <field name="name">Conceptos de pago: el oficial de nómina solo ve lo de los empleados que ve en el recibo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_concepto"/>
+        <field name="domain_force">['|', '|', ('slip_id.employee_id.user_id', '=', user.id), ('slip_id.employee_id.department_id', '=', False), ('slip_id.employee_id.department_id.manager_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_user'))]"/>
+    </record>
+    <record id="rule_l10n_co_payslip_concepto_administrador" model="ir.rule">
+        <field name="name">Conceptos de pago: el administrador de nómina ve todo</field>
+        <field name="model_id" ref="model_l10n_co_payslip_concepto"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr_payroll.group_hr_payroll_manager'))]"/>
+    </record>
+</odoo>

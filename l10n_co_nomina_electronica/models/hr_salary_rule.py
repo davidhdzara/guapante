@@ -18,7 +18,7 @@ Referencia: Anexo Técnico V1.0, secciones 6.2.12 (Devengados) y 6.2.13
 """
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, ValidationError
 
 # ──────────────────────────────────────────────────────────────────────────
 # Constantes: conceptos de deducción según el XML DIAN
@@ -226,11 +226,171 @@ class HrSalaryRule(models.Model):
              'reincorporado al IBC aunque esté marcado como no salarial.',
     )
 
+    # ──────────────────────────────────────────────────────────────────────
+    # E11 pieza 2a (.287, doc 71c §2 y §7): configuración de «Conceptos de pago». Sembrada en el XML de cada regla; nada en el código.
+    # ──────────────────────────────────────────────────────────────────────
+    # .298 (decisión de David, 21-nov, por el riesgo de inexactitud ante la UGPP: art. 179 Ley 1607/2012, mod. art. 314 Ley 1819/2016; Decreto 3033/2013): ya NO
+    # se calcula por la sección de la categoría; es un dato PLANO de cada regla, sembrado explícito en el XML (``True`` solo en los conceptos de pago y las
+    # deducciones voluntarias o pactadas; ``False`` en lo que sale de la ley o del cálculo) y ``False`` por defecto en una regla nueva. Un campo calculado se
+    # recalcularía y pisaría la decisión en cada actualización o al cambiar la estructura. Mismo patrón que ``l10n_co_ne_unidad``.
+    l10n_co_ne_ajustable = fields.Boolean(
+        string='Permite ajuste de la empresa', default=False,
+        help='Si está marcada, quien administra la nómina puede cambiar la cantidad, el porcentaje o el importe de esta regla en un recibo '
+             'en borrador o en espera. El sistema conserva el valor sugerido y quién lo cambió; el ajuste es responsabilidad de la empresa. '
+             'Solo se marcan los conceptos de pago (sueldo, horas, recargos, bonificaciones, auxilios) y las deducciones voluntarias o '
+             'pactadas (libranzas, cooperativa, AFC, pensión voluntaria, sindicato). NO se marcan los aportes de salud, pensión y FSP del '
+             'empleado, la retención en la fuente, los embargos, los aportes de la empresa, las provisiones, las bases, las incapacidades, '
+             'las licencias ni las vacaciones disfrutadas: su valor sale de la ley o del cálculo y cambiarlo expone a la empresa a inexactitud ante la '
+             'UGPP. En los recibos de prima y liquidación sí se marcan la prima, las cesantías, sus intereses y las vacaciones compensadas. Solo el administrador del sistema puede marcarla o desmarcarla. Si se desmarca una regla, los ajustes que tenía en recibos '
+             'en borrador o en espera se retiran (con una nota en el recibo); los de recibos confirmados no se tocan. '
+             'Esta marca se siembra desde el XML del módulo: cada actualización del módulo devuelve a su valor sembrado la de las reglas de la estructura '
+             'general; las reglas propias del cliente no se tocan.')
+    # .301 (decisión del TL, 22-nov): qué conceptos no salariales avisan cuando se repiten mes a mes (``HrPayslip._ne_avisos_habitualidad``). Dato PLANO sembrado
+    # explícito en el XML de cada regla, igual que ``l10n_co_ne_ajustable``, y NO se deduce de «ajustable» (son dos cosas distintas: quién puede editar un concepto y
+    # si su repetición es sospechosa) ni del origen (el auxilio de transporte y el de conectividad se pagan todos los meses por ley y avisarían siempre).
+    l10n_co_ne_vigilar_habitualidad = fields.Boolean(
+        string='Vigilar habitualidad', default=False,
+        help='Solo para conceptos no salariales. Si está marcada y el concepto se paga en cada uno de los últimos N meses calendario (el parámetro «Colombia: Meses de '
+             'Habitualidad de Pagos No Salariales», 3 de fábrica, contando el mes del recibo), el recibo muestra un aviso: un pago habitual que retribuye el servicio '
+             'puede ser salario aunque se llame no salarial (art. 127 CST; los viáticos permanentes de manutención y alojamiento son salario, art. 130 CST) y entrar al '
+             'IBC. Solo es un aviso: no cambia el cálculo. De fábrica se vigilan el auxilio de alimentación, las bonificaciones no salariales y los viáticos no '
+             'salariales. NO se marcan los pagos que la ley hace todos los meses (auxilio de transporte, auxilio de conectividad del teletrabajo, apoyo de sostenimiento). '
+             'Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
+             'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    # .303 (doc 78, decisiones del TL del 22-nov): qué reglas entran a la base de las provisiones de prestaciones (``HrPayslip._ne_base_prestacional``). Datos PLANOS por
+    # regla, sembrados explícitos en el XML como ``l10n_co_ne_ajustable`` (nada de listas de códigos en la fórmula; la categoría ``DEV_SAL`` mezcla cosas: las horas
+    # extras entran a la prima y las cesantías pero no a las vacaciones). ``False`` por defecto; solo ``base.group_system`` las cambia.
+    l10n_co_ne_base_prima_cesantias = fields.Boolean(
+        string='Base de prima y cesantías', default=False,
+        help='Si está marcada, lo que paga esta regla en el recibo suma a la base de las provisiones de prima de servicios y de cesantías (y de sus intereses): lo devengado '
+             'como salario (CST art. 127), incluidas las horas extras y los recargos, más el auxilio de transporte (Ley 1/1963 art. 7). NO se marcan los pagos no salariales, '
+             'las prestaciones, las vacaciones compensadas, las incapacidades ni las licencias de ley (decisión del TL del 22-nov: por prudencia, a revisar con datos reales). '
+             'Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo devuelve a su valor '
+             'sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    l10n_co_ne_base_vacaciones = fields.Boolean(
+        string='Base de vacaciones', default=False,
+        help='Si está marcada, lo que paga esta regla en el recibo suma a la base de la provisión de vacaciones: el salario ordinario (CST art. 192): se excluyen las horas '
+             'extras y el trabajo en días de descanso obligatorio (dominicales y festivos), y el auxilio de transporte (no es salario para las vacaciones). El recargo nocturno '
+             'ordinario sí entra. Solo el administrador del sistema puede marcarla o desmarcarla. Esta marca se siembra desde el XML del módulo: cada actualización del módulo '
+             'devuelve a su valor sembrado la de las reglas de la estructura general; las reglas propias del cliente no se tocan.')
+    # Selector del concepto en «Agregar concepto» (22-nov, diseño aprobado por el TL; doc 74 §19): una regla «se alimenta de una novedad» si existe un tipo de novedad
+    # (``hr.payslip.input.type``) con SU MISMO ``code``. Es la definición verificable (1 a 1 por ``code`` en la estructura general: 38 de 44 tipos; los otros 6 son de otras
+    # estructuras o de las asignaciones salariales). Calculado y buscable: sin dato nuevo que mantener ni listas de códigos en el código.
+    l10n_co_ne_alimentada_por_novedad = fields.Boolean(
+        string='Se alimenta de una novedad', compute='_compute_ne_alimentada_por_novedad', search='_search_ne_alimentada_por_novedad',
+        help='Verdadero si existe un tipo de novedad con el mismo código de esta regla: el usuario puede agregar ese concepto a mano en «Conceptos de pago» y el recibo lo '
+             'calcula con la novedad. Calculado: no se marca.')
+
+    def _compute_ne_alimentada_por_novedad(self):
+        codigos = set(self.env['hr.payslip.input.type'].sudo().search([]).mapped('code'))
+        for regla in self:
+            regla.l10n_co_ne_alimentada_por_novedad = regla.code in codigos
+
+    def _search_ne_alimentada_por_novedad(self, operator, value):
+        if operator not in ('=', '!=') or not isinstance(value, bool):
+            raise NotImplementedError('Solo se busca con = o != y un booleano.')
+        codigos = self.env['hr.payslip.input.type'].sudo().search([]).mapped('code')
+        return [('code', 'in' if (operator == '=') == value else 'not in', codigos)]
+
+    # Ajuste de David (22-nov, decisión del TL): las bases de la retención en la fuente solo se muestran en «Cálculo del salario» si el recibo tiene retención.
+    l10n_co_ne_calculo_si_retencion = fields.Boolean(
+        string='En «Cálculo del salario» solo con retención', default=False,
+        help='Si está marcada, la línea de esta regla se muestra en «Cálculo del salario» solo cuando el recibo tiene retención en la fuente distinta de 0 (una línea con valor '
+             'de una regla cuyo tercero es la DIAN). Es de presentación: no cambia el cálculo. De fábrica, las dos bases de la retención en la fuente: sin retención verlas '
+             'confunde.')
+    # Menor de QA sobre «cv» (22-nov, decisión del TL): en «Bases» salían tres filas con el mismo valor (IBC Salarial, IBC Remuneración Base 40 % y Base salarial del mes).
+    l10n_co_ne_calculo_oculta = fields.Boolean(
+        string='Oculta en «Cálculo del salario»', default=False,
+        help='Si está marcada, la línea de esta regla NO se muestra en «Cálculo del salario» aunque tenga valor: es un acumulador intermedio de otra base que sí se muestra. '
+             'Es de presentación: la regla se sigue calculando, otras reglas la leen y la línea sigue en el recibo. De fábrica, «IBC Salarial» y «IBC Remuneración Base 40 %», '
+             'componentes de «Base salarial del mes».')
+    l10n_co_ne_unidad = fields.Selection(
+        selection=[('dias', 'Días'), ('horas', 'Horas')],
+        string='Unidad de la cantidad',
+        help='Unidad con la que se muestra la cantidad de esta regla en «Conceptos de pago». Vacío: la regla es un valor y no tiene unidad '
+             '(«valor» no es una unidad).')
+
+    def _compute_rule(self, localdict):
+        """E11 pieza 2b (.288, doc 71c §3): si el recibo tiene un ajuste de la empresa para esta regla, devuelve la tupla ajustada en vez de la
+        sugerida y guarda la sugerida en ``ne_sugeridos`` del contexto (la registra ``HrPayslip._ne_registrar_ajustes``). El bucle nativo
+        (``hr_payroll/models/hr_payslip.py:944-1018``) usa lo que devuelve esta función para el total de la línea, ``localdict`` y las sumas por
+        categoría, así que todo lo posterior (neto, bases, retención, IBC) sigue la cascada. Sin ajuste, o con un ``localdict`` mínimo (pruebas),
+        devuelve exactamente lo de ``super()``."""
+        resultado = super()._compute_rule(localdict)
+        recibo = localdict.get('payslip') if isinstance(localdict, dict) else None
+        if not recibo or not self.l10n_co_ne_ajustable or recibo.state not in ('draft', 'verify') or not recibo.id:
+            return resultado
+        if self.code in (localdict.get('same_type_input_lines') or {}):
+            return resultado                      # varias novedades del mismo código: se editan las novedades, no la regla
+        ajuste = recibo.l10n_co_ajuste_ids.filtered(lambda a: a.salary_rule_id == self)
+        if not ajuste:
+            return resultado
+        sugeridos = self.env.context.get('ne_sugeridos')
+        if sugeridos is not None:
+            sugeridos[(recibo.id, self.id)] = tuple(resultado)
+        return ajuste.amount, ajuste.quantity, ajuste.rate
+
+    def _ne_exigir_administrador_para_ajustable(self):
+        """Decisión de David (21-nov, riesgo UGPP): marcar o desmarcar «Permite ajuste de la empresa» es del administrador del sistema (``base.group_system``), no del
+        gerente de nómina. El superusuario (carga de datos del módulo, ``-u``) no pasa por aquí. El campo NO usa ``groups=`` a nivel de modelo: el cálculo y las
+        filas de «Conceptos de pago» lo leen con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar «Permite ajuste de la empresa» en una regla salarial: decide qué conceptos '
+                'puede cambiar a mano la empresa y un cambio expone la nómina a inexactitud ante la UGPP.'))
+
+    def _ne_exigir_administrador_para_habitualidad(self):
+        """.301: marcar o desmarcar «Vigilar habitualidad» es del administrador del sistema, igual que «ajustable» (decisión del TL, 22-nov). El superusuario (carga de
+        datos del módulo, ``-u``) no pasa por aquí. Sin ``groups=`` en el campo: el cálculo del aviso lo lee con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar «Vigilar habitualidad» en una regla salarial: decide de qué conceptos no salariales '
+                'avisa el recibo cuando se pagan mes a mes.'))
+
+    _NE_MARCAS_DE_LA_BASE_PRESTACIONAL = ('l10n_co_ne_base_prima_cesantias', 'l10n_co_ne_base_vacaciones')
+
+    def _ne_exigir_administrador_para_base_prestacional(self):
+        """.303: marcar o desmarcar las bases de las provisiones («Base de prima y cesantías», «Base de vacaciones») es del administrador del sistema, como «ajustable» y
+        «Vigilar habitualidad» (``base.group_system``). El superusuario (carga de datos del módulo, ``-u``) no pasa por aquí. Sin ``groups=`` en el campo: el cálculo de
+        las provisiones lo lee con el usuario de nómina."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(_(
+                'Solo un administrador del sistema puede marcar o desmarcar la base de prima, cesantías o vacaciones en una regla salarial: decide qué pagos entran a la base '
+                'de las provisiones de prestaciones.'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any(vals.get('l10n_co_ne_ajustable') for vals in vals_list):
+            self._ne_exigir_administrador_para_ajustable()
+        if any(vals.get('l10n_co_ne_vigilar_habitualidad') for vals in vals_list):
+            self._ne_exigir_administrador_para_habitualidad()
+        if any(vals.get(campo) for vals in vals_list for campo in self._NE_MARCAS_DE_LA_BASE_PRESTACIONAL):
+            self._ne_exigir_administrador_para_base_prestacional()
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if 'l10n_co_ne_ajustable' in vals:
+            self._ne_exigir_administrador_para_ajustable()
+        if 'l10n_co_ne_vigilar_habitualidad' in vals:
+            self._ne_exigir_administrador_para_habitualidad()
+        if any(campo in vals for campo in self._NE_MARCAS_DE_LA_BASE_PRESTACIONAL):
+            self._ne_exigir_administrador_para_base_prestacional()
+        res = super().write(vals)
+        if 'l10n_co_ne_ajustable' in vals and not vals['l10n_co_ne_ajustable']:
+            self.env['l10n.co.payslip.ajuste']._retirar_de_reglas_no_ajustables(self)
+        return res
+
     _L10N_CO_ORIGEN_NO_SALARIAL_POR_CODIGO = {
         'CO_AUX_TRANS': 'naturaleza', 'CO_VIATICOS_NOSAL': 'naturaleza',
         'CO_DOTACION': 'naturaleza', 'CO_TELETRABAJO': 'naturaleza',
         'CO_INDEMNIZ': 'naturaleza', 'CO_LIQ_INDEMNIZACION': 'naturaleza',
         'CO_BONIF_RET': 'naturaleza',
+        # .299 (TL, 22-nov): el apoyo de sostenimiento del aprendiz (Ley 789/2002 art. 30) no es salario ni entra al IBC de esta forma (el aprendiz tiene su
+        # propio régimen de cotización): origen «naturaleza» para que el 40 % no lo cuente y ``_ne_ibc_pactados`` no lance el UserError de «sin clasificar».
+        'CO_APOYO_SOST': 'naturaleza',
+        # H-F1-09: el apoyo de la fase PRACTICA tambien es «naturaleza» para el IBC: aunque es base de las prestaciones, el IBC del aprendiz es 1 SMMLV (Decreto 223/2026, art. 2.2.6.3.3.4 par. 2) y
+        # ``_ne_ibc_pactados`` no debe lanzar el UserError de «sin clasificar».
+        'CO_APOYO_SOST_PRAC': 'naturaleza',
         'CO_AUX_ALIM': 'pacto', 'CO_BONIF_NOSAL': 'pacto',
     }
 
@@ -293,6 +453,16 @@ class HrSalaryRule(models.Model):
                 ('code', '=', code), ('l10n_co_liq_tratamiento', '=', False),
             ]).write({'l10n_co_liq_tratamiento': trat})
         return True
+
+    def _ne_cuenta_contable(self, total, compania):
+        """Columna «Cuenta» de «Conceptos de pago» y «Cálculo del salario» (ajuste de David, 22-nov): la cuenta contable de la regla en la COMPAÑÍA del recibo, la que aplica
+        al signo del valor (como en los apuntes: un valor positivo va por la cuenta de débito y uno negativo por la de crédito); si falta la que toca se muestra la otra. Sin cuenta, vacío:
+        no se inventa. Las cuentas de la regla son por compañía (``company_dependent``) y las lee con ``sudo``: es solo un texto de presentación, sin el diario."""
+        self.ensure_one()
+        regla = self.sudo().with_company(compania)
+        debito, credito = regla.account_debit, regla.account_credit
+        cuenta = (debito or credito) if total >= 0 else (credito or debito)
+        return cuenta.display_name if cuenta else False
 
     def _l10n_co_cuenta_pasivo(self):
         """Cuenta por pagar de la regla: account_credit si existe (aportes
