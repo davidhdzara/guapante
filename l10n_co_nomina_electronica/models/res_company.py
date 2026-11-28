@@ -512,7 +512,8 @@ class ResCompany(models.Model):
         """UNICA función que toma el siguiente consecutivo oficial de nómina electrónica (recibo, nota de ajuste y documento mensual; .304, doc 77 con las decisiones del TL):
         1. Sin secuencia o sin prefijo: error claro (C: no hay fallback).
         2. Control B: si el siguiente número de la secuencia es menor o igual al mayor que YA VIAJÓ a la DIAN en este ambiente (o al control manual de Ajustes), error que nombra
-           la secuencia y el valor que debe tener; NO se corrige sola. Un número que viajó, también el rechazado, no se reutiliza jamás.
+           la secuencia y el valor que debe tener; NO se corrige sola. La secuencia nunca vuelve a dar un número que viajó, también el rechazado (un documento mensual rechazado conserva el SUYO sin pasar
+           por aquí: ``l10n.co.ne.documento._ne_numero_se_conserva``).
         3. Control A: el número que daría la secuencia no puede estar ya asignado a otro recibo, nota o documento de la compañía (error claro, no el IntegrityError de la restricción).
         Recién entonces consume la secuencia (no_gap: un fallo posterior la devuelve con el rollback)."""
         self.ensure_one()
@@ -546,9 +547,8 @@ class ResCompany(models.Model):
         secuencia.invalidate_recordset(['number_next', 'number_next_actual'])
         return secuencia.number_next_actual
 
-    def _ne_exigir_numero_sin_viajar(self, numero, es_ajuste, payslip=None, documento=None):
-        """Control A antes de ENVIAR (.304): el número de este documento no puede haber viajado ya, en este ambiente, en OTRO recibo, nota o documento mensual de la compañía (la DIAN
-        devuelve el veredicto viejo o lo rechaza). El mismo documento no cuenta contra sí mismo. Error claro que dice cuál es el siguiente disponible; no corrige nada."""
+    def _ne_numero_en_otro(self, numero, payslip=None, documento=None):
+        """True si ``numero`` ya viajó a la DIAN, en el ambiente actual, en OTRO recibo, nota o documento mensual de la compañía. El propio no cuenta contra sí mismo; un envío fallido, tampoco."""
         self.ensure_one()
         self.env.flush_all()
         self.env.cr.execute(
@@ -556,7 +556,13 @@ class ResCompany(models.Model):
             'AND NOT (origen = %(r)s AND payslip_id = %(p)s) AND NOT (origen = %(d)s AND documento_id = %(doc)s) LIMIT 1',
             {'c': self.id, 'a': self._ne_ambiente_consecutivos(), 'n': numero, 'f': 'fallido', 'r': 'recibo', 'p': payslip.id if payslip else 0,
              'd': 'documento', 'doc': documento.id if documento else 0})
-        if self.env.cr.fetchone():
+        return bool(self.env.cr.fetchone())
+
+    def _ne_exigir_numero_sin_viajar(self, numero, es_ajuste, payslip=None, documento=None):
+        """Control A antes de ENVIAR (.304): el número de este documento no puede haber viajado ya, en este ambiente, en OTRO recibo, nota o documento mensual de la compañía (la DIAN
+        devuelve el veredicto viejo o lo rechaza). El mismo documento no cuenta contra sí mismo. Error claro que dice cuál es el siguiente disponible; no corrige nada."""
+        self.ensure_one()
+        if self._ne_numero_en_otro(numero, payslip=payslip, documento=documento):
             secuencia = self._ne_secuencia_consecutivo(es_ajuste)
             siguiente = self._ne_mayor_consecutivo_asignado(es_ajuste) + 1
             raise UserError(_(

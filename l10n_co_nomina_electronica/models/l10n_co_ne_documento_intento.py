@@ -9,7 +9,7 @@ from markupsafe import Markup
 
 from odoo import _, api, fields, models
 
-from ..services import dian_message
+from ..services import dian_message, dian_respuesta
 
 
 class L10nCoNeDocumentoIntento(models.Model):
@@ -46,7 +46,16 @@ class L10nCoNeDocumentoIntento(models.Model):
     certification_process = fields.Boolean(string='Proceso de habilitación')
     exchange_id = fields.Many2one('l10n.co.ne.exchange', string='Evidencia DIAN', copy=False,
                                   ondelete='set null', check_company=True)
+    ya_procesado = fields.Boolean(
+        string='Respondió «procesado anteriormente»', copy=False, readonly=True,
+        help='La DIAN contestó la regla 90 a este envío. Un número que la recibió no se vuelve a usar.')
     show_button_get_status = fields.Boolean(compute='_compute_show_button_get_status')
+
+    def _ne_recibio_regla_90(self):
+        """True si la DIAN contestó la regla 90 a este envío: la marca del envío o, en uno anterior a .337, la respuesta guardada."""
+        self.ensure_one()
+        datos = self.message_json or {}
+        return self.ya_procesado or dian_respuesta.es_ya_procesado({'StatusCode': datos.get('status_code'), 'ErrorMessages': datos.get('errors')})
 
     @api.depends('message_json')
     def _compute_message(self):

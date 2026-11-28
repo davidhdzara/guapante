@@ -89,7 +89,7 @@ class TestDocumentoGenerar(DocumentoFixture, TransactionCase):
         def fabrica(slip):
             # la segunda quincena (fin de mes) lleva la prima
             datos = copy.deepcopy(_quincena_con_prima() if slip.date_to.day > 15 else _recibo())
-            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=HORA)
+            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=getattr(self, 'hora', HORA))
             return datos
         self._patch(type(self.env['hr.payslip']), '_collect_payslip_data', lambda s: fabrica(s))
         self._patch(dian_utils, 'compute_software_security_code', lambda *a: 'SC')
@@ -103,8 +103,8 @@ class TestDocumentoGenerar(DocumentoFixture, TransactionCase):
         self.doc = self._documento(date(2024, 3, 1))
         self.doc._ne_validar()
 
-    def _cune_esperado(self, consecutivo='NE00000015'):
-        raw = (consecutivo + FECHA + HORA + '4249095.00' + '240000.00' + '4009095.00'
+    def _cune_esperado(self, consecutivo='NE00000015', hora=HORA):
+        raw = (consecutivo + FECHA + hora + '4249095.00' + '240000.00' + '4009095.00'
                + '900123456' + '1020304050' + '102' + PIN + '2')
         return hashlib.sha384(raw.encode()).hexdigest()
 
@@ -163,7 +163,7 @@ class TestDocumentoGenerar(DocumentoFixture, TransactionCase):
         with self.assertRaisesRegex(UserError, 'no se haya enviado'):
             self.doc.action_generar_xml()
 
-    # ── D-a (doc 53 §23.15): un rechazo se corrige y se regenera en el MISMO documento ─────────────────
+    # ── un rechazo se corrige y se regenera en el MISMO documento; el número solo se consume si la DIAN lo acepta (David, 27-nov-2026; anula D-a del doc 53 §23.15) ──
     def _intento(self, estado, dt=datetime(2026, 4, 1, 10, 0), **vals):
         datos = {'documento_id': self.doc.id, 'state': estado, 'datetime': dt}
         datos.update(vals)
@@ -175,42 +175,80 @@ class TestDocumentoGenerar(DocumentoFixture, TransactionCase):
         return self._intento('invoice_rejected', dt, identifier=self.doc.cune, numero=self.doc.consecutive,
                              attachment_id=self.doc.xml_attachment_id.id)
 
+    def _regenerar(self, hora='10:05:00-05:00'):
+        self.hora = hora          # otra generación, otra hora: CUNE nuevo
+        self.doc.action_generar_xml()
+
     def test_rechazado_vigente_sigue_en_rechazado(self):
         self._generar_y_rechazar()
         self.assertEqual(self.doc.state, 'invoice_rejected')
 
-    def test_regenerar_desde_rechazado_da_consecutivo_cune_y_xml_nuevos(self):
+    def test_regenerar_desde_rechazado_conserva_el_numero_y_da_cune_y_xml_nuevos(self):
         rechazado = self._generar_y_rechazar()
         viejo = (self.doc.consecutive, self.doc.cune, self.doc.xml_attachment_id)
         self.assertEqual(viejo[0], 'NE00000015')
-        self.doc.action_generar_xml()
-        self.assertEqual(self.doc.consecutive, 'NE00000016')            # el 15 viajó a la DIAN: no se reutiliza JAMÁS
+        self._regenerar()
+        self.assertEqual(self.doc.consecutive, 'NE00000015')            # rechazado: el número no se consumió
         self.assertNotEqual(self.doc.cune, viejo[1])
-        self.assertEqual(self.doc.cune, self._cune_esperado('NE00000016'))
+        self.assertEqual(self.doc.cune, self._cune_esperado(hora='10:05:00-05:00'))
         self.assertNotEqual(self.doc.xml_attachment_id, viejo[2])
         self.assertTrue(viejo[2].exists())                               # el XML rechazado queda como evidencia
-        self.assertEqual(rechazado.numero, 'NE00000015')                 # y el intento rechazado, intacto
-        self.assertEqual(rechazado.attachment_id, viejo[2])
+        self.assertEqual((rechazado.numero, rechazado.identifier, rechazado.attachment_id), (viejo[0], viejo[1], viejo[2]))
         self.assertEqual(self.doc.etapa, 'ready')                        # el XML vigente aún no se envió
         self.assertFalse(self.doc.state)
-        self.assertEqual(self.secuencia.number_next_actual, 17)
+        self.assertEqual(self.secuencia.number_next_actual, 16)          # no se gastó otro
 
-    def test_regenerar_otra_vez_antes_de_enviar_reutiliza_el_consecutivo_nuevo(self):
+    def test_varios_rechazos_seguidos_conservan_el_numero(self):
         self._generar_y_rechazar()
-        self.doc.action_generar_xml()
-        self.doc.action_generar_xml()
-        self.assertEqual(self.doc.consecutive, 'NE00000016')            # el 16 aún no se envió: se reutiliza
-        self.assertEqual(self.secuencia.number_next_actual, 17)
-
-    def test_si_el_nuevo_tambien_se_rechaza_el_siguiente_es_otro_consecutivo(self):
-        self._generar_y_rechazar()
-        self.doc.action_generar_xml()                                    # NE16
-        self._intento('invoice_rejected', datetime(2026, 4, 2, 10, 0), identifier=self.doc.cune,
-                      numero=self.doc.consecutive)
+        self._regenerar()
+        self._intento('invoice_rejected', datetime(2026, 4, 2, 10, 0), identifier=self.doc.cune, numero=self.doc.consecutive)
         self.assertEqual(self.doc.state, 'invoice_rejected')
+        self._regenerar('10:10:00-05:00')
+        self._regenerar('10:11:00-05:00')                                # sin enviar: se puede repetir
+        self.assertEqual((self.doc.consecutive, self.secuencia.number_next_actual), ('NE00000015', 16))
+
+    def test_no_genera_un_xml_con_el_mismo_cune_de_uno_enviado(self):
+        rechazado = self._generar_y_rechazar()
+        adjunto = self.doc.xml_attachment_id
+        with self.assertRaises(UserError) as exc:
+            self.doc.action_generar_xml()                                # misma hora y mismos datos
+        self.assertIn('mismo CUNE', str(exc.exception))
+        self.assertEqual((self.doc.cune, self.doc.xml_attachment_id, self.doc.state), (rechazado.identifier, adjunto, 'invoice_rejected'))
+
+    def test_un_numero_con_un_envio_fallido_antes_del_rechazo_toma_numero_nuevo(self):
+        """El rechazo del mismo CUNE ya es veredicto (antes el documento quedaba sin poder regenerarse), pero el número tuvo un envío fallido: no se vuelve a usar."""
         self.doc.action_generar_xml()
-        self.assertEqual(self.doc.consecutive, 'NE00000017')
-        self.assertEqual(self.secuencia.number_next_actual, 18)
+        self._intento('invoice_sending_failed', datetime(2026, 4, 1, 9, 0), identifier=self.doc.cune, numero=self.doc.consecutive)
+        self._intento('invoice_rejected', identifier=self.doc.cune, numero=self.doc.consecutive)
+        self._regenerar()
+        self.assertEqual((self.doc.consecutive, self.secuencia.number_next_actual), ('NE00000016', 17))
+
+    def test_un_numero_que_recibio_la_regla_90_toma_numero_nuevo(self):
+        respuesta = {'status_code': '99', 'errors': ['Regla: 90, Rechazo: Documento procesado anteriormente.']}
+        for nombre, extra in (('marca del envio', {'ya_procesado': True}), ('respuesta guardada', {'message_json': respuesta})):
+            with self.subTest(nombre):
+                self.doc = self._documento(date(2024, 3, 1))
+                self.doc._ne_validar()
+                self.doc.action_generar_xml()
+                usado = self.doc.consecutive
+                self._intento('invoice_rejected', identifier=self.doc.cune, numero=usado, **extra)
+                self._regenerar()
+                self.assertNotEqual(self.doc.consecutive, usado)
+
+    def test_un_numero_que_viajo_en_otro_documento_toma_numero_nuevo(self):
+        self._generar_y_rechazar()
+        otro = self._documento(date(2024, 3, 1))
+        self.env['l10n.co.ne.documento.intento'].create({
+            'documento_id': otro.id, 'state': 'invoice_rejected', 'numero': 'NE00000015', 'identifier': 'o' * 96, 'test_environment': True})
+        self._regenerar()
+        self.assertEqual(self.doc.consecutive, 'NE00000016')
+
+    def test_la_lista_de_consecutivos_no_dice_reemplazado_por_el_mismo_numero(self):
+        self._generar_y_rechazar()
+        self._regenerar()
+        self._intento('invoice_accepted', datetime(2026, 4, 2, 10, 0), identifier=self.doc.cune, numero=self.doc.consecutive)
+        filas = self.env['l10n.co.ne.consecutivo'].search([('documento_id', '=', self.doc.id)]).sorted('id')
+        self.assertEqual([(f.numero, f.estado, f.reemplazado_por) for f in filas], [('NE00000015', 'rechazado', False), ('NE00000015', 'aceptado', False)])
 
     def test_aceptado_no_se_regenera(self):
         self.doc.action_generar_xml()
@@ -221,7 +259,7 @@ class TestDocumentoGenerar(DocumentoFixture, TransactionCase):
 
     def test_rechazado_y_despues_aceptado_no_se_regenera(self):
         self._generar_y_rechazar(datetime(2026, 4, 1, 10, 0))
-        self.doc.action_generar_xml()
+        self._regenerar()
         self._intento('invoice_accepted', datetime(2026, 4, 2, 10, 0), identifier=self.doc.cune,
                       numero=self.doc.consecutive)
         self.assertEqual(self.doc.state, 'invoice_accepted')

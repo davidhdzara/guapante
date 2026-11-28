@@ -113,6 +113,8 @@ class L10nCoNeDocumento(models.Model):
                                     'documento_id', 'exchange_id', string='Historial de intercambios DIAN',
                                     readonly=True, copy=False, check_company=True)
 
+    regla_90_sin_conciliar = fields.Boolean(string='Número por conciliar (regla 90)', compute='_compute_regla_90_sin_conciliar')
+
     is_adjustment = fields.Boolean(string='Es nota de ajuste', copy=False)
     adjustment_type = fields.Selection([('1', 'Reemplazar'), ('2', 'Eliminar')], string='Tipo de nota de ajuste',
                                        copy=False)
@@ -192,12 +194,21 @@ class L10nCoNeDocumento(models.Model):
         for doc in self:
             ultimo = doc._ultimo_intento()
             if not ultimo or (ultimo.state == 'invoice_rejected' and ultimo.identifier != doc.cune):
-                # Sin envío, o el rechazo fue de un XML ANTERIOR: el documento se regeneró con consecutivo y CUNE
-                # nuevos (doc 53 §23.15, D-a) y el XML vigente todavía no se envió: sin estado DIAN. El intento
-                # rechazado queda en el historial como evidencia.
+                # Sin envío, o el rechazo fue de un XML ANTERIOR: el documento se regeneró (CUNE nuevo; el número se conserva si ``_ne_numero_se_conserva``) y el XML vigente todavía no se envió: sin estado
+                # DIAN. El intento rechazado queda en el historial como evidencia.
                 doc.state = False
             else:
                 doc.state = ultimo.state
+
+    @api.depends('cune', 'eliminado', 'intento_ids.state', 'intento_ids.identifier', 'intento_ids.datetime', 'intento_ids.ya_procesado', 'intento_ids.message_json')
+    def _compute_regla_90_sin_conciliar(self):
+        for doc in self:
+            doc.regla_90_sin_conciliar = bool(doc._ne_envio_por_conciliar())
+
+    def _ne_envio_por_conciliar(self):
+        """El último envío del XML vigente si recibió la regla 90 y sigue sin veredicto; vacío si no."""
+        self.ensure_one()
+        return self._ultimo_intento().filtered(lambda i: not self.eliminado and i.identifier == self.cune and i.state == 'invoice_pending' and i._ne_recibio_regla_90())
 
     @api.depends('intento_ids.message', 'intento_ids.datetime')
     def _compute_message(self):
@@ -1203,6 +1214,25 @@ class L10nCoNeDocumento(models.Model):
         self.ensure_one()
         return self.company_id._ne_tomar_consecutivo(self.is_adjustment)
 
+    def _ne_envios_sin_rechazo(self):
+        """El último envío de cada CUNE que NO terminó rechazado (pendiente, fallido o aceptado): con alguno no se genera otro XML. Un envío fallido seguido del rechazo del MISMO CUNE ya tiene veredicto."""
+        self.ensure_one()
+        ultimos = {intento.identifier: intento for intento in self.intento_ids.sorted(lambda i: (i.datetime or _dt.min, i.id))}
+        return [intento for intento in ultimos.values() if intento.state != 'invoice_rejected']
+
+    def _ne_numero_se_conserva(self, prefijo):
+        """¿El XML que se va a generar lleva el consecutivo que el documento ya tiene? David, 27-nov-2026 (anula D-a del doc 53 §23.15): el número solo se consume cuando la DIAN lo acepta. Se conserva si nunca
+        viajó, o si TODOS sus envíos con ese número fueron rechazados, ninguno recibió la regla 90 y no viajó en otro documento de la compañía. NO VERIFICADO que la DIAN admita repetirlo (Anexo V1.0,
+        regla 90: «Solo se podrá transmitir una única vez el Número»): si contesta 90, ver ``_ne_dejar_por_conciliar``."""
+        self.ensure_one()
+        if not self.consecutive or not self.consecutive.startswith(prefijo):
+            return False
+        envios = self.intento_ids.filtered(lambda i: i.numero == self.consecutive)
+        if not envios:
+            return True
+        return (all(i.state == 'invoice_rejected' and not i._ne_recibio_regla_90() for i in envios)
+                and not self.company_id._ne_numero_en_otro(self.consecutive, documento=self))
+
     def action_generar_xml(self):
         """Genera el XML mensual firmado: revalida, toma consecutivo (después de una corrida en seco), arma el
         XML fusionado, calcula el CUNE (depende de los totales fusionados), lo inserta, firma con XAdES-BES y
@@ -1210,11 +1240,9 @@ class L10nCoNeDocumento(models.Model):
         doc 53 §18.6); un fallo después de tomar el número lo devuelve con el rollback (secuencia no_gap)."""
         self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()      # H-F2-03: llega al certificado: solo el administrador de nomina
         self.ensure_one()
-        # Se genera si nunca se envió, o si TODOS los envíos anteriores fueron rechazados (D-a: se corrige y se
-        # regenera en el MISMO documento, con consecutivo y CUNE nuevos). Aceptado, pendiente, incierto, eliminado
-        # o con un fallo de envío (se reintenta con el mismo XML) no se regeneran.
-        solo_rechazos = all(i.state == 'invoice_rejected' for i in self.intento_ids)
-        if self.incierto or self.eliminado or not (self.state in (False, 'invoice_rejected') and solo_rechazos):
+        # Se genera si nunca se envió, o si cada XML enviado terminó rechazado: se corrige y se regenera en el MISMO documento, con CUNE nuevo (el número, según ``_ne_numero_se_conserva``). Aceptado,
+        # pendiente, incierto, eliminado o con un fallo de envío sin veredicto (se reintenta con el mismo XML) no se regeneran.
+        if self.incierto or self.eliminado or not (self.state in (False, 'invoice_rejected') and not self._ne_envios_sin_rechazo()):
             raise UserError(_(
                 'El XML solo se genera para un documento en estado "Borrador", "Listo" o "Rechazado" que no se '
                 'haya enviado con éxito (hoy: %s).',
@@ -1226,15 +1254,14 @@ class L10nCoNeDocumento(models.Model):
         self._ne_exigir_pagos_vigentes()
         company = self.company_id
         prefijo = self._ne_prefijo()
-        # Un consecutivo que ya viajó a la DIAN en un intento rechazado NO se reutiliza jamás: la DIAN devuelve el
-        # veredicto viejo si se repite (doc 53 §23.15; memoria del equipo sobre consecutivos rechazados).
-        consecutivo_usado = bool(self.consecutive) and self.consecutive in self.intento_ids.mapped('numero')
-        if consecutivo_usado or not self.consecutive or not self.consecutive.startswith(prefijo):
+        if not self._ne_numero_se_conserva(prefijo):
             self._ne_xml_sin_firmar('%s1' % prefijo)   # corrida en seco: los errores de datos salen ANTES del número
             self.consecutive = self._ne_siguiente_consecutivo()
         datos = self._collect_documento_data()
         xml_bytes = self._ne_construir_xml(datos)
         cune = self._ne_calcular_cune(datos)
+        if cune in self.intento_ids.mapped('identifier'):      # los envíos se distinguen SOLO por el CUNE (el número puede repetirse)
+            raise UserError(_('El XML nuevo del documento "%s" tendría el mismo CUNE que uno ya enviado: genérelo otra vez en unos segundos.', self.display_name))
         xml_bytes = ne_xml_utils.insertar_cune_y_qr(xml_bytes, cune, company._ne_dian_qr_host())
         llave, cert_pem, cert_der, cert_obj, cadena = xml_signer.load_from_certificate(company._get_ne_certificate())
         firmado = xml_signer.sign_xml(
@@ -1320,8 +1347,8 @@ class L10nCoNeDocumento(models.Model):
                               doc=self.display_name, estado=nombre_estado))
         if self.state == 'invoice_rejected':
             raise UserError(_(
-                'La DIAN rechazó el XML vigente del documento "%s". Corrija los datos y genere el XML otra vez '
-                '(toma un consecutivo nuevo): el mismo XML no se reenvía.', self.display_name))
+                'La DIAN rechazó el XML vigente del documento "%s". Corrija los datos y genere el XML otra vez: '
+                'el mismo XML no se reenvía.', self.display_name))
         if self.etapa != 'ready' or not (self.cune and self.consecutive and self.xml_attachment_id):
             raise UserError(_('Genere el XML del documento "%s" antes de enviarlo.', self.display_name))
         if comprobar_pagos:
@@ -1413,7 +1440,7 @@ class L10nCoNeDocumento(models.Model):
             'attachment_id': self.xml_attachment_id.id, 'message_json': message_json,
             'test_environment': company.l10n_co_ne_environment == '2',
             'certification_process': bool(company.l10n_co_ne_certification_process),
-            'exchange_id': exchange.id or False})
+            'exchange_id': exchange.id or False, 'ya_procesado': ya_procesado})
         intento._ne_guardar_application_response(respuesta)           # E-1: constancia de la DIAN legible (.xml)
         vals = {'sending_data': False}
         if zip_key:
@@ -1428,18 +1455,56 @@ class L10nCoNeDocumento(models.Model):
         return intento
 
     def _ne_conciliar_ya_procesado(self, intento):
-        """H-DIAN-03 (b): la DIAN contestó que ya había procesado el documento. Se consulta por CUNE en el acto; sin veredicto queda INCIERTO (fuera de la cola, a conciliar), nunca rechazado."""
+        """H-DIAN-03 (b): la DIAN contestó que ya había procesado el documento (regla 90: ya tiene ese número). Se consulta por el CUNE propio en el acto; si no queda ACEPTADO, queda INCIERTO (fuera de la
+        cola, por conciliar): nunca rechazado ni reintentable por sí solo."""
         self.ensure_one()
         try:
             with self.env.cr.savepoint():
                 self._ne_reconsultar_por_cune()
         except Exception:   # noqa: BLE001 -- el intento ya está registrado: pase lo que pase, queda incierto
             _logger.exception('Documento %s: no se pudo consultar por CUNE tras la respuesta «procesado anteriormente»', self.id)
-        if intento.state not in ('invoice_accepted', 'invoice_rejected'):
+        if intento.state != 'invoice_accepted':
             self.incierto = True
-            self.message_post(body=_(
-                'La DIAN contestó que ya había procesado este documento y la consulta por CUNE no dio su veredicto: queda como envío incierto. Use «Consultar estado DIAN por CUNE»; no genere otro XML.'),
-                message_type='comment', subtype_xmlid='mail.mt_note')
+            self._ne_nota_por_conciliar(intento.numero)
+
+    def _ne_nota_por_conciliar(self, numero):
+        self._ne_nota_una_vez(_(
+            'La DIAN contestó que ya había procesado el número %(numero)s (regla 90) y no hay un documento aceptado con el CUNE de este envío: queda por conciliar. Puede estar aceptado con otro CUNE (otro '
+            'sistema o una respuesta perdida): revíselo en la DIAN y use «Consultar estado DIAN por CUNE»; no genere otro XML. Solo si en la DIAN no hay ningún documento aceptado con este número, el '
+            'administrador de nómina usa «Usar el siguiente número».', numero=numero), 'ya había procesado el número %s (regla 90)' % numero)
+
+    def _ne_dejar_por_conciliar(self, intento, respuesta, exchange):
+        """Una consulta sin documento aceptado sobre un envío con la regla 90 (o que la trae): el envío queda «Pendiente», incierto y marcado. Nada lo convierte por sí solo en rechazado (la siguiente
+        generación tomaría el número siguiente y podría reportar dos veces la nómina) ni en «Envío fallido» (reenviar el mismo XML daría otra vez la regla 90): solo ``action_usar_numero_siguiente``."""
+        self.ensure_one()
+        mensaje = dian_message.build_message_json(respuesta)
+        if intento:
+            valores = {'state': 'invoice_pending', 'ya_procesado': True}
+            if not intento._ne_recibio_regla_90():
+                valores['message_json'] = mensaje          # si ya la tenía, se conserva la respuesta que la trajo
+            intento.write(valores)
+        else:
+            intento = self.env['l10n.co.ne.documento.intento'].create({
+                'documento_id': self.id, 'datetime': fields.Datetime.now(), 'state': 'invoice_pending', 'identifier': self.cune, 'numero': self.consecutive, 'ya_procesado': True,
+                'attachment_id': self.xml_attachment_id.id, 'message_json': mensaje, 'exchange_id': exchange.id or False,
+                'test_environment': self.company_id.l10n_co_ne_environment == '2', 'certification_process': bool(self.company_id.l10n_co_ne_certification_process)})
+        self.incierto = True
+        self._ne_nota_por_conciliar(intento.numero)
+
+    def action_usar_numero_siguiente(self):
+        """Única salida de un envío con la regla 90 que la consulta por CUNE no resolvió (TL, 27-nov-2026): el administrador de nómina declara que verificó en la DIAN que no hay documento aceptado con
+        ese número. El envío queda rechazado y la siguiente generación toma un número NUEVO. No llama a la DIAN."""
+        self.env['l10n.co.ne.documento.mixin']._ne_exigir_administrador_de_nomina()
+        self.ensure_one()
+        intento = self._ne_envio_por_conciliar()
+        if not intento:
+            raise UserError(_('El documento "%s" no tiene un envío con la regla 90 por conciliar.', self.display_name))
+        intento.write({'state': 'invoice_rejected', 'ya_procesado': True})
+        self.write({'incierto': False, 'sending_data': False})
+        self.message_post(body=_(
+            'Verifiqué en la DIAN que no hay documento aceptado con este número: usar el siguiente (número %(numero)s, confirmado por %(usuario)s).',
+            numero=intento.numero, usuario=self.env.user.name), message_type='comment', subtype_xmlid='mail.mt_note')
+        return True
 
     # Entrega de la representación gráfica y el XML al empleado (Frente 5, C6c). Solo tras la aceptación de la DIAN (patrón
     # de facturación: el correo sale después de la DIAN y solo si fue aceptado). Un fallo de correo NO cambia el estado DIAN.
@@ -1789,8 +1854,8 @@ class L10nCoNeDocumento(models.Model):
         if cunes:
             return intento.identifier in cunes
         numeros = dian_respuesta.candidatos_numero(respuesta)
-        if numeros:
-            return intento.numero in numeros
+        if numeros:      # un número vuelto a usar no distingue envíos: sin CUNE en la respuesta no se sabe de cuál habla
+            return intento.numero in numeros and not self._ne_numero_viajo_con_otro_cune(intento)
         return True
 
     def _ne_nota_una_vez(self, texto, clave):
@@ -1847,6 +1912,9 @@ class L10nCoNeDocumento(models.Model):
                 'el estado. Revise la evidencia de la consulta.'), 'corresponde a otro documento')
             return resultado
         message_json = dian_message.build_message_json(respuesta)
+        if veredicto == dian_respuesta.RECHAZADO and (intento._ne_recibio_regla_90() or dian_respuesta.es_ya_procesado(respuesta)):
+            self._ne_dejar_por_conciliar(intento, respuesta, intento.exchange_id)
+            return resultado
         if veredicto in (dian_respuesta.ACEPTADO, dian_respuesta.RECHAZADO):
             intento.write({'state': _ESTADO_INTENTO_POR_VEREDICTO[veredicto], 'message_json': message_json})
             intento._ne_guardar_application_response(respuesta)       # E-1
@@ -1916,7 +1984,8 @@ class L10nCoNeDocumento(models.Model):
         if veredicto in (dian_respuesta.ERROR_TRANSPORTE, dian_respuesta.PENDIENTE):
             return resultado
         if veredicto == dian_respuesta.NO_CONOCIDO:
-            if self.incierto and (not ultimo or ultimo.state != 'invoice_pending'):
+            # Un envío con la regla 90 nunca vuelve a «Envío fallido»: la DIAN ya tiene ese número (queda por conciliar).
+            if self.incierto and (not ultimo or ultimo.state != 'invoice_pending') and not (ultimo and ultimo._ne_recibio_regla_90()):
                 self._ne_liberar_no_conocido(ultimo, respuesta, exchange)
             return resultado
         if veredicto == dian_respuesta.NIVEL_SET:
@@ -1937,7 +2006,11 @@ class L10nCoNeDocumento(models.Model):
             return resultado
         estado = _ESTADO_INTENTO_POR_VEREDICTO[veredicto]
         message_json = dian_message.build_message_json(respuesta)
-        if ultimo and ultimo.identifier == self.cune and ultimo.state in ('invoice_pending', 'invoice_sending_failed'):
+        propio = ultimo.filtered(lambda i: i.identifier == self.cune and i.state in ('invoice_pending', 'invoice_sending_failed'))
+        if veredicto != dian_respuesta.ACEPTADO and (dian_respuesta.es_ya_procesado(respuesta) or (propio and propio._ne_recibio_regla_90())):
+            self._ne_dejar_por_conciliar(propio, respuesta, exchange)
+            return resultado
+        if propio:
             vals = {'state': estado, 'message_json': message_json}
             if respuesta.get('ZipKey') and not ultimo.zip_key:
                 vals['zip_key'] = respuesta['ZipKey']
@@ -1959,6 +2032,11 @@ class L10nCoNeDocumento(models.Model):
                 'state'].selection).get(estado)),
             message_type='comment', subtype_xmlid='mail.mt_note')
         return resultado
+
+    def _ne_numero_viajo_con_otro_cune(self, intento):
+        """True si el número de ``intento`` viajó en este documento con otro CUNE (un número vuelto a usar)."""
+        self.ensure_one()
+        return any(i.numero == intento.numero and i.identifier != intento.identifier for i in self.intento_ids)
 
     def _ne_liberar_no_conocido(self, ultimo, respuesta, exchange):
         """H-DIAN-03: la DIAN contestó que no conoce el CUNE de un documento incierto: queda «Envío fallido» con su MISMO XML, consecutivo y CUNE, y puede enviarse otra vez."""

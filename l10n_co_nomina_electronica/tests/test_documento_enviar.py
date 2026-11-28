@@ -69,7 +69,7 @@ class TestDocumentoEnviar(DocumentoFixture, TransactionCase):
     def _simular_dian(self):
         def fabrica(slip):
             datos = copy.deepcopy(_quincena_con_prima() if slip.date_to.day > 15 else _recibo())
-            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=HORA)
+            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=getattr(self, 'hora', HORA))
             return datos
         self._patch(type(self.env['hr.payslip']), '_collect_payslip_data', lambda s: fabrica(s))
         self._patch(dian_utils, 'compute_software_security_code', lambda *a: 'SC')
@@ -141,16 +141,17 @@ class TestDocumentoEnviar(DocumentoFixture, TransactionCase):
         self._intento('invoice_rejected')
         mensaje = self._no_envia()
         self.assertIn('genere el XML otra vez', mensaje)
-        self.assertIn('consecutivo nuevo', mensaje)
+        self.assertIn('no se reenvía', mensaje)
 
     def test_rechazado_ya_regenerado_si_se_envia(self):
-        """Regenerado con consecutivo nuevo, el XML vigente no fue rechazado: vuelve a 'Listo' y se envía."""
+        """Regenerado (mismo número, CUNE nuevo), el XML vigente no fue rechazado: vuelve a 'Listo' y se envía."""
         self._intento('invoice_rejected')
-        self.doc.action_generar_xml()                      # NE00000016
+        self.hora = '10:05:00-05:00'
+        self.doc.action_generar_xml()
         self.assertEqual(self.doc.etapa, 'ready')
         self.assertFalse(self.doc.state)
         intento = self._enviar(ACEPTADA)
-        self.assertEqual(intento.numero, 'NE00000016')
+        self.assertEqual(intento.numero, 'NE00000015')
         self.assertEqual(self.doc.state, 'invoice_accepted')
 
     def test_nota_de_ajuste_no_se_envia_aqui(self):

@@ -4,8 +4,8 @@
 
 - Ciclo por RECIBO (habilitación): un manifiesto (``l10n.co.ne.exchange.document``) por cada envío de un recibo, con el número y el ambiente (campos de .304). Un recibo
   rechazado se regenera con número y CUNE nuevos: el manifiesto anterior queda como «rechazado» y «reemplazado por» el siguiente.
-- Documento MENSUAL (producción): un intento (``l10n.co.ne.documento.intento``) por cada envío, con su número, estado y ambiente. Igual: un rechazo queda «reemplazado por» el
-  número del intento siguiente.
+- Documento MENSUAL (producción): un intento (``l10n.co.ne.documento.intento``) por cada envío, con su número, estado y ambiente. Un rechazado puede repetir número (.337): solo queda «reemplazado por»
+  cuando el envío siguiente usa uno distinto.
 
 Sirve de lista «Consecutivos de nómina» (justifica cada hueco ante la DIAN y la UGPP) y de ÚNICA fuente de los controles de consecutivo
 (``res.company._ne_mayor_consecutivo_viajado``): lo que ve el auditor es lo mismo que lo que bloquea. Sin datos propios: no se escribe nada aquí."""
@@ -39,7 +39,7 @@ class L10nCoNeConsecutivo(models.Model):
     documento_id = fields.Many2one('l10n.co.ne.documento', string='Documento', readonly=True)
     estado = fields.Selection([
         ('aceptado', 'Aceptado'), ('rechazado', 'Rechazado'), ('pendiente', 'Pendiente'), ('fallido', 'Envío fallido')], string='Estado DIAN', readonly=True)
-    reemplazado_por = fields.Char(string='Reemplazado por', readonly=True, help='Número con que se volvió a generar el documento tras un rechazo.')
+    reemplazado_por = fields.Char(string='Reemplazado por', readonly=True, help='Número distinto con que se volvió a enviar el documento tras un rechazo; vacío si se envió otra vez con el mismo número.')
 
     def init(self):
         """La vista une ``l10n_co_ne_exchange_document`` (con ``numero`` y ``ambiente``, de .304) y ``l10n_co_ne_documento_intento``: este modelo se importa DESPUÉS de los dos."""
@@ -70,7 +70,7 @@ class L10nCoNeConsecutivo(models.Model):
                            d.employee_id AS employee_id, NULL::integer AS payslip_id, d.id AS documento_id,
                            CASE i.state WHEN 'invoice_accepted' THEN 'aceptado' WHEN 'invoice_rejected' THEN 'rechazado'
                                         WHEN 'invoice_pending' THEN 'pendiente' ELSE 'fallido' END AS estado,
-                           CASE WHEN i.state = 'invoice_rejected' THEN LEAD(i.numero) OVER (PARTITION BY i.documento_id ORDER BY i.id) END AS reemplazado_por
+                           CASE WHEN i.state = 'invoice_rejected' THEN NULLIF(LEAD(i.numero) OVER (PARTITION BY i.documento_id ORDER BY i.id), i.numero) END AS reemplazado_por
                       FROM l10n_co_ne_documento_intento i
                       JOIN l10n_co_ne_documento d ON d.id = i.documento_id
                      WHERE i.numero IS NOT NULL

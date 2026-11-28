@@ -44,7 +44,7 @@ class TestNotaAjusteEnviar(DocumentoFixture, TransactionCase):
 
         def fabrica(slip):
             datos = copy.deepcopy(_quincena_con_prima() if slip.date_to.day > 15 else _recibo())
-            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=HORA)
+            datos['informacion_general'] = dict(datos['informacion_general'], FechaGen=FECHA, HoraGen=getattr(self, 'hora', HORA))
             datos['lugar_generacion'] = {'Pais': 'CO', 'DepartamentoEstado': '11', 'MunicipioCiudad': '11001',
                                          'Idioma': 'es'}
             datos['numero_secuencia'] = dict(datos['numero_secuencia'], CodigoTrabajador='1020304050')
@@ -116,14 +116,17 @@ class TestNotaAjusteEnviar(DocumentoFixture, TransactionCase):
         self.assertTrue(self.padre.eliminado)
         self.assertEqual(self.padre.eliminado_por_id, nota)
 
-    def test_nota_rechazada_se_regenera_con_consecutivo_de_ajuste_nuevo(self):
+    def test_nota_rechazada_se_regenera_con_el_mismo_consecutivo_de_ajuste(self):
         nota = self._nota_lista('1')
         primero = nota.consecutive
         self.soap.return_value = RECHAZO
         nota._ne_enviar_uno()
         self.assertEqual(nota.state, 'invoice_rejected')
+        cune = nota.cune
+        self.hora = '10:05:00-05:00'
         nota.action_generar_xml()
-        self.assertNotEqual(nota.consecutive, primero)
+        self.assertEqual((nota.consecutive, nota.state), (primero, False))
+        self.assertNotEqual(nota.cune, cune)
         self.assertTrue(nota.consecutive.startswith('NA'))
 
     def test_no_se_envia_si_el_padre_dejo_de_ser_el_ultimo_aceptado(self):

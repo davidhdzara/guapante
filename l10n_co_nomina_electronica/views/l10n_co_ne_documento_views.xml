@@ -16,6 +16,10 @@
                             invisible="state != 'invoice_accepted' or eliminado or legacy or is_adjustment"
                             confirm="Se creará una nota de ajuste de tipo Eliminar en borrador. ¿Continuar?"
                             groups="hr_payroll.group_hr_payroll_manager"/>
+                    <button name="action_usar_numero_siguiente" type="object" string="Usar el siguiente número"
+                            invisible="not regla_90_sin_conciliar"
+                            confirm="Verifiqué en la DIAN que no hay documento aceptado con este número: usar el siguiente."
+                            groups="hr_payroll.group_hr_payroll_manager"/>
                     <field name="etapa" widget="statusbar" statusbar_visible="draft,ready"/>
                 </header>
                 <sheet>
@@ -49,6 +53,7 @@
                     </group>
                     <field name="alertas_texto" invisible="not alertas"/>
                     <field name="alertas" invisible="1"/>
+                    <field name="regla_90_sin_conciliar" invisible="1"/>
                     <notebook>
                         <page string="Recibos" name="recibos">
                             <field name="recibo_xml_ids" readonly="1">
