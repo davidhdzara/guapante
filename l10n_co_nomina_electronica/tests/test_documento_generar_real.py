@@ -9,7 +9,7 @@ import base64
 import logging
 import shutil
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -87,11 +87,11 @@ class TestDocumentoGenerarReal(TransactionCase):
             parche.start()
             self.addCleanup(parche.stop)
 
-    def _validar_xsd(self, xml_bytes):
+    def _validar_xsd(self, xml_bytes, archivo='NominaIndividualElectronicaXSDV1.0.6.xsd'):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         (Path(tmp) / 'xsd').mkdir()
-        xsd = CAJA / 'XSD' / 'NominaIndividualElectronicaXSDV1.0.6.xsd'
+        xsd = CAJA / 'XSD' / archivo
         shutil.copy(xsd, Path(tmp) / 'xsd' / xsd.name)
         shutil.copytree(CAJA / 'Schemes', Path(tmp) / 'common')
         esquema = etree.XMLSchema(etree.parse(str(Path(tmp) / 'xsd' / xsd.name)))
@@ -157,14 +157,14 @@ class TestDocumentoGenerarReal(TransactionCase):
         ('Deducciones', 'Sindicatos/Sindicato'): 1, ('Deducciones', 'Sanciones/Sancion'): 1, ('Deducciones', 'Libranzas/Libranza'): 1,
         ('Deducciones', 'PagosTerceros/PagoTercero'): 1, ('Deducciones', 'Anticipos/Anticipo'): 1, ('Deducciones', 'OtrasDeducciones/OtraDeduccion'): 1}
 
-    def _recibos_de_un_empleado_nuevo(self, quincenas):
+    def _recibos_de_un_empleado_nuevo(self, quincenas, sueldo=3000000.0):
         empleado = self.env['hr.employee'].create({
             'name': 'Listas %s' % len(quincenas), 'company_id': self.company.id, 'identification_id': '102030407%s' % len(quincenas), 'l10n_co_ne_payment_method': '10',
             'l10n_co_ne_worker_type': '01', 'l10n_co_ne_worker_subtype': '00', 'address_id': self.company.partner_id.id})
         empleado.work_contact_id.l10n_latam_identification_type_id = self.env.ref('l10n_co.national_citizen_id')
         contrato = self.env['hr.contract'].create({
             'name': 'Contrato Listas %s' % len(quincenas), 'employee_id': empleado.id, 'company_id': self.company.id, 'structure_type_id': self.contrato.structure_type_id.id,
-            'wage': 3000000.0, 'date_start': date(2025, 1, 1), 'state': 'open', 'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01',
+            'wage': sueldo, 'date_start': date(2025, 1, 1), 'state': 'open', 'l10n_co_ne_contract_type': '2', 'l10n_co_pila_tipo_cotizante': '01',
             'l10n_co_pila_subtipo_cotizante': '00'})
         recibos = self.env['hr.payslip']
         for ini, fin in quincenas:
@@ -176,9 +176,9 @@ class TestDocumentoGenerarReal(TransactionCase):
             recibos |= recibo
         return recibos
 
-    def _agregar_una_linea_por_concepto(self, recibos):
+    def _agregar_una_linea_por_concepto(self, recibos, conceptos=None):
         estructura = self.env.ref('l10n_co_nomina_electronica.hr_payroll_structure_co_nomina')
-        for orden, concepto in enumerate(self._CONCEPTOS_DE_LINEA, 1):
+        for orden, concepto in enumerate(conceptos or self._CONCEPTOS_DE_LINEA, 1):
             regla = self.env['hr.salary.rule'].create({
                 'name': 'Lista %s' % concepto, 'code': 'T_LISTA_%s' % concepto.upper(), 'sequence': 900 + orden, 'struct_id': estructura.id,
                 'category_id': self.env.ref('hr_payroll.ALW').id, 'condition_select': 'none', 'amount_select': 'fix', 'amount_fix': 0.0, 'l10n_co_ne_dian_concept': concepto})
@@ -228,6 +228,102 @@ class TestDocumentoGenerarReal(TransactionCase):
                     self.assertEqual(Decimal(raiz.find('{*}%s' % total).text), esperado.quantize(Decimal('0.01')), seccion)
                 comisiones = [Decimal(e.text) for e in raiz.findall('.//{*}Comisiones/{*}Comision')]
                 self.assertEqual(comisiones, [abs(Decimal(str(l.total))).quantize(Decimal('0.01')) for r in recibos for l in r.line_ids if l.salary_rule_id.code == 'T_LISTA_COMISION' and l.total])          # sin las de valor cero de la vuelta anterior: el XML no las lleva
+
+    # ── NIE139 (.336): ningún importe opcional viaja en cero ─────────
+    _OPCIONALES = {          # elemento: atributos con ocurrencia 0-1 en el Anexo V1.0 y «optional» en el XSD
+        'Transporte': ('AuxilioTransporte', 'ViaticoManuAlojS', 'ViaticoManuAlojNS'), 'Primas': ('PagoNS',), 'Bonificacion': ('BonificacionS', 'BonificacionNS'),
+        'Auxilio': ('AuxilioS', 'AuxilioNS'), 'OtroConcepto': ('ConceptoS', 'ConceptoNS'), 'BonoEPCTV': ('PagoS', 'PagoNS', 'PagoAlimentacionS', 'PagoAlimentacionNS'),
+        'FondoSP': ('Porcentaje', 'DeduccionSP', 'PorcentajeSub', 'DeduccionSub')}
+
+    def _sin_opcionales_en_cero(self, xml_bytes):
+        raiz = etree.fromstring(xml_bytes)
+        en_cero, vacios = [], []
+        for seccion in raiz.iter('{*}Devengados', '{*}Deducciones'):
+            for nodo in seccion.iter():
+                nombre = etree.QName(nodo).localname
+                en_cero += [(nombre, a) for a in self._OPCIONALES.get(nombre, ()) if nodo.get(a) is not None and not Decimal(nodo.get(a))]
+                texto = (nodo.text or '').strip()
+                if not nodo.attrib and not texto and not len(nodo):
+                    vacios.append(nombre)
+                elif texto and not Decimal(texto):
+                    en_cero.append((nombre, 'texto'))
+        self.assertEqual((en_cero, vacios), ([], []), 'Opcionales en cero y nodos vacios del XML')
+
+    def _atributos(self, xml_bytes, elemento):
+        return [dict(nodo.attrib) for nodo in etree.fromstring(xml_bytes).iter('{*}%s' % elemento)]
+
+    def _xml_valido(self, documento, archivo='NominaIndividualElectronicaXSDV1.0.6.xsd'):
+        documento.action_generar_xml()
+        xml_bytes = base64.b64decode(documento.xml_attachment_id.datas)
+        valido, errores = self._validar_xsd(xml_bytes, archivo)
+        self.assertTrue(valido, 'XML invalido contra %s: %s' % (archivo, errores))
+        self._sin_opcionales_en_cero(xml_bytes)
+        return xml_bytes
+
+    def _documento_de(self, recibos):
+        documento = self.env['l10n.co.ne.documento']._ne_preparar(recibos)['documentos']
+        self.assertEqual((len(documento), documento.payslip_ids), (1, recibos))
+        self.assertFalse([a['message'] for a in (documento.alertas or []) if a['level'] == 'danger'])
+        self.assertNotIn('totales_nodos', [a['key'] for a in (documento.alertas or [])], 'Los totales siguen siendo la suma de los nodos')
+        return documento
+
+    def _comprobar_un_solo_lado(self, xml_bytes):
+        for elemento, esperado, cuantos in (
+                ('Bonificacion', {'BonificacionNS'}, 2), ('Auxilio', {'AuxilioNS'}, 2), ('OtroConcepto', {'DescripcionConcepto', 'ConceptoS'}, 2),
+                ('BonoEPCTV', {'PagoAlimentacionNS'}, 2), ('Transporte', {'ViaticoManuAlojNS'}, 1), ('Primas', {'Cantidad', 'Pago'}, 1)):
+            self.assertEqual([set(a) for a in self._atributos(xml_bytes, elemento)], [esperado] * cuantos, elemento)
+        # Los obligatorios (1-1: NIE149/150 y NIE173/174) se escriben aunque valgan cero: el XSD los exige.
+        self.assertEqual([a['CompensacionE'] for a in self._atributos(xml_bytes, 'Compensacion')], ['0.00'] * 2)
+        self.assertEqual([a['SancionPublic'] for a in self._atributos(xml_bytes, 'Sancion')], ['0.00'] * 2)
+
+    def test_un_concepto_con_un_solo_lado_no_escribe_el_otro_en_cero_ni_en_la_nomina_ni_en_la_nota(self):
+        """Rechazo real de la DIAN (27-nov-2026, NE1): «Regla NIE139» por BonificacionS="0.00" con solo bonificacion no salarial en las dos quincenas."""
+        recibos = self._recibos_de_un_empleado_nuevo(((1, 15), (16, 31)), sueldo=5000000.0)          # sin auxilio de transporte: Transporte solo con viaticos
+        self._agregar_una_linea_por_concepto(recibos, ('BonificacionNS', 'AuxilioNS', 'OtroConceptoS', 'BonoAlimNS', 'ViaticoNS', 'Primas', 'CompensacionO', 'Sancion'))
+        documento = self._documento_de(recibos)
+        xml_bytes = self._xml_valido(documento)
+        self._comprobar_un_solo_lado(xml_bytes)
+        bonificaciones = [Decimal(a['BonificacionNS']) for a in self._atributos(xml_bytes, 'Bonificacion')]
+        self.assertEqual(bonificaciones, [Decimal(str(l.total)).quantize(Decimal('0.01')) for r in recibos for l in r.line_ids if l.salary_rule_id.code == 'T_LISTA_BONIFICACIONNS'])
+        # Nota «Reemplazar» sobre el documento aceptado: mismas reglas contra el XSD de ajuste
+        self.company.l10n_co_ne_adjust_prefix = 'NA'
+        secuencias = self.env['ir.sequence'].search([('code', '=', 'l10n_co_nomina.ajuste'), ('company_id', '=', self.company.id)])
+        if not secuencias:
+            secuencias = self.env['ir.sequence'].create({'name': 'Secuencia NA real', 'code': 'l10n_co_nomina.ajuste', 'company_id': self.company.id})
+        secuencias.write({'prefix': 'NA', 'padding': 8, 'number_next': 1, 'implementation': 'no_gap'})
+        self.env['l10n.co.ne.documento.intento'].create({
+            'documento_id': documento.id, 'state': 'invoice_accepted', 'identifier': documento.cune, 'numero': documento.consecutive, 'datetime': datetime(2026, 4, 2)})
+        nota = documento.action_crear_ajuste('1')
+        xml_nota = self._xml_valido(nota, 'NominaIndividualDeAjusteElectronicaXSDV1.0.6.xsd')
+        self.assertIsNotNone(etree.fromstring(xml_nota).find('{*}Reemplazar'))
+        self._comprobar_un_solo_lado(xml_nota)
+
+    def test_los_importes_opcionales_que_quedan_en_cero_no_se_escriben_ni_dejan_nodos_vacios(self):
+        """Importes que netean cero (dos lineas opuestas): ni atributo, ni elemento, ni contenedor vacio; los obligatorios Salud y FondoPension siguen."""
+        recibos = self._recibos_de_un_empleado_nuevo(((1, 15), (16, 31)), sueldo=5000000.0)
+        original = type(recibos)._collect_payslip_data
+        devengados = dict(
+            {nombre: ['0.00'] for nombre in ('Comisiones', 'PagosTerceros', 'Anticipos')},
+            **{nombre: '0.00' for nombre in ('Dotacion', 'ApoyoSost', 'Teletrabajo', 'BonifRetiro', 'Indemnizacion', 'Reintegro')},
+            **{'Transporte': [{a: '0.00' for a in self._OPCIONALES['Transporte']}], 'Bonificaciones': [{a: '0.00' for a in self._OPCIONALES['Bonificacion']}],
+               'Auxilios': [{a: '0.00' for a in self._OPCIONALES['Auxilio']}], 'BonoEPCTVs': [{a: '0.00' for a in self._OPCIONALES['BonoEPCTV']}],
+               'OtrosConceptos': [dict({a: '0.00' for a in self._OPCIONALES['OtroConcepto']}, DescripcionConcepto='Neto cero')]})
+        deducciones = dict(
+            {nombre: ['0.00'] for nombre in ('PagosTerceros', 'Anticipos', 'OtrasDeducciones')},
+            **{nombre: '0.00' for nombre in ('PensionVoluntaria', 'RetencionFuente', 'AFC', 'Cooperativa', 'EmbargoFiscal', 'PlanComplementarios', 'Educacion', 'Reintegro', 'Deuda')},
+            FondoSP={a: '0.00' for a in self._OPCIONALES['FondoSP']})
+
+        def con_ceros(recibo):
+            datos = original(recibo)
+            datos['devengados'].update(devengados)
+            datos['deducciones'].update(deducciones)
+            return datos
+        parche = patch.object(type(recibos), '_collect_payslip_data', con_ceros)
+        parche.start()
+        self.addCleanup(parche.stop)
+        raiz = etree.fromstring(self._xml_valido(self._documento_de(recibos)))
+        for seccion, esperado in (('Devengados', ['Basico']), ('Deducciones', ['Salud', 'FondoPension'])):
+            self.assertEqual([etree.QName(n).localname for n in raiz.find('{*}%s' % seccion)], esperado, seccion)
 
     def test_el_documento_de_un_aprendiz_es_valido_con_basico_en_cero_y_el_apoyo(self):
         """H-F1-09 (doc 88, D1): el apoyo es el sueldo del contrato. El XML lleva ``Basico`` (obligatorio en el XSD) con los dias y SueldoTrabajado 0.00, y ``ApoyoSost`` con el valor; antes, con sueldo 0 y

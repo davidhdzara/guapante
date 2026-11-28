@@ -170,6 +170,19 @@ def _fmt(value: Union[int, float, str, None], decimals: int = 2) -> str:
     return format_amount(value, decimals)
 
 
+def _importe_opcional(value: Union[int, float, str, None]) -> Optional[str]:
+    """Importe (o porcentaje) OPCIONAL del XML: ``None`` si no hay valor, para que no se escriba.
+
+    Anexo Técnico V1.0: ocurrencia 0-1 (o 0-N) en NIE071-073, 119, 139-142, 147, 148, 151-160, 167-170, 177-185,
+    193-198 y 201. La DIAN rechaza uno informado en cero (producción, 27-nov-2026: «Regla NIE139: Se debe colocar el
+    Valor Pagado por Bonificación Salarial», con BonificacionS="0.00"). Solo para opcionales: los obligatorios (1-1)
+    usan ``_fmt``, que escribe «0.00»."""
+    if value is None or value == '':
+        return None
+    texto = _fmt(value)
+    return texto if float(texto) else None
+
+
 def _dias_trabajados_requerido(basico: dict) -> str:
     """DiasTrabajados de Devengados/Basico -- obligatorio, nunca inventado.
 
@@ -1442,20 +1455,13 @@ def _get_transporte_items(transporte) -> list[dict]:
     for t in transporte:
         viatico_s = float(t.get('ViaticoManuAlojS') or 0)
         viatico_ns = float(t.get('ViaticoManuAlojNS') or 0)
-        if (
-            t.get('AuxilioTransporte') is None
-            and viatico_s <= 0
-            and viatico_ns <= 0
-        ):
-            continue
-        items.append({
-            'AuxilioTransporte': (
-                _fmt(t['AuxilioTransporte'])
-                if t.get('AuxilioTransporte') is not None else None
-            ),
-            'ViaticoManuAlojS': _fmt(viatico_s) if viatico_s > 0 else None,
-            'ViaticoManuAlojNS': _fmt(viatico_ns) if viatico_ns > 0 else None,
-        })
+        item = {
+            'AuxilioTransporte': _importe_opcional(t.get('AuxilioTransporte')),
+            'ViaticoManuAlojS': _importe_opcional(viatico_s) if viatico_s > 0 else None,
+            'ViaticoManuAlojNS': _importe_opcional(viatico_ns) if viatico_ns > 0 else None,
+        }
+        if any(item.values()):
+            items.append(item)
     return items
 
 
@@ -1497,8 +1503,9 @@ def _get_primas_node(primas: dict) -> dict:
         'Cantidad': str(primas.get('Cantidad', '0')),
         'Pago': _fmt(primas.get('Pago', 0)),
     }
-    if primas.get('PagoNS') is not None:
-        node['PagoNS'] = _fmt(primas['PagoNS'])
+    pago_ns = _importe_opcional(primas.get('PagoNS'))
+    if pago_ns is not None:
+        node['PagoNS'] = pago_ns
     return node
 
 
@@ -1557,28 +1564,18 @@ def _get_licencias_node(lic_data: dict) -> dict:
 
 def _get_bonificaciones_items(bonif_list: list[dict]) -> list[dict]:
     """Equivalente dict del bloque Bonificaciones de _add_devengados()."""
-    result = []
-    for b in bonif_list:
-        result.append({
-            'BonificacionS': (
-                _fmt(b['BonificacionS']) if b.get('BonificacionS') is not None else None
-            ),
-            'BonificacionNS': (
-                _fmt(b['BonificacionNS']) if b.get('BonificacionNS') is not None else None
-            ),
-        })
-    return result
+    return [
+        {campo: _importe_opcional(b.get(campo)) for campo in ('BonificacionS', 'BonificacionNS')}
+        for b in bonif_list
+    ]
 
 
 def _get_auxilios_items(aux_list: list[dict]) -> list[dict]:
     """Equivalente dict del bloque Auxilios de _add_devengados()."""
-    result = []
-    for a in aux_list:
-        result.append({
-            'AuxilioS': _fmt(a['AuxilioS']) if a.get('AuxilioS') is not None else None,
-            'AuxilioNS': _fmt(a['AuxilioNS']) if a.get('AuxilioNS') is not None else None,
-        })
-    return result
+    return [
+        {campo: _importe_opcional(a.get(campo)) for campo in ('AuxilioS', 'AuxilioNS')}
+        for a in aux_list
+    ]
 
 
 def _get_huelgas_legales_items(huelgas: list[dict]) -> list[dict]:
@@ -1598,11 +1595,9 @@ def _get_otros_conceptos_items(otros: list[dict]) -> list[dict]:
     """Equivalente dict del bloque OtrosConceptos de _add_devengados()."""
     result = []
     for o in otros:
-        result.append({
-            'DescripcionConcepto': o.get('DescripcionConcepto', ''),
-            'ConceptoS': _fmt(o['ConceptoS']) if o.get('ConceptoS') is not None else None,
-            'ConceptoNS': _fmt(o['ConceptoNS']) if o.get('ConceptoNS') is not None else None,
-        })
+        importes = {campo: _importe_opcional(o.get(campo)) for campo in ('ConceptoS', 'ConceptoNS')}
+        if any(importes.values()):      # sin importe no hay concepto: la descripción sola no se escribe
+            result.append({'DescripcionConcepto': o.get('DescripcionConcepto', ''), **importes})
     return result
 
 
@@ -1619,28 +1614,16 @@ def _get_compensaciones_items(comp_list: list[dict]) -> list[dict]:
 
 def _get_bono_epctv_items(bonos: list[dict]) -> list[dict]:
     """Equivalente dict del bloque BonoEPCTVs de _add_devengados()."""
-    result = []
-    for bn in bonos:
-        result.append({
-            'PagoS': _fmt(bn['PagoS']) if bn.get('PagoS') is not None else None,
-            'PagoNS': _fmt(bn['PagoNS']) if bn.get('PagoNS') is not None else None,
-            'PagoAlimentacionS': (
-                _fmt(bn['PagoAlimentacionS'])
-                if bn.get('PagoAlimentacionS') is not None else None
-            ),
-            'PagoAlimentacionNS': (
-                _fmt(bn['PagoAlimentacionNS'])
-                if bn.get('PagoAlimentacionNS') is not None else None
-            ),
-        })
-    return result
+    campos = ('PagoS', 'PagoNS', 'PagoAlimentacionS', 'PagoAlimentacionNS')
+    return [{campo: _importe_opcional(bn.get(campo)) for campo in campos} for bn in bonos]
 
 
 def _get_valor_simple_items(valores: list) -> list[dict]:
     """Equivalente dict de los bloques Comisiones/PagosTerceros/Anticipos/
     OtrasDeducciones de _add_devengados()/_add_deducciones() -- listas de
-    valores simples, cada uno un elemento con solo texto (_fmt)."""
-    return [{'_text': _fmt(v)} for v in valores]
+    valores simples, cada uno un elemento con solo texto (0..N: sin valor no
+    hay elemento)."""
+    return [{'_text': texto} for texto in map(_importe_opcional, valores) if texto is not None]
 
 
 def _get_devengados_node(data: dict) -> dict:
@@ -1695,9 +1678,9 @@ def _get_devengados_node(data: dict) -> dict:
 
     for campo in ('Dotacion', 'ApoyoSost', 'Teletrabajo',
                   'BonifRetiro', 'Indemnizacion', 'Reintegro'):
-        val = data.get(campo)
-        if val is not None:
-            node[campo] = {'_text': _fmt(val)}
+        texto = _importe_opcional(data.get(campo))
+        if texto is not None:
+            node[campo] = {'_text': texto}
 
     return node
 
@@ -1718,16 +1701,8 @@ def _get_deducciones_node(data: dict) -> dict:
             'Deduccion': _fmt(pension.get('Deduccion', 0)),
         },
         'FondoSP': {
-            'Porcentaje': _fmt(fsp['Porcentaje']) if fsp.get('Porcentaje') is not None else None,
-            'DeduccionSP': (
-                _fmt(fsp['DeduccionSP']) if fsp.get('DeduccionSP') is not None else None
-            ),
-            'PorcentajeSub': (
-                _fmt(fsp['PorcentajeSub']) if fsp.get('PorcentajeSub') is not None else None
-            ),
-            'DeduccionSub': (
-                _fmt(fsp['DeduccionSub']) if fsp.get('DeduccionSub') is not None else None
-            ),
+            campo: _importe_opcional(fsp.get(campo))
+            for campo in ('Porcentaje', 'DeduccionSP', 'PorcentajeSub', 'DeduccionSub')
         },
         'Sindicatos': {
             'Sindicato': [
@@ -1770,9 +1745,9 @@ def _get_deducciones_node(data: dict) -> dict:
     for campo in ('PensionVoluntaria', 'RetencionFuente', 'AFC',
                   'Cooperativa', 'EmbargoFiscal', 'PlanComplementarios',
                   'Educacion', 'Reintegro', 'Deuda'):
-        val = data.get(campo)
-        if val is not None:
-            node[campo] = {'_text': _fmt(val)}
+        texto = _importe_opcional(data.get(campo))
+        if texto is not None:
+            node[campo] = {'_text': texto}
 
     return node
 
